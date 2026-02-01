@@ -4,6 +4,22 @@
 
 ---
 
+## ESSENTIAL CONTEXT — READ FIRST
+
+**Before implementing this module, you MUST read:**
+
+1. **`docs/mission-control-initial-article.md`** — Agent roster, SOUL concept (Sections 3, 8)
+2. **`docs/mission-control-cursor-core-instructions.md`** — Agent schema (Section 4.4)
+3. **`.cursor/rules/02-ui-components.mdc`** — Component patterns
+
+**Key understanding:**
+- Agent status = online, busy, idle, offline, error
+- Heartbeat shows last check-in time
+- Activity feed = real-time audit trail
+- Each activity links to target (task, document, etc.)
+
+---
+
 ## 1. Context & Goal
 
 Implement two key views:

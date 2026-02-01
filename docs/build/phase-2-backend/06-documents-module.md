@@ -4,6 +4,22 @@
 
 ---
 
+## ESSENTIAL CONTEXT — READ FIRST
+
+**Before implementing this module, you MUST read:**
+
+1. **`docs/mission-control-initial-article.md`** — Document/deliverable concepts (Section 10)
+2. **`docs/mission-control-cursor-core-instructions.md`** — Data model invariants (Section 4)
+3. **`.cursor/rules/05-convex.mdc`** — Convex patterns
+
+**Key understanding:**
+- Documents = deliverables, notes, templates, references
+- Can be linked to tasks (optional)
+- Version tracking on content changes
+- Both users and agents can author documents
+
+---
+
 ## 1. Context & Goal
 
 We are implementing the document management system for Mission Control. Documents store deliverables, notes, templates, and reference materials created by users and agents.

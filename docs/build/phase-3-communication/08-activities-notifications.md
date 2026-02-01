@@ -4,6 +4,23 @@
 
 ---
 
+## ESSENTIAL CONTEXT — READ FIRST
+
+**Before implementing this module, you MUST read:**
+
+1. **`docs/mission-control-initial-article.md`** — Mentions + notifications concept (Section 9)
+2. **`docs/mission-control-cursor-core-instructions.md`** — Activity logging invariants (L1)
+3. **`.cursor/rules/05-convex.mdc`** — Convex patterns
+
+**Key understanding:**
+- Activities = append-only audit trail (never edited)
+- Notifications have two states: `deliveredAt` (for agents) and `readAt` (for users)
+- At-least-once delivery semantics (idempotent marking)
+- Thread subscribers auto-notified on new messages
+- Runtime polls for undelivered agent notifications
+
+---
+
 ## 1. Context & Goal
 
 We are implementing the activity feed and notification system for Mission Control. Activities provide an audit trail and live feed. Notifications deliver mentions and updates to users and agents.

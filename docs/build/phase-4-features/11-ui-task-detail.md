@@ -4,6 +4,22 @@
 
 ---
 
+## ESSENTIAL CONTEXT — READ FIRST
+
+**Before implementing this module, you MUST read:**
+
+1. **`docs/mission-control-initial-article.md`** — Thread & mention concepts (Section 9)
+2. **`docs/mission-control-cursor-core-instructions.md`** — UI requirements
+3. **`.cursor/rules/02-ui-components.mdc`** — Component patterns
+
+**Key understanding:**
+- Task thread = messages with real-time updates
+- Mention autocomplete (`@` trigger) for users and agents
+- Auto-subscribe to thread on message post
+- Status changes need validation (use mutation, not direct)
+
+---
+
 ## 1. Context & Goal
 
 Implement the task detail page showing:
