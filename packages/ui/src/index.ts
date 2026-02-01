@@ -15,3 +15,4 @@ export * from "./components/label";
 export * from "./components/textarea";
 export * from "./components/tabs";
 export * from "./components/select";
+export * from "./components/accordion";

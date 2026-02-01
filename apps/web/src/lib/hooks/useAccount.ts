@@ -10,12 +10,18 @@ export interface AccountContextValue {
   account: Doc<"accounts"> | null;
   accountId: Id<"accounts"> | null;
   isLoading: boolean;
+  membership: Doc<"memberships"> | null;
+  isAdmin: boolean;
+  isOwner: boolean;
 }
 
 export const AccountContext = createContext<AccountContextValue>({
   account: null,
   accountId: null,
   isLoading: true,
+  membership: null,
+  isAdmin: false,
+  isOwner: false,
 });
 
 /**
@@ -36,8 +42,10 @@ export function useAccount(): AccountContextValue {
 export function useRequireAccount(): { 
   account: Doc<"accounts">; 
   accountId: Id<"accounts">;
+  isAdmin: boolean;
+  isOwner: boolean;
 } {
-  const { account, accountId, isLoading } = useAccount();
+  const { account, accountId, isLoading, isAdmin, isOwner } = useAccount();
   
   if (isLoading) {
     throw new Error("Account is still loading");
@@ -47,5 +55,5 @@ export function useRequireAccount(): {
     throw new Error("No account selected");
   }
   
-  return { account, accountId };
+  return { account, accountId, isAdmin, isOwner };
 }

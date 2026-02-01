@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
-import { 
-  requireAuth, 
-  requireAccountMember, 
+import {
+  requireAuth,
+  requireAccountMember,
   requireAccountAdmin,
-  requireAccountOwner 
+  requireAccountOwner,
 } from "./lib/auth";
 import { memberRoleValidator } from "./lib/validators";
+import { logActivity } from "./lib/activity";
 import { Id } from "./_generated/dataModel";
 
 /**
@@ -81,8 +82,8 @@ export const invite = mutation({
     role: memberRoleValidator,
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
-    
+    const { userId: inviterId, userName: inviterName } = await requireAccountAdmin(ctx, args.accountId);
+
     // Check if user is already a member
     const existing = await ctx.db
       .query("memberships")
@@ -109,9 +110,20 @@ export const invite = mutation({
       role: args.role,
       joinedAt: Date.now(),
     });
-    
-    // TODO: Log activity
-    
+
+    await logActivity({
+      ctx,
+      accountId: args.accountId,
+      type: "member_added",
+      actorType: "user",
+      actorId: inviterId,
+      actorName: inviterName,
+      targetType: "membership",
+      targetId: membershipId,
+      targetName: args.userName,
+      meta: { role: args.role },
+    });
+
     return membershipId;
   },
 });

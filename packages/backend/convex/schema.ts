@@ -68,6 +68,14 @@ const documentTypeValidator = v.union(
 );
 
 /**
+ * Document kind validator (file vs folder in tree).
+ */
+const documentKindValidator = v.union(
+  v.literal("file"),
+  v.literal("folder")
+);
+
+/**
  * Notification type validator.
  */
 const notificationTypeValidator = v.union(
@@ -161,6 +169,16 @@ export default defineSchema({
     
     /** Service token hash for runtime authentication */
     serviceTokenHash: v.optional(v.string()),
+    
+    /** Workspace settings (theme, notification preferences). */
+    settings: v.optional(v.object({
+      theme: v.optional(v.string()),
+      notificationPreferences: v.optional(v.object({
+        taskUpdates: v.boolean(),
+        agentActivity: v.boolean(),
+        emailDigest: v.boolean(),
+      })),
+    })),
   })
     .index("by_slug", ["slug"]),
 
@@ -499,17 +517,26 @@ export default defineSchema({
     /** Account this document belongs to */
     accountId: v.id("accounts"),
     
+    /** Parent folder (undefined = root). Enables file/folder tree. */
+    parentId: v.optional(v.id("documents")),
+    
+    /** Kind: file (default) or folder. Folders have no content. */
+    kind: v.optional(documentKindValidator),
+    
+    /** Display name (folders use this; files use title if name omitted). */
+    name: v.optional(v.string()),
+    
     /** Associated task (optional) */
     taskId: v.optional(v.id("tasks")),
     
-    /** Document title */
-    title: v.string(),
+    /** Document title (files; required for backward compatibility) */
+    title: v.optional(v.string()),
     
-    /** Document content (Markdown) */
-    content: v.string(),
+    /** Document content (Markdown). Optional for folders. */
+    content: v.optional(v.string()),
     
-    /** Document type */
-    type: documentTypeValidator,
+    /** Document type (deliverable/note/template/reference). Files only. */
+    type: v.optional(documentTypeValidator),
     
     /** 
      * Author type.
@@ -521,8 +548,8 @@ export default defineSchema({
      */
     authorId: v.string(),
     
-    /** Version number (incremented on each edit) */
-    version: v.number(),
+    /** Version number (incremented on each edit). Files only. */
+    version: v.optional(v.number()),
     
     /** Timestamp of creation */
     createdAt: v.number(),
@@ -531,6 +558,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_account", ["accountId"])
+    .index("by_parent", ["accountId", "parentId"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
     .index("by_account_updated", ["accountId", "updatedAt"]),

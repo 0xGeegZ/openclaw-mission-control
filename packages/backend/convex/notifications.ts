@@ -155,15 +155,23 @@ export const remove = mutation({
     if (!notification) {
       return true; // Already deleted
     }
-    
+
     const { userId } = await requireAccountMember(ctx, notification.accountId);
-    
-    // Verify ownership
+
     if (notification.recipientType !== "user" || notification.recipientId !== userId) {
       throw new Error("Forbidden: Cannot delete others' notifications");
     }
-    
+
     await ctx.db.delete(args.notificationId);
     return true;
   },
 });
+
+/** Alias for listMine (roadmap/frontend API). */
+export const list = listMine;
+
+/** Alias for markRead (roadmap/frontend API). */
+export const markAsRead = markRead;
+
+/** Alias for markAllRead (roadmap/frontend API). */
+export const markAllAsRead = markAllRead;

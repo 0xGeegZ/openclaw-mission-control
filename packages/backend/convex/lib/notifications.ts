@@ -14,6 +14,8 @@ export type NotificationType =
 /**
  * Create notifications for mentions.
  * Called after a message is created with mentions.
+ * Agent messages: when the runtime posts a message (service/messages or messages.create with authorType "agent"),
+ * these create mention/thread notifications for recipients (agent_message-style notifications).
  */
 export async function createMentionNotifications(
   ctx: MutationCtx,

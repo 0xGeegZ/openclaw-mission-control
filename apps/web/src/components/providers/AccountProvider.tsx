@@ -22,10 +22,22 @@ export function AccountProvider({ accountSlug, children }: AccountProviderProps)
     isAuthenticated ? { slug: accountSlug } : "skip"
   );
   
+  // Fetch user's membership to determine role
+  const membership = useQuery(
+    api.memberships.getMyMembership,
+    isAuthenticated && account?._id ? { accountId: account._id } : "skip"
+  );
+  
+  const isAdmin = membership?.role === "admin" || membership?.role === "owner";
+  const isOwner = membership?.role === "owner";
+  
   const value = {
     account: account ?? null,
     accountId: account?._id ?? null,
     isLoading: account === undefined,
+    membership: membership ?? null,
+    isAdmin,
+    isOwner,
   };
   
   return (

@@ -43,16 +43,16 @@ export const createOrUpdateFromAgent = internalMutation({
       
       const versionIncrement = args.content !== document.content;
       
+      const currentVersion = document.version ?? 0;
       await ctx.db.patch(args.documentId, {
         title: args.title,
         content: args.content,
         type: args.type,
         taskId: args.taskId,
-        version: versionIncrement ? document.version + 1 : document.version,
+        version: versionIncrement ? currentVersion + 1 : currentVersion,
         updatedAt: now,
       });
-      
-      // Log activity
+
       await logActivity({
         ctx,
         accountId: agent.accountId,
@@ -63,9 +63,9 @@ export const createOrUpdateFromAgent = internalMutation({
         targetType: "document",
         targetId: args.documentId,
         targetName: args.title,
-        meta: { 
+        meta: {
           versionIncrement,
-          newVersion: versionIncrement ? document.version + 1 : document.version,
+          newVersion: versionIncrement ? currentVersion + 1 : currentVersion,
         },
       });
       

@@ -10,7 +10,7 @@ import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import { Button } from "@packages/ui/components/button";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Card } from "@packages/ui/components/card";
-import { Plus, Bot } from "lucide-react";
+import { Plus, Bot, Loader2 } from "lucide-react";
 
 interface AgentsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -21,13 +21,16 @@ interface AgentsPageProps {
  */
 export default function AgentsPage({ params }: AgentsPageProps) {
   const { accountSlug } = use(params);
-  const { accountId } = useAccount();
+  const { accountId, isLoading: isAccountLoading } = useAccount();
   const [showCreate, setShowCreate] = useState(false);
   
   const roster = useQuery(
     api.agents.getRoster,
     accountId ? { accountId } : "skip"
   );
+  
+  // Show loading state when account or roster is loading
+  const isLoading = isAccountLoading || (accountId && roster === undefined);
   
   return (
     <div className="flex flex-col h-full">
@@ -43,22 +46,22 @@ export default function AgentsPage({ params }: AgentsPageProps) {
       </header>
       
       <div className="flex-1 overflow-auto p-6">
-        {roster === undefined ? (
+        {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="p-4">
+              <Card key={i} className="p-4 animate-pulse">
                 <div className="flex items-start gap-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="h-10 w-10 rounded-full bg-muted" />
                   <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-3 w-16" />
+                    <div className="h-4 w-24 bg-muted rounded" />
+                    <div className="h-3 w-16 bg-muted rounded" />
                   </div>
                 </div>
-                <Skeleton className="h-3 w-32 mt-4" />
+                <div className="h-3 w-32 mt-4 bg-muted rounded" />
               </Card>
             ))}
           </div>
-        ) : roster.length === 0 ? (
+        ) : roster && roster.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
@@ -74,7 +77,7 @@ export default function AgentsPage({ params }: AgentsPageProps) {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {roster.map((agent) => (
+            {roster?.map((agent) => (
               <AgentCard key={agent._id} agent={agent} accountSlug={accountSlug} />
             ))}
           </div>
