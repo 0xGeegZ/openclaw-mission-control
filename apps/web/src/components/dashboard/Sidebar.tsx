@@ -11,6 +11,9 @@ import {
   Bot,
   PanelLeftClose,
   PanelLeft,
+  Shield,
+  Cpu,
+  Users,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -25,6 +28,7 @@ import {
   TooltipTrigger,
 } from "@packages/ui/components/tooltip";
 import { useSidebar } from "@/lib/hooks/useSidebar";
+import { useAccount } from "@/lib/hooks/useAccount";
 
 interface SidebarProps {
   accountSlug: string;
@@ -37,6 +41,11 @@ const navItems = [
   { href: "feed", label: "Activity", icon: Activity, description: "Recent activity" },
 ];
 
+const adminNavItems = [
+  { href: "admin/openclaw", label: "OpenClaw", icon: Cpu, description: "OpenClaw configuration" },
+  { href: "admin/members", label: "Members", icon: Users, description: "Manage team members" },
+];
+
 const settingsItem = { href: "settings", label: "Settings", icon: Settings, description: "Workspace settings" };
 
 /**
@@ -45,6 +54,7 @@ const settingsItem = { href: "settings", label: "Settings", icon: Settings, desc
 export function Sidebar({ accountSlug }: SidebarProps) {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar } = useSidebar();
+  const { isAdmin } = useAccount();
   
   return (
     <TooltipProvider delayDuration={0}>
@@ -158,6 +168,53 @@ export function Sidebar({ accountSlug }: SidebarProps) {
               {settingsItem.description}
             </TooltipContent>
           </Tooltip>
+          
+          {/* Admin Section - only visible to admins/owners */}
+          {isAdmin && (
+            <>
+              <Separator className="my-4" />
+              
+              {!isCollapsed && (
+                <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  <Shield className="h-3 w-3" />
+                  Admin
+                </div>
+              )}
+              
+              <div className="space-y-1 mt-2">
+                {adminNavItems.map((item) => {
+                  const href = `/${accountSlug}/${item.href}`;
+                  const isActive = pathname.startsWith(href);
+                  const Icon = item.icon;
+                  
+                  return (
+                    <Tooltip key={item.href}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={href}
+                          className={cn(
+                            "flex items-center rounded-lg text-sm font-medium transition-all",
+                            isCollapsed 
+                              ? "justify-center h-10 w-10 mx-auto" 
+                              : "gap-3 px-3 py-2.5",
+                            isActive 
+                              ? "bg-primary text-primary-foreground shadow-sm" 
+                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          )}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          {!isCollapsed && item.label}
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        {item.description}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </nav>
         
         {/* Bottom section */}
