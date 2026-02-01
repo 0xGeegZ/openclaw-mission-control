@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { MobileNav } from "@/components/dashboard/MobileNav";
 import { AccountProvider } from "@/components/providers/AccountProvider";
+import { SidebarProvider } from "@/components/providers/SidebarProvider";
 
 interface AccountLayoutProps {
   children: ReactNode;
@@ -20,23 +21,25 @@ export default async function AccountLayout({
   
   return (
     <AccountProvider accountSlug={accountSlug}>
-      <div className="flex h-screen isolate">
-        {/* Desktop sidebar */}
-        <aside className="hidden lg:block shrink-0">
-          <Sidebar accountSlug={accountSlug} />
-        </aside>
-        
-        {/* Main content area */}
-        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-          {/* Mobile nav */}
-          <MobileNav accountSlug={accountSlug} />
+      <SidebarProvider>
+        <div className="flex h-screen isolate">
+          {/* Desktop sidebar */}
+          <aside className="hidden lg:block shrink-0">
+            <Sidebar accountSlug={accountSlug} />
+          </aside>
           
-          {/* Page content */}
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
+          {/* Main content area */}
+          <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+            {/* Mobile nav */}
+            <MobileNav accountSlug={accountSlug} />
+            
+            {/* Page content */}
+            <main className="flex-1 overflow-auto">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </SidebarProvider>
     </AccountProvider>
   );
 }
