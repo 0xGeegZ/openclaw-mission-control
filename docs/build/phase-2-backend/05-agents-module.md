@@ -786,13 +786,434 @@ git commit -m "feat(agents): implement AI agent management
 
 ---
 
-## 8. Rollout / Migration
+## 8. Skills Module (NEW)
+
+Create `packages/backend/convex/skills.ts` for managing reusable skills:
+
+```typescript
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
+
+/**
+ * Skill category validator.
+ */
+const skillCategoryValidator = v.union(
+  v.literal("mcp_server"),
+  v.literal("tool"),
+  v.literal("integration"),
+  v.literal("custom")
+);
+
+/**
+ * List all skills for an account.
+ * Any member can view skills.
+ */
+export const list = query({
+  args: {
+    accountId: v.id("accounts"),
+    category: v.optional(skillCategoryValidator),
+    enabledOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountMember(ctx, args.accountId);
+    
+    let skills;
+    
+    if (args.category) {
+      skills = await ctx.db
+        .query("skills")
+        .withIndex("by_account_category", (q) => 
+          q.eq("accountId", args.accountId).eq("category", args.category)
+        )
+        .collect();
+    } else {
+      skills = await ctx.db
+        .query("skills")
+        .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+        .collect();
+    }
+    
+    if (args.enabledOnly) {
+      skills = skills.filter(s => s.isEnabled);
+    }
+    
+    return skills;
+  },
+});
+
+/**
+ * Get a single skill by ID.
+ */
+export const get = query({
+  args: {
+    skillId: v.id("skills"),
+  },
+  handler: async (ctx, args) => {
+    const skill = await ctx.db.get(args.skillId);
+    if (!skill) return null;
+    
+    await requireAccountMember(ctx, skill.accountId);
+    return skill;
+  },
+});
+
+/**
+ * Create a new skill.
+ * Requires admin role.
+ */
+export const create = mutation({
+  args: {
+    accountId: v.id("accounts"),
+    name: v.string(),
+    slug: v.string(),
+    category: skillCategoryValidator,
+    description: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    config: v.object({
+      serverUrl: v.optional(v.string()),
+      authType: v.optional(v.union(
+        v.literal("none"),
+        v.literal("api_key"),
+        v.literal("oauth")
+      )),
+      credentialRef: v.optional(v.string()),
+      toolParams: v.optional(v.any()),
+      rateLimit: v.optional(v.number()),
+      requiresApproval: v.optional(v.boolean()),
+    }),
+    isEnabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountAdmin(ctx, args.accountId);
+    
+    // Check slug uniqueness
+    const existing = await ctx.db
+      .query("skills")
+      .withIndex("by_account_slug", (q) => 
+        q.eq("accountId", args.accountId).eq("slug", args.slug)
+      )
+      .unique();
+    
+    if (existing) {
+      throw new Error("Conflict: Skill slug already exists");
+    }
+    
+    const now = Date.now();
+    
+    return ctx.db.insert("skills", {
+      accountId: args.accountId,
+      name: args.name,
+      slug: args.slug,
+      category: args.category,
+      description: args.description,
+      icon: args.icon,
+      config: args.config,
+      isEnabled: args.isEnabled ?? true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+/**
+ * Update a skill.
+ * Requires admin role.
+ */
+export const update = mutation({
+  args: {
+    skillId: v.id("skills"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    config: v.optional(v.object({
+      serverUrl: v.optional(v.string()),
+      authType: v.optional(v.union(
+        v.literal("none"),
+        v.literal("api_key"),
+        v.literal("oauth")
+      )),
+      credentialRef: v.optional(v.string()),
+      toolParams: v.optional(v.any()),
+      rateLimit: v.optional(v.number()),
+      requiresApproval: v.optional(v.boolean()),
+    })),
+    isEnabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const skill = await ctx.db.get(args.skillId);
+    if (!skill) {
+      throw new Error("Not found: Skill does not exist");
+    }
+    
+    await requireAccountAdmin(ctx, skill.accountId);
+    
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+    
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.icon !== undefined) updates.icon = args.icon;
+    if (args.config !== undefined) updates.config = args.config;
+    if (args.isEnabled !== undefined) updates.isEnabled = args.isEnabled;
+    
+    await ctx.db.patch(args.skillId, updates);
+    return args.skillId;
+  },
+});
+
+/**
+ * Delete a skill.
+ * Requires admin role.
+ * Will remove from all agents using it.
+ */
+export const remove = mutation({
+  args: {
+    skillId: v.id("skills"),
+  },
+  handler: async (ctx, args) => {
+    const skill = await ctx.db.get(args.skillId);
+    if (!skill) return true;
+    
+    await requireAccountAdmin(ctx, skill.accountId);
+    
+    // Remove skill from all agents that have it
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", skill.accountId))
+      .collect();
+    
+    for (const agent of agents) {
+      if (agent.openclawConfig?.skillIds?.includes(args.skillId)) {
+        const newSkillIds = agent.openclawConfig.skillIds.filter(
+          id => id !== args.skillId
+        );
+        await ctx.db.patch(agent._id, {
+          openclawConfig: {
+            ...agent.openclawConfig,
+            skillIds: newSkillIds,
+          },
+        });
+      }
+    }
+    
+    await ctx.db.delete(args.skillId);
+    return true;
+  },
+});
+
+/**
+ * Toggle skill enabled status.
+ * Requires admin role.
+ */
+export const toggleEnabled = mutation({
+  args: {
+    skillId: v.id("skills"),
+  },
+  handler: async (ctx, args) => {
+    const skill = await ctx.db.get(args.skillId);
+    if (!skill) {
+      throw new Error("Not found: Skill does not exist");
+    }
+    
+    await requireAccountAdmin(ctx, skill.accountId);
+    
+    await ctx.db.patch(args.skillId, {
+      isEnabled: !skill.isEnabled,
+      updatedAt: Date.now(),
+    });
+    
+    return !skill.isEnabled;
+  },
+});
+```
+
+---
+
+## 9. OpenClaw Config Management
+
+Add these mutations to `packages/backend/convex/agents.ts` for managing agent OpenClaw configuration:
+
+```typescript
+/**
+ * Update agent OpenClaw configuration.
+ * Requires admin role.
+ */
+export const updateOpenclawConfig = mutation({
+  args: {
+    agentId: v.id("agents"),
+    config: v.object({
+      model: v.string(),
+      temperature: v.number(),
+      maxTokens: v.optional(v.number()),
+      systemPromptPrefix: v.optional(v.string()),
+      skillIds: v.array(v.id("skills")),
+      contextConfig: v.optional(v.object({
+        maxHistoryMessages: v.number(),
+        includeTaskContext: v.boolean(),
+        includeTeamContext: v.boolean(),
+        customContextSources: v.optional(v.array(v.string())),
+      })),
+      rateLimits: v.optional(v.object({
+        requestsPerMinute: v.number(),
+        tokensPerDay: v.optional(v.number()),
+      })),
+      behaviorFlags: v.optional(v.object({
+        canCreateTasks: v.boolean(),
+        canModifyTaskStatus: v.boolean(),
+        canCreateDocuments: v.boolean(),
+        canMentionAgents: v.boolean(),
+        requiresApprovalForActions: v.optional(v.array(v.string())),
+      })),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    
+    const { userId, userName } = await requireAccountAdmin(ctx, agent.accountId);
+    
+    // Validate all skillIds exist and belong to same account
+    for (const skillId of args.config.skillIds) {
+      const skill = await ctx.db.get(skillId);
+      if (!skill || skill.accountId !== agent.accountId) {
+        throw new Error(`Invalid skill: ${skillId}`);
+      }
+      if (!skill.isEnabled) {
+        throw new Error(`Skill is disabled: ${skill.name}`);
+      }
+    }
+    
+    await ctx.db.patch(args.agentId, {
+      openclawConfig: args.config,
+    });
+    
+    // Log activity
+    await logActivity({
+      ctx,
+      accountId: agent.accountId,
+      type: "agent_status_changed",
+      actorType: "user",
+      actorId: userId,
+      actorName: userName,
+      targetType: "agent",
+      targetId: args.agentId,
+      targetName: agent.name,
+      meta: { action: "config_updated" },
+    });
+    
+    return args.agentId;
+  },
+});
+
+/**
+ * Get agent with resolved skills.
+ * Returns agent with full skill objects instead of just IDs.
+ */
+export const getWithSkills = query({
+  args: {
+    agentId: v.id("agents"),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) return null;
+    
+    await requireAccountMember(ctx, agent.accountId);
+    
+    // Resolve skill IDs to full skill objects
+    let skills: any[] = [];
+    if (agent.openclawConfig?.skillIds) {
+      skills = await Promise.all(
+        agent.openclawConfig.skillIds.map(id => ctx.db.get(id))
+      );
+      skills = skills.filter(Boolean);
+    }
+    
+    return {
+      ...agent,
+      resolvedSkills: skills,
+    };
+  },
+});
+
+/**
+ * Assign/remove skills from agent.
+ * Requires admin role.
+ */
+export const updateSkills = mutation({
+  args: {
+    agentId: v.id("agents"),
+    skillIds: v.array(v.id("skills")),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    
+    await requireAccountAdmin(ctx, agent.accountId);
+    
+    // Validate all skills
+    for (const skillId of args.skillIds) {
+      const skill = await ctx.db.get(skillId);
+      if (!skill || skill.accountId !== agent.accountId) {
+        throw new Error(`Invalid skill: ${skillId}`);
+      }
+    }
+    
+    const currentConfig = agent.openclawConfig ?? {
+      model: "claude-sonnet-4-20250514",
+      temperature: 0.7,
+      skillIds: [],
+    };
+    
+    await ctx.db.patch(args.agentId, {
+      openclawConfig: {
+        ...currentConfig,
+        skillIds: args.skillIds,
+      },
+    });
+    
+    return args.agentId;
+  },
+});
+
+/**
+ * Get default OpenClaw config for new agents.
+ */
+export function getDefaultOpenclawConfig(accountId: Id<"accounts">) {
+  return {
+    model: "claude-sonnet-4-20250514",
+    temperature: 0.7,
+    maxTokens: 4096,
+    skillIds: [],
+    contextConfig: {
+      maxHistoryMessages: 50,
+      includeTaskContext: true,
+      includeTeamContext: true,
+    },
+    behaviorFlags: {
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: true,
+      canMentionAgents: true,
+    },
+  };
+}
+```
+
+---
+
+## 10. Rollout / Migration
 
 Not applicable for initial implementation.
 
 ---
 
-## 9. TODO Checklist
+## 11. TODO Checklist
 
 ### Main Module
 
@@ -808,6 +1229,19 @@ Not applicable for initial implementation.
 - [ ] Implement `updateStatus` mutation
 - [ ] Implement `remove` mutation
 - [ ] Implement `getSoul` query
+- [ ] Implement `updateOpenclawConfig` mutation
+- [ ] Implement `getWithSkills` query
+- [ ] Implement `updateSkills` mutation
+
+### Skills Module
+
+- [ ] Create `skills.ts`
+- [ ] Implement `list` query
+- [ ] Implement `get` query
+- [ ] Implement `create` mutation
+- [ ] Implement `update` mutation
+- [ ] Implement `remove` mutation
+- [ ] Implement `toggleEnabled` mutation
 
 ### Service Module
 
@@ -821,6 +1255,8 @@ Not applicable for initial implementation.
 - [ ] Type check passes
 - [ ] Create test agent
 - [ ] Verify session key format
+- [ ] Create test skill
+- [ ] Assign skill to agent
 - [ ] Commit changes
 
 ---
@@ -830,8 +1266,10 @@ Not applicable for initial implementation.
 This module is complete when:
 
 1. All agent queries and mutations implemented
-2. Service functions exist for runtime
-3. Session key generation works
-4. SOUL content management works
-5. Type check passes
-6. Git commit made
+2. Skills CRUD operations work
+3. Service functions exist for runtime
+4. Session key generation works
+5. SOUL content management works
+6. OpenClaw config management works
+7. Type check passes
+8. Git commit made

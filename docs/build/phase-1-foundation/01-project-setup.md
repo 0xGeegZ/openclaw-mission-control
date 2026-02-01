@@ -486,6 +486,53 @@ export type NotificationType =
   | "assignment"
   | "thread_update"
   | "status_change";
+
+/**
+ * Skill category types.
+ * Defines what kind of capability the skill provides.
+ */
+export type SkillCategory =
+  | "mcp_server"    // External MCP server integration
+  | "tool"          // Built-in tool capability
+  | "integration"   // Third-party service integration
+  | "custom";       // Custom skill definition
+
+/**
+ * Available LLM models for OpenClaw.
+ */
+export type LLMModel =
+  | "claude-sonnet-4-20250514"
+  | "claude-opus-4-20250514"
+  | "gpt-4o"
+  | "gpt-4o-mini";
+
+/**
+ * OpenClaw configuration for agents.
+ */
+export interface OpenClawConfig {
+  model: LLMModel;
+  temperature: number;
+  maxTokens?: number;
+  systemPromptPrefix?: string;
+  skillIds: string[];
+  contextConfig?: {
+    maxHistoryMessages: number;
+    includeTaskContext: boolean;
+    includeTeamContext: boolean;
+    customContextSources?: string[];
+  };
+  rateLimits?: {
+    requestsPerMinute: number;
+    tokensPerDay?: number;
+  };
+  behaviorFlags?: {
+    canCreateTasks: boolean;
+    canModifyTaskStatus: boolean;
+    canCreateDocuments: boolean;
+    canMentionAgents: boolean;
+    requiresApprovalForActions?: string[];
+  };
+}
 ```
 
 **packages/shared/src/constants/index.ts:**
@@ -527,6 +574,47 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   done: [],
   blocked: ["assigned", "in_progress"],
 };
+
+/**
+ * Available LLM models for agent configuration.
+ */
+export const AVAILABLE_MODELS = [
+  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4 (Recommended)" },
+  { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
+  { value: "gpt-4o", label: "GPT-4o" },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+] as const;
+
+/**
+ * Skill category labels for UI display.
+ */
+export const SKILL_CATEGORY_LABELS = {
+  mcp_server: "MCP Server",
+  tool: "Tool",
+  integration: "Integration",
+  custom: "Custom",
+} as const;
+
+/**
+ * Default OpenClaw configuration for new agents.
+ */
+export const DEFAULT_OPENCLAW_CONFIG = {
+  model: "claude-sonnet-4-20250514",
+  temperature: 0.7,
+  maxTokens: 4096,
+  skillIds: [],
+  contextConfig: {
+    maxHistoryMessages: 50,
+    includeTaskContext: true,
+    includeTeamContext: true,
+  },
+  behaviorFlags: {
+    canCreateTasks: false,
+    canModifyTaskStatus: true,
+    canCreateDocuments: true,
+    canMentionAgents: true,
+  },
+} as const;
 ```
 
 **packages/shared/src/index.ts:**

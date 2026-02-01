@@ -111,7 +111,8 @@ mission-control/
 |-------|---------|------------|
 | `accounts` | Multi-tenant accounts | `name`, `slug`, `runtimeStatus` |
 | `memberships` | User-account relationships | `userId`, `accountId`, `role` |
-| `agents` | AI agent definitions | `sessionKey`, `status`, `soulContent` |
+| `skills` | Reusable skill/tool definitions | `category`, `config`, `isEnabled` |
+| `agents` | AI agent definitions | `sessionKey`, `status`, `soulContent`, `openclawConfig` |
 | `tasks` | Kanban tasks | `status`, `assignedAgentIds`, `priority` |
 | `messages` | Task thread comments | `taskId`, `content`, `mentions` |
 | `documents` | Markdown deliverables | `title`, `content`, `type` |

@@ -112,7 +112,8 @@ defineTable({
 |-------|---------|-------------|
 | `accounts` | Multi-tenant accounts | `by_slug` |
 | `memberships` | User-account relationships | `by_account`, `by_user` |
-| `agents` | AI agent definitions | `by_account`, `by_account_status` |
+| `skills` | Reusable skill/tool definitions | `by_account`, `by_account_category` |
+| `agents` | AI agent definitions + OpenClaw config | `by_account`, `by_account_status` |
 | `tasks` | Kanban tasks | `by_account`, `by_account_status`, `by_assignee` |
 | `messages` | Task thread comments | `by_task`, `by_author` |
 | `documents` | Markdown deliverables | `by_account`, `by_task` |
@@ -326,6 +327,78 @@ export default defineSchema({
     .index("by_account_user", ["accountId", "userId"]),
 
   // ==========================================================================
+  // SKILLS
+  // Reusable skill/tool definitions that can be assigned to agents.
+  // Skills represent capabilities: MCP servers, tools, integrations.
+  // ==========================================================================
+  skills: defineTable({
+    /** Account this skill belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Skill display name (e.g., "Web Search", "Code Execution") */
+    name: v.string(),
+    
+    /** URL-safe identifier */
+    slug: v.string(),
+    
+    /** Skill category */
+    category: v.union(
+      v.literal("mcp_server"),    // External MCP server integration
+      v.literal("tool"),          // Built-in tool capability
+      v.literal("integration"),   // Third-party service integration
+      v.literal("custom")         // Custom skill definition
+    ),
+    
+    /** Detailed description of what this skill does */
+    description: v.optional(v.string()),
+    
+    /** Icon for UI display */
+    icon: v.optional(v.string()),
+    
+    /**
+     * Skill configuration (varies by category).
+     * For MCP: server URL, auth config
+     * For tools: tool name, parameters
+     * For integrations: API keys, endpoints
+     */
+    config: v.object({
+      /** For MCP servers: the server identifier/URL */
+      serverUrl: v.optional(v.string()),
+      
+      /** For MCP servers: authentication method */
+      authType: v.optional(v.union(
+        v.literal("none"),
+        v.literal("api_key"),
+        v.literal("oauth")
+      )),
+      
+      /** Encrypted credentials reference (stored in env, not here) */
+      credentialRef: v.optional(v.string()),
+      
+      /** Tool-specific parameters */
+      toolParams: v.optional(v.any()),
+      
+      /** Rate limit (requests per minute) */
+      rateLimit: v.optional(v.number()),
+      
+      /** Whether this skill requires approval before use */
+      requiresApproval: v.optional(v.boolean()),
+    }),
+    
+    /** Is this skill enabled? */
+    isEnabled: v.boolean(),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+    
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_category", ["accountId", "category"])
+    .index("by_account_slug", ["accountId", "slug"]),
+
+  // ==========================================================================
   // AGENTS
   // AI agent definitions. Each agent maps to an OpenClaw session.
   // ==========================================================================
@@ -371,6 +444,61 @@ export default defineSchema({
      * Contains personality, constraints, and operating procedures.
      */
     soulContent: v.optional(v.string()),
+    
+    /**
+     * OpenClaw runtime configuration.
+     * Controls LLM settings, skills, and behavior.
+     */
+    openclawConfig: v.optional(v.object({
+      /** LLM model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o") */
+      model: v.string(),
+      
+      /** Temperature for response generation (0.0 - 2.0) */
+      temperature: v.number(),
+      
+      /** Maximum tokens in response */
+      maxTokens: v.optional(v.number()),
+      
+      /** System prompt prefix (prepended to SOUL) */
+      systemPromptPrefix: v.optional(v.string()),
+      
+      /** Assigned skill IDs */
+      skillIds: v.array(v.id("skills")),
+      
+      /** Context/memory settings */
+      contextConfig: v.optional(v.object({
+        /** Max conversation history to include */
+        maxHistoryMessages: v.number(),
+        /** Whether to include task context automatically */
+        includeTaskContext: v.boolean(),
+        /** Whether to include team activity context */
+        includeTeamContext: v.boolean(),
+        /** Custom context sources */
+        customContextSources: v.optional(v.array(v.string())),
+      })),
+      
+      /** Rate limiting */
+      rateLimits: v.optional(v.object({
+        /** Max requests per minute */
+        requestsPerMinute: v.number(),
+        /** Max tokens per day */
+        tokensPerDay: v.optional(v.number()),
+      })),
+      
+      /** Behavior flags */
+      behaviorFlags: v.optional(v.object({
+        /** Can agent create tasks? */
+        canCreateTasks: v.boolean(),
+        /** Can agent modify task status? */
+        canModifyTaskStatus: v.boolean(),
+        /** Can agent create documents? */
+        canCreateDocuments: v.boolean(),
+        /** Can agent mention other agents? */
+        canMentionAgents: v.boolean(),
+        /** Requires human approval for certain actions? */
+        requiresApprovalForActions: v.optional(v.array(v.string())),
+      })),
+    })),
     
     /** Timestamp of creation */
     createdAt: v.number(),
