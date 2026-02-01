@@ -1,19 +1,15 @@
 import type { Metadata } from "next";
-import { DM_Sans, Inter } from "next/font/google";
+import { Nunito } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { cn } from "@packages/ui/lib/utils";
 import "@packages/ui/styles/globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { Toaster } from "sonner";
 
-const dmSans = DM_Sans({ 
+const nunito = Nunito({ 
   subsets: ["latin"],
   variable: "--font-sans",
-});
-
-const inter = Inter({ 
-  subsets: ["latin"],
-  variable: "--font-body",
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -28,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={cn(dmSans.variable, inter.variable, "font-sans")}>
+      <body className={cn(nunito.variable, "font-sans antialiased")}>
         <ClerkProvider>
           <ConvexClientProvider>
             {children}
@@ -37,7 +33,7 @@ export default function RootLayout({
               toastOptions={{
                 className: "font-sans",
                 style: {
-                  borderRadius: "0.75rem",
+                  borderRadius: "1rem",
                 },
               }}
             />
