@@ -1,0 +1,93 @@
+import { MutationCtx } from "../_generated/server";
+import { Id } from "../_generated/dataModel";
+
+/**
+ * Activity type definitions.
+ */
+export type ActivityType =
+  | "task_created"
+  | "task_updated"
+  | "task_status_changed"
+  | "message_created"
+  | "document_created"
+  | "document_updated"
+  | "agent_status_changed"
+  | "runtime_status_changed"
+  | "member_added"
+  | "member_removed";
+
+/**
+ * Parameters for logging an activity.
+ */
+export interface LogActivityParams {
+  ctx: MutationCtx;
+  accountId: Id<"accounts">;
+  type: ActivityType;
+  actorType: "user" | "agent" | "system";
+  actorId: string;
+  actorName: string;
+  targetType: "task" | "message" | "document" | "agent" | "account" | "membership";
+  targetId: string;
+  targetName?: string;
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Log an activity to the activity feed.
+ * This is the full implementation (not a stub).
+ * 
+ * @param params - Activity parameters
+ * @returns The created activity ID
+ */
+export async function logActivity(params: LogActivityParams): Promise<Id<"activities">> {
+  const { ctx, accountId, type, actorType, actorId, actorName, targetType, targetId, targetName, meta } = params;
+  
+  return ctx.db.insert("activities", {
+    accountId,
+    type,
+    actorType,
+    actorId,
+    actorName,
+    targetType,
+    targetId,
+    targetName,
+    meta,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Get human-readable description for an activity.
+ */
+export function getActivityDescription(
+  type: ActivityType,
+  actorName: string,
+  targetName?: string
+): string {
+  const target = targetName ?? "an item";
+  
+  switch (type) {
+    case "task_created":
+      return `${actorName} created task "${target}"`;
+    case "task_updated":
+      return `${actorName} updated task "${target}"`;
+    case "task_status_changed":
+      return `${actorName} changed status of "${target}"`;
+    case "message_created":
+      return `${actorName} commented on "${target}"`;
+    case "document_created":
+      return `${actorName} created document "${target}"`;
+    case "document_updated":
+      return `${actorName} updated document "${target}"`;
+    case "agent_status_changed":
+      return `${actorName} status changed`;
+    case "runtime_status_changed":
+      return `Runtime status changed`;
+    case "member_added":
+      return `${actorName} joined the account`;
+    case "member_removed":
+      return `${actorName} left the account`;
+    default:
+      return `${actorName} performed an action`;
+  }
+}

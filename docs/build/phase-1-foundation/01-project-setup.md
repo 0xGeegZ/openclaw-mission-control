@@ -162,8 +162,10 @@ mission-control/
 | Path | Purpose |
 |------|---------|
 | `.nvmrc` | Node version specification (24) |
+| `README.md` | Project documentation and setup guide |
 | `LICENSE` | MIT license file |
 | `CONTRIBUTING.md` | Contribution guidelines |
+| `.env.example` | Example environment variables |
 | `.github/workflows/ci.yml` | CI pipeline (lint, typecheck, build) |
 | `.github/workflows/deploy.yml` | CD pipeline (deploy to Vercel) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR template |
@@ -1489,10 +1491,12 @@ Not applicable for initial setup.
 - [ ] Update root `package.json`
 - [ ] Update `turbo.json`
 
-### License & Contribution
+### Documentation & Open Source
 
+- [ ] Create `README.md` with project overview and setup guide
 - [ ] Create `LICENSE` (MIT)
 - [ ] Create `CONTRIBUTING.md`
+- [ ] Create `.env.example` with all required variables
 
 ### GitHub Actions (CI/CD)
 
@@ -1544,12 +1548,14 @@ Not applicable for initial setup.
 This module is complete when:
 
 1. All packages are created and configured
-2. `LICENSE` (MIT) file exists in project root
-3. `CONTRIBUTING.md` file exists with setup instructions
-4. `.github/workflows/ci.yml` exists and is valid YAML
-5. `.github/workflows/deploy.yml` exists and is valid YAML
-6. `npm install` succeeds
-7. `npm run typecheck` passes
-8. `npm run dev` starts without errors
-9. Landing page renders at localhost:3000
-10. Git commit made with all changes
+2. `README.md` exists with complete project documentation
+3. `LICENSE` (MIT) file exists in project root
+4. `CONTRIBUTING.md` file exists with setup instructions
+5. `.env.example` exists with all required variables
+6. `.github/workflows/ci.yml` exists and is valid YAML
+7. `.github/workflows/deploy.yml` exists and is valid YAML
+8. `npm install` succeeds
+9. `npm run typecheck` passes
+10. `npm run dev` starts without errors
+11. Landing page renders at localhost:3000
+12. Git commit made with all changes

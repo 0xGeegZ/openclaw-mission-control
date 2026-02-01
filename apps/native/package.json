@@ -1,0 +1,13 @@
+{
+  "name": "native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "App.tsx",
+  "scripts": {
+    "start": "echo 'Native app coming in v2'",
+    "typecheck": "echo 'Native app coming in v2'"
+  },
+  "dependencies": {
+    "@packages/shared": "*"
+  }
+}

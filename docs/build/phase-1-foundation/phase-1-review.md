@@ -43,11 +43,15 @@ ls -la .github/workflows/
 - [ ] `packages/ui/` exists with shadcn setup
 - [ ] `packages/shared/` exists with types/constants
 
-### 2.1.5 License & Contribution Files
+### 2.1.5 Documentation & Open Source Files
 
 Verify open source files exist:
 
 ```bash
+# Check README
+head -10 README.md
+# Expected: # Mission Control
+
 # Check license
 head -5 LICENSE
 # Expected: MIT License
@@ -56,13 +60,19 @@ head -5 LICENSE
 head -10 CONTRIBUTING.md
 # Expected: Contributing to Mission Control
 
+# Check environment example
+head -10 .env.example
+# Expected: Mission Control Environment Variables
+
 # Check .nvmrc
 cat .nvmrc
 # Expected: 24
 ```
 
+- [ ] `README.md` exists with project overview
 - [ ] `LICENSE` exists with MIT license
 - [ ] `CONTRIBUTING.md` exists with setup instructions
+- [ ] `.env.example` exists with all required variables
 - [ ] `.nvmrc` exists with "24"
 
 ### 2.1.6 GitHub Actions (CI/CD)

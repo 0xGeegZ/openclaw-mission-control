@@ -1,0 +1,687 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+/**
+ * Mission Control Database Schema
+ * 
+ * Multi-tenant architecture: Every table (except accounts) includes accountId.
+ * All queries MUST filter by accountId to enforce tenant isolation.
+ */
+
+// ============================================================================
+// Validators for Union Types
+// ============================================================================
+
+/**
+ * Task status validator.
+ * Canonical workflow: inbox → assigned → in_progress → review → done
+ * Special state: blocked (can be entered from assigned or in_progress)
+ */
+const taskStatusValidator = v.union(
+  v.literal("inbox"),
+  v.literal("assigned"),
+  v.literal("in_progress"),
+  v.literal("review"),
+  v.literal("done"),
+  v.literal("blocked")
+);
+
+/**
+ * Agent status validator.
+ * Indicates the current operational state of an agent.
+ */
+const agentStatusValidator = v.union(
+  v.literal("online"),
+  v.literal("busy"),
+  v.literal("idle"),
+  v.literal("offline"),
+  v.literal("error")
+);
+
+/**
+ * Membership role validator.
+ * Defines permission levels within an account.
+ */
+const memberRoleValidator = v.union(
+  v.literal("owner"),
+  v.literal("admin"),
+  v.literal("member")
+);
+
+/**
+ * Recipient type validator.
+ * Distinguishes between human users and AI agents.
+ */
+const recipientTypeValidator = v.union(
+  v.literal("user"),
+  v.literal("agent")
+);
+
+/**
+ * Document type validator.
+ */
+const documentTypeValidator = v.union(
+  v.literal("deliverable"),
+  v.literal("note"),
+  v.literal("template"),
+  v.literal("reference")
+);
+
+/**
+ * Notification type validator.
+ */
+const notificationTypeValidator = v.union(
+  v.literal("mention"),
+  v.literal("assignment"),
+  v.literal("thread_update"),
+  v.literal("status_change")
+);
+
+/**
+ * Activity type validator.
+ */
+const activityTypeValidator = v.union(
+  v.literal("task_created"),
+  v.literal("task_updated"),
+  v.literal("task_status_changed"),
+  v.literal("message_created"),
+  v.literal("document_created"),
+  v.literal("document_updated"),
+  v.literal("agent_status_changed"),
+  v.literal("runtime_status_changed"),
+  v.literal("member_added"),
+  v.literal("member_removed")
+);
+
+/**
+ * Runtime status validator.
+ * Indicates the status of the per-account runtime server.
+ */
+const runtimeStatusValidator = v.union(
+  v.literal("provisioning"),
+  v.literal("online"),
+  v.literal("degraded"),
+  v.literal("offline"),
+  v.literal("error")
+);
+
+// ============================================================================
+// Schema Definition
+// ============================================================================
+
+export default defineSchema({
+  // ==========================================================================
+  // ACCOUNTS
+  // The root entity for multi-tenancy. Each account represents a customer.
+  // ==========================================================================
+  accounts: defineTable({
+    /** Display name for the account */
+    name: v.string(),
+    
+    /** URL-safe unique identifier */
+    slug: v.string(),
+    
+    /** Subscription plan */
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("enterprise")
+    ),
+    
+    /** Status of the per-account runtime server */
+    runtimeStatus: runtimeStatusValidator,
+    
+    /** Runtime server configuration (populated after provisioning) */
+    runtimeConfig: v.optional(v.object({
+      /** DigitalOcean droplet ID */
+      dropletId: v.string(),
+      /** IP address of the runtime server */
+      ipAddress: v.string(),
+      /** Region where droplet is deployed */
+      region: v.optional(v.string()),
+      /** Last successful health check timestamp */
+      lastHealthCheck: v.optional(v.number()),
+      
+      /** OpenClaw version running on this runtime (e.g., "v1.2.3" or git SHA) */
+      openclawVersion: v.optional(v.string()),
+      /** Runtime service Docker image tag */
+      runtimeServiceVersion: v.optional(v.string()),
+      /** Timestamp of last successful upgrade */
+      lastUpgradeAt: v.optional(v.number()),
+      /** Status of last upgrade attempt */
+      lastUpgradeStatus: v.optional(v.union(
+        v.literal("success"),
+        v.literal("failed"),
+        v.literal("rolled_back")
+      )),
+    })),
+    
+    /** Timestamp of account creation */
+    createdAt: v.number(),
+    
+    /** Service token hash for runtime authentication */
+    serviceTokenHash: v.optional(v.string()),
+  })
+    .index("by_slug", ["slug"]),
+
+  // ==========================================================================
+  // MEMBERSHIPS
+  // Links users (from Clerk) to accounts with roles.
+  // ==========================================================================
+  memberships: defineTable({
+    /** Reference to the account */
+    accountId: v.id("accounts"),
+    
+    /** Clerk user ID (from auth identity) */
+    userId: v.string(),
+    
+    /** User's display name (cached from Clerk) */
+    userName: v.string(),
+    
+    /** User's email (cached from Clerk) */
+    userEmail: v.string(),
+    
+    /** User's avatar URL (cached from Clerk) */
+    userAvatarUrl: v.optional(v.string()),
+    
+    /** Role within the account */
+    role: memberRoleValidator,
+    
+    /** Timestamp when user joined the account */
+    joinedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_user", ["userId"])
+    .index("by_account_user", ["accountId", "userId"]),
+
+  // ==========================================================================
+  // SKILLS
+  // Reusable skill/tool definitions that can be assigned to agents.
+  // Skills represent capabilities: MCP servers, tools, integrations.
+  // ==========================================================================
+  skills: defineTable({
+    /** Account this skill belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Skill display name (e.g., "Web Search", "Code Execution") */
+    name: v.string(),
+    
+    /** URL-safe identifier */
+    slug: v.string(),
+    
+    /** Skill category */
+    category: v.union(
+      v.literal("mcp_server"),    // External MCP server integration
+      v.literal("tool"),          // Built-in tool capability
+      v.literal("integration"),   // Third-party service integration
+      v.literal("custom")         // Custom skill definition
+    ),
+    
+    /** Detailed description of what this skill does */
+    description: v.optional(v.string()),
+    
+    /** Icon for UI display */
+    icon: v.optional(v.string()),
+    
+    /**
+     * Skill configuration (varies by category).
+     * For MCP: server URL, auth config
+     * For tools: tool name, parameters
+     * For integrations: API keys, endpoints
+     */
+    config: v.object({
+      /** For MCP servers: the server identifier/URL */
+      serverUrl: v.optional(v.string()),
+      
+      /** For MCP servers: authentication method */
+      authType: v.optional(v.union(
+        v.literal("none"),
+        v.literal("api_key"),
+        v.literal("oauth")
+      )),
+      
+      /** Encrypted credentials reference (stored in env, not here) */
+      credentialRef: v.optional(v.string()),
+      
+      /** Tool-specific parameters */
+      toolParams: v.optional(v.any()),
+      
+      /** Rate limit (requests per minute) */
+      rateLimit: v.optional(v.number()),
+      
+      /** Whether this skill requires approval before use */
+      requiresApproval: v.optional(v.boolean()),
+    }),
+    
+    /** Is this skill enabled? */
+    isEnabled: v.boolean(),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+    
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_category", ["accountId", "category"])
+    .index("by_account_slug", ["accountId", "slug"]),
+
+  // ==========================================================================
+  // AGENTS
+  // AI agent definitions. Each agent maps to an OpenClaw session.
+  // ==========================================================================
+  agents: defineTable({
+    /** Account this agent belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Display name (e.g., "Jarvis", "Vision") */
+    name: v.string(),
+    
+    /** URL-safe identifier (e.g., "jarvis", "vision") */
+    slug: v.string(),
+    
+    /** Role description (e.g., "Squad Lead", "SEO Analyst") */
+    role: v.string(),
+    
+    /** Detailed description of agent's responsibilities */
+    description: v.optional(v.string()),
+    
+    /** 
+     * OpenClaw session key.
+     * Format: agent:{slug}:{accountId}
+     */
+    sessionKey: v.string(),
+    
+    /** Current operational status */
+    status: agentStatusValidator,
+    
+    /** Currently assigned task (if any) */
+    currentTaskId: v.optional(v.id("tasks")),
+    
+    /** Timestamp of last heartbeat */
+    lastHeartbeat: v.optional(v.number()),
+    
+    /** Heartbeat interval in minutes (e.g., 15) */
+    heartbeatInterval: v.number(),
+    
+    /** Avatar/icon URL */
+    avatarUrl: v.optional(v.string()),
+    
+    /** 
+     * SOUL file content.
+     * Contains personality, constraints, and operating procedures.
+     */
+    soulContent: v.optional(v.string()),
+    
+    /**
+     * OpenClaw runtime configuration.
+     * Controls LLM settings, skills, and behavior.
+     */
+    openclawConfig: v.optional(v.object({
+      /** LLM model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o") */
+      model: v.string(),
+      
+      /** Temperature for response generation (0.0 - 2.0) */
+      temperature: v.number(),
+      
+      /** Maximum tokens in response */
+      maxTokens: v.optional(v.number()),
+      
+      /** System prompt prefix (prepended to SOUL) */
+      systemPromptPrefix: v.optional(v.string()),
+      
+      /** Assigned skill IDs */
+      skillIds: v.array(v.id("skills")),
+      
+      /** Context/memory settings */
+      contextConfig: v.optional(v.object({
+        /** Max conversation history to include */
+        maxHistoryMessages: v.number(),
+        /** Whether to include task context automatically */
+        includeTaskContext: v.boolean(),
+        /** Whether to include team activity context */
+        includeTeamContext: v.boolean(),
+        /** Custom context sources */
+        customContextSources: v.optional(v.array(v.string())),
+      })),
+      
+      /** Rate limiting */
+      rateLimits: v.optional(v.object({
+        /** Max requests per minute */
+        requestsPerMinute: v.number(),
+        /** Max tokens per day */
+        tokensPerDay: v.optional(v.number()),
+      })),
+      
+      /** Behavior flags */
+      behaviorFlags: v.optional(v.object({
+        /** Can agent create tasks? */
+        canCreateTasks: v.boolean(),
+        /** Can agent modify task status? */
+        canModifyTaskStatus: v.boolean(),
+        /** Can agent create documents? */
+        canCreateDocuments: v.boolean(),
+        /** Can agent mention other agents? */
+        canMentionAgents: v.boolean(),
+        /** Requires human approval for certain actions? */
+        requiresApprovalForActions: v.optional(v.array(v.string())),
+      })),
+    })),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_status", ["accountId", "status"])
+    .index("by_account_slug", ["accountId", "slug"])
+    .index("by_session_key", ["sessionKey"]),
+
+  // ==========================================================================
+  // TASKS
+  // Kanban tasks that flow through the workflow.
+  // ==========================================================================
+  tasks: defineTable({
+    /** Account this task belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Task title */
+    title: v.string(),
+    
+    /** Detailed description (Markdown supported) */
+    description: v.optional(v.string()),
+    
+    /** Current status in the workflow */
+    status: taskStatusValidator,
+    
+    /** Priority level (1 = highest, 5 = lowest) */
+    priority: v.number(),
+    
+    /** 
+     * Assigned users (Clerk user IDs).
+     * Can be empty if task is in inbox.
+     */
+    assignedUserIds: v.array(v.string()),
+    
+    /** 
+     * Assigned agents.
+     * Can be empty if task is in inbox.
+     */
+    assignedAgentIds: v.array(v.id("agents")),
+    
+    /** Labels/tags for categorization */
+    labels: v.array(v.string()),
+    
+    /** Due date timestamp (optional) */
+    dueDate: v.optional(v.number()),
+    
+    /** 
+     * Blocked reason.
+     * Required when status is "blocked".
+     */
+    blockedReason: v.optional(v.string()),
+    
+    /** Creator user ID */
+    createdBy: v.string(),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+    
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_status", ["accountId", "status"])
+    .index("by_account_priority", ["accountId", "priority"])
+    .index("by_account_created", ["accountId", "createdAt"]),
+
+  // ==========================================================================
+  // MESSAGES
+  // Comments/messages in task threads.
+  // ==========================================================================
+  messages: defineTable({
+    /** Account (for tenant filtering) */
+    accountId: v.id("accounts"),
+    
+    /** Task this message belongs to */
+    taskId: v.id("tasks"),
+    
+    /** 
+     * Author type.
+     * Determines how to interpret authorId.
+     */
+    authorType: recipientTypeValidator,
+    
+    /** 
+     * Author ID.
+     * If authorType="user": Clerk user ID
+     * If authorType="agent": Agent document ID
+     */
+    authorId: v.string(),
+    
+    /** Message content (Markdown supported) */
+    content: v.string(),
+    
+    /** 
+     * Parsed mentions.
+     * List of mentioned entity identifiers.
+     */
+    mentions: v.array(v.object({
+      type: recipientTypeValidator,
+      id: v.string(),
+      /** Display name at time of mention */
+      name: v.string(),
+    })),
+    
+    /** Attached file URLs (optional) */
+    attachments: v.optional(v.array(v.object({
+      name: v.string(),
+      url: v.string(),
+      type: v.string(),
+      size: v.number(),
+    }))),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+    
+    /** Timestamp of last edit (if edited) */
+    editedAt: v.optional(v.number()),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_account", ["accountId"])
+    .index("by_author", ["authorType", "authorId"]),
+
+  // ==========================================================================
+  // DOCUMENTS
+  // Markdown documents (deliverables, notes, templates).
+  // ==========================================================================
+  documents: defineTable({
+    /** Account this document belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Associated task (optional) */
+    taskId: v.optional(v.id("tasks")),
+    
+    /** Document title */
+    title: v.string(),
+    
+    /** Document content (Markdown) */
+    content: v.string(),
+    
+    /** Document type */
+    type: documentTypeValidator,
+    
+    /** 
+     * Author type.
+     */
+    authorType: recipientTypeValidator,
+    
+    /** 
+     * Author ID.
+     */
+    authorId: v.string(),
+    
+    /** Version number (incremented on each edit) */
+    version: v.number(),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+    
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_type", ["accountId", "type"])
+    .index("by_task", ["taskId"])
+    .index("by_account_updated", ["accountId", "updatedAt"]),
+
+  // ==========================================================================
+  // ACTIVITIES
+  // Audit trail / activity feed.
+  // Append-only: never edited, only inserted.
+  // ==========================================================================
+  activities: defineTable({
+    /** Account this activity belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Activity type */
+    type: activityTypeValidator,
+    
+    /** 
+     * Actor type (who performed the action).
+     * Can be "user", "agent", or "system".
+     */
+    actorType: v.union(
+      v.literal("user"),
+      v.literal("agent"),
+      v.literal("system")
+    ),
+    
+    /** 
+     * Actor ID.
+     * If actorType="user": Clerk user ID
+     * If actorType="agent": Agent document ID
+     * If actorType="system": "system"
+     */
+    actorId: v.string(),
+    
+    /** Actor display name (cached) */
+    actorName: v.string(),
+    
+    /** 
+     * Target entity type.
+     * What the action was performed on.
+     */
+    targetType: v.union(
+      v.literal("task"),
+      v.literal("message"),
+      v.literal("document"),
+      v.literal("agent"),
+      v.literal("account"),
+      v.literal("membership")
+    ),
+    
+    /** Target entity ID */
+    targetId: v.string(),
+    
+    /** Target display name (cached) */
+    targetName: v.optional(v.string()),
+    
+    /** 
+     * Additional metadata.
+     * Varies by activity type (e.g., old/new status for status changes).
+     */
+    meta: v.optional(v.any()),
+    
+    /** Timestamp of activity */
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_target", ["targetType", "targetId"])
+    .index("by_actor", ["actorType", "actorId"]),
+
+  // ==========================================================================
+  // NOTIFICATIONS
+  // Delivery queue for mentions, assignments, and thread updates.
+  // ==========================================================================
+  notifications: defineTable({
+    /** Account this notification belongs to */
+    accountId: v.id("accounts"),
+    
+    /** Notification type */
+    type: notificationTypeValidator,
+    
+    /** 
+     * Recipient type.
+     */
+    recipientType: recipientTypeValidator,
+    
+    /** 
+     * Recipient ID.
+     * If recipientType="user": Clerk user ID
+     * If recipientType="agent": Agent document ID
+     */
+    recipientId: v.string(),
+    
+    /** Source task (if applicable) */
+    taskId: v.optional(v.id("tasks")),
+    
+    /** Source message (if applicable) */
+    messageId: v.optional(v.id("messages")),
+    
+    /** Notification title/summary */
+    title: v.string(),
+    
+    /** Notification body/content */
+    body: v.string(),
+    
+    /** 
+     * Delivery status.
+     * null = not delivered
+     * timestamp = delivered at
+     */
+    deliveredAt: v.optional(v.number()),
+    
+    /** 
+     * Read status.
+     * null = not read
+     * timestamp = read at
+     */
+    readAt: v.optional(v.number()),
+    
+    /** Timestamp of creation */
+    createdAt: v.number(),
+  })
+    .index("by_account_recipient", ["accountId", "recipientType", "recipientId"])
+    .index("by_account_undelivered", ["accountId", "recipientType", "deliveredAt"])
+    .index("by_account_created", ["accountId", "createdAt"]),
+
+  // ==========================================================================
+  // SUBSCRIPTIONS
+  // Thread subscriptions for automatic notifications.
+  // ==========================================================================
+  subscriptions: defineTable({
+    /** Account (for tenant filtering) */
+    accountId: v.id("accounts"),
+    
+    /** Task being subscribed to */
+    taskId: v.id("tasks"),
+    
+    /** 
+     * Subscriber type.
+     */
+    subscriberType: recipientTypeValidator,
+    
+    /** 
+     * Subscriber ID.
+     */
+    subscriberId: v.string(),
+    
+    /** Timestamp of subscription */
+    subscribedAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_subscriber", ["subscriberType", "subscriberId"])
+    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"]),
+});

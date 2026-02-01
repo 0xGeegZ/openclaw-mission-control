@@ -1,0 +1,168 @@
+import { v } from "convex/values";
+import { internalMutation, internalQuery } from "../_generated/server";
+import { agentStatusValidator } from "../lib/validators";
+import { logActivity } from "../lib/activity";
+
+/**
+ * Service-only agent functions.
+ * These are called by the runtime service, not users.
+ * 
+ * NOTE: In production, these should validate service auth token.
+ * For now, they're internal mutations that can be called by actions.
+ */
+
+/**
+ * Update agent heartbeat.
+ * Called by runtime when agent completes heartbeat cycle.
+ */
+export const upsertHeartbeat = internalMutation({
+  args: {
+    agentId: v.id("agents"),
+    status: agentStatusValidator,
+    currentTaskId: v.optional(v.id("tasks")),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    
+    const oldStatus = agent.status;
+    const now = Date.now();
+    
+    await ctx.db.patch(args.agentId, {
+      status: args.status,
+      currentTaskId: args.currentTaskId,
+      lastHeartbeat: now,
+    });
+    
+    // Log activity if status changed
+    if (oldStatus !== args.status) {
+      await logActivity({
+        ctx,
+        accountId: agent.accountId,
+        type: "agent_status_changed",
+        actorType: "agent",
+        actorId: args.agentId,
+        actorName: agent.name,
+        targetType: "agent",
+        targetId: args.agentId,
+        targetName: agent.name,
+        meta: { oldStatus, newStatus: args.status, heartbeat: true },
+      });
+    }
+    
+    return { success: true, timestamp: now };
+  },
+});
+
+/**
+ * Mark all agents for an account as offline.
+ * Called when runtime shuts down.
+ */
+export const markAllOffline = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+    
+    for (const agent of agents) {
+      if (agent.status !== "offline") {
+        await ctx.db.patch(agent._id, {
+          status: "offline",
+          currentTaskId: undefined,
+        });
+        
+        await logActivity({
+          ctx,
+          accountId: args.accountId,
+          type: "agent_status_changed",
+          actorType: "system",
+          actorId: "system",
+          actorName: "System",
+          targetType: "agent",
+          targetId: agent._id,
+          targetName: agent.name,
+          meta: { oldStatus: agent.status, newStatus: "offline", reason: "runtime_shutdown" },
+        });
+      }
+    }
+    
+    return { success: true, count: agents.length };
+  },
+});
+
+/**
+ * Get an agent by ID (internal, no user auth required).
+ */
+export const getInternal = internalQuery({
+  args: {
+    agentId: v.id("agents"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.agentId);
+  },
+});
+
+/**
+ * List agents for an account (internal, no user auth required).
+ */
+export const listInternal = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+  },
+});
+
+/**
+ * Get a task by ID (internal, no user auth required).
+ * Helper to avoid service/tasks path typing issues.
+ */
+export const getTaskInternal = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.taskId);
+  },
+});
+
+/**
+ * Get agents that need heartbeat check.
+ * Returns agents that haven't had a heartbeat in their expected interval.
+ * Internal query - called only from service actions.
+ */
+export const getStaleAgents = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account_status", (q) => 
+        q.eq("accountId", args.accountId).eq("status", "online")
+      )
+      .collect();
+    
+    const now = Date.now();
+    const staleAgents = agents.filter((agent) => {
+      if (!agent.lastHeartbeat) return true;
+      
+      const intervalMs = agent.heartbeatInterval * 60 * 1000; // Convert to ms
+      const expectedBy = agent.lastHeartbeat + intervalMs + (60 * 1000); // Add 1 min grace
+      
+      return now > expectedBy;
+    });
+    
+    return staleAgents;
+  },
+});
