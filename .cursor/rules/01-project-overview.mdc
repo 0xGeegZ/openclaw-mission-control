@@ -1,0 +1,334 @@
+---
+description: Overview of the project and its structure.
+globs:
+alwaysApply: true
+---
+
+# Project Structure
+
+The current project has been described in ./docs files.
+Please read carefully the documentation before implementing any changes to be sure to understand the project and its requirements.
+
+## Overview
+
+This is a Next.js 15 + React 19 application with Convex as the backend. It features a multi-user chat application with authentication powered by Convex Auth.
+
+Write complete and functional code for every step. Do not leave any part unfinished.
+
+Your goal is to fully implement whatever the user requests.
+
+## Tech Stack
+
+- Frontend: Next.js 15 (App Router), React 19, TypeScript (strict), Tailwind CSS, shadcn/ui
+- Backend: Convex (database, server functions, real-time subscriptions)
+- Authentication: Convex Auth
+- UI Components: shadcn/ui (built on Radix UI)
+- Styling: Tailwind CSS
+- Icons: lucide-react
+- Theme: next-themes
+- Notifications: sonner
+- Forms & Validation: React Hook Form, Zod
+- React Hooks: usehooks-ts (utility hooks library)
+- Build/Quality: ESLint (Next.js config), Prettier
+- Deployment: Vercel
+
+## Project Structure
+
+### General Structure
+
+- `app/` - Next.js App Router
+  - `layout.tsx` - Root layout with providers
+  - `globals.css` - Global styles
+  - `(splash)/` - Splash/landing page group (public)
+    - `page.tsx` - Landing page
+    - `layout.tsx` - Splash layout
+  - `signin/` - Authentication pages
+    - `page.tsx` - Sign-in page
+  - `product/` - Main application (requires authentication)
+    - `layout.tsx` - Product layout
+    - `page.tsx` - Product home page
+    - `Chat/` - Chat feature components
+  - `api/` - Next.js API routes (if needed)
+- `components/` - Shared React components
+  - `ui/` - shadcn/ui components (button, card, input, etc.)
+  - Other shared components (UserMenu, ThemeToggle, etc.)
+- `convex/` - Convex backend
+  - `_generated/` - Auto-generated Convex types and API
+  - `auth.config.ts` - Convex Auth configuration
+  - `auth.ts` - Auth implementation
+  - `schema.ts` - Database schema
+  - `messages.ts` - Chat backend functions
+  - `http.ts` - HTTP endpoints (if needed)
+  - Other backend functions and queries
+- `lib/` - Utility functions and shared code
+  - `utils.ts` - General utilities (e.g., `cn` for class names)
+- `public/` - Static assets (images, icons, etc.)
+- `middleware.ts` - Next.js middleware (route protection)
+
+## Rules
+
+Follow these rules when building the project.
+
+### General Rules
+
+- Use `@` to import modules from the project unless specified otherwise.
+- Use **kebab-case** for all files and folders unless specified otherwise.
+- Write concise, technical TypeScript code with accurate examples.
+- Use **functional programming patterns**; avoid classes.
+- Prefer iteration and modularization over code duplication. If necessary, duplicate code with proper justification.
+- Use **descriptive variable names** with auxiliary verbs (e.g., `isLoading`, `hasError`).
+- Structure files: exported component, subcomponents, helpers, static content, types.
+- Use **PascalCase** for React components (e.g., `Button.tsx`).
+- shadcn UI components are in `components/ui`. All other components are in `components/`.
+- **Colocate** files in the folder they're used unless the component is used across the app; then place it in `components/`.
+- Favor **named exports** for components.
+- Use **TypeScript** in strict mode for all code.
+- **Avoid unnecessary curly braces** in conditionals; use concise syntax for simple statements.
+- Utilize **shadcn UI and Tailwind CSS** for components and styling.
+- Implement **responsive design** with Tailwind CSS using a mobile-first approach.
+- Use the `next/image` package for images.
+- Use **React Function Components** as standard; avoid class components.
+- Always use the `export function` syntax for components, not arrow functions or default exports.
+
+### Debugging & Console Logs
+
+- All temporary debugging logs must start with the prefix `[DEBUG]`
+- Example: `console.log('[DEBUG] loading messages', { userId, count })`
+- Keep production console logs minimal and meaningful
+
+### Comments
+
+- Write comments only when they add value for team engineers. Explain intent, constraints, and non-obvious decisions — not what the code does.
+- Prefer “why” and important context over “how”. Avoid narrating moves/edits like “moved X here” or “LLM did Y”.
+- Keep comments concise and close to the code they describe. Place them above the relevant lines; avoid inline trailing comments.
+- Use JSDoc for exported/public functions, components, hooks, and services to describe purpose, parameters, return types, side effects, and error cases.
+- Avoid redundant comments that restate types, variable names, or obvious logic. Remove stale comments; treat mismatched comments as bugs.
+- Do not leave TODO comments; implement the change or create a proper task externally.
+
+### Frontend Architecture & Rules
+
+Follow these guidelines when working on the frontend.
+
+#### Frontend General Rules
+
+- Use `lucide-react` for icons.
+- Use **functional programming patterns**; avoid classes.
+- **Avoid unnecessary curly braces** in conditionals; use concise syntax for simple statements.
+- Use **descriptive variable names**.
+
+#### Components
+
+- Use `div` elements unless other HTML tags are specified.
+- Separate main parts of a component's HTML with an extra blank line for visual clarity.
+- Client components must start with `"use client"`. Server components are default in Next 15 and do not require `"use server"`.
+- Use **PascalCase** for component filenames (e.g., `ExampleComponent.tsx`).
+
+##### Organization
+
+- Name all components using PascalCase unless specified otherwise.
+- Place one-off components in `/_components/` within their route.
+- Place shared components in `/components/` at the root.
+
+##### Data Fetching
+
+- Fetch data in **server components** and pass it as props to client components.
+- Use **React hooks** (`useState`, `useEffect`, etc.) in client components for state management.
+- For **API requests**, use appropriate methods (e.g., `fetch`, `axios`) within `useEffect` hooks.
+
+##### Server Components
+
+- In Next.js 15, server components are the default and do not require `"use server"`.
+- Use `async/await` for data fetching when necessary.
+- Fetch data inline within server files when appropriate.
+
+##### Client Components
+
+- Begin files with `"use client"`.
+
+Example of a client component:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+interface ExampleClientComponentProps {
+  // Your props here
+}
+
+export default function ExampleClientComponent(
+  props: ExampleClientComponentProps,
+) {
+  // Your code here
+}
+```
+
+- Manage state using React hooks (`useState`, `useEffect`, etc.).
+- Handle user interactions and events in client components.
+
+#### Forms
+
+- Use **controlled components** with `useState` for form inputs.
+- Use **React Hook Form** with **Zod validation** for complex forms.
+- Validate inputs as necessary within event handlers.
+
+Example:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+export default function ExampleForm() {
+  const [inputValue, setInputValue] = useState("");
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    // Handle form submission
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        placeholder="Enter text"
+      />
+      <Button type="submit">Submit</Button>
+    </form>
+  );
+}
+```
+
+### Backend Integration (Convex)
+
+- Use Convex queries for reading data with `useQuery`
+- Use Convex mutations for writing data with `useMutation`
+- Use Convex actions for external API calls and server-side operations
+- Define all backend functions in the `convex/` directory
+- Use the generated API from `convex/_generated/api`
+- Validate inputs using Convex validators from `convex/values`
+
+### React Hooks (usehooks-ts)
+
+- Use `usehooks-ts` for common utility hooks instead of creating custom implementations
+- Available hooks include:
+  - `useCopyToClipboard` - for copying text to clipboard
+  - `useLocalStorage` - for persisting state in localStorage
+  - `useMediaQuery` - for responsive design and breakpoint detection
+  - `useDebounce` - for debouncing values
+  - `useBoolean` - for boolean state management
+  - `useIsClient` - for client-side only rendering
+  - `useEventListener` - for DOM event listeners
+- Never create custom hooks that duplicate usehooks-ts functionality
+- Import from `usehooks-ts` package
+
+Example usage:
+
+```tsx
+import {
+  useCopyToClipboard,
+  useLocalStorage,
+  useMediaQuery,
+} from "usehooks-ts";
+
+function Component() {
+  const [copiedText, copy] = useCopyToClipboard();
+  const [value, setValue] = useLocalStorage("key", "default");
+  const isMobile = useMediaQuery("(max-width: 767px)");
+
+  // Use the hooks...
+}
+```
+
+### Styling Rules
+
+- Use **Tailwind CSS** for styling components.
+- Apply utility classes directly in the `className` prop.
+- Use shadcn UI components for consistent styling and component structure.
+
+Example:
+
+```tsx
+<div className="flex flex-col gap-4">
+  <h1 className="text-xl font-bold">Multi Wallet Configuration</h1>
+  <p className="text-gray-700">Configure your multi wallet settings.</p>
+</div>
+```
+
+#### Icons
+
+- Use `lucide-react` for icons.
+
+Example:
+
+```tsx
+import { Settings } from "lucide-react";
+
+<Settings className="w-4 h-4 text-gray-500" />;
+```
+
+## Import Conventions
+
+- Use `@/` prefix for absolute imports from the root directory
+- Import UI components from `@/components/ui/*`
+- Import Convex API from `convex/_generated/api`
+- Import Convex types from `convex/_generated/dataModel`
+
+## Naming Conventions
+
+- Use **kebab-case** for files and folders
+- Use **PascalCase** for React components
+- Use **camelCase** for functions, variables, and hooks
+- Use **UPPER_SNAKE_CASE** for constants
+
+## Environment Variables
+
+- Convex environment variables are managed in the Convex dashboard
+- Next.js environment variables go in `.env.local`
+- **Do not expose sensitive environment variables to the frontend** unless prefixed with `NEXT_PUBLIC_`
+- Common Convex variables:
+  - `CONVEX_DEPLOYMENT` - Convex deployment URL (auto-configured)
+  - `NEXT_PUBLIC_CONVEX_URL` - Public Convex URL for client
+- Validate environment variables at runtime when possible
+
+## Type Rules
+
+- Import types from `@/lib/types` if you have shared types
+- Import Convex-generated types from `convex/_generated/dataModel`
+- Prefer interfaces over type aliases for object shapes
+- Use type aliases for unions and utility types
+
+## Convex Backend Patterns
+
+- Define queries for reading data (real-time reactive)
+- Define mutations for writing data (transactional)
+- Define actions for external API calls and non-transactional operations
+- Use the `ctx` parameter to access database and authentication
+- Validate inputs using `v` validators from `convex/values`
+- Use `ctx.auth.getUserIdentity()` to get authenticated user info
+
+## State Management
+
+- Use Convex queries for server state (automatic caching and real-time updates)
+- Use React hooks (`useState`, `useReducer`) for local component state
+- Use React Context for shared client state when needed
+- Avoid unnecessary state management libraries - Convex handles most server state
+
+## Testing
+
+- Add tests as needed for critical functionality
+- Consider E2E tests with Playwright for user flows
+- Consider unit tests with Vitest for complex utilities
+- Test Convex functions using the Convex testing utilities
+
+## Deployment
+
+- Deploy Next.js frontend to **Vercel**
+- Convex backend is automatically deployed via `npx convex dev` (dev) or `npx convex deploy` (production)
+- Configure environment variables in both Vercel and Convex dashboards
+- Follow Convex and Next.js best practices for production deployments

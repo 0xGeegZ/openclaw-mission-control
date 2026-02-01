@@ -1,0 +1,229 @@
+---
+description: Design and implement UI components for the app.
+globs:
+  - "**/*.tsx"
+  - "**/*.ts"
+alwaysApply: false
+---
+
+# UI Components Guidelines
+
+You are an expert in TypeScript, Node.js, Next.js App Router, React, shadcn/ui, Radix UI and Tailwind CSS.
+
+Us ShadCn CLI to add new components if needed:
+
+```
+npx shadcn@latest add [component]
+```
+
+See: <https://ui.shadcn.com/docs/cli>
+
+## Component Structure
+
+- Use React Function Components as standard; avoid class components
+- Use TypeScript interfaces for props
+- Export components as named exports
+- Structure files: exported component, subcomponents, helpers, static content, types
+
+```tsx
+"use client";
+
+interface ButtonProps {
+  variant?: "default" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
+  children: React.ReactNode;
+  onClick?: () => void;
+}
+
+export function Button({
+  variant = "default",
+  size = "md",
+  children,
+  onClick,
+}: ButtonProps) {
+  return (
+    <button className={cn(buttonVariants({ variant, size }))} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+```
+
+## Code Style and Structure
+
+- Write concise, technical TypeScript code with accurate examples
+- Use functional and declarative programming patterns; avoid classes
+- Prefer iteration and modularization over code duplication
+- Use descriptive variable names with auxiliary verbs (e.g., `isLoading`, `hasError`)
+- Use early returns whenever possible to make the code more readable
+
+## Naming Conventions
+
+- Use lowercase with dashes for directories (e.g., components/auth-wizard)
+- Use **PascalCase** for React components (e.g., `Button.tsx`)
+- Favor named exports for components
+- Use descriptive variable and function names
+- Name event handlers with a "handle" prefix (e.g., `handleClick`, `handleKeyDown`)
+
+## TypeScript Usage
+
+- Use TypeScript for all code; prefer interfaces over types
+- Avoid enums; use maps instead
+- Use functional components with TypeScript interfaces
+
+## Syntax and Formatting
+
+- Use the "function" keyword for pure functions
+- Avoid unnecessary curly braces in conditionals; use concise syntax for simple statements
+- Use declarative JSX
+- Use consts instead of functions (e.g., `const toggle = () =>`)
+
+## Styling Guidelines
+
+- Use Shadcn UI, Radix, and Tailwind for components and styling
+- Follow a mobile-first approach
+- Use Shadcn UI components from `@/components/ui`
+- Use `cn()` utility for conditional class names (this is critical even for dynamic class names)
+- Avoid inline styles
+- Always use Tailwind classes for styling HTML elements; avoid using CSS or tags
+- Use "class:" instead of the ternary operator in class tags whenever possible
+
+## Component Organization
+
+- Place shared components in `@/components`
+- Place route-specific components in `_components` folder
+- Place feature-specific components in `@/features/[feature]/components`
+- Shadcn UI components are in `components/ui`. All other components are in `components/`
+- **Colocate** files in the folder they're used unless the component can be used in many places across the app
+
+## Performance Optimization
+
+- Minimize 'use client', 'useEffect', and 'setState'; favor React Server Components (RSC)
+- Wrap client components in Suspense with fallback
+- Use dynamic loading for non-critical components
+- Optimize images: use WebP format, include size data, implement lazy loading
+- Use `next/image` package for images
+
+## Accessibility
+
+- Implement accessibility features on elements
+- For example, an interactive element should have appropriate attributes:
+  - `tabIndex="0"` for keyboard navigation
+  - `aria-label` for screen readers
+  - Appropriate keyboard event handlers (e.g., `onKeyDown`)
+
+## Key Conventions
+
+- Use 'nuqs' for URL search parameter state management
+- Optimize Web Vitals (LCP, CLS, FID)
+- Limit 'use client':
+  - Favor server components and Next.js SSR
+  - Use only for Web API access in small components
+  - Avoid for data fetching or state management
+
+## Form Handling
+
+- Use React Hook Form with Zod for validation
+- Follow this pattern for form components:
+
+```tsx
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+
+const formSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+export function LoginForm() {
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
+  const onSubmit = (data: FormValues) => {
+    // Handle form submission
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+        <Button type="submit">Submit</Button>
+      </form>
+    </Form>
+  );
+}
+```
+
+## Utility Hooks (usehooks-ts)
+
+Always use `usehooks-ts` for common patterns:
+
+```tsx
+// Clipboard operations
+
+// LocalStorage persistence
+
+// Media queries and responsive design
+
+// Debouncing
+
+// Boolean state management
+
+import {
+  useBoolean,
+  useCopyToClipboard,
+  useDebounce,
+  useLocalStorage,
+  useMediaQuery,
+} from "usehooks-ts";
+
+const [copiedText, copy] = useCopyToClipboard();
+
+// Copy text with error handling
+copy(textToCopy)
+  .then(() => toast.success("Copied!"))
+  .catch(() => toast.error("Failed to copy"));
+
+const [value, setValue] = useLocalStorage("key", defaultValue);
+
+const isMobile = useMediaQuery("(max-width: 767px)");
+
+const debouncedValue = useDebounce(value, 500);
+
+const { value, setTrue, setFalse, toggle } = useBoolean(false);
+```
+
+Never create custom implementations for functionality provided by usehooks-ts.
+
+Follow Next.js docs for Data Fetching, Rendering, and Routing.

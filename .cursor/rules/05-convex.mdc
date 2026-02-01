@@ -1,0 +1,524 @@
+---
+description: Convex backend conventions and best practices
+globs:
+  - "convex/**/*.ts"
+  - "convex/**/*.js"
+  - "tests/**/*.ts"
+  - "tests/**/*.js"
+alwaysApply: false
+---
+
+# Convex Backend Guidelines
+
+## File and Directory Naming
+
+- **Use snake_case only** for all files and directories in `convex/`
+- **Never use hyphens (`-`)** in filenames or folder names - they break `api.*` dot notation access
+- Good: `get_job.ts`, `start_job.ts`, `order_acknowledgment/`
+- Bad: `get-job.ts`, `start-job.ts`, `order-acknowledgment/`
+
+Example: A file at `convex/order_acknowledgment/queries/get_job.ts` becomes accessible as:
+
+```ts
+import { api } from "convex/_generated/api";
+
+api.order_acknowledgment.queries.get_job.run({ jobId });
+```
+
+## Function Types and Usage Patterns
+
+### Queries (Read Operations)
+
+- Use for reading data
+- Automatically cached and reactive
+- Can be called from the browser
+- Example: `get_job`, `list_jobs`
+
+```ts
+export const get_job = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.jobId);
+  },
+});
+```
+
+### Mutations (Write Operations)
+
+- Use for writing data
+- Transactional and atomic
+- Can be called from the browser
+- Use to schedule actions
+
+```ts
+export const start_job = mutation({
+  args: { input: v.object({...}) },
+  handler: async (ctx, args) => {
+    const jobId = await ctx.db.insert("jobs", {...});
+    // Schedule action for async work
+    await ctx.scheduler.runAfter(0, api.order_acknowledgment.orchestrator.execute_next, { jobId });
+    return { jobId };
+  },
+});
+```
+
+### Actions (External Operations)
+
+- Use for external API calls, LLM requests, non-transactional work
+- **Never call actions directly from the browser**
+- Always trigger via mutations that schedule them
+- Can call mutations internally
+
+```ts
+export const execute_next = action({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, args) => {
+    // Claim lease via mutation
+    await ctx.runMutation(api.order_acknowledgment.mutations.claim_lease, {
+      jobId: args.jobId,
+    });
+
+    // Do external work (LLM, API calls)
+    const result = await callExternalAPI();
+
+    // Update via mutation
+    await ctx.runMutation(api.order_acknowledgment.mutations.update_job, {
+      jobId: args.jobId,
+      result,
+    });
+  },
+});
+```
+
+## Common Anti-Patterns to Avoid
+
+### ❌ Don't: Call actions directly from UI
+
+```ts
+// BAD - unreliable, no progress tracking
+const runJob = useAction(api.order_acknowledgment.actions.process_job);
+await runJob({ jobId });
+```
+
+### ✅ Do: Trigger actions via mutations
+
+```ts
+// GOOD - creates job, schedules action, tracks progress
+const startJob = useMutation(api.order_acknowledgment.orchestrator.start_job);
+await startJob({ input });
+```
+
+### ❌ Don't: Long-running logic in mutations
+
+```ts
+// BAD - mutations have tight time limits
+export const process_order = mutation({
+  handler: async (ctx, args) => {
+    await callLLM(); // This might timeout!
+    await fetchFromAPI(); // This too!
+  },
+});
+```
+
+### ✅ Do: Offload to actions via scheduler
+
+```ts
+// GOOD - mutation creates job, schedules action
+export const process_order = mutation({
+  handler: async (ctx, args) => {
+    const jobId = await ctx.db.insert("jobs", { status: "pending", ...args });
+    await ctx.scheduler.runAfter(
+      0,
+      api.order_acknowledgment.actions.process_job,
+      { jobId },
+    );
+    return { jobId };
+  },
+});
+```
+
+## Validation and Types
+
+- Always use `v` validators from `convex/values` for args
+- Leverage Convex's generated types from `convex/_generated/dataModel`
+- Example:
+
+```ts
+import type { Id } from "../_generated/dataModel";
+
+import { v } from "convex/values";
+
+export const update_status = mutation({
+  args: {
+    jobId: v.id("jobs"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.jobId, { status: args.status });
+  },
+});
+```
+
+## Database Indexes and Query Optimization
+
+### Critical Understanding: Convex Does NOT Auto-Select Indexes
+
+**⚠️ Important:** Convex does NOT automatically use indexes for your queries. Even if an index exists, queries without `.withIndex()` will perform **full table scans**. You must explicitly specify which index to use.
+
+### What Convex Indexes Automatically
+
+Convex only automatically indexes:
+
+- `_id` field (document ID)
+- `_creationTime` field (automatic timestamp)
+
+All other indexes must be:
+
+1. **Defined in your schema**
+2. **Explicitly used in queries with `.withIndex()`**
+
+### When to Create Indexes
+
+Create indexes for fields that are:
+
+- ✅ Frequently used in `.filter()` operations
+- ✅ Used for sorting (`.order()`)
+- ✅ Used in equality checks (`status === "pending"`)
+- ✅ Used in range queries (`createdAt >= startDate`)
+- ✅ Accessed in queries that run frequently (dashboard metrics, lists)
+
+### Index Types
+
+#### 1. Single Field Index
+
+```ts
+// In convex/schema.ts
+jobs: defineTable({
+  status: v.string(),
+  priority: v.string(),
+  createdAt: v.number(),
+})
+  .index("by_status", ["status"])
+  .index("by_createdAt", ["createdAt"]);
+```
+
+#### 2. Compound Index (Multiple Fields)
+
+Use when filtering by multiple fields or filtering + sorting:
+
+```ts
+// In convex/schema.ts
+jobs: defineTable({
+  status: v.string(),
+  priority: v.string(),
+  createdAt: v.number(),
+})
+  .index("by_status_createdAt", ["status", "createdAt"])
+  .index("by_priority_status", ["priority", "status"]);
+```
+
+**Order matters:** Fields in compound indexes are queried left-to-right.
+
+### How to Use Indexes in Queries
+
+#### ❌ Without Index (SLOW - Full Table Scan)
+
+```ts
+// BAD - Scans ALL rows even if index exists!
+export const get_running_jobs = query({
+  handler: async (ctx) => {
+    const jobs = await ctx.db.query("jobs").collect();
+    return jobs.filter((j) => j.status === "running");
+  },
+});
+```
+
+#### ✅ With Index (FAST - Index Scan)
+
+```ts
+// GOOD - Uses index for efficient lookup
+export const get_running_jobs = query({
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("jobs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .collect();
+  },
+});
+```
+
+### Common Query Patterns
+
+#### Pattern 1: Equality Filter
+
+```ts
+// Schema: .index("by_status", ["status"])
+
+// Query:
+const pending = await ctx.db
+  .query("jobs")
+  .withIndex("by_status", (q) => q.eq("status", "pending"))
+  .collect();
+```
+
+#### Pattern 2: Range Query
+
+```ts
+// Schema: .index("by_createdAt", ["createdAt"])
+
+// Query:
+const recent = await ctx.db
+  .query("jobs")
+  .withIndex("by_createdAt", (q) => q.gte("createdAt", startDate))
+  .collect();
+```
+
+#### Pattern 3: Compound Filter + Sort
+
+```ts
+// Schema: .index("by_status_createdAt", ["status", "createdAt"])
+
+// Query:
+const recentSucceeded = await ctx.db
+  .query("jobs")
+  .withIndex("by_status_createdAt", (q) =>
+    q.eq("status", "succeeded").gte("createdAt", oneDayAgo),
+  )
+  .order("desc")
+  .collect();
+```
+
+#### Pattern 4: Sort Without Filter
+
+```ts
+// Schema: .index("by_createdAt", ["createdAt"])
+
+// Query - sorted by creation time
+const allJobs = await ctx.db
+  .query("jobs")
+  .withIndex("by_createdAt")
+  .order("desc")
+  .take(50);
+```
+
+### Index Best Practices
+
+1. **Always use `.withIndex()` for filtered queries**
+
+   - Even simple equality checks benefit from indexes
+
+2. **Use compound indexes for multi-field queries**
+
+   - `by_status_createdAt` for "status + time range" queries
+
+3. **Consider query frequency**
+
+   - Dashboard queries: High priority for indexes
+   - Admin-only queries: Lower priority
+
+4. **Index field order matters**
+
+   - Most selective field first in compound indexes
+   - Filter fields before sort fields
+
+5. **Avoid over-indexing**
+   - Each index adds storage and write overhead
+   - Only index fields actually used in queries
+
+### Query Performance Comparison
+
+| Pattern                                     | Performance         | When to Use            |
+| ------------------------------------------- | ------------------- | ---------------------- |
+| `.query("table").collect()` then filter     | ❌ O(n) - Full scan | Never in production    |
+| `.withIndex("by_field", q => q.eq(...))`    | ✅ O(log n + k)     | Single field filter    |
+| `.withIndex("compound", q => q.eq().gte())` | ✅ O(log n + k)     | Multi-field filter     |
+| `.filter()` after `.withIndex()`            | ⚠️ O(k)             | Small result sets only |
+
+_Where n = total rows, k = matching rows_
+
+### Real-World Examples from This Codebase
+
+#### Example 1: System Health Dashboard
+
+```ts
+// ❌ BEFORE - Full table scan (slow with 10k+ jobs)
+const allJobs = await ctx.db.query("jobs").collect();
+const needsReview = allJobs.filter((j) => j.status === "needs_review");
+
+// ✅ AFTER - Index scan (fast at any scale)
+const needsReview = await ctx.db
+  .query("jobs")
+  .withIndex("by_status", (q) => q.eq("status", "needs_review"))
+  .collect();
+```
+
+#### Example 2: Recent Jobs Query
+
+```ts
+// ❌ BEFORE - Full scan then in-memory filter
+const jobs = await ctx.db.query("jobs").collect();
+const recent = jobs.filter((j) => j.createdAt > yesterday);
+
+// ✅ AFTER - Efficient range scan
+const recent = await ctx.db
+  .query("jobs")
+  .withIndex("by_createdAt", (q) => q.gte("createdAt", yesterday))
+  .collect();
+```
+
+#### Example 3: Filtered List with Sorting
+
+```ts
+// ❌ BEFORE - Full scan
+const allJobs = await ctx.db.query("jobs").order("desc").collect();
+const succeeded = allJobs.filter((j) => j.status === "succeeded");
+
+// ✅ AFTER - Compound index
+const succeeded = await ctx.db
+  .query("jobs")
+  .withIndex("by_status_createdAt", (q) => q.eq("status", "succeeded"))
+  .order("desc")
+  .collect();
+```
+
+### Debugging Query Performance
+
+1. **Check if index exists in schema**
+
+   ```ts
+   // In convex/schema.ts
+   .index("by_status", ["status"]) // ✅ Defined
+   ```
+
+2. **Verify `.withIndex()` is used**
+
+   ```ts
+   .withIndex("by_status", (q) => q.eq("status", value)) // ✅ Used
+   ```
+
+3. **Check index field order in compound indexes**
+
+   ```ts
+   // Schema: .index("by_status_createdAt", ["status", "createdAt"])
+   // Query must use fields in order: status first, then createdAt
+   ```
+
+4. **Monitor with Convex dashboard**
+   - View query execution times
+   - Check if queries are using indexes
+
+### Common Mistakes to Avoid
+
+#### ❌ Mistake 1: Forgetting `.withIndex()`
+
+```ts
+// Even with index defined, this is SLOW
+const jobs = await ctx.db.query("jobs").collect();
+const filtered = jobs.filter((j) => j.status === "pending");
+```
+
+#### ❌ Mistake 2: Using `.filter()` instead of index range
+
+```ts
+// SLOW - fetches all, filters in memory
+const old = await ctx.db
+  .query("job_events")
+  .withIndex("by_createdAt")
+  .filter((q) => q.lt(q.field("createdAt"), cutoff))
+  .collect();
+
+// FAST - index range query
+const old = await ctx.db
+  .query("job_events")
+  .withIndex("by_createdAt", (q) => q.lt("createdAt", cutoff))
+  .collect();
+```
+
+#### ❌ Mistake 3: Wrong field order in compound index
+
+```ts
+// Schema: .index("by_priority_status", ["priority", "status"])
+
+// ❌ Can't query by status alone efficiently
+await ctx.db
+  .query("jobs")
+  .withIndex("by_priority_status", (q) => q.eq("status", "pending"));
+
+// ✅ Must query priority first (or use different index)
+await ctx.db
+  .query("jobs")
+  .withIndex("by_status", (q) => q.eq("status", "pending"));
+```
+
+## Folder Structure Best Practices
+
+If moving the `convex/` folder from the project root, update `convex.json`:
+
+```json
+{
+  "functions": "path/to/convex/"
+}
+```
+
+## Error Handling
+
+- Use structured errors with codes
+- Log with context for debugging
+- Return user-friendly messages
+
+```ts
+export const do_something = action({
+  handler: async (ctx, args) => {
+    try {
+      const result = await externalCall();
+      return { ok: true, data: result };
+    } catch (error) {
+      console.error("[DO_SOMETHING_ERROR]", { error, args });
+      return {
+        ok: false,
+        error: {
+          code: "EXTERNAL_API_FAILED",
+          message: "Unable to complete operation",
+          retriable: true,
+        },
+      };
+    }
+  },
+});
+```
+
+## Authentication
+
+Use `ctx.auth.getUserIdentity()` to get authenticated user:
+
+```ts
+export const create_job = mutation({
+  args: { input: v.object({...}) },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized");
+    }
+
+    const jobId = await ctx.db.insert("jobs", {
+      ...args.input,
+      createdBy: identity.subject,
+    });
+
+    return { jobId };
+  },
+});
+```
+
+## References
+
+- Convex Docs: <https://docs.convex.dev>
+- Database Indexes: <https://docs.convex.dev/database/reading-data/indexes>
+- Actions Best Practices: <https://docs.convex.dev/functions/actions>
+- Scheduling: <https://docs.convex.dev/scheduling>
+- Validators: <https://docs.convex.dev/database/types>

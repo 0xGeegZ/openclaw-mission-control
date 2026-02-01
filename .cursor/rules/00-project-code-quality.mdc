@@ -1,0 +1,67 @@
+---
+description: Code quality and thoughtfulness rules.
+globs:
+alwaysApply: true
+---
+
+# Code Quality & Thoughtfulness ⚠️ CRITICAL
+
+**STOP AND THINK before writing any code. Quality over speed.**
+
+## Before Creating New Files
+
+1. **Search for existing files first** - Use grep/file search to find related code
+2. **Read existing implementations** - Understand patterns already in use
+3. **Extend, don't duplicate** - Add to existing files when appropriate
+4. **Check file organization** - Understand where similar code lives before adding new files
+
+Examples:
+
+- ✅ Found similar component? Extend it or create a shared utility
+- ✅ Found existing utility function? Use it instead of creating new one
+- ✅ Found test suite with 5 tests? Add 2 more focused ones
+- ❌ Create new file without checking if similar code exists
+- ❌ Write 8 new functions when 2 would cover the use case
+
+## Before Writing Code
+
+1. **Map the requirement** - What SPECIFIC problem are you solving?
+2. **Check what exists** - What's already implemented that you can use?
+3. **Avoid redundancy** - Each piece of code should serve a UNIQUE purpose
+4. **Choose the right approach:**
+   - UI: Component, hook, or utility?
+   - Backend: Query, mutation, or action?
+   - Tests: Unit, integration, or E2E?
+5. **Add clear comments** - Explain WHY decisions were made, not WHAT the code does
+
+Questions to ask yourself:
+
+- Is this logic already implemented elsewhere?
+- Am I solving the same problem as existing code, just differently?
+- Does this add unique value, or am I just reshaping data?
+- Could I reuse or extend existing code instead?
+
+## Code Reuse Principles
+
+1. **DRY (Don't Repeat Yourself)** - Reuse existing utilities, helpers, components, types
+2. **Follow established patterns** - Match naming, structure, organization of similar code
+3. **Leverage existing infrastructure** - Use helpers, hooks, utilities already present
+4. **Import from existing modules** - Don't redefine constants, types, functions, or components
+
+## Red Flags (Stop and Reconsider)
+
+- 🚩 Creating a new file that mirrors existing structure
+- 🚩 Writing code that feels repetitive or similar to existing code
+- 🚩 Copying patterns without understanding why they exist
+- 🚩 Not checking how similar features are implemented
+- 🚩 Rushing to "get it done" without reflection
+
+## Before Marking Complete
+
+1. **Review your changes** - Do they add value or just volume?
+2. **Check for redundancy** - Can anything be simplified or removed?
+3. **Verify organization** - Is code in the right place?
+4. **Test what matters** - Do tests cover new behavior, not just happy paths?
+5. **Ensure quality** - Does it follow project patterns and conventions?
+
+**Remember: The user prefers quality, thoughtful code over fast, redundant code.**

@@ -1,0 +1,141 @@
+---
+description: Guidelines for server actions.
+globs:
+  - "app/**/actions.ts"
+  - "lib/actions/**/*.ts"
+alwaysApply: false
+---
+
+# Server Actions Guidelines
+
+**Note:** For Convex projects, prefer using Convex mutations and actions in the `convex/` directory. Use Next.js Server Actions for Next.js-specific operations like revalidation.
+
+## Server Action Structure
+
+- Always use `"use server"` at the top of the file
+- Use Zod for input validation
+- Return consistent response types
+- Handle errors gracefully
+- Revalidate paths when necessary
+
+## Response Types
+
+Use consistent return types for all server actions:
+
+```ts
+// Common response type
+export type ServerActionResult<T = void> = Promise<
+  { data: T; error?: never } | { data?: never; error: string }
+>;
+
+// Alternative pattern
+export type ActionState<T> = {
+  isSuccess: boolean;
+  message: string;
+  data?: T;
+};
+```
+
+## Example Server Action
+
+```ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+// Response type
+type ServerActionResult<T = void> = Promise<
+  { data: T; error?: never } | { data?: never; error: string }
+>;
+
+// Input validation schema
+const itemSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+});
+
+// Type for the input
+type CreateItemInput = z.infer<typeof itemSchema>;
+
+/**
+ * Create a new item
+ * @param input - The item data to create
+ * @returns The created item ID or an error
+ */
+export async function createItemAction(
+  input: CreateItemInput,
+): ServerActionResult<{ id: string }> {
+  try {
+    // Authentication check (optional, depends on your setup)
+    // const userId = await getCurrentUserId()
+    // if (!userId) {
+    //   return { error: "Unauthorized" }
+    // }
+
+    // Validate input
+    const validatedData = itemSchema.safeParse(input);
+    if (!validatedData.success) {
+      return { error: validatedData.error.message };
+    }
+
+    const { name, description } = validatedData.data;
+
+    // Your business logic here
+    // For example: save to database, call API, etc.
+    const id = "generated-id";
+
+    // Revalidate paths if needed
+    revalidatePath("/items");
+
+    // Return success response
+    return { data: { id } };
+  } catch (error) {
+    // Error handling
+    console.error("[CREATE_ITEM_ERROR]", error);
+    return { error: "Failed to create item" };
+  }
+}
+```
+
+## Best Practices
+
+- Place actions in `lib/actions/` or colocate with features
+- Use descriptive function names with "Action" suffix (e.g., `createItemAction`)
+- Group related actions in the same file
+- Sort functions in CRUD order: Create, Read, Update, Delete
+- Use JSDoc comments to document parameters and return values
+- Log errors with descriptive prefixes (e.g., `[CREATE_ITEM_ERROR]`)
+
+## Authentication
+
+Check for authentication when needed at the beginning of server actions:
+
+```ts
+// Example - adapt to your auth setup
+const userId = await getCurrentUserId();
+if (!userId) {
+  return { error: "Unauthorized" };
+}
+```
+
+## Error Handling
+
+Use try/catch blocks to handle errors:
+
+```ts
+try {
+  // Action logic
+} catch (error) {
+  console.error("[ACTION_ERROR]", error);
+  return { error: "Something went wrong" };
+}
+```
+
+## Revalidation
+
+Revalidate paths after successful mutations:
+
+```ts
+revalidatePath("/path-to-revalidate");
+```

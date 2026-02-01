@@ -1,0 +1,139 @@
+---
+description: Guidelines for API routes.
+globs:
+  - "app/api/**/route.ts"
+alwaysApply: false
+---
+
+# API Routes Guidelines
+
+## API Route Structure
+
+- Place API routes in `app/api/[endpoint]/route.ts`
+- Use Next.js App Router API conventions
+- Export HTTP methods as functions (GET, POST, PUT, DELETE)
+- Return proper status codes and responses
+- Handle authentication when needed
+
+## Example API Route
+
+```ts
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+// Set maximum execution time for long-running operations
+export const maxDuration = 300;
+
+// Input validation schema
+const createItemSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+});
+
+export async function GET(req: Request) {
+  try {
+    // Example: Fetch data
+    const data = { message: "Hello from API" };
+
+    return NextResponse.json(data, { status: 200 });
+  } catch (error) {
+    console.error("[API_GET_ERROR]", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    // Authentication check (optional, depends on your auth setup)
+    // const userId = await getCurrentUserId()
+    // if (!userId) {
+    //   return new NextResponse("Unauthorized", { status: 401 })
+    // }
+
+    // Parse and validate request body
+    const body = await req.json();
+    const validationResult = createItemSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request data", details: validationResult.error },
+        { status: 400 },
+      );
+    }
+
+    const { name, description } = validationResult.data;
+
+    // Your business logic here
+    // For example, save to database, call external API, etc.
+    const result = { id: "123", name, description };
+
+    // Return success response
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    // Error handling
+    console.error("[API_POST_ERROR]", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+```
+
+## Response Handling
+
+- Use `NextResponse` for API responses
+- Return appropriate status codes
+- Include headers when necessary
+- Format JSON responses consistently
+
+```ts
+// Success response
+return NextResponse.json({ data }, { status: 200 });
+
+// Error response
+return new NextResponse("Error message", { status: 400 });
+```
+
+## Authentication
+
+Check for authentication when needed at the beginning of API routes:
+
+```ts
+// Example - adapt to your auth setup
+const userId = await getCurrentUserId();
+if (!userId) {
+  return new NextResponse("Unauthorized", { status: 401 });
+}
+```
+
+## Rate Limiting (Optional)
+
+Consider implementing rate limiting for public API routes to prevent abuse:
+
+```ts
+// Example implementation
+const ip = getClientIp(req);
+const isAllowed = await checkRateLimit(ip);
+if (!isAllowed) {
+  return new NextResponse("Too Many Requests", { status: 429 });
+}
+```
+
+## Error Handling
+
+Use try/catch blocks to handle errors:
+
+```ts
+try {
+  // API logic
+} catch (error) {
+  console.error("[API_ERROR]", error);
+  return new NextResponse("Internal Server Error", { status: 500 });
+}
+```
+
+## Long-Running Operations
+
+For long-running operations, set a maximum duration:
+
+```ts
+export const maxDuration = 300; // 5 minutes in seconds
+```
