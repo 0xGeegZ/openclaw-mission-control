@@ -30,7 +30,7 @@ interface KanbanBoardProps {
  * Main interface for task management.
  */
 export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
-  const { accountId } = useAccount();
+  const { accountId, isLoading: isAccountLoading } = useAccount();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   
@@ -38,6 +38,9 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     api.tasks.listByStatus,
     accountId ? { accountId } : "skip"
   );
+  
+  // Show loading while account is loading or tasks are loading
+  const isLoading = isAccountLoading || (accountId && tasksData === undefined);
   
   const updateStatus = useMutation(api.tasks.updateStatus);
   
@@ -100,7 +103,7 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     }
   }, [accountId, tasksData, updateStatus]);
 
-  if (!tasksData) {
+  if (isLoading || !tasksData) {
     return <KanbanSkeleton />;
   }
 
@@ -153,7 +156,14 @@ function KanbanSkeleton() {
   return (
     <div className="flex gap-4 px-6">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="w-72 h-96 rounded-lg bg-muted/50 animate-pulse" />
+        <div key={i} className="w-72 shrink-0 flex flex-col gap-3">
+          {/* Column header */}
+          <div className="h-10 rounded-lg bg-muted animate-pulse" />
+          {/* Task cards */}
+          {Array.from({ length: Math.floor(Math.random() * 3) + 1 }).map((_, j) => (
+            <div key={j} className="h-24 rounded-lg bg-muted/60 animate-pulse" />
+          ))}
+        </div>
       ))}
     </div>
   );

@@ -117,57 +117,78 @@ export function Sidebar({ accountSlug }: SidebarProps) {
               const isActive = pathname.startsWith(href);
               const Icon = item.icon;
               
-              return (
+              return isCollapsed ? (
                 <Tooltip key={item.href}>
                   <TooltipTrigger asChild>
                     <Link
                       href={href}
                       className={cn(
-                        "flex items-center rounded-lg text-sm font-medium transition-all",
-                        isCollapsed 
-                          ? "justify-center h-10 w-10 mx-auto" 
-                          : "gap-3 px-3 py-2.5",
+                        "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
                         isActive 
                           ? "bg-primary text-primary-foreground shadow-sm" 
                           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      {!isCollapsed && item.label}
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent side="right" className="text-xs">
                     {item.description}
                   </TooltipContent>
                 </Tooltip>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                    isActive 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {item.label}
+                </Link>
               );
             })}
           </div>
           
           <Separator className="my-4" />
           
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                href={`/${accountSlug}/${settingsItem.href}`}
-                className={cn(
-                  "flex items-center rounded-lg text-sm font-medium transition-all",
-                  isCollapsed 
-                    ? "justify-center h-10 w-10 mx-auto" 
-                    : "gap-3 px-3 py-2.5",
-                  pathname.startsWith(`/${accountSlug}/${settingsItem.href}`)
-                    ? "bg-primary text-primary-foreground shadow-sm" 
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                <settingsItem.icon className="h-4 w-4 shrink-0" />
-                {!isCollapsed && settingsItem.label}
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              {settingsItem.description}
-            </TooltipContent>
-          </Tooltip>
+          {isCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href={`/${accountSlug}/${settingsItem.href}`}
+                  className={cn(
+                    "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
+                    pathname.startsWith(`/${accountSlug}/${settingsItem.href}`)
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <settingsItem.icon className="h-4 w-4 shrink-0" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                {settingsItem.description}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Link
+              href={`/${accountSlug}/${settingsItem.href}`}
+              className={cn(
+                "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                pathname.startsWith(`/${accountSlug}/${settingsItem.href}`)
+                  ? "bg-primary text-primary-foreground shadow-sm" 
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <settingsItem.icon className="h-4 w-4 shrink-0" />
+              {settingsItem.label}
+            </Link>
+          )}
           
           {/* Admin Section - only visible to admins/owners */}
           {isAdmin && (
@@ -187,29 +208,39 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                   const isActive = pathname.startsWith(href);
                   const Icon = item.icon;
                   
-                  return (
+                  return isCollapsed ? (
                     <Tooltip key={item.href}>
                       <TooltipTrigger asChild>
                         <Link
                           href={href}
                           className={cn(
-                            "flex items-center rounded-lg text-sm font-medium transition-all",
-                            isCollapsed 
-                              ? "justify-center h-10 w-10 mx-auto" 
-                              : "gap-3 px-3 py-2.5",
+                            "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
                             isActive 
                               ? "bg-primary text-primary-foreground shadow-sm" 
                               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                           )}
                         >
                           <Icon className="h-4 w-4 shrink-0" />
-                          {!isCollapsed && item.label}
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right" className="text-xs">
                         {item.description}
                       </TooltipContent>
                     </Tooltip>
+                  ) : (
+                    <Link
+                      key={item.href}
+                      href={href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                        isActive 
+                          ? "bg-primary text-primary-foreground shadow-sm" 
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {item.label}
+                    </Link>
                   );
                 })}
               </div>

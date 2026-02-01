@@ -22,9 +22,9 @@ export default async function AccountLayout({
   return (
     <AccountProvider accountSlug={accountSlug}>
       <SidebarProvider>
-        <div className="flex h-screen isolate">
+        <div className="flex h-screen">
           {/* Desktop sidebar */}
-          <aside className="hidden lg:block shrink-0">
+          <aside className="hidden lg:block shrink-0 z-40">
             <Sidebar accountSlug={accountSlug} />
           </aside>
           
