@@ -823,7 +823,7 @@ await createThreadNotifications(
 ```bash
 cd packages/backend
 npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 ### Step 8: Commit Changes

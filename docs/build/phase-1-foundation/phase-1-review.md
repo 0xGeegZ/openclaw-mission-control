@@ -31,6 +31,9 @@ ls -la apps/
 
 ls -la packages/
 # Expected: backend/ ui/ shared/
+
+ls -la .github/workflows/
+# Expected: ci.yml deploy.yml
 ```
 
 - [ ] `apps/web/` exists with Next.js app
@@ -39,6 +42,52 @@ ls -la packages/
 - [ ] `packages/backend/` exists with Convex
 - [ ] `packages/ui/` exists with shadcn setup
 - [ ] `packages/shared/` exists with types/constants
+
+### 2.1.5 License & Contribution Files
+
+Verify open source files exist:
+
+```bash
+# Check license
+head -5 LICENSE
+# Expected: MIT License
+
+# Check contribution guide
+head -10 CONTRIBUTING.md
+# Expected: Contributing to Mission Control
+
+# Check .nvmrc
+cat .nvmrc
+# Expected: 24
+```
+
+- [ ] `LICENSE` exists with MIT license
+- [ ] `CONTRIBUTING.md` exists with setup instructions
+- [ ] `.nvmrc` exists with "24"
+
+### 2.1.6 GitHub Actions (CI/CD)
+
+Verify CI/CD pipelines are configured:
+
+```bash
+# Check CI workflow
+cat .github/workflows/ci.yml | head -20
+
+# Check deploy workflow
+cat .github/workflows/deploy.yml | head -20
+
+# Check PR template
+cat .github/PULL_REQUEST_TEMPLATE.md | head -10
+
+# Check issue templates
+ls -la .github/ISSUE_TEMPLATE/
+```
+
+- [ ] `.github/workflows/ci.yml` exists and is valid YAML
+- [ ] `.github/workflows/deploy.yml` exists and is valid YAML
+- [ ] `.github/PULL_REQUEST_TEMPLATE.md` exists
+- [ ] `.github/ISSUE_TEMPLATE/bug_report.md` exists
+- [ ] `.github/ISSUE_TEMPLATE/feature_request.md` exists
 
 ### 2.2 Package Configuration
 
@@ -98,19 +147,24 @@ ls packages/backend/convex/_generated/
 Run build commands:
 
 ```bash
+# Ensure Node 24 is active
+nvm use
+node -v  # Should be v24.x.x
+
 # Install dependencies
-yarn install
+npm install
 
 # Run type check
-yarn typecheck
+npm run typecheck
 
 # Check for errors
 echo $?
 # Expected: 0 (no errors)
 ```
 
-- [ ] `yarn install` completes without errors
-- [ ] `yarn typecheck` passes (exit code 0)
+- [ ] Node 24 is active (via nvm)
+- [ ] `npm install` completes without errors
+- [ ] `npm run typecheck` passes (exit code 0)
 - [ ] No TypeScript errors in any package
 
 ### 2.6 Dev Server Verification
@@ -122,7 +176,7 @@ Start the development server:
 cd packages/backend && npx convex dev &
 
 # Start Next.js
-yarn dev
+npm run dev
 ```
 
 - [ ] Convex dev server starts without errors
@@ -224,7 +278,7 @@ npx convex dev
 rm -rf node_modules
 rm -rf apps/*/node_modules
 rm -rf packages/*/node_modules
-yarn install
+npm install
 ```
 
 ### Issue: Path alias not resolving

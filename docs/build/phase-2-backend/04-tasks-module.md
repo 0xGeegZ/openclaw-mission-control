@@ -712,7 +712,7 @@ export const reopen = mutation({
 ```bash
 cd packages/backend
 npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 ### Step 4: Commit Changes

@@ -118,7 +118,7 @@ ls apps/web/app/\(dashboard\)/
 ### 2.7 UI Smoke Test
 
 ```bash
-yarn dev
+npm run dev
 # Visit http://localhost:3000
 ```
 
@@ -132,7 +132,7 @@ yarn dev
 ### 2.8 Type Check
 
 ```bash
-yarn typecheck
+npm run typecheck
 ```
 
 - [ ] Backend type check passes

@@ -162,6 +162,13 @@ mission-control/
 | Path | Purpose |
 |------|---------|
 | `.nvmrc` | Node version specification (24) |
+| `LICENSE` | MIT license file |
+| `CONTRIBUTING.md` | Contribution guidelines |
+| `.github/workflows/ci.yml` | CI pipeline (lint, typecheck, build) |
+| `.github/workflows/deploy.yml` | CD pipeline (deploy to Vercel) |
+| `.github/PULL_REQUEST_TEMPLATE.md` | PR template |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | Bug report template |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | Feature request template |
 | `apps/runtime/package.json` | Runtime service manifest |
 | `apps/runtime/src/index.ts` | Entry point (placeholder) |
 | `apps/runtime/tsconfig.json` | TypeScript config |
@@ -251,6 +258,519 @@ Create `.nvmrc` in project root to enforce Node 24:
 ```
 
 This allows developers to run `nvm use` and automatically switch to Node 24.
+
+### Step 2.6: Create LICENSE (MIT)
+
+Create `LICENSE` in project root:
+
+```
+MIT License
+
+Copyright (c) 2026 Mission Control Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Step 2.7: Create CONTRIBUTING.md
+
+Create `CONTRIBUTING.md` in project root:
+
+```markdown
+# Contributing to Mission Control
+
+Thank you for your interest in contributing to Mission Control! This document provides guidelines and instructions for contributing.
+
+## Code of Conduct
+
+By participating in this project, you agree to maintain a respectful and inclusive environment for everyone.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 24+ (use nvm: `nvm use`)
+- npm 10+
+- Git
+
+### Local Development Setup
+
+1. **Fork and clone the repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/mission-control.git
+   cd mission-control
+   ```
+
+2. **Install dependencies**
+   ```bash
+   nvm use
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env.local
+   # Edit .env.local with your Clerk and Convex keys
+   ```
+
+4. **Start development servers**
+   ```bash
+   # Terminal 1: Convex backend
+   cd packages/backend && npx convex dev
+
+   # Terminal 2: Web app
+   npm run dev
+   ```
+
+5. **Verify setup**
+   ```bash
+   npm run typecheck
+   npm run lint
+   ```
+
+## Development Workflow
+
+### Branch Naming
+
+Use descriptive branch names:
+- `feat/feature-name` - New features
+- `fix/bug-description` - Bug fixes
+- `docs/what-changed` - Documentation updates
+- `refactor/what-changed` - Code refactoring
+- `test/what-tested` - Test additions
+
+### Commit Messages
+
+Follow conventional commits:
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+Examples:
+- `feat(tasks): add drag-and-drop reordering`
+- `fix(agents): resolve heartbeat timeout issue`
+- `docs(readme): update installation instructions`
+
+### Pull Request Process
+
+1. **Create a feature branch**
+   ```bash
+   git checkout -b feat/your-feature
+   ```
+
+2. **Make your changes**
+   - Write clean, documented code
+   - Follow existing code patterns
+   - Add tests for new functionality
+
+3. **Run checks locally**
+   ```bash
+   npm run typecheck
+   npm run lint
+   npm run build
+   ```
+
+4. **Push and create PR**
+   ```bash
+   git push origin feat/your-feature
+   ```
+   Then open a Pull Request on GitHub.
+
+5. **PR Review**
+   - Fill out the PR template
+   - Address reviewer feedback
+   - Ensure CI passes
+
+## Code Style
+
+### TypeScript
+
+- Use strict mode
+- Prefer `interface` over `type` for objects
+- Export functions, not arrow functions for components
+- Use descriptive variable names with auxiliary verbs (`isLoading`, `hasError`)
+
+### React/Next.js
+
+- Use functional components
+- Server components are default (no directive needed)
+- Client components must have `"use client"` directive
+- Colocate components with their routes when possible
+
+### Convex
+
+- Validate all inputs with `v` validators
+- Always check authentication with `requireAuth`
+- Scope all queries/mutations by `accountId`
+- Log activities for important state changes
+
+### Styling
+
+- Use Tailwind CSS utility classes
+- Follow mobile-first responsive design
+- Use shadcn/ui components when available
+
+## Testing
+
+### Running Tests
+
+```bash
+# Type checking
+npm run typecheck
+
+# Linting
+npm run lint
+
+# Build verification
+npm run build
+```
+
+### Writing Tests
+
+- Place unit tests next to the code they test
+- Use descriptive test names
+- Test edge cases and error conditions
+
+## Documentation
+
+- Update README.md for user-facing changes
+- Add JSDoc comments for exported functions
+- Update API documentation for backend changes
+
+## Getting Help
+
+- Open an issue for bugs or feature requests
+- Join discussions in existing issues
+- Tag maintainers for urgent issues
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.
+```
+
+### Step 2.8: Create GitHub Actions CI Pipeline
+
+Create `.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all packages
+        run: npm run build
+        env:
+          # Skip Convex type generation in CI (requires auth)
+          SKIP_CONVEX_TYPEGEN: "true"
+
+  # Optional: Add test job when tests are implemented
+  # test:
+  #   name: Test
+  #   runs-on: ubuntu-latest
+  #   needs: lint-and-typecheck
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "24"
+  #         cache: "npm"
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Run tests
+  #       run: npm test
+```
+
+### Step 2.9: Create GitHub Actions CD Pipeline
+
+Create `.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-convex:
+    name: Deploy Convex Backend
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy Convex
+        run: npx convex deploy --cmd 'npm run build'
+        working-directory: packages/backend
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+
+  deploy-web:
+    name: Deploy Web App
+    runs-on: ubuntu-latest
+    needs: deploy-convex
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+
+      # Option A: Deploy via Vercel CLI
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          working-directory: apps/web
+
+      # Option B: If using Vercel Git integration, this job can be simplified
+      # to just trigger the deployment or skipped entirely (Vercel auto-deploys)
+```
+
+### Step 2.10: Create PR Template
+
+Create `.github/PULL_REQUEST_TEMPLATE.md`:
+
+```markdown
+## Summary
+
+<!-- Brief description of what this PR does -->
+
+## Changes
+
+- 
+- 
+- 
+
+## Type of Change
+
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] Documentation update
+- [ ] Refactoring (no functional changes)
+
+## Testing
+
+<!-- How has this been tested? -->
+
+- [ ] Type checking passes (`npm run typecheck`)
+- [ ] Linting passes (`npm run lint`)
+- [ ] Build succeeds (`npm run build`)
+- [ ] Manual testing completed
+
+## Checklist
+
+- [ ] My code follows the project's style guidelines
+- [ ] I have performed a self-review of my code
+- [ ] I have commented my code where necessary
+- [ ] I have updated documentation as needed
+- [ ] My changes generate no new warnings
+- [ ] Any dependent changes have been merged
+
+## Screenshots (if applicable)
+
+<!-- Add screenshots for UI changes -->
+
+## Related Issues
+
+<!-- Link any related issues: Fixes #123, Relates to #456 -->
+```
+
+### Step 2.11: Create Issue Templates
+
+Create `.github/ISSUE_TEMPLATE/bug_report.md`:
+
+```markdown
+---
+name: Bug Report
+about: Report a bug to help us improve
+title: "[BUG] "
+labels: bug
+assignees: ""
+---
+
+## Bug Description
+
+<!-- A clear and concise description of the bug -->
+
+## Steps to Reproduce
+
+1. Go to '...'
+2. Click on '...'
+3. Scroll down to '...'
+4. See error
+
+## Expected Behavior
+
+<!-- What you expected to happen -->
+
+## Actual Behavior
+
+<!-- What actually happened -->
+
+## Screenshots
+
+<!-- If applicable, add screenshots -->
+
+## Environment
+
+- OS: [e.g., macOS 14.0]
+- Browser: [e.g., Chrome 120]
+- Node version: [e.g., 24.0.0]
+- npm version: [e.g., 10.9.0]
+
+## Additional Context
+
+<!-- Add any other context about the problem -->
+```
+
+Create `.github/ISSUE_TEMPLATE/feature_request.md`:
+
+```markdown
+---
+name: Feature Request
+about: Suggest an idea for Mission Control
+title: "[FEATURE] "
+labels: enhancement
+assignees: ""
+---
+
+## Problem Statement
+
+<!-- What problem does this feature solve? -->
+
+## Proposed Solution
+
+<!-- Describe the solution you'd like -->
+
+## Alternative Solutions
+
+<!-- Any alternative solutions or features you've considered -->
+
+## Use Cases
+
+<!-- Who would benefit from this feature and how? -->
+
+1. 
+2. 
+3. 
+
+## Additional Context
+
+<!-- Add any other context, mockups, or screenshots -->
+```
 
 ### Step 3: Update turbo.json
 
@@ -969,6 +1489,19 @@ Not applicable for initial setup.
 - [ ] Update root `package.json`
 - [ ] Update `turbo.json`
 
+### License & Contribution
+
+- [ ] Create `LICENSE` (MIT)
+- [ ] Create `CONTRIBUTING.md`
+
+### GitHub Actions (CI/CD)
+
+- [ ] Create `.github/workflows/ci.yml`
+- [ ] Create `.github/workflows/deploy.yml`
+- [ ] Create `.github/PULL_REQUEST_TEMPLATE.md`
+- [ ] Create `.github/ISSUE_TEMPLATE/bug_report.md`
+- [ ] Create `.github/ISSUE_TEMPLATE/feature_request.md`
+
 ### Packages
 
 - [ ] Create `packages/ui/package.json`
@@ -1011,8 +1544,12 @@ Not applicable for initial setup.
 This module is complete when:
 
 1. All packages are created and configured
-2. `npm install` succeeds
-3. `npm run typecheck` passes
-4. `npm run dev` starts without errors
-5. Landing page renders at localhost:3000
-6. Git commit made with all changes
+2. `LICENSE` (MIT) file exists in project root
+3. `CONTRIBUTING.md` file exists with setup instructions
+4. `.github/workflows/ci.yml` exists and is valid YAML
+5. `.github/workflows/deploy.yml` exists and is valid YAML
+6. `npm install` succeeds
+7. `npm run typecheck` passes
+8. `npm run dev` starts without errors
+9. Landing page renders at localhost:3000
+10. Git commit made with all changes

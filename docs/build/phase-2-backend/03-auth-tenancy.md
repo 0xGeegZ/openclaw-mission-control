@@ -1000,7 +1000,7 @@ cd packages/backend
 npx convex dev --once
 
 # Run type check
-yarn typecheck
+npm run typecheck
 ```
 
 ### Step 8: Commit Changes
@@ -1109,7 +1109,7 @@ Not applicable for initial implementation.
 ### Verification
 
 - [ ] `npx convex dev` succeeds
-- [ ] `yarn typecheck` passes
+- [ ] `npm run typecheck` passes
 - [ ] Test create account via dashboard
 - [ ] Commit changes
 

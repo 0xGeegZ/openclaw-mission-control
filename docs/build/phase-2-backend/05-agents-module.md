@@ -734,7 +734,7 @@ export const getStaleAgents = query({
 ```bash
 cd packages/backend
 npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 ### Step 4: Commit Changes

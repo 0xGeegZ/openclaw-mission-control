@@ -727,8 +727,8 @@ export default function FeedPage() {
 
 ```bash
 cd apps/web
-yarn typecheck
-yarn dev
+npm run typecheck
+npm run dev
 ```
 
 ### Step 14: Commit Changes

@@ -543,8 +543,8 @@ export default async function TasksPage({ params }: TasksPageProps) {
 ### Step 6: Verify and Commit
 
 ```bash
-yarn typecheck
-yarn dev
+npm run typecheck
+npm run dev
 # Test Kanban board functionality
 
 git add .

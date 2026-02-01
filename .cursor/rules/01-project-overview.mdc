@@ -21,10 +21,18 @@ Mission Control is a **multi-agent coordination SaaS** built on top of **OpenCla
 
 The core premise: AI agents behave like a **real team** — with roles, persistent context, and tracked collaboration.
 
+## License & Contribution
+
+- **License**: MIT (see `LICENSE` file)
+- **Contributing**: See `CONTRIBUTING.md` for setup and guidelines
+- **CI/CD**: GitHub Actions (`.github/workflows/`)
+
 ## Tech Stack
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
+| **Node.js** | Node 24 (via nvm) | Required for all development |
+| **Package Manager** | npm | `npm ci` for CI, `npm install` locally |
 | **Frontend** | Next.js 16 (App Router), React 19 | TypeScript strict mode |
 | **UI** | shadcn/ui, Tailwind CSS v4 | Radix primitives, lucide-react icons |
 | **Backend** | Convex | Real-time DB, server functions, auth |

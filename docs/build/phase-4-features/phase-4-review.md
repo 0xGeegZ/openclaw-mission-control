@@ -75,7 +75,7 @@ ls apps/runtime/src/
 ### 2.5 Type Check
 
 ```bash
-yarn typecheck
+npm run typecheck
 ```
 
 - [ ] All packages pass type check
@@ -83,7 +83,7 @@ yarn typecheck
 ### 2.6 Build Check
 
 ```bash
-yarn build
+npm run build
 ```
 
 - [ ] Web app builds successfully

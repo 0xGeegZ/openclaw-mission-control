@@ -836,6 +836,39 @@ git commit -m "feat(tasks): add Kanban board with drag-drop"
 
 ---
 
+### CI/CD Setup (GitHub Actions)
+
+Module 01 creates the CI/CD pipelines. After setup, configure these GitHub secrets:
+
+**Repository Secrets (Settings > Secrets and variables > Actions):**
+
+| Secret | Description | Where to Get |
+|--------|-------------|--------------|
+| `CONVEX_DEPLOY_KEY` | Convex deployment key | Convex Dashboard > Settings > Deploy Key |
+| `VERCEL_TOKEN` | Vercel API token | Vercel Dashboard > Settings > Tokens |
+| `VERCEL_ORG_ID` | Vercel organization ID | Vercel Dashboard > Settings > General |
+| `VERCEL_PROJECT_ID` | Vercel project ID | Vercel Project > Settings > General |
+
+**Repository Variables (Settings > Secrets and variables > Actions > Variables):**
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_CONVEX_URL` | Your Convex deployment URL |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key |
+
+**CI Pipeline** (`.github/workflows/ci.yml`):
+- Runs on every push and PR to `main` and `develop`
+- Lint → Typecheck → Build
+- Blocks merge if any step fails
+
+**CD Pipeline** (`.github/workflows/deploy.yml`):
+- Runs on push to `main` only
+- Deploys Convex backend first
+- Then deploys Next.js to Vercel
+- Requires environment secrets configured
+
+---
+
 ### Troubleshooting
 
 | Issue | Solution |
@@ -845,6 +878,8 @@ git commit -m "feat(tasks): add Kanban board with drag-drop"
 | Convex functions not working | Check `convex/` folder exists |
 | Clerk auth failing | Verify environment variables |
 | shadcn component missing | `npx shadcn@latest add [component]` |
+| CI failing on build | Check SKIP_CONVEX_TYPEGEN is set |
+| CD failing on deploy | Verify GitHub secrets are configured |
 
 ---
 

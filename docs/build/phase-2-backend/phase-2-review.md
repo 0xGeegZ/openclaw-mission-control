@@ -52,7 +52,7 @@ ls packages/backend/convex/service/
 ```bash
 cd packages/backend
 npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 - [ ] Convex dev runs without errors

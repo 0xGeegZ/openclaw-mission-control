@@ -833,7 +833,7 @@ export const attachmentValidator = v.object({
 ```bash
 cd packages/backend
 npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 ### Step 7: Commit Changes
