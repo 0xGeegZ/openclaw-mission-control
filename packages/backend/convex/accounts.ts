@@ -137,29 +137,67 @@ export const listMyAccounts = query({
   },
 });
 
+const accountSettingsValidator = v.object({
+  theme: v.optional(v.string()),
+  notificationPreferences: v.optional(v.object({
+    taskUpdates: v.boolean(),
+    agentActivity: v.boolean(),
+    emailDigest: v.boolean(),
+  })),
+});
+
 /**
- * Update account details.
- * Requires admin role.
+ * Update account details (name, slug, settings).
+ * Requires admin role. Slug must be unique if changed.
  */
 export const update = mutation({
   args: {
     accountId: v.id("accounts"),
     name: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    settings: v.optional(accountSettingsValidator),
   },
   handler: async (ctx, args) => {
     await requireAccountAdmin(ctx, args.accountId);
-    
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) {
       updates.name = args.name;
     }
-    
+    if (args.slug !== undefined) {
+      if (args.slug !== account.slug) {
+        const existing = await ctx.db
+          .query("accounts")
+          .withIndex("by_slug", (q) => q.eq("slug", args.slug!))
+          .unique();
+        if (existing) {
+          throw new Error("Conflict: Account slug already exists");
+        }
+        updates.slug = args.slug;
+      }
+    }
+    if (args.settings !== undefined) {
+      const current = (account as { settings?: { theme?: string; notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean } } }).settings ?? {};
+      updates.settings = {
+        ...current,
+        ...(args.settings.theme !== undefined && { theme: args.settings.theme }),
+        ...(args.settings.notificationPreferences !== undefined && {
+          notificationPreferences: {
+            ...(current.notificationPreferences ?? {}),
+            ...args.settings.notificationPreferences,
+          },
+        }),
+      };
+    }
+
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.accountId, updates);
     }
-    
-    // TODO: Log activity
-    
+
     return args.accountId;
   },
 });
@@ -254,18 +292,22 @@ export const remove = mutation({
     for (const n of notifications) {
       await ctx.db.delete(n._id);
     }
-    
-    // 2. Delete subscriptions
-    // Note: subscriptions need to be queried by account, but we don't have that index
-    // For now, we'll query by task and filter, or add accountId index later
-    const allSubscriptions = await ctx.db.query("subscriptions").collect();
-    const subscriptions = allSubscriptions.filter(s => {
-      // We need to check if task belongs to this account
-      // This is inefficient but works for now
-      return true; // Will be properly implemented when we have accountId index
-    });
-    // Skip subscriptions for now - they'll be cleaned up when tasks are deleted
-    
+
+    // 2. Delete subscriptions for all account tasks (subscriptions reference taskId)
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+    for (const task of tasks) {
+      const subs = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_task", (q) => q.eq("taskId", task._id))
+        .collect();
+      for (const s of subs) {
+        await ctx.db.delete(s._id);
+      }
+    }
+
     // 3. Delete activities
     const activities = await ctx.db
       .query("activities")
@@ -292,12 +334,8 @@ export const remove = mutation({
     for (const d of documents) {
       await ctx.db.delete(d._id);
     }
-    
-    // 6. Delete tasks
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
+
+    // 6. Delete tasks (subscriptions already deleted above)
     for (const t of tasks) {
       await ctx.db.delete(t._id);
     }

@@ -1,61 +1,164 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import { Card, CardContent } from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
-import { Badge } from "@packages/ui/components/badge";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { 
-  FileText, 
-  FolderPlus, 
-  FilePlus, 
-  Search,
-  Grid3X3,
-  List,
-  Clock,
-  FileIcon,
-  FolderIcon,
-  MoreHorizontal,
-  Upload,
-} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@packages/ui/components/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
+import {
+  FileText,
+  FilePlus,
+  Search,
+  Grid3X3,
+  List,
+  FileIcon,
+  FolderIcon,
+  MoreHorizontal,
+  Upload,
+  ChevronRight,
+  Trash2,
+  ArrowLeft,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 interface DocsPageProps {
   params: Promise<{ accountSlug: string }>;
 }
 
+type DocItem = {
+  _id: Id<"documents">;
+  name: string;
+  type: "file" | "folder";
+  updatedAt: number;
+  kind?: "file" | "folder";
+};
+
 /**
- * Documents page for workspace files and documents.
+ * Documents page for workspace files and folders.
+ * Supports folder navigation, create file/folder, search, and delete.
  */
 export default function DocsPage({ params }: DocsPageProps) {
   const { accountSlug } = use(params);
   const { accountId, isLoading } = useAccount();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Mock documents data - will be replaced with real API
+  const [currentFolderId, setCurrentFolderId] = useState<Id<"documents"> | undefined>(undefined);
+  const [openDocId, setOpenDocId] = useState<Id<"documents"> | null>(null);
+
   const documents = useQuery(
-    api.documents?.list,
-    accountId ? { accountId } : "skip"
+    api.documents.list,
+    accountId ? { accountId, folderId: currentFolderId } : "skip"
   );
-  
-  const hasDocuments = documents && documents.length > 0;
-  
+  const searchResults = useQuery(
+    api.documents.search,
+    accountId && searchQuery.trim().length >= 2
+      ? { accountId, query: searchQuery.trim(), limit: 50 }
+      : "skip"
+  );
+  const currentFolder = useQuery(
+    api.documents.get,
+    currentFolderId ? { documentId: currentFolderId } : "skip"
+  );
+  const openDoc = useQuery(
+    api.documents.get,
+    openDocId ? { documentId: openDocId } : "skip"
+  );
+
+  const createDoc = useMutation(api.documents.create);
+  const removeDoc = useMutation(api.documents.remove);
+
+  const isSearching = searchQuery.trim().length >= 2;
+  const displayItems: DocItem[] = isSearching && searchResults
+    ? searchResults.map((d) => ({
+        _id: d._id,
+        name: d.name ?? d.title ?? "Untitled",
+        type: (d.kind ?? "file") as "file" | "folder",
+        updatedAt: d.updatedAt,
+      }))
+    : (documents ?? []).map((d) => ({
+        _id: d._id,
+        name: d.name,
+        type: d.type as "file" | "folder",
+        updatedAt: d.updatedAt,
+      }));
+
+  const hasItems = displayItems.length > 0;
+
+  const handleCreateFile = async () => {
+    if (!accountId) return;
+    try {
+      await createDoc({
+        accountId,
+        kind: "file",
+        parentId: currentFolderId,
+        title: "Untitled",
+        content: "",
+        type: "note",
+      });
+      toast.success("Document created");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create document");
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!accountId) return;
+    try {
+      await createDoc({
+        accountId,
+        kind: "folder",
+        parentId: currentFolderId,
+        name: "New Folder",
+      });
+      toast.success("Folder created");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create folder");
+    }
+  };
+
+  const handleDelete = async (documentId: Id<"documents">) => {
+    try {
+      await removeDoc({ documentId });
+      toast.success("Deleted");
+      if (openDocId === documentId) setOpenDocId(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete");
+    }
+  };
+
+  const handleRowClick = (item: DocItem) => {
+    if (item.type === "folder") {
+      setCurrentFolderId(item._id);
+    } else {
+      setOpenDocId(item._id);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-4 border-b bg-card">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
-          <p className="text-sm text-muted-foreground">Shared files and documents for your workspace</p>
+          <p className="text-sm text-muted-foreground">
+            Shared files and documents for your workspace
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -66,11 +169,11 @@ export default function DocsPage({ params }: DocsPageProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem onClick={handleCreateFile}>
                 <FileIcon className="mr-2 h-4 w-4" />
                 New Document
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem onClick={handleCreateFolder}>
                 <FolderIcon className="mr-2 h-4 w-4" />
                 New Folder
               </DropdownMenuItem>
@@ -82,31 +185,50 @@ export default function DocsPage({ params }: DocsPageProps) {
           </DropdownMenu>
         </div>
       </header>
-      
-      {/* Search and filters */}
+
+      {/* Breadcrumb when inside a folder */}
+      {currentFolderId && (
+        <div className="flex items-center gap-2 px-6 py-2 border-b text-sm text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1"
+            onClick={() => setCurrentFolderId(undefined)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <ChevronRight className="h-4 w-4" />
+          <span className="font-medium text-foreground">
+            {currentFolder?.name ?? currentFolder?.title ?? "Folder"}
+          </span>
+        </div>
+      )}
+
+      {/* Search and view toggle */}
       <div className="flex items-center justify-between gap-4 px-6 py-3 border-b">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input 
-            placeholder="Search documents..." 
+          <Input
+            placeholder="Search documents..."
             className="pl-9"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <div className="flex items-center gap-1 border rounded-lg p-1">
-          <Button 
-            variant={viewMode === "grid" ? "secondary" : "ghost"} 
-            size="icon" 
+          <Button
+            variant={viewMode === "grid" ? "secondary" : "ghost"}
+            size="icon"
             className="h-8 w-8"
             onClick={() => setViewMode("grid")}
           >
             <Grid3X3 className="h-4 w-4" />
             <span className="sr-only">Grid view</span>
           </Button>
-          <Button 
-            variant={viewMode === "list" ? "secondary" : "ghost"} 
-            size="icon" 
+          <Button
+            variant={viewMode === "list" ? "secondary" : "ghost"}
+            size="icon"
             className="h-8 w-8"
             onClick={() => setViewMode("list")}
           >
@@ -115,10 +237,9 @@ export default function DocsPage({ params }: DocsPageProps) {
           </Button>
         </div>
       </div>
-      
+
       <div className="flex-1 overflow-auto p-6">
-        {documents === undefined ? (
-          // Loading state
+        {documents === undefined && !isSearching ? (
           viewMode === "grid" ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -147,82 +268,138 @@ export default function DocsPage({ params }: DocsPageProps) {
               </CardContent>
             </Card>
           )
-        ) : !hasDocuments ? (
-          // Empty state
+        ) : !hasItems ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-muted mb-6">
               <FileText className="h-10 w-10 text-muted-foreground" />
             </div>
             <h3 className="text-xl font-semibold">No documents yet</h3>
             <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              Create your first document or upload files to share with your team. 
-              Documents help keep everyone aligned and informed.
+              {isSearching
+                ? "No documents match your search."
+                : "Create your first document or folder to get started."}
             </p>
-            <div className="flex items-center gap-3 mt-6">
-              <Button disabled>
-                <FilePlus className="mr-2 h-4 w-4" />
-                Create Document
-              </Button>
-              <Button variant="outline" disabled>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Files
-              </Button>
-            </div>
-            <div className="mt-8 p-4 rounded-lg bg-muted/50 max-w-md">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Coming Soon:</strong> Document creation, file uploads, 
-                real-time collaboration, and version history.
-              </p>
-            </div>
+            {!isSearching && (
+              <div className="flex items-center gap-3 mt-6">
+                <Button onClick={handleCreateFile}>
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  Create Document
+                </Button>
+                <Button variant="outline" onClick={handleCreateFolder}>
+                  <FolderIcon className="mr-2 h-4 w-4" />
+                  New Folder
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : viewMode === "grid" ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {displayItems.map((doc) => (
+              <Card
+                key={doc._id}
+                className="p-4 cursor-pointer hover:bg-muted/50 transition-colors flex flex-col"
+              >
+                <div
+                  className="flex flex-col items-center text-center flex-1"
+                  onClick={() => handleRowClick(doc)}
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted mb-3">
+                    {doc.type === "folder" ? (
+                      <FolderIcon className="h-8 w-8 text-muted-foreground" />
+                    ) : (
+                      <FileIcon className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="font-medium text-sm truncate w-full">{doc.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
+                  </p>
+                </div>
+                <div className="mt-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => handleDelete(doc._id)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </Card>
+            ))}
           </div>
         ) : (
-          // Documents list/grid (when implemented)
-          viewMode === "grid" ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {documents.map((doc: { _id: string; name: string; type: string; updatedAt: number }) => (
-                <Card key={doc._id} className="p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                  <div className="flex flex-col items-center text-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted mb-3">
-                      {doc.type === "folder" ? (
-                        <FolderIcon className="h-8 w-8 text-muted-foreground" />
-                      ) : (
-                        <FileIcon className="h-8 w-8 text-muted-foreground" />
-                      )}
-                    </div>
-                    <p className="font-medium text-sm truncate w-full">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Updated recently
+          <Card>
+            <CardContent className="p-0 divide-y divide-border">
+              {displayItems.map((doc) => (
+                <div
+                  key={doc._id}
+                  className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors group"
+                  onClick={() => handleRowClick(doc)}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
+                    {doc.type === "folder" ? (
+                      <FolderIcon className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <FileIcon className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{doc.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
                     </p>
                   </div>
-                </Card>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => handleDelete(doc._id)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ))}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="p-0 divide-y divide-border">
-                {documents.map((doc: { _id: string; name: string; type: string; updatedAt: number }) => (
-                  <div key={doc._id} className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
-                      {doc.type === "folder" ? (
-                        <FolderIcon className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <FileIcon className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{doc.name}</p>
-                      <p className="text-xs text-muted-foreground">Updated recently</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )
+            </CardContent>
+          </Card>
         )}
       </div>
+
+      {/* View document dialog */}
+      <Dialog open={!!openDocId} onOpenChange={(open) => !open && setOpenDocId(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{openDoc?.title ?? openDoc?.name ?? "Document"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto rounded border bg-muted/30 p-4 text-sm prose prose-sm dark:prose-invert max-w-none">
+            {openDoc?.kind === "folder" ? (
+              <p className="text-muted-foreground">This is a folder.</p>
+            ) : (
+              <pre className="whitespace-pre-wrap font-sans">
+                {openDoc?.content ?? "(empty)"}
+              </pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -71,7 +71,7 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
     }
   };
   
-  const unreadCount = notifications?.filter(n => !n.isRead).length ?? 0;
+  const unreadCount = notifications?.filter(n => !n.readAt).length ?? 0;
   
   return (
     <div className="flex flex-col h-full">
@@ -128,15 +128,17 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
             <Card>
               <CardContent className="p-0 divide-y divide-border">
                 {notifications.map((notification) => {
+                  const isUnread = !notification.readAt;
                   const Icon = notificationIcons[notification.type as NotificationType] || Bell;
                   const colorClass = notificationColors[notification.type as NotificationType] || notificationColors.info;
-                  
+                  const createdAt = notification.createdAt;
+
                   return (
-                    <div 
+                    <div
                       key={notification._id}
                       className={cn(
                         "flex gap-4 p-4 transition-colors hover:bg-muted/50",
-                        !notification.isRead && "bg-primary/5"
+                        isUnread && "bg-primary/5"
                       )}
                     >
                       <div className={cn(
@@ -150,18 +152,18 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
                           <div>
                             <p className={cn(
                               "text-sm",
-                              !notification.isRead && "font-medium"
+                              isUnread && "font-medium"
                             )}>
                               {notification.title}
                             </p>
                             <p className="text-sm text-muted-foreground mt-0.5">
-                              {notification.message}
+                              {notification.body}
                             </p>
                           </div>
-                          {!notification.isRead && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                          {isUnread && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8 shrink-0"
                               onClick={() => markAsRead({ notificationId: notification._id })}
                             >
@@ -171,7 +173,7 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">
-                          {formatDistanceToNow(new Date(notification._creationTime), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>

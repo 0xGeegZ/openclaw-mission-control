@@ -44,6 +44,12 @@ export const documentTypeValidator = v.union(
   v.literal("reference")
 );
 
+/** Document kind validator (file vs folder in tree). */
+export const documentKindValidator = v.union(
+  v.literal("file"),
+  v.literal("folder")
+);
+
 /** Notification type validator */
 export const notificationTypeValidator = v.union(
   v.literal("mention"),

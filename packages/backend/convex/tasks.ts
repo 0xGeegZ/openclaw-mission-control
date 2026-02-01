@@ -9,6 +9,10 @@ import {
   TASK_STATUS_ORDER,
 } from "./lib/task_workflow";
 import { logActivity } from "./lib/activity";
+import {
+  createAssignmentNotification,
+  createStatusChangeNotification,
+} from "./lib/notifications";
 
 /**
  * List tasks for an account.
@@ -289,8 +293,35 @@ export const updateStatus = mutation({
     }
     
     await ctx.db.patch(args.taskId, updates);
-    
-    // Log activity
+
+    for (const uid of task.assignedUserIds) {
+      await createStatusChangeNotification(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "user",
+        uid,
+        userName,
+        task.title,
+        nextStatus
+      );
+    }
+    for (const agentId of task.assignedAgentIds) {
+      const agent = await ctx.db.get(agentId);
+      if (agent) {
+        await createStatusChangeNotification(
+          ctx,
+          task.accountId,
+          args.taskId,
+          "agent",
+          agentId,
+          userName,
+          task.title,
+          nextStatus
+        );
+      }
+    }
+
     await logActivity({
       ctx,
       accountId: task.accountId,
@@ -301,13 +332,13 @@ export const updateStatus = mutation({
       targetType: "task",
       targetId: args.taskId,
       targetName: task.title,
-      meta: { 
-        oldStatus: currentStatus, 
+      meta: {
+        oldStatus: currentStatus,
         newStatus: nextStatus,
         blockedReason: args.blockedReason,
       },
     });
-    
+
     return args.taskId;
   },
 });
@@ -349,8 +380,39 @@ export const assign = mutation({
     }
     
     await ctx.db.patch(args.taskId, updates);
-    
-    // Log activity
+
+    const previousUserIds = new Set(task.assignedUserIds);
+    const previousAgentIds = new Set(task.assignedAgentIds);
+    const newUserIds = args.assignedUserIds !== undefined
+      ? args.assignedUserIds.filter((uid) => !previousUserIds.has(uid))
+      : [];
+    const newAgentIds = args.assignedAgentIds !== undefined
+      ? args.assignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
+      : [];
+
+    for (const uid of newUserIds) {
+      await createAssignmentNotification(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "user",
+        uid,
+        userName,
+        task.title
+      );
+    }
+    for (const agentId of newAgentIds) {
+      await createAssignmentNotification(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "agent",
+        agentId,
+        userName,
+        task.title
+      );
+    }
+
     await logActivity({
       ctx,
       accountId: task.accountId,
@@ -361,14 +423,12 @@ export const assign = mutation({
       targetType: "task",
       targetId: args.taskId,
       targetName: task.title,
-      meta: { 
+      meta: {
         assignedUserIds: args.assignedUserIds,
         assignedAgentIds: args.assignedAgentIds,
       },
     });
-    
-    // TODO: Create notifications for new assignees (Module 08)
-    
+
     return args.taskId;
   },
 });
