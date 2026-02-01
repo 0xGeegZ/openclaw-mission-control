@@ -544,6 +544,8 @@ export const update = mutation({
 /**
  * Update account runtime status.
  * Internal use only (called by service functions).
+ * 
+ * Includes version tracking for OpenClaw and runtime service.
  */
 export const updateRuntimeStatus = mutation({
   args: {
@@ -558,7 +560,17 @@ export const updateRuntimeStatus = mutation({
     config: v.optional(v.object({
       dropletId: v.string(),
       ipAddress: v.string(),
+      region: v.optional(v.string()),
       lastHealthCheck: v.optional(v.number()),
+      // Version tracking (v1)
+      openclawVersion: v.optional(v.string()),
+      runtimeServiceVersion: v.optional(v.string()),
+      lastUpgradeAt: v.optional(v.number()),
+      lastUpgradeStatus: v.optional(v.union(
+        v.literal("success"),
+        v.literal("failed"),
+        v.literal("rolled_back")
+      )),
     })),
   },
   handler: async (ctx, args) => {

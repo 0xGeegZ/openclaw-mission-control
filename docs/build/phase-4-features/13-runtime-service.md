@@ -105,9 +105,45 @@ export interface RuntimeConfig {
   
   /** Health check interval to Convex (ms) */
   healthCheckInterval: number;
+  
+  /** Runtime service version (from package.json or env) */
+  runtimeServiceVersion: string;
+  
+  /** OpenClaw version (detected at startup) */
+  openclawVersion: string;
+  
+  /** DigitalOcean droplet ID (for tracking) */
+  dropletId: string;
+  
+  /** Droplet IP address */
+  dropletIp: string;
+  
+  /** Droplet region */
+  dropletRegion: string;
 }
 
-export function loadConfig(): RuntimeConfig {
+/**
+ * Detect OpenClaw version by running `openclaw --version`.
+ * Falls back to "unknown" if detection fails.
+ */
+async function detectOpenClawVersion(): Promise<string> {
+  try {
+    const { execSync } = await import("child_process");
+    const output = execSync("openclaw --version", { encoding: "utf-8" });
+    return output.trim();
+  } catch {
+    return process.env.OPENCLAW_VERSION || "unknown";
+  }
+}
+
+/**
+ * Get runtime service version from package.json or env.
+ */
+function getRuntimeServiceVersion(): string {
+  return process.env.RUNTIME_VERSION || process.env.npm_package_version || "0.1.0";
+}
+
+export async function loadConfig(): Promise<RuntimeConfig> {
   const accountId = process.env.ACCOUNT_ID;
   const convexUrl = process.env.CONVEX_URL;
   const serviceToken = process.env.SERVICE_TOKEN;
@@ -116,6 +152,8 @@ export function loadConfig(): RuntimeConfig {
     throw new Error("Missing required environment variables");
   }
   
+  const openclawVersion = await detectOpenClawVersion();
+  
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
@@ -123,6 +161,11 @@ export function loadConfig(): RuntimeConfig {
     healthPort: parseInt(process.env.HEALTH_PORT || "3001"),
     deliveryInterval: parseInt(process.env.DELIVERY_INTERVAL || "5000"),
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || "60000"),
+    runtimeServiceVersion: getRuntimeServiceVersion(),
+    openclawVersion,
+    dropletId: process.env.DROPLET_ID || "unknown",
+    dropletIp: process.env.DROPLET_IP || "unknown",
+    dropletRegion: process.env.DROPLET_REGION || "unknown",
   };
 }
 ```
@@ -514,12 +557,34 @@ import { getGatewayState } from "./gateway";
 import { getConvexClient, api } from "./convex-client";
 
 let server: http.Server;
+let runtimeConfig: RuntimeConfig;
 
 /**
  * Start health check HTTP endpoint.
+ * 
+ * Endpoints:
+ * - GET /health - Full health status with versions
+ * - GET /version - Just version info (for quick checks)
  */
 export function startHealthServer(config: RuntimeConfig): void {
+  runtimeConfig = config;
+  
   server = http.createServer(async (req, res) => {
+    // Version endpoint - lightweight, just returns versions
+    if (req.url === "/version") {
+      const versionInfo = {
+        runtimeServiceVersion: config.runtimeServiceVersion,
+        openclawVersion: config.openclawVersion,
+        dropletId: config.dropletId,
+        region: config.dropletRegion,
+      };
+      
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(versionInfo));
+      return;
+    }
+    
+    // Health endpoint - full status
     if (req.url === "/health") {
       const delivery = getDeliveryState();
       const gateway = getGatewayState();
@@ -527,6 +592,21 @@ export function startHealthServer(config: RuntimeConfig): void {
       const health = {
         status: gateway.isRunning && delivery.isRunning ? "healthy" : "degraded",
         uptime: process.uptime(),
+        
+        // Version info
+        versions: {
+          runtimeService: config.runtimeServiceVersion,
+          openclaw: config.openclawVersion,
+        },
+        
+        // Infrastructure
+        infrastructure: {
+          dropletId: config.dropletId,
+          ipAddress: config.dropletIp,
+          region: config.dropletRegion,
+        },
+        
+        // Component status
         gateway: {
           running: gateway.isRunning,
           sessions: gateway.sessions.size,
@@ -537,22 +617,26 @@ export function startHealthServer(config: RuntimeConfig): void {
           delivered: delivery.deliveredCount,
           failed: delivery.failedCount,
         },
+        
         timestamp: Date.now(),
       };
       
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(health));
-    } else {
-      res.writeHead(404);
-      res.end("Not Found");
+      return;
     }
+    
+    res.writeHead(404);
+    res.end("Not Found");
   });
   
   server.listen(config.healthPort, () => {
     console.log(`[Health] Server listening on port ${config.healthPort}`);
+    console.log(`[Health] Runtime Service v${config.runtimeServiceVersion}`);
+    console.log(`[Health] OpenClaw v${config.openclawVersion}`);
   });
   
-  // Periodic health check to Convex
+  // Periodic health check to Convex (includes version info)
   setInterval(async () => {
     try {
       const client = getConvexClient();
@@ -560,9 +644,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         accountId: config.accountId,
         status: "online",
         config: {
-          dropletId: process.env.DROPLET_ID || "unknown",
-          ipAddress: process.env.DROPLET_IP || "unknown",
+          dropletId: config.dropletId,
+          ipAddress: config.dropletIp,
+          region: config.dropletRegion,
           lastHealthCheck: Date.now(),
+          // Version tracking
+          openclawVersion: config.openclawVersion,
+          runtimeServiceVersion: config.runtimeServiceVersion,
         },
       });
     } catch (error) {
@@ -582,19 +670,25 @@ export function stopHealthServer(): void {
 
 ```typescript
 // apps/runtime/src/index.ts
-import { loadConfig } from "./config";
-import { initConvexClient } from "./convex-client";
+import { loadConfig, RuntimeConfig } from "./config";
+import { initConvexClient, getConvexClient, api } from "./convex-client";
 import { initGateway, shutdownGateway } from "./gateway";
 import { startDeliveryLoop, stopDeliveryLoop } from "./delivery";
 import { startHeartbeats, stopHeartbeats } from "./heartbeat";
 import { startHealthServer, stopHealthServer } from "./health";
 
+let globalConfig: RuntimeConfig;
+
 async function main() {
   console.log("=== Mission Control Runtime Service ===");
   
-  // Load configuration
-  const config = loadConfig();
+  // Load configuration (async - detects OpenClaw version)
+  const config = await loadConfig();
+  globalConfig = config;
+  
   console.log(`Account ID: ${config.accountId}`);
+  console.log(`Runtime Service: v${config.runtimeServiceVersion}`);
+  console.log(`OpenClaw: v${config.openclawVersion}`);
   
   // Initialize Convex client
   initConvexClient(config);
@@ -629,10 +723,9 @@ async function shutdown() {
   
   // Mark as offline in Convex
   try {
-    const config = loadConfig();
     const client = getConvexClient();
     await client.mutation(api.accounts.updateRuntimeStatus, {
-      accountId: config.accountId,
+      accountId: globalConfig.accountId,
       status: "offline",
     });
   } catch (error) {
@@ -694,17 +787,60 @@ CMD ["node", "dist/index.js"]
 
 ## 12. TODO Checklist
 
-- [ ] Create config.ts
+### Core Service
+
+- [ ] Create config.ts (with version detection)
 - [ ] Create convex-client.ts
 - [ ] Create gateway.ts
 - [ ] Create delivery.ts
 - [ ] Create heartbeat.ts
-- [ ] Create health.ts
+- [ ] Create health.ts (with `/version` endpoint)
 - [ ] Update index.ts entry point
-- [ ] Update Dockerfile
+
+### Version Tracking (v1)
+
+- [ ] Implement `detectOpenClawVersion()` in config
+- [ ] Add version info to health endpoint response
+- [ ] Report versions to Convex on health check
+- [ ] Log versions on startup
+
+### Deployment
+
+- [ ] Update Dockerfile with version ARG
 - [ ] Test locally with mock OpenClaw
 - [ ] Document deployment to DigitalOcean
+- [ ] Document manual upgrade process
 - [ ] Commit changes
+
+---
+
+## 13. Manual Upgrade Process (v1)
+
+Until automated upgrades are available (v2), use this process:
+
+```bash
+# 1. SSH to the droplet
+ssh root@<droplet-ip>
+
+# 2. Check current version
+curl http://localhost:3001/version
+
+# 3. Upgrade OpenClaw
+cd ~/openclaw
+git fetch --tags
+git checkout <target-version>
+docker compose pull
+docker compose down
+docker compose up -d
+
+# 4. Verify upgrade
+curl http://localhost:3001/version
+curl http://localhost:3001/health
+
+# 5. Check Convex dashboard to confirm version updated
+```
+
+**Note:** For automated fleet-wide upgrades, see `docs/roadmap/runtime-version-management-v2.md`.
 
 ---
 
@@ -712,6 +848,9 @@ CMD ["node", "dist/index.js"]
 
 1. Runtime service starts and connects to Convex
 2. Notification delivery loop works
-3. Health endpoint responds
-4. Docker build succeeds
-5. Can be deployed to DigitalOcean Droplet
+3. `/health` endpoint responds with version info
+4. `/version` endpoint returns current versions
+5. Versions reported to Convex on health check
+6. Docker build succeeds
+7. Can be deployed to DigitalOcean Droplet
+8. Manual upgrade process documented

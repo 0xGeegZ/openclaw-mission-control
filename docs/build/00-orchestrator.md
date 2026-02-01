@@ -877,4 +877,16 @@ git commit -m "feat(tasks): add Kanban board with drag-drop"
 
 ---
 
+## v2 Roadmap Documents
+
+After v1 is complete, these roadmap documents describe planned features:
+
+| Document | Description |
+|----------|-------------|
+| `docs/roadmap/runtime-version-management-v2.md` | Automated fleet upgrades, canary deployments, admin UI |
+
+These are **not part of v1** but provide context for future development.
+
+---
+
 *This orchestrator document is the single source of truth for build coordination. Give it to an orchestrator agent to manage the entire build process autonomously.*

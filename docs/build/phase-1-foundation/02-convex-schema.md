@@ -287,8 +287,23 @@ export default defineSchema({
       dropletId: v.string(),
       /** IP address of the runtime server */
       ipAddress: v.string(),
+      /** Region where droplet is deployed */
+      region: v.optional(v.string()),
       /** Last successful health check timestamp */
       lastHealthCheck: v.optional(v.number()),
+      
+      /** OpenClaw version running on this runtime (e.g., "v1.2.3" or git SHA) */
+      openclawVersion: v.optional(v.string()),
+      /** Runtime service Docker image tag */
+      runtimeServiceVersion: v.optional(v.string()),
+      /** Timestamp of last successful upgrade */
+      lastUpgradeAt: v.optional(v.number()),
+      /** Status of last upgrade attempt */
+      lastUpgradeStatus: v.optional(v.union(
+        v.literal("success"),
+        v.literal("failed"),
+        v.literal("rolled_back")
+      )),
     })),
     
     /** Timestamp of account creation */
