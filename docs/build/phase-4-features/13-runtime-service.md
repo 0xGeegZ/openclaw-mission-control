@@ -748,7 +748,7 @@ main().catch((error) => {
 
 ```dockerfile
 # apps/runtime/Dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -756,13 +756,13 @@ WORKDIR /app
 RUN npm install -g @openclaw/cli
 
 # Copy workspace files
-COPY package.json yarn.lock ./
+COPY package.json package-lock.json ./
 COPY apps/runtime/package.json ./apps/runtime/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install dependencies
-RUN yarn install --frozen-lockfile --production
+RUN npm ci --omit=dev
 
 # Copy source
 COPY apps/runtime ./apps/runtime
@@ -771,7 +771,7 @@ COPY packages/backend ./packages/backend
 
 # Build
 WORKDIR /app/apps/runtime
-RUN yarn build
+RUN npm run build
 
 # Environment
 ENV NODE_ENV=production

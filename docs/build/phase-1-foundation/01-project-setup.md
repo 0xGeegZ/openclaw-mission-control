@@ -20,6 +20,56 @@
 
 ---
 
+## 0. Prerequisites: Node.js Setup with nvm
+
+**IMPORTANT**: Before starting, ensure you're using Node.js 24 with nvm.
+
+### Install nvm (if not already installed)
+
+```bash
+# Check if nvm is installed
+nvm --version
+
+# If not installed, install nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+# Restart terminal or source profile
+source ~/.bashrc  # or ~/.zshrc on macOS
+```
+
+### Install and Use Node 24
+
+```bash
+# Install Node 24 (latest LTS)
+nvm install 24
+
+# Use Node 24 for this project
+nvm use 24
+
+# Verify version
+node -v  # Should show v24.x.x
+npm -v   # Should show v10.x.x
+
+# Optional: Set Node 24 as default
+nvm alias default 24
+```
+
+### Create `.nvmrc` file
+
+This ensures all developers and CI/CD use the same Node version:
+
+```bash
+# In project root
+echo "24" > .nvmrc
+
+# Now anyone can run:
+nvm use  # Automatically uses version from .nvmrc
+```
+
+**Agent Note**: As an agent, you should run `nvm use` at the start of your work to ensure you're on Node 24.
+
+---
+
 ## 1. Context & Goal
 
 We are setting up the foundational monorepo structure for Mission Control by cloning and adapting the `get-convex/turbo-expo-nextjs-clerk-convex-monorepo` template.
@@ -36,7 +86,8 @@ We are setting up the foundational monorepo structure for Mission Control by clo
 - Keep mobile app placeholder (`apps/native`) for future v2
 - Use Tailwind CSS v4 with shadcn/ui
 - TypeScript strict mode everywhere
-- Yarn as package manager (per template)
+- **npm** as package manager (Node 24+)
+- Use **nvm** for Node version management
 
 ---
 
@@ -53,7 +104,7 @@ turbo-expo-nextjs-clerk-convex-monorepo/
 │   └── backend/          # Convex backend
 ├── turbo.json
 ├── package.json
-└── yarn.lock
+└── package-lock.json
 ```
 
 ### Key Files to Inspect After Clone
@@ -110,6 +161,7 @@ mission-control/
 
 | Path | Purpose |
 |------|---------|
+| `.nvmrc` | Node version specification (24) |
 | `apps/runtime/package.json` | Runtime service manifest |
 | `apps/runtime/src/index.ts` | Entry point (placeholder) |
 | `apps/runtime/tsconfig.json` | TypeScript config |
@@ -180,15 +232,25 @@ git clone https://github.com/get-convex/turbo-expo-nextjs-clerk-convex-monorepo.
     "turbo": "2.6.2"
   },
   "engines": {
-    "node": ">=20.19.4"
+    "node": ">=24.0.0"
   },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "npm@10.9.2"
 }
 ```
+
+### Step 2.5: Create .nvmrc
+
+Create `.nvmrc` in project root to enforce Node 24:
+
+```
+24
+```
+
+This allows developers to run `nvm use` and automatically switch to Node 24.
 
 ### Step 3: Update turbo.json
 
@@ -727,18 +789,18 @@ const PORT = process.env.PORT || 3001;
 
 **apps/runtime/Dockerfile:**
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Copy workspace files
-COPY package.json yarn.lock ./
+COPY package.json package-lock.json ./
 COPY apps/runtime/package.json ./apps/runtime/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install dependencies
-RUN yarn install --frozen-lockfile
+RUN npm ci
 
 # Copy source
 COPY apps/runtime ./apps/runtime
@@ -747,7 +809,7 @@ COPY packages/backend ./packages/backend
 
 # Build
 WORKDIR /app/apps/runtime
-RUN yarn build
+RUN npm run build
 
 # Run
 CMD ["node", "dist/index.js"]
@@ -842,13 +904,13 @@ npx shadcn@latest add button card input label
 
 ```bash
 # Install all dependencies
-yarn install
+npm install
 
 # Run type check
-yarn typecheck
+npm run typecheck
 
 # Start dev server
-yarn dev
+npm run dev
 ```
 
 ---
@@ -866,8 +928,8 @@ yarn dev
 
 ### Edge Cases
 
-- **Yarn vs npm**: Template uses Yarn; stick with Yarn to avoid lockfile issues
-- **Node version**: Requires Node 20+; check with `node -v`
+- **Package manager**: We use npm (not Yarn) for this project
+- **Node version**: Requires Node 24+; use nvm to manage versions
 - **Convex auth**: Keep Clerk setup from template; don't change auth provider
 
 ---
@@ -876,9 +938,9 @@ yarn dev
 
 ### Manual Verification
 
-- [ ] `yarn install` completes without errors
-- [ ] `yarn typecheck` passes for all packages
-- [ ] `yarn dev` starts Next.js on localhost:3000
+- [ ] `npm install` completes without errors
+- [ ] `npm run typecheck` passes for all packages
+- [ ] `npm run dev` starts Next.js on localhost:3000
 - [ ] Landing page renders at http://localhost:3000
 - [ ] No console errors in browser
 
@@ -900,8 +962,10 @@ Not applicable for initial setup.
 
 ### Setup
 
+- [ ] Verify nvm is installed and Node 24 is active
 - [ ] Clone template repository
 - [ ] Copy relevant files to mission-control
+- [ ] Create `.nvmrc` with "24"
 - [ ] Update root `package.json`
 - [ ] Update `turbo.json`
 
@@ -934,9 +998,9 @@ Not applicable for initial setup.
 
 ### Verification
 
-- [ ] Run `yarn install`
-- [ ] Run `yarn typecheck`
-- [ ] Run `yarn dev`
+- [ ] Run `npm install`
+- [ ] Run `npm run typecheck`
+- [ ] Run `npm run dev`
 - [ ] Verify landing page renders
 - [ ] Commit: `feat(setup): initialize mission control monorepo`
 
@@ -947,8 +1011,8 @@ Not applicable for initial setup.
 This module is complete when:
 
 1. All packages are created and configured
-2. `yarn install` succeeds
-3. `yarn typecheck` passes
-4. `yarn dev` starts without errors
+2. `npm install` succeeds
+3. `npm run typecheck` passes
+4. `npm run dev` starts without errors
 5. Landing page renders at localhost:3000
 6. Git commit made with all changes

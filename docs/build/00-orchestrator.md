@@ -61,6 +61,8 @@ This document orchestrates **13 implementation modules** across **4 phases**, de
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
+| Node.js | **Node 24** (via nvm) | Required for all development |
+| Package Manager | **npm** | npm ci for CI, npm install locally |
 | Frontend | Next.js 16 + React 19 | App Router, TypeScript strict |
 | UI Components | shadcn/ui + Tailwind CSS v4 | Radix primitives, lucide-react icons |
 | Backend | Convex | Real-time DB, server functions, auth |
@@ -68,6 +70,32 @@ This document orchestrates **13 implementation modules** across **4 phases**, de
 | Agent Runtime | OpenClaw (Clawdbot) | Sessions, gateway, cron jobs |
 | Runtime Servers | DigitalOcean Droplets | One per customer account |
 | Monorepo | Turborepo | Shared packages between web/native |
+
+---
+
+## Prerequisites for All Agents
+
+**Before running ANY module, ensure:**
+
+```bash
+# 1. Install/use nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc  # or ~/.zshrc
+
+# 2. Install and use Node 24
+nvm install 24
+nvm use 24
+
+# 3. Verify versions
+node -v  # Should be v24.x.x
+npm -v   # Should be v10.x.x
+
+# 4. Use .nvmrc if present
+# (Module 01 will create this)
+nvm use
+```
+
+**Agent requirement**: Every agent must run `nvm use 24` at the start of their session.
 
 ---
 
@@ -489,10 +517,10 @@ Before starting, ensure:
 
 ```bash
 # 1. Node.js 20+ installed
-node -v  # Should be >= 20.19.4
+node -v  # Should be v24.x.x
 
-# 2. Yarn installed
-yarn -v  # Should be >= 1.22
+# 2. npm installed (comes with Node)
+npm -v  # Should be v10.x.x
 
 # 3. Git configured
 git status  # Should show clean or tracked changes
@@ -524,7 +552,7 @@ npx convex --version
 # - Install shadcn/ui base components
 
 # Verify completion:
-yarn install && yarn typecheck && yarn dev
+npm install && npm run typecheck && npm run dev
 ```
 
 #### Step 1.2: Run Module 02 (Convex Schema)
@@ -541,7 +569,7 @@ yarn install && yarn typecheck && yarn dev
 
 # Verify completion:
 cd packages/backend && npx convex dev --once
-yarn typecheck
+npm run typecheck
 ```
 
 #### Step 1.3: Run Phase 1 Review
@@ -562,8 +590,8 @@ yarn typecheck
 ```bash
 # All must pass before Phase 2:
 git tag | grep phase-1-complete  # Tag exists
-yarn typecheck                    # No errors
-yarn dev                          # Server starts
+npm run typecheck                # No errors
+npm run dev                      # Server starts
 ```
 
 ---
@@ -600,7 +628,7 @@ docs/build/phase-2-backend/06-documents-module.md
 Each agent should:
 1. Create the specified files
 2. Run `npx convex dev` to verify
-3. Run `yarn typecheck`
+3. Run `npm run typecheck`
 4. Commit with descriptive message
 
 #### Step 2.3: Resolve Conflicts (if any)
@@ -629,7 +657,7 @@ git diff                          # Review changes
 
 ```bash
 git tag | grep phase-2-complete
-yarn typecheck
+npm run typecheck
 # Test via Convex dashboard: create account, task, agent
 ```
 
@@ -667,8 +695,8 @@ docs/build/phase-3-communication/09-ui-layout-navigation.md
 
 ```bash
 git tag | grep phase-3-complete
-yarn typecheck
-yarn dev  # UI should render with sidebar
+npm run typecheck
+npm run dev  # UI should render with sidebar
 ```
 
 ---
@@ -711,8 +739,8 @@ docs/build/phase-4-features/13-runtime-service.md
 ```bash
 git tag | grep phase-4-complete
 git tag | grep v1.0.0
-yarn typecheck
-yarn build  # Full build succeeds
+npm run typecheck
+npm run build  # Full build succeeds
 ```
 
 ---
@@ -766,19 +794,19 @@ After all phases complete, run this E2E checklist:
 
 ```bash
 # Install dependencies
-yarn install
+npm install
 
 # Start Convex
 cd packages/backend && npx convex dev
 
 # Start web app
-yarn dev
+npm run dev
 
 # Type check all packages
-yarn typecheck
+npm run typecheck
 
 # Build for production
-yarn build
+npm run build
 
 # Create git tag
 git tag -a phase-X-complete -m "Phase X complete"
