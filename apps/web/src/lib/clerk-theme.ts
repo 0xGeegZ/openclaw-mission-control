@@ -2,32 +2,33 @@ import type { Appearance } from "@clerk/types";
 
 /**
  * Soft Pop design system theme for Clerk components.
- * Uses pink/magenta primary, lavender backgrounds, and very rounded elements.
+ * Uses purple/indigo primary, teal secondary, orange accent.
+ * Typography: Geist
  */
 export const softPopClerkTheme: Appearance = {
   variables: {
-    // Colors matching Soft Pop palette - pink/magenta primary with lavender accents
-    colorPrimary: "hsl(330, 80%, 60%)", // Pink/magenta primary
+    // Colors matching Soft Pop palette - purple primary
+    colorPrimary: "hsl(262, 83%, 58%)", // Purple/indigo primary
     colorTextOnPrimaryBackground: "hsl(0, 0%, 100%)",
     colorBackground: "hsl(0, 0%, 100%)",
     colorInputBackground: "hsl(0, 0%, 100%)",
-    colorInputText: "hsl(270, 50%, 15%)",
-    colorText: "hsl(270, 50%, 15%)",
-    colorTextSecondary: "hsl(270, 10%, 45%)",
-    colorDanger: "hsl(0, 75%, 60%)",
-    colorSuccess: "hsl(150, 60%, 50%)",
-    colorWarning: "hsl(40, 95%, 60%)",
+    colorInputText: "hsl(0, 0%, 0%)",
+    colorText: "hsl(0, 0%, 0%)",
+    colorTextSecondary: "hsl(0, 0%, 32%)",
+    colorDanger: "hsl(15, 75%, 50%)",
+    colorSuccess: "hsl(150, 60%, 45%)",
+    colorWarning: "hsl(38, 90%, 58%)",
     
-    // Borders - soft lavender
-    colorNeutral: "hsl(270, 30%, 90%)",
+    // Borders - black per design system
+    colorNeutral: "hsl(0, 0%, 0%)",
     
-    // Spacing and radius - extra rounded for Soft Pop
-    borderRadius: "1rem",
+    // Spacing and radius
+    borderRadius: "0.625rem",
     spacingUnit: "1rem",
     
-    // Typography - Nunito for playful feel
-    fontFamily: "var(--font-sans), 'Nunito', ui-sans-serif, system-ui, sans-serif",
-    fontFamilyButtons: "var(--font-sans), 'Nunito', ui-sans-serif, system-ui, sans-serif",
+    // Typography - Geist
+    fontFamily: "var(--font-sans), 'Geist', ui-sans-serif, system-ui, sans-serif",
+    fontFamilyButtons: "var(--font-sans), 'Geist', ui-sans-serif, system-ui, sans-serif",
     fontSize: "0.9375rem",
     fontWeight: {
       normal: 400,
@@ -39,7 +40,7 @@ export const softPopClerkTheme: Appearance = {
   elements: {
     // Root container
     rootBox: "mx-auto w-full",
-    card: "shadow-lg border border-border/50 rounded-2xl bg-card",
+    card: "shadow-lg border border-border rounded-xl bg-card",
     
     // Header
     headerTitle: "text-2xl font-bold tracking-tight text-foreground",
@@ -151,12 +152,12 @@ export const softPopClerkThemeDark: Appearance = {
   ...softPopClerkTheme,
   variables: {
     ...softPopClerkTheme.variables,
-    colorPrimary: "hsl(330, 75%, 65%)", // Brighter pink in dark mode
-    colorBackground: "hsl(270, 25%, 12%)",
-    colorInputBackground: "hsl(270, 25%, 15%)",
-    colorInputText: "hsl(270, 20%, 95%)",
-    colorText: "hsl(270, 20%, 95%)",
-    colorTextSecondary: "hsl(270, 15%, 60%)",
-    colorNeutral: "hsl(270, 20%, 20%)",
+    colorPrimary: "hsl(262, 75%, 65%)", // Lighter purple in dark mode
+    colorBackground: "hsl(240, 10%, 10%)",
+    colorInputBackground: "hsl(240, 10%, 12%)",
+    colorInputText: "hsl(0, 0%, 100%)",
+    colorText: "hsl(0, 0%, 100%)",
+    colorTextSecondary: "hsl(0, 0%, 65%)",
+    colorNeutral: "hsl(240, 8%, 25%)",
   },
 };

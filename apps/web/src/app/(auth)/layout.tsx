@@ -9,14 +9,14 @@ import { LayoutDashboard } from "lucide-react";
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Background decorations - Soft Pop style with pink and lavender */}
+      {/* Background decorations - Soft Pop style with purple, teal, and orange */}
       <div className="absolute inset-0 -z-10">
-        {/* Top-left pink gradient orb */}
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/15 rounded-full blur-3xl" />
-        {/* Bottom-right lavender gradient orb */}
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-secondary/60 rounded-full blur-3xl" />
-        {/* Center accent orb */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/20 rounded-full blur-3xl" />
+        {/* Top-left purple gradient orb */}
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+        {/* Bottom-right teal gradient orb */}
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-secondary/40 rounded-full blur-3xl" />
+        {/* Center accent orb - orange */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/15 rounded-full blur-3xl" />
         {/* Subtle grid pattern */}
         <div 
           className="absolute inset-0 opacity-[0.015]"
