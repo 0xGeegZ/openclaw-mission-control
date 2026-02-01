@@ -43,7 +43,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
   
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex h-full w-64 flex-col border-r bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
+      <aside className="flex h-full w-64 flex-col border-r bg-card">
         {/* Logo/Brand */}
         <div className="flex h-16 items-center border-b px-4">
           <Link href={`/${accountSlug}/tasks`} className="flex items-center gap-2.5 group">
@@ -130,7 +130,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
             <NotificationBell accountSlug={accountSlug} />
           </div>
         </div>
-      </div>
+      </aside>
     </TooltipProvider>
   );
 }

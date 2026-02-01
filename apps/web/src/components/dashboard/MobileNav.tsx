@@ -18,12 +18,12 @@ export function MobileNav({ accountSlug }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   
   return (
-    <div className="flex h-16 items-center justify-between border-b px-4 lg:hidden">
-      <Link href={`/${accountSlug}/tasks`} className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <LayoutDashboard className="h-4 w-4 text-primary-foreground" />
+    <header className="flex h-16 items-center justify-between border-b bg-card px-4 lg:hidden">
+      <Link href={`/${accountSlug}/tasks`} className="flex items-center gap-2.5 group">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary transition-transform group-hover:scale-105">
+          <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
         </div>
-        <span className="font-semibold">Mission Control</span>
+        <span className="font-semibold text-foreground">Mission Control</span>
       </Link>
       
       <Sheet open={open} onOpenChange={setOpen}>
@@ -33,10 +33,10 @@ export function MobileNav({ accountSlug }: MobileNavProps) {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64">
+        <SheetContent side="left" className="p-0 w-64" showCloseButton={false}>
           <Sidebar accountSlug={accountSlug} />
         </SheetContent>
       </Sheet>
-    </div>
+    </header>
   );
 }
