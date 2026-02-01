@@ -31,6 +31,7 @@
     "@packages/backend": "^1.0.0",
     "@packages/shared": "^0.1.0",
     "@packages/ui": "^0.1.0",
+    "@radix-ui/react-dialog": "^1.1.15",
     "convex": "^1.31.7",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
