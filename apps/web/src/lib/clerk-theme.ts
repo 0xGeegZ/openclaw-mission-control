@@ -2,32 +2,32 @@ import type { Appearance } from "@clerk/types";
 
 /**
  * Soft Pop design system theme for Clerk components.
- * Uses coral primary, warm backgrounds, and rounded elements.
+ * Uses pink/magenta primary, lavender backgrounds, and very rounded elements.
  */
 export const softPopClerkTheme: Appearance = {
   variables: {
-    // Colors matching Soft Pop palette
-    colorPrimary: "hsl(12, 76%, 61%)", // Coral primary
+    // Colors matching Soft Pop palette - pink/magenta primary with lavender accents
+    colorPrimary: "hsl(330, 80%, 60%)", // Pink/magenta primary
     colorTextOnPrimaryBackground: "hsl(0, 0%, 100%)",
     colorBackground: "hsl(0, 0%, 100%)",
     colorInputBackground: "hsl(0, 0%, 100%)",
-    colorInputText: "hsl(240, 15%, 15%)",
-    colorText: "hsl(240, 15%, 15%)",
-    colorTextSecondary: "hsl(240, 8%, 46%)",
-    colorDanger: "hsl(0, 72%, 63%)",
-    colorSuccess: "hsl(152, 55%, 52%)",
-    colorWarning: "hsl(38, 92%, 60%)",
+    colorInputText: "hsl(270, 50%, 15%)",
+    colorText: "hsl(270, 50%, 15%)",
+    colorTextSecondary: "hsl(270, 10%, 45%)",
+    colorDanger: "hsl(0, 75%, 60%)",
+    colorSuccess: "hsl(150, 60%, 50%)",
+    colorWarning: "hsl(40, 95%, 60%)",
     
-    // Borders
-    colorNeutral: "hsl(240, 10%, 90%)",
+    // Borders - soft lavender
+    colorNeutral: "hsl(270, 30%, 90%)",
     
-    // Spacing and radius
-    borderRadius: "0.75rem",
+    // Spacing and radius - extra rounded for Soft Pop
+    borderRadius: "1rem",
     spacingUnit: "1rem",
     
-    // Typography
-    fontFamily: "var(--font-sans), 'DM Sans', ui-sans-serif, system-ui, sans-serif",
-    fontFamilyButtons: "var(--font-sans), 'DM Sans', ui-sans-serif, system-ui, sans-serif",
+    // Typography - Nunito for playful feel
+    fontFamily: "var(--font-sans), 'Nunito', ui-sans-serif, system-ui, sans-serif",
+    fontFamilyButtons: "var(--font-sans), 'Nunito', ui-sans-serif, system-ui, sans-serif",
     fontSize: "0.9375rem",
     fontWeight: {
       normal: 400,
@@ -151,12 +151,12 @@ export const softPopClerkThemeDark: Appearance = {
   ...softPopClerkTheme,
   variables: {
     ...softPopClerkTheme.variables,
-    colorPrimary: "hsl(12, 70%, 65%)",
-    colorBackground: "hsl(240, 10%, 13%)",
-    colorInputBackground: "hsl(240, 10%, 15%)",
-    colorInputText: "hsl(40, 20%, 96%)",
-    colorText: "hsl(40, 20%, 96%)",
-    colorTextSecondary: "hsl(240, 8%, 60%)",
-    colorNeutral: "hsl(240, 8%, 20%)",
+    colorPrimary: "hsl(330, 75%, 65%)", // Brighter pink in dark mode
+    colorBackground: "hsl(270, 25%, 12%)",
+    colorInputBackground: "hsl(270, 25%, 15%)",
+    colorInputText: "hsl(270, 20%, 95%)",
+    colorText: "hsl(270, 20%, 95%)",
+    colorTextSecondary: "hsl(270, 15%, 60%)",
+    colorNeutral: "hsl(270, 20%, 20%)",
   },
 };

@@ -60,7 +60,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside 
         className={cn(
-          "flex h-full flex-col border-r bg-card transition-all duration-300",
+          "flex h-full flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
           isCollapsed ? "w-16" : "w-64"
         )}
       >
