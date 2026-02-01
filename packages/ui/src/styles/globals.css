@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-sans), "Nunito", ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-body), "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans), "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif), "Source Serif 4", ui-serif, Georgia, serif;
+  --font-mono: var(--font-mono), "Geist Mono", ui-monospace, monospace;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-border: hsl(var(--border));
@@ -48,127 +49,143 @@
 
 /* 
  * Soft Pop Design System
- * Playful pastels with soft pink/magenta primary, rounded corners, and gentle shadows
+ * Purple/indigo primary, teal secondary, orange accent
+ * Typography: Geist, Source Serif 4, Geist Mono
+ * Based on oklch values from v0 design system
  */
 @layer base {
   :root {
-    /* Soft lavender-tinted background */
-    --background: 270 50% 98%;
-    --foreground: 270 50% 15%;
+    /* Background: oklch(0.9789 0.0082 121.6272) - warm light */
+    --background: 90 15% 97%;
+    /* Foreground: oklch(0 0 0) - black */
+    --foreground: 0 0% 0%;
     
-    /* Cards with pure white for contrast */
+    /* Card: oklch(1.0000 0 0) - pure white */
     --card: 0 0% 100%;
-    --card-foreground: 270 50% 15%;
+    --card-foreground: 0 0% 0%;
     
+    /* Popover: oklch(1.0000 0 0) */
     --popover: 0 0% 100%;
-    --popover-foreground: 270 50% 15%;
+    --popover-foreground: 0 0% 0%;
     
-    /* Primary: Soft pink/magenta - playful and inviting */
-    --primary: 330 80% 60%;
+    /* Primary: oklch(0.5106 0.2301 276.9656) - deep purple/indigo */
+    --primary: 262 83% 58%;
     --primary-foreground: 0 0% 100%;
     
-    /* Secondary: Soft lavender */
-    --secondary: 270 40% 95%;
-    --secondary-foreground: 270 50% 25%;
+    /* Secondary: oklch(0.7038 0.1230 182.5025) - teal/cyan */
+    --secondary: 175 65% 42%;
+    --secondary-foreground: 0 0% 100%;
     
-    /* Muted: Light lavender gray */
-    --muted: 270 20% 94%;
-    --muted-foreground: 270 10% 45%;
+    /* Muted: oklch(0.9551 0 0) - light gray */
+    --muted: 0 0% 94%;
+    /* Muted Foreground: oklch(0.3211 0 0) - dark gray */
+    --muted-foreground: 0 0% 32%;
     
-    /* Accent: Soft peach/coral for highlights */
-    --accent: 20 80% 92%;
-    --accent-foreground: 20 80% 30%;
+    /* Accent: oklch(0.7686 0.1647 70.0804) - orange/peach */
+    --accent: 38 90% 58%;
+    --accent-foreground: 0 0% 0%;
     
     /* Status colors */
-    --success: 150 60% 50%;
+    --success: 150 60% 45%;
     --success-foreground: 0 0% 100%;
-    --warning: 40 95% 60%;
-    --warning-foreground: 40 100% 15%;
-    --destructive: 0 75% 60%;
+    --warning: 38 90% 58%;
+    --warning-foreground: 0 0% 0%;
+    /* Destructive: oklch(0.6368 0.2078 25.3313) */
+    --destructive: 15 75% 50%;
     --destructive-foreground: 0 0% 100%;
     
-    /* Borders and inputs - soft and subtle */
-    --border: 270 30% 90%;
-    --input: 270 30% 90%;
-    --ring: 330 80% 60%;
+    /* Border: oklch(0 0 0) - black */
+    --border: 0 0% 0%;
+    /* Input: oklch(0.5555 0 0) - gray */
+    --input: 0 0% 55%;
+    /* Ring: oklch(0.7853 0.1041 274.7134) - lighter purple */
+    --ring: 262 55% 65%;
     
-    /* Charts - pastel rainbow */
-    --chart-1: 330 80% 60%;
-    --chart-2: 200 80% 60%;
-    --chart-3: 150 60% 50%;
-    --chart-4: 40 95% 60%;
-    --chart-5: 270 60% 65%;
+    /* Charts - from oklch values */
+    /* Chart 1: oklch(0.5106 0.2301 276.9656) - purple */
+    --chart-1: 262 83% 58%;
+    /* Chart 2: oklch(0.7038 0.1230 182.5025) - teal */
+    --chart-2: 175 65% 42%;
+    /* Chart 3: oklch(0.7686 0.1647 70.0804) - orange */
+    --chart-3: 38 90% 58%;
+    /* Chart 4: oklch(0.6559 0.2118 354.3084) - pink */
+    --chart-4: 340 75% 55%;
+    /* Chart 5: oklch(0.7227 0.1920 149.5793) - green */
+    --chart-5: 145 65% 48%;
     
-    /* Sidebar - slightly darker lavender */
-    --sidebar: 270 40% 97%;
-    --sidebar-foreground: 270 50% 15%;
-    --sidebar-primary: 330 80% 60%;
+    /* Sidebar: oklch(0.9789 0.0082 121.6272) - warm light */
+    --sidebar: 90 15% 97%;
+    --sidebar-foreground: 0 0% 0%;
+    /* Sidebar Primary: oklch(0.5106 0.2301 276.9656) - purple */
+    --sidebar-primary: 262 83% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 270 40% 93%;
-    --sidebar-accent-foreground: 270 50% 25%;
-    --sidebar-border: 270 30% 90%;
-    --sidebar-ring: 330 80% 60%;
+    /* Sidebar Accent: oklch(0.7686 0.1647 70.0804) - orange */
+    --sidebar-accent: 38 90% 58%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    /* Sidebar Border: oklch(0 0 0) */
+    --sidebar-border: 0 0% 0%;
+    /* Sidebar Ring: oklch(0.7853 0.1041 274.7134) */
+    --sidebar-ring: 262 55% 65%;
     
-    /* Large radius for soft, friendly feel */
-    --radius: 1rem;
+    --radius: 0.625rem;
   }
 
   .dark {
-    /* Dark mode with deep purple tones */
-    --background: 270 30% 8%;
-    --foreground: 270 20% 95%;
+    /* Dark mode */
+    --background: 240 10% 6%;
+    --foreground: 0 0% 100%;
     
-    --card: 270 25% 12%;
-    --card-foreground: 270 20% 95%;
+    --card: 240 10% 10%;
+    --card-foreground: 0 0% 100%;
     
-    --popover: 270 25% 12%;
-    --popover-foreground: 270 20% 95%;
+    --popover: 240 10% 10%;
+    --popover-foreground: 0 0% 100%;
     
-    /* Primary: Brighter pink in dark mode */
-    --primary: 330 75% 65%;
-    --primary-foreground: 270 30% 8%;
+    /* Primary: Lighter purple in dark mode */
+    --primary: 262 75% 65%;
+    --primary-foreground: 0 0% 100%;
     
-    /* Secondary: Muted purple */
-    --secondary: 270 25% 18%;
-    --secondary-foreground: 270 20% 90%;
+    /* Secondary: Teal */
+    --secondary: 175 55% 38%;
+    --secondary-foreground: 0 0% 100%;
     
-    /* Muted tones */
-    --muted: 270 20% 16%;
-    --muted-foreground: 270 15% 60%;
+    /* Muted */
+    --muted: 240 8% 16%;
+    --muted-foreground: 0 0% 65%;
     
-    /* Accent: Soft coral */
-    --accent: 20 60% 18%;
-    --accent-foreground: 20 70% 85%;
+    /* Accent: Orange */
+    --accent: 38 85% 55%;
+    --accent-foreground: 0 0% 0%;
     
-    /* Status colors for dark mode */
-    --success: 150 50% 45%;
+    /* Status colors */
+    --success: 150 50% 40%;
     --success-foreground: 0 0% 100%;
-    --warning: 40 85% 55%;
-    --warning-foreground: 40 100% 10%;
-    --destructive: 0 65% 50%;
+    --warning: 38 85% 55%;
+    --warning-foreground: 0 0% 0%;
+    --destructive: 15 70% 45%;
     --destructive-foreground: 0 0% 100%;
     
     /* Borders */
-    --border: 270 20% 20%;
-    --input: 270 20% 20%;
-    --ring: 330 75% 65%;
+    --border: 240 8% 25%;
+    --input: 240 8% 30%;
+    --ring: 262 65% 60%;
     
-    /* Charts - adjusted for dark mode */
-    --chart-1: 330 75% 65%;
-    --chart-2: 200 70% 55%;
-    --chart-3: 150 50% 45%;
-    --chart-4: 40 85% 55%;
-    --chart-5: 270 55% 60%;
+    /* Charts */
+    --chart-1: 262 75% 65%;
+    --chart-2: 175 55% 45%;
+    --chart-3: 38 85% 55%;
+    --chart-4: 340 70% 55%;
+    --chart-5: 145 55% 45%;
     
-    /* Sidebar - slightly lighter than background */
-    --sidebar: 270 25% 10%;
-    --sidebar-foreground: 270 20% 95%;
-    --sidebar-primary: 330 75% 65%;
-    --sidebar-primary-foreground: 270 30% 8%;
-    --sidebar-accent: 270 25% 15%;
-    --sidebar-accent-foreground: 270 20% 90%;
-    --sidebar-border: 270 20% 18%;
-    --sidebar-ring: 330 75% 65%;
+    /* Sidebar */
+    --sidebar: 240 10% 8%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 262 75% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 38 85% 55%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-border: 240 8% 20%;
+    --sidebar-ring: 262 65% 60%;
   }
 }
 

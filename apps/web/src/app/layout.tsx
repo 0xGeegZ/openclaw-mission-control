@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Nunito } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { cn } from "@packages/ui/lib/utils";
 import "@packages/ui/styles/globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { Toaster } from "sonner";
 
-const nunito = Nunito({ 
+const geistSans = Geist({ 
   subsets: ["latin"],
   variable: "--font-sans",
-  weight: ["300", "400", "500", "600", "700", "800"],
+});
+
+const geistMono = Geist_Mono({ 
+  subsets: ["latin"],
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -24,7 +28,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={cn(nunito.variable, "font-sans antialiased")}>
+      <body className={cn(geistSans.variable, geistMono.variable, "font-sans antialiased")}>
         <ClerkProvider>
           <ConvexClientProvider>
             {children}
@@ -33,7 +37,7 @@ export default function RootLayout({
               toastOptions={{
                 className: "font-sans",
                 style: {
-                  borderRadius: "1rem",
+                  borderRadius: "0.625rem",
                 },
               }}
             />
