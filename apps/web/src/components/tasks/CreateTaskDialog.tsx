@@ -7,6 +7,8 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@packages/ui/components/dialog";
@@ -15,6 +17,7 @@ import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Textarea } from "@packages/ui/components/textarea";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 interface CreateTaskDialogProps {
   open: boolean;
@@ -44,7 +47,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         description: description.trim() || undefined,
       });
       
-      toast.success("Task created");
+      toast.success("Task created successfully");
       setTitle("");
       setDescription("");
       onOpenChange(false);
@@ -59,9 +62,12 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Task</DialogTitle>
+          <DialogDescription>
+            Add a new task to your inbox. You can assign agents and set priority later.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -70,28 +76,33 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Task title..."
+              placeholder="What needs to be done?"
               required
+              autoFocus
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">
+              Description <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
+              placeholder="Add more details about this task..."
               rows={3}
+              className="resize-none"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || !title.trim()}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSubmitting ? "Creating..." : "Create Task"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

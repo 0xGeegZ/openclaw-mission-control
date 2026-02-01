@@ -9,6 +9,10 @@ import { TaskThread } from "@/components/tasks/TaskThread";
 import { TaskDocuments } from "@/components/tasks/TaskDocuments";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 import { Skeleton } from "@packages/ui/components/skeleton";
+import { Card } from "@packages/ui/components/card";
+import { MessageSquare, FileText, AlertCircle } from "lucide-react";
+import { Button } from "@packages/ui/components/button";
+import Link from "next/link";
 
 interface TaskDetailPageProps {
   params: Promise<{ accountSlug: string; taskId: string }>;
@@ -28,27 +32,50 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
   
   if (task === null) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold">Task not found</h1>
+      <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 mb-4">
+          <AlertCircle className="h-7 w-7 text-destructive" />
+        </div>
+        <h1 className="text-xl font-semibold">Task not found</h1>
+        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+          This task may have been deleted or you don't have permission to view it.
+        </p>
+        <Button asChild className="mt-4">
+          <Link href={`/${accountSlug}/tasks`}>Back to Tasks</Link>
+        </Button>
       </div>
     );
   }
   
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-muted/30">
       <TaskHeader task={task} accountSlug={accountSlug} />
       
       <Tabs defaultValue="thread" className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="mx-6 mt-4">
-          <TabsTrigger value="thread">Thread</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-        </TabsList>
+        <div className="border-b bg-card px-6">
+          <TabsList className="h-12 bg-transparent p-0 w-auto">
+            <TabsTrigger 
+              value="thread" 
+              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Thread
+            </TabsTrigger>
+            <TabsTrigger 
+              value="documents"
+              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Documents
+            </TabsTrigger>
+          </TabsList>
+        </div>
         
-        <TabsContent value="thread" className="flex-1 overflow-hidden mt-4">
+        <TabsContent value="thread" className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden">
           <TaskThread taskId={task._id} accountSlug={accountSlug} />
         </TabsContent>
         
-        <TabsContent value="documents" className="flex-1 overflow-auto">
+        <TabsContent value="documents" className="flex-1 overflow-auto mt-0 data-[state=inactive]:hidden">
           <TaskDocuments taskId={task._id} />
         </TabsContent>
       </Tabs>
@@ -62,13 +89,27 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
 function TaskDetailSkeleton() {
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b p-6 space-y-4">
+      <div className="border-b bg-card p-6 space-y-4">
+        <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full max-w-md" />
+      </div>
+      <div className="border-b bg-card px-6 py-3">
+        <div className="flex gap-4">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-6 w-24" />
+        </div>
       </div>
       <div className="flex-1 p-6 space-y-4">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

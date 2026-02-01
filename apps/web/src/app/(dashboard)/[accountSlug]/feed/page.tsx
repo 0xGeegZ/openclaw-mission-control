@@ -5,6 +5,9 @@ import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { ActivityItem } from "@/components/feed/ActivityItem";
+import { Skeleton } from "@packages/ui/components/skeleton";
+import { Card } from "@packages/ui/components/card";
+import { Activity } from "lucide-react";
 
 interface FeedPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -23,28 +26,51 @@ export default function FeedPage({ params }: FeedPageProps) {
   );
   
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Activity Feed</h1>
+    <div className="flex flex-col h-full">
+      <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Activity Feed</h1>
+          <p className="text-sm text-muted-foreground">Recent actions across your workspace</p>
+        </div>
+      </header>
       
-      {activities === undefined ? (
-        <div className="text-center text-muted-foreground py-8">
-          Loading activities...
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-2xl mx-auto p-6">
+          {activities === undefined ? (
+            <Card className="divide-y">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex gap-3 p-4">
+                  <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                </div>
+              ))}
+            </Card>
+          ) : activities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
+                <Activity className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold">No activity yet</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                Activity from your team and agents will appear here.
+              </p>
+            </div>
+          ) : (
+            <Card className="divide-y divide-border">
+              {activities.map((activity) => (
+                <ActivityItem 
+                  key={activity._id} 
+                  activity={activity} 
+                  accountSlug={accountSlug} 
+                />
+              ))}
+            </Card>
+          )}
         </div>
-      ) : activities.length === 0 ? (
-        <div className="text-center text-muted-foreground py-8">
-          No activity yet.
-        </div>
-      ) : (
-        <div className="space-y-0">
-          {activities.map((activity) => (
-            <ActivityItem 
-              key={activity._id} 
-              activity={activity} 
-              accountSlug={accountSlug} 
-            />
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

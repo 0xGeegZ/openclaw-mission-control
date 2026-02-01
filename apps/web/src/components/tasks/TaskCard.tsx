@@ -16,11 +16,11 @@ interface TaskCardProps {
 }
 
 const priorityColors: Record<number, string> = {
-  1: "bg-red-500",
-  2: "bg-orange-500",
-  3: "bg-yellow-500",
-  4: "bg-blue-500",
-  5: "bg-gray-500",
+  1: "bg-destructive",
+  2: "bg-destructive/70",
+  3: "bg-primary/60",
+  4: "bg-primary/40",
+  5: "bg-muted-foreground/40",
 };
 
 /**
@@ -48,8 +48,9 @@ export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
       {...attributes}
       {...listeners}
       className={cn(
-        "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-50"
+        "cursor-grab active:cursor-grabbing transition-all",
+        "hover:shadow-md hover:border-primary/20",
+        isDragging && "opacity-50 shadow-lg rotate-2"
       )}
     >
       <CardHeader className="p-3 pb-2">
