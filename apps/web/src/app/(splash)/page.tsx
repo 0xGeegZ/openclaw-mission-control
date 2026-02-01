@@ -33,9 +33,9 @@ import {
 export default async function LandingPage() {
   const { userId } = await auth();
   
-  // Redirect authenticated users to dashboard
+  // Redirect authenticated users to dashboard gate (single redirect to first account or new-account)
   if (userId) {
-    redirect("/select-account");
+    redirect("/dashboard");
   }
   
   return (
