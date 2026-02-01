@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { Textarea } from "@packages/ui/components/textarea";
 import { Button } from "@packages/ui/components/button";
-import { Send } from "lucide-react";
+import { Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@packages/ui/lib/utils";
 
 interface MessageInputProps {
   taskId: Id<"tasks">;
@@ -54,19 +55,37 @@ export function MessageInput({ taskId }: MessageInputProps) {
   };
   
   return (
-    <form onSubmit={handleSubmit} className="border-t p-4">
-      <div className="flex gap-2">
-        <Textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message... (use @ to mention)"
-          rows={3}
-          className="resize-none"
-        />
-        <Button type="submit" disabled={!content.trim() || isSubmitting} size="icon">
-          <Send className="h-4 w-4" />
+    <form onSubmit={handleSubmit} className="border-t bg-card p-4">
+      <div className="flex gap-3 items-end">
+        <div className="flex-1">
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message... (use @ to mention agents)"
+            rows={2}
+            className={cn(
+              "resize-none min-h-[80px] transition-all",
+              "focus-visible:ring-primary/50"
+            )}
+          />
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Press <kbd className="px-1.5 py-0.5 text-[10px] font-semibold bg-muted rounded border">Enter</kbd> to send, <kbd className="px-1.5 py-0.5 text-[10px] font-semibold bg-muted rounded border">Shift + Enter</kbd> for new line
+          </p>
+        </div>
+        <Button 
+          type="submit" 
+          disabled={!content.trim() || isSubmitting} 
+          size="icon"
+          className="h-10 w-10 shrink-0"
+        >
+          {isSubmitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          <span className="sr-only">Send message</span>
         </Button>
       </div>
     </form>

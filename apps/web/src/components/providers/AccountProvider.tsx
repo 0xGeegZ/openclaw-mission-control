@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { AccountContext } from "@/lib/hooks/useAccount";
 
@@ -12,9 +12,15 @@ interface AccountProviderProps {
 
 /**
  * Provides account context to dashboard pages.
+ * Skips the account query until Convex has validated the auth token to avoid
+ * "Unauthenticated: No valid identity found" on initial load / refresh.
  */
 export function AccountProvider({ accountSlug, children }: AccountProviderProps) {
-  const account = useQuery(api.accounts.getBySlug, { slug: accountSlug });
+  const { isAuthenticated } = useConvexAuth();
+  const account = useQuery(
+    api.accounts.getBySlug,
+    isAuthenticated ? { slug: accountSlug } : "skip"
+  );
   
   const value = {
     account: account ?? null,

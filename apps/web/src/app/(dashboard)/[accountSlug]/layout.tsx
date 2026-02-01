@@ -20,14 +20,14 @@ export default async function AccountLayout({
   
   return (
     <AccountProvider accountSlug={accountSlug}>
-      <div className="flex h-screen">
+      <div className="flex h-screen isolate">
         {/* Desktop sidebar */}
-        <div className="hidden lg:block">
+        <aside className="hidden lg:block shrink-0">
           <Sidebar accountSlug={accountSlug} />
-        </div>
+        </aside>
         
         {/* Main content area */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
           {/* Mobile nav */}
           <MobileNav accountSlug={accountSlug} />
           
