@@ -11,7 +11,7 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 /**
- * Clerk middleware for route protection.
+ * Clerk proxy for route protection (Next.js 16 proxy convention).
  * Protects all routes except public ones.
  */
 export default clerkMiddleware(async (auth, req) => {
