@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
@@ -19,10 +19,15 @@ interface AccountSwitcherProps {
 
 /**
  * Dropdown to switch between accounts.
+ * Skips the query until Convex has validated the auth token to avoid unauthenticated errors on load.
  */
 export function AccountSwitcher({ currentSlug }: AccountSwitcherProps) {
   const router = useRouter();
-  const accounts = useQuery(api.accounts.listMyAccounts);
+  const { isAuthenticated } = useConvexAuth();
+  const accounts = useQuery(
+    api.accounts.listMyAccounts,
+    isAuthenticated ? {} : "skip"
+  );
   
   if (!accounts) {
     return (
