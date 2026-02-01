@@ -20,6 +20,11 @@ export default clerkMiddleware(async (auth, req) => {
   }
 });
 
+/**
+ * Run proxy for all routes except _next so that auth context is set even for
+ * static-looking requests (e.g. /favicon.ico, /exportServiceWorker.js).
+ * Otherwise 404s for those paths still render the root layout and auth() fails.
+ */
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: ["/((?!_next).*)", "/(api|trpc)(.*)"],
 };
