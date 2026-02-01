@@ -30,8 +30,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 3. **Set up environment variables**
    ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your Clerk and Convex keys
+   cp apps/web/.env.example apps/web/.env.local
+   # Edit apps/web/.env.local with your Clerk and Convex keys (validated via @packages/env at build)
    ```
 
 4. **Start development servers**

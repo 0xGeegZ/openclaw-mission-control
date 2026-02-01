@@ -5,7 +5,9 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useAuth } from "@clerk/nextjs";
 import { ReactNode } from "react";
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL || "");
+import { env } from "@packages/env/nextjs-client";
+
+const convex = new ConvexReactClient(env.NEXT_PUBLIC_CONVEX_URL);
 
 /**
  * Convex client provider with Clerk auth for the Next.js app.

@@ -68,8 +68,10 @@ nvm use
 npm install
 
 # 4. Set up environment variables
-cp .env.example .env.local
-# Edit .env.local with your Clerk and Convex keys
+# Web app: copy apps/web/.env.example to apps/web/.env.local and fill in Convex + Clerk keys.
+# Env is type-safe via @packages/env (t3-env); build fails if required vars are missing.
+cp apps/web/.env.example apps/web/.env.local
+# Edit apps/web/.env.local with your Clerk and Convex keys
 
 # 5. Start Convex backend (in a separate terminal)
 cd packages/backend
@@ -83,19 +85,15 @@ npm run dev
 
 ### Environment Variables
 
-Create a `.env.local` file in the project root:
+Create a `.env.local` file in **apps/web** (see `apps/web/.env.example`). The web app validates env at build and runtime via **@packages/env** ([t3-env](https://env.t3.gg/)); missing or invalid required vars cause a clear error.
 
 ```env
-# Convex
+# Convex (get URL from packages/backend after npx convex dev)
 NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-CONVEX_DEPLOY_KEY=your-deploy-key
 
-# Clerk
+# Clerk (from https://dashboard.clerk.com)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
-
-# Optional: OpenClaw (for runtime service)
-OPENCLAW_API_KEY=your-openclaw-key
 ```
 
 ---

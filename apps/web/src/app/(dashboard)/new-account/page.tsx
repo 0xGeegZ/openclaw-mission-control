@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
-import { useAccount } from "@/lib/hooks/useAccount";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
@@ -15,16 +14,41 @@ import { Building2 } from "lucide-react";
 /**
  * Account creation page.
  * Allows users to create a new account after signing up.
+ * Uses Convex Authenticated so listMyAccounts runs only after the client has a valid token.
  */
 export default function NewAccountPage() {
+  return (
+    <>
+      <AuthLoading>
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </AuthLoading>
+      <Unauthenticated>
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-muted-foreground">Redirecting to sign in...</p>
+        </div>
+      </Unauthenticated>
+      <Authenticated>
+        <NewAccountContent />
+      </Authenticated>
+    </>
+  );
+}
+
+/**
+ * Inner content that calls auth-required Convex queries.
+ * Only rendered when Convex has validated the Clerk token.
+ */
+function NewAccountContent() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const createAccount = useMutation(api.accounts.create);
   const myAccounts = useQuery(api.accounts.listMyAccounts);
-  
+
   // Redirect to first account if user already has accounts
   useEffect(() => {
     if (myAccounts && myAccounts.length > 0) {
@@ -34,17 +58,21 @@ export default function NewAccountPage() {
       }
     }
   }, [myAccounts, router]);
-  
+
   // Show loading state while checking accounts
   if (myAccounts === undefined) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Loading accounts...</p>
+      </div>
+    );
   }
-  
+
   // Don't render form if user has accounts (will redirect)
   if (myAccounts && myAccounts.length > 0) {
     return null;
   }
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;

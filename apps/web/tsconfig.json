@@ -34,6 +34,9 @@
       ],
       "@packages/backend": [
         "../../packages/backend"
+      ],
+      "@packages/env/*": [
+        "../../packages/env/src/*"
       ]
     }
   },

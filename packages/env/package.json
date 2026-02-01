@@ -1,0 +1,25 @@
+{
+  "name": "@packages/env",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./nextjs-client": "./src/nextjs-client.ts",
+    "./nextjs-server": "./src/nextjs-server.ts",
+    "./native": "./src/native.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.10",
+    "@t3-oss/env-nextjs": "^0.13.10",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "zod": "^3"
+  }
+}

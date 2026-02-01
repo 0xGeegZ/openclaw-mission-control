@@ -202,7 +202,9 @@ import { KanbanBoard } from "@/components/tasks/KanbanBoard";
 
 ## Environment Variables
 
-### Web App (.env.local)
+App env is validated via **@packages/env** ([t3-env](https://env.t3.gg/)) in the web app (and, when built, the native app). Use `env` from `@packages/env/nextjs-client` or `@packages/env/nextjs-server` instead of `process.env`.
+
+### Web App (apps/web/.env.local)
 ```
 NEXT_PUBLIC_CONVEX_URL=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
