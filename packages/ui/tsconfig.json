@@ -13,7 +13,8 @@
     "declarationMap": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@packages/ui/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],
