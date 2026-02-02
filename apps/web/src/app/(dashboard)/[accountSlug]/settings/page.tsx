@@ -247,33 +247,32 @@ export default function SettingsPage({ params }: SettingsPageProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto p-6">
-          <Tabs defaultValue="general" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
-              <TabsTrigger value="general" className="gap-2">
-                <Building2 className="h-4 w-4 hidden sm:inline" />
-                General
-              </TabsTrigger>
-              <TabsTrigger value="members" className="gap-2">
-                <Users className="h-4 w-4 hidden sm:inline" />
-                Members
-              </TabsTrigger>
-              <TabsTrigger value="notifications" className="gap-2">
-                <Bell className="h-4 w-4 hidden sm:inline" />
-                Notifications
-              </TabsTrigger>
-              <TabsTrigger value="appearance" className="gap-2">
-                <Palette className="h-4 w-4 hidden sm:inline" />
-                Appearance
-              </TabsTrigger>
-              <TabsTrigger value="billing" className="gap-2">
-                <CreditCard className="h-4 w-4 hidden sm:inline" />
-                Billing
-              </TabsTrigger>
-            </TabsList>
+      <div className="flex-1 overflow-auto p-6">
+        <Tabs defaultValue="general" className="w-full max-w-4xl mx-auto space-y-6">
+          <TabsList className="inline-flex w-auto">
+            <TabsTrigger value="general" className="gap-2">
+              <Building2 className="h-4 w-4 hidden sm:inline" />
+              General
+            </TabsTrigger>
+            <TabsTrigger value="members" className="gap-2">
+              <Users className="h-4 w-4 hidden sm:inline" />
+              Members
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="gap-2">
+              <Bell className="h-4 w-4 hidden sm:inline" />
+              Notifications
+            </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="h-4 w-4 hidden sm:inline" />
+              Appearance
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="gap-2">
+              <CreditCard className="h-4 w-4 hidden sm:inline" />
+              Billing
+            </TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="general" className="mt-6 space-y-6 flex-none outline-none">
+          <TabsContent value="general" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -362,7 +361,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               )}
             </TabsContent>
 
-            <TabsContent value="members" className="mt-6 space-y-6 flex-none outline-none">
+            <TabsContent value="members" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -458,7 +457,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="mt-6 space-y-6 flex-none outline-none">
+            <TabsContent value="notifications" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -530,7 +529,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               </Card>
             </TabsContent>
 
-            <TabsContent value="appearance" className="mt-6 space-y-6 flex-none outline-none">
+            <TabsContent value="appearance" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -555,7 +554,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               </Card>
             </TabsContent>
 
-            <TabsContent value="billing" className="mt-6 space-y-6 flex-none outline-none">
+            <TabsContent value="billing" className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -578,9 +577,8 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Invite dialog */}

@@ -117,26 +117,27 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
         </div>
       </header>
       
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {isLoading ? (
-          <div className="grid gap-6 md:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="border-border/50">
-                <CardHeader>
-                  <Skeleton className="h-5 w-32 animate-shimmer" />
-                  <Skeleton className="h-4 w-48 animate-shimmer" />
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Skeleton className="h-10 w-full animate-shimmer" />
-                  <Skeleton className="h-10 w-full animate-shimmer" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* Runtime Status Section */}
-            <div className="grid gap-6 md:grid-cols-3">
+      <div className="flex-1 overflow-auto p-6">
+        <div className="w-full max-w-5xl mx-auto space-y-6">
+          {isLoading ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i} className="border-border/50">
+                  <CardHeader>
+                    <Skeleton className="h-5 w-32 animate-shimmer" />
+                    <Skeleton className="h-4 w-48 animate-shimmer" />
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Skeleton className="h-10 w-full animate-shimmer" />
+                    <Skeleton className="h-10 w-full animate-shimmer" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Runtime Status Section */}
+              <div className="grid gap-6 md:grid-cols-3">
               <Card className="border-border/50 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -467,10 +468,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                     </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
-            </Tabs>
-          </>
-        )}
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
