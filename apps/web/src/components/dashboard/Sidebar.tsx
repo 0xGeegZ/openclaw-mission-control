@@ -18,6 +18,7 @@ import {
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 import { UserButton } from "@clerk/nextjs";
 import { Separator } from "@packages/ui/components/separator";
 import { Button } from "@packages/ui/components/button";
@@ -280,7 +281,13 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                 },
               }}
             />
-            <NotificationBell accountSlug={accountSlug} />
+            <div className={cn(
+              "flex items-center",
+              isCollapsed ? "flex-col gap-2" : "gap-2"
+            )}>
+              <ThemeSwitcher isCollapsed={isCollapsed} />
+              <NotificationBell accountSlug={accountSlug} />
+            </div>
           </div>
         </div>
       </aside>
