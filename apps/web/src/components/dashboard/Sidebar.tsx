@@ -66,37 +66,54 @@ export function Sidebar({ accountSlug }: SidebarProps) {
       >
         {/* Logo/Brand */}
         <div className="flex h-16 items-center border-b px-3">
-          <div className="flex items-center justify-between w-full">
-            <Link href={`/${accountSlug}/tasks`} className="flex items-center gap-2.5 group">
+          <div className={cn(
+            "flex items-center w-full group/header",
+            isCollapsed ? "justify-center" : "justify-between"
+          )}>
+            <Link 
+              href={`/${accountSlug}/tasks`} 
+              className={cn(
+                "flex items-center gap-2.5 group relative",
+                isCollapsed && "justify-center"
+              )}
+            >
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary transition-transform group-hover:scale-105 shrink-0">
-                <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
+                <LayoutDashboard className={cn(
+                  "h-5 w-5 text-primary-foreground transition-opacity",
+                  isCollapsed && "group-hover/header:opacity-0"
+                )} />
+                {isCollapsed && (
+                  <PanelLeft className="h-5 w-5 text-primary-foreground absolute opacity-0 group-hover/header:opacity-100 transition-opacity" />
+                )}
               </div>
               {!isCollapsed && (
                 <span className="font-semibold text-foreground whitespace-nowrap">Mission Control</span>
               )}
             </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleSidebar}
-                  className={cn("h-8 w-8 shrink-0", isCollapsed && "mx-auto")}
-                >
-                  {isCollapsed ? (
-                    <PanelLeft className="h-4 w-4" />
-                  ) : (
+            {isCollapsed ? (
+              <button
+                onClick={toggleSidebar}
+                className="absolute inset-0 w-full h-full cursor-pointer z-10"
+                aria-label="Expand sidebar"
+              />
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleSidebar}
+                    className="h-8 w-8 shrink-0"
+                  >
                     <PanelLeftClose className="h-4 w-4" />
-                  )}
-                  <span className="sr-only">
-                    {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  </span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">
-                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              </TooltipContent>
-            </Tooltip>
+                    <span className="sr-only">Collapse sidebar</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  Collapse sidebar
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
         
