@@ -18,6 +18,8 @@ export interface RuntimeConfig {
   deliveryInterval: number;
   /** Health check interval to Convex (ms) */
   healthCheckInterval: number;
+  /** Agent list sync interval (ms); new agents picked up without restart */
+  agentSyncInterval: number;
   /** Log level */
   logLevel: LogLevel;
   /** Delivery backoff base delay (ms) */
@@ -137,6 +139,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     healthHost: process.env.HEALTH_HOST || "127.0.0.1",
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
     healthCheckInterval: parseIntOrDefault(process.env.HEALTH_CHECK_INTERVAL, 60000),
+    agentSyncInterval: parseIntOrDefault(process.env.AGENT_SYNC_INTERVAL, 60000),
     logLevel,
     deliveryBackoffBaseMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_BASE_MS, 5000),
     deliveryBackoffMaxMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_MAX_MS, 300000),

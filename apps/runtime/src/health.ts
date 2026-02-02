@@ -1,6 +1,7 @@
 import http from "http";
 import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
+import { getAgentSyncState } from "./agent-sync";
 import { getDeliveryState } from "./delivery";
 import { getGatewayState } from "./gateway";
 import { getHeartbeatState } from "./heartbeat";
@@ -41,6 +42,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       const delivery = getDeliveryState();
       const gateway = getGatewayState();
       const heartbeat = getHeartbeatState();
+      const agentSync = getAgentSyncState();
 
       const health = {
         status: gateway.isRunning && delivery.isRunning ? "healthy" : "degraded",
@@ -73,6 +75,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         heartbeat: {
           running: heartbeat.isRunning,
           scheduledAgents: heartbeat.scheduledCount,
+        },
+        agentSync: {
+          running: agentSync.running,
+          lastSyncAt: agentSync.lastSyncAt,
+          lastError: agentSync.lastError,
+          addedCount: agentSync.addedCount,
+          removedCount: agentSync.removedCount,
         },
         memory: process.memoryUsage(),
 

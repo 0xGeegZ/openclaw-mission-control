@@ -74,6 +74,7 @@ See `apps/runtime/.env.example`. Summary:
 | `SERVICE_TOKEN` | Yes | Convex service token (account-scoped). |
 | `HEALTH_HOST` | No | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works. |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
+| `AGENT_SYNC_INTERVAL` | No | Agent list sync interval in ms; new agents picked up without restart (default `60000`). |
 | `CLAWDBOT_GATEWAY_TOKEN` | No | Gateway auth token (default `local` for local dev). |
 | `VERCEL_AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key; when set, agents use Haiku 4.5 primary, Sonnet 4.5 fallback. |
 

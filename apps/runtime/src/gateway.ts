@@ -47,6 +47,39 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   log.info("Initialized with", state.sessions.size, "sessions");
 }
 
+/** Agent shape from listAgents (minimal for registration). */
+export interface AgentForSession {
+  _id: Id<"agents">;
+  sessionKey: string;
+}
+
+/**
+ * Register or update a single agent session (idempotent).
+ * Used by agent sync to add new agents without restart.
+ */
+export function registerAgentSession(agent: AgentForSession): void {
+  state.sessions.set(agent.sessionKey, {
+    sessionKey: agent.sessionKey,
+    agentId: agent._id,
+    lastMessage: null,
+  });
+  log.debug("Registered session:", agent.sessionKey);
+}
+
+/**
+ * Remove a session by agent id.
+ * Used by agent sync when an agent is deleted in Convex.
+ */
+export function removeAgentSession(agentId: Id<"agents">): void {
+  for (const [key, info] of state.sessions.entries()) {
+    if (info.agentId === agentId) {
+      state.sessions.delete(key);
+      log.debug("Removed session:", key);
+      return;
+    }
+  }
+}
+
 /**
  * Send a message to an OpenClaw session.
  */

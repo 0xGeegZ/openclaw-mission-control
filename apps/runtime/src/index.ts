@@ -1,4 +1,5 @@
 import { loadConfig, RuntimeConfig } from "./config";
+import { startAgentSync, stopAgentSync } from "./agent-sync";
 import { initConvexClient, getConvexClient, api } from "./convex-client";
 import { startDeliveryLoop, stopDeliveryLoop } from "./delivery";
 import { initGateway, shutdownGateway } from "./gateway";
@@ -48,6 +49,7 @@ async function main() {
     await initGateway(config);
     startDeliveryLoop(config);
     await startHeartbeats(config);
+    startAgentSync(config);
     startHealthServer(config);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -80,6 +82,7 @@ async function shutdown() {
   log.info("Shutting down...");
 
   stopDeliveryLoop();
+  stopAgentSync();
   stopHeartbeats();
   await shutdownGateway();
   stopHealthServer();

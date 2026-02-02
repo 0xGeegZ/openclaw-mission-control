@@ -16,7 +16,8 @@ The runtime:
 2. Starts the **OpenClaw gateway** and registers agent sessions (session keys like `agent:{slug}:{accountId}`).
 3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session.
 4. **Heartbeat scheduler**: wakes each agent on its schedule to check for work and report status.
-5. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
+5. **Agent sync**: periodically fetches the agent list from Convex so new agents go online without restarting the runtime.
+6. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
 
 See [docs/concept/mission-control-initial-article.md](../../docs/concept/mission-control-initial-article.md) and [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) for full context.
 
@@ -39,6 +40,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `HEALTH_PORT` | No | HTTP port for health server (default `3001`). |
 | `DELIVERY_INTERVAL` | No | Notification poll interval in ms (default `5000`). |
 | `HEALTH_CHECK_INTERVAL` | No | Convex status report interval in ms (default `60000`). |
+| `AGENT_SYNC_INTERVAL` | No | Agent list sync interval in ms; new agents picked up without restart (default `60000`). |
 | `RUNTIME_VERSION` | No | Override version (default: `package.json` version). |
 | `OPENCLAW_VERSION` | No | Override if `openclaw --version` fails. |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
@@ -122,12 +124,13 @@ On `SIGTERM` or `SIGINT`, the runtime:
 ```
 apps/runtime/
 ├── src/
-│   ├── index.ts        # Entry point; starts gateway, delivery, heartbeat, health
+│   ├── index.ts        # Entry point; starts gateway, delivery, heartbeat, agent-sync, health
 │   ├── config.ts       # Env-based config and OpenClaw version detection
 │   ├── convex-client.ts # Convex client for service actions
 │   ├── gateway.ts      # OpenClaw gateway and session registration
-│   ├── delivery.ts      # Notification delivery loop (with backoff)
+│   ├── delivery.ts     # Notification delivery loop (with backoff)
 │   ├── heartbeat.ts    # Per-agent heartbeat scheduler
+│   ├── agent-sync.ts   # Periodic agent list sync (new agents without restart)
 │   ├── health.ts       # HTTP health server and Convex status updates
 │   ├── logger.ts       # Structured logger with levels and secret redaction
 │   ├── backoff.ts      # Exponential backoff with jitter
