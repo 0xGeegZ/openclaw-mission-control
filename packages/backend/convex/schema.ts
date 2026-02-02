@@ -746,6 +746,8 @@ export default defineSchema({
     email: v.string(),
     role: memberRoleValidator,
     invitedBy: v.string(),
+    /** Unique token for invite link (e.g. /invite/[token]). Set when creating. */
+    token: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("accepted"),
@@ -756,7 +758,8 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_email", ["email"])
-    .index("by_account_status", ["accountId", "status"]),
+    .index("by_account_status", ["accountId", "status"])
+    .index("by_token", ["token"]),
 
   // ==========================================================================
   // RUNTIMES (v2)
