@@ -1,6 +1,8 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
+import { useMutation, useAction } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
@@ -22,6 +24,9 @@ import {
   Zap,
   Shield,
   Save,
+  KeyRound,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   Select,
@@ -37,6 +42,7 @@ import {
   TabsTrigger,
 } from "@packages/ui/components/tabs";
 import { toast } from "sonner";
+import { cn } from "@packages/ui/lib/utils";
 
 interface OpenClawPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -46,18 +52,53 @@ interface OpenClawPageProps {
  * Admin page for managing OpenClaw runtime configuration.
  * Only accessible to admin and owner roles.
  */
+const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_HISTORY = 50;
+
 export default function OpenClawPage({ params }: OpenClawPageProps) {
   use(params);
-  const { account, isLoading, isAdmin } = useAccount();
-  
-  // Runtime status
+  const { account, accountId, isLoading, isAdmin } = useAccount();
+  const updateAccount = useMutation(api.accounts.update);
+  const requestRestart = useMutation(api.accounts.requestRestart);
+  const provisionServiceToken = useAction(api.service.actions.provisionServiceToken);
+  const syncServiceToken = useAction(api.service.actions.syncServiceToken);
+
   const runtimeStatus = account?.runtimeStatus;
   const runtimeConfig = account?.runtimeConfig;
-  
-  // Local state for config editing
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-20250514");
-  const [temperature, setTemperature] = useState("0.7");
-  const [maxTokens, setMaxTokens] = useState("4096");
+  const agentDefaults = (account as { settings?: { agentDefaults?: { model?: string; temperature?: number; maxTokens?: number; maxHistoryMessages?: number; behaviorFlags?: { canCreateTasks?: boolean; canModifyTaskStatus?: boolean; canCreateDocuments?: boolean; canMentionAgents?: boolean }; rateLimits?: { requestsPerMinute?: number; tokensPerDay?: number } } } })?.settings?.agentDefaults;
+
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [temperature, setTemperature] = useState(String(DEFAULT_TEMPERATURE));
+  const [maxTokens, setMaxTokens] = useState(String(DEFAULT_MAX_TOKENS));
+  const [maxHistoryMessages, setMaxHistoryMessages] = useState(String(DEFAULT_MAX_HISTORY));
+  const [behaviorFlags, setBehaviorFlags] = useState({
+    canCreateTasks: false,
+    canModifyTaskStatus: true,
+    canCreateDocuments: true,
+    canMentionAgents: true,
+  });
+  const [rateRpm, setRateRpm] = useState("20");
+  const [rateTpd, setRateTpd] = useState("100000");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [existingToken, setExistingToken] = useState("");
+  const [isSyncingToken, setIsSyncingToken] = useState(false);
+
+  useEffect(() => {
+    if (!agentDefaults) return;
+    if (agentDefaults.model) setSelectedModel(agentDefaults.model);
+    if (agentDefaults.temperature != null) setTemperature(String(agentDefaults.temperature));
+    if (agentDefaults.maxTokens != null) setMaxTokens(String(agentDefaults.maxTokens));
+    if (agentDefaults.maxHistoryMessages != null) setMaxHistoryMessages(String(agentDefaults.maxHistoryMessages));
+    if (agentDefaults.behaviorFlags) setBehaviorFlags((prev) => ({ ...prev, ...agentDefaults.behaviorFlags }));
+    if (agentDefaults.rateLimits?.requestsPerMinute != null) setRateRpm(String(agentDefaults.rateLimits.requestsPerMinute));
+    if (agentDefaults.rateLimits?.tokensPerDay != null) setRateTpd(String(agentDefaults.rateLimits.tokensPerDay));
+  }, [agentDefaults]);
   
   const getStatusIcon = (status: string | undefined) => {
     switch (status) {
@@ -290,7 +331,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           type="number" 
                           min="5" 
                           max="100" 
-                          defaultValue="20"
+                          value={maxHistoryMessages}
+                          onChange={(e) => setMaxHistoryMessages(e.target.value)}
                           className="rounded-xl"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -304,10 +346,37 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                     <div className="flex justify-end">
                       <Button 
                         className="rounded-xl shadow-sm"
-                        onClick={() => toast.success("Configuration saved", { description: "Default agent settings have been updated." })}
+                        disabled={!accountId || isSaving}
+                        onClick={async () => {
+                          if (!accountId) return;
+                          setIsSaving(true);
+                          try {
+                            await updateAccount({
+                              accountId,
+                              settings: {
+                                agentDefaults: {
+                                  model: selectedModel,
+                                  temperature: parseFloat(temperature) || DEFAULT_TEMPERATURE,
+                                  maxTokens: parseInt(maxTokens, 10) || DEFAULT_MAX_TOKENS,
+                                  maxHistoryMessages: parseInt(maxHistoryMessages, 10) || DEFAULT_MAX_HISTORY,
+                                  behaviorFlags,
+                                  rateLimits: {
+                                    requestsPerMinute: parseInt(rateRpm, 10) || 20,
+                                    tokensPerDay: parseInt(rateTpd, 10) || 100000,
+                                  },
+                                },
+                              },
+                            });
+                            toast.success("Configuration saved", { description: "Default agent settings have been updated." });
+                          } catch (e) {
+                            toast.error("Failed to save", { description: e instanceof Error ? e.message : "Unknown error" });
+                          } finally {
+                            setIsSaving(false);
+                          }
+                        }}
                       >
                         <Save className="h-4 w-4 mr-2" />
-                        Save Defaults
+                        {isSaving ? "Saving…" : "Save Defaults"}
                       </Button>
                     </div>
                   </CardContent>
@@ -323,16 +392,17 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   <CardContent>
                     <div className="grid gap-4 md:grid-cols-2">
                       {[
-                        { id: "create-tasks", label: "Can Create Tasks", description: "Allow agents to create new tasks" },
-                        { id: "modify-status", label: "Can Modify Task Status", description: "Allow agents to change task statuses" },
-                        { id: "create-docs", label: "Can Create Documents", description: "Allow agents to create documents" },
-                        { id: "mention-agents", label: "Can Mention Agents", description: "Allow agents to mention other agents" },
+                        { id: "create-tasks", key: "canCreateTasks" as const, label: "Can Create Tasks", description: "Allow agents to create new tasks" },
+                        { id: "modify-status", key: "canModifyTaskStatus" as const, label: "Can Modify Task Status", description: "Allow agents to change task statuses" },
+                        { id: "create-docs", key: "canCreateDocuments" as const, label: "Can Create Documents", description: "Allow agents to create documents" },
+                        { id: "mention-agents", key: "canMentionAgents" as const, label: "Can Mention Agents", description: "Allow agents to mention other agents" },
                       ].map((flag) => (
                         <div key={flag.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/30">
                           <input 
                             type="checkbox" 
                             id={flag.id} 
-                            defaultChecked 
+                            checked={behaviorFlags[flag.key]}
+                            onChange={(e) => setBehaviorFlags((prev) => ({ ...prev, [flag.key]: e.target.checked }))}
                             className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                           />
                           <div>
@@ -397,6 +467,123 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
               <TabsContent value="advanced" className="space-y-6">
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-primary" />
+                      Runtime service token
+                    </CardTitle>
+                    <CardDescription>
+                      Used by the Mission Control runtime to authenticate with Convex. Add it to <code className="text-xs bg-muted px-1 rounded">apps/runtime/.env</code> as <code className="text-xs bg-muted px-1 rounded">SERVICE_TOKEN=...</code>. Generating a new token invalidates the previous one.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-4">
+                      {generatedToken ? (
+                        <>
+                          <div className="flex gap-2">
+                            <Input
+                              readOnly
+                              value={generatedToken}
+                              className="font-mono text-sm rounded-xl bg-muted/50"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="rounded-xl shrink-0"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(generatedToken);
+                                setTokenCopied(true);
+                                setTimeout(() => setTokenCopied(false), 2000);
+                              }}
+                            >
+                              {tokenCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-amber-600 dark:text-amber-500">
+                            Copy this token now; it will not be shown again. Any runtime using an old token will stop working.
+                          </p>
+                          <Button
+                            variant="secondary"
+                            className="rounded-xl"
+                            onClick={() => setGeneratedToken(null)}
+                          >
+                            Dismiss
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          className="rounded-xl"
+                          disabled={!accountId || isGeneratingToken}
+                          onClick={async () => {
+                            if (!accountId) return;
+                            setIsGeneratingToken(true);
+                            setGeneratedToken(null);
+                            try {
+                              const { token } = await provisionServiceToken({ accountId });
+                              setGeneratedToken(token);
+                              toast.success("Token generated", { description: "Copy it to your runtime .env as SERVICE_TOKEN." });
+                            } catch (e) {
+                              toast.error("Failed to generate token", { description: e instanceof Error ? e.message : "Unknown error" });
+                            } finally {
+                              setIsGeneratingToken(false);
+                            }
+                          }}
+                        >
+                          <KeyRound className={cn("h-4 w-4 mr-2", isGeneratingToken && "animate-pulse")} />
+                          {isGeneratingToken ? "Generating…" : "Generate service token"}
+                        </Button>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <Label htmlFor="existing-service-token">Use existing token</Label>
+                      <Input
+                        id="existing-service-token"
+                        value={existingToken}
+                        onChange={(event) => setExistingToken(event.target.value)}
+                        placeholder="mc_service_{accountId}_{secret}"
+                        className="font-mono text-sm rounded-xl"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          className="rounded-xl"
+                          disabled={!accountId || isSyncingToken || !existingToken.trim()}
+                          onClick={async () => {
+                            if (!accountId || !existingToken.trim()) return;
+                            setIsSyncingToken(true);
+                            try {
+                              await syncServiceToken({ accountId, serviceToken: existingToken });
+                              toast.success("Token synced", { description: "Convex now accepts the token in your runtime .env." });
+                              setExistingToken("");
+                            } catch (e) {
+                              toast.error("Failed to sync token", { description: e instanceof Error ? e.message : "Unknown error" });
+                            } finally {
+                              setIsSyncingToken(false);
+                            }
+                          }}
+                        >
+                          {isSyncingToken ? "Syncing…" : "Sync token"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          disabled={!existingToken.trim()}
+                          onClick={() => setExistingToken("")}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Syncing stores only the token hash in Convex. The plaintext token is not saved.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/50 shadow-sm">
+                  <CardHeader>
                     <CardTitle>Rate Limiting</CardTitle>
                     <CardDescription>
                       Configure rate limits to control API usage and costs
@@ -411,7 +598,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           type="number" 
                           min="1" 
                           max="100" 
-                          defaultValue="20"
+                          value={rateRpm}
+                          onChange={(e) => setRateRpm(e.target.value)}
                           className="rounded-xl"
                         />
                       </div>
@@ -423,7 +611,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           type="number" 
                           min="1000" 
                           max="10000000" 
-                          defaultValue="100000"
+                          value={rateTpd}
+                          onChange={(e) => setRateTpd(e.target.value)}
                           className="rounded-xl"
                         />
                       </div>
@@ -446,9 +635,25 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           Restart the OpenClaw runtime service. This will briefly interrupt agent operations.
                         </p>
                       </div>
-                      <Button variant="outline" className="rounded-xl">
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Restart
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        disabled={!accountId || isRestarting}
+                        onClick={async () => {
+                          if (!accountId) return;
+                          setIsRestarting(true);
+                          try {
+                            await requestRestart({ accountId });
+                            toast.success("Restart requested", { description: "The runtime will restart when it polls next." });
+                          } catch (e) {
+                            toast.error("Failed to request restart", { description: e instanceof Error ? e.message : "Unknown error" });
+                          } finally {
+                            setIsRestarting(false);
+                          }
+                        }}
+                      >
+                        <RefreshCw className={cn("h-4 w-4 mr-2", isRestarting && "animate-spin")} />
+                        {isRestarting ? "Requesting…" : "Restart"}
                       </Button>
                     </div>
                     

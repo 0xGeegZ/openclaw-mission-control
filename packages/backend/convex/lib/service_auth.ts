@@ -23,7 +23,7 @@ export interface ServiceContext {
  * Hash a service token secret for storage.
  * Uses Web Crypto API (SHA-256) which works in all Convex environments.
  */
-async function hashServiceTokenSecret(secret: string): Promise<string> {
+export async function hashServiceTokenSecret(secret: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(secret);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);

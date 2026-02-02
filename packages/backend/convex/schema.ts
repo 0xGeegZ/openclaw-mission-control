@@ -82,7 +82,10 @@ const notificationTypeValidator = v.union(
   v.literal("mention"),
   v.literal("assignment"),
   v.literal("thread_update"),
-  v.literal("status_change")
+  v.literal("status_change"),
+  v.literal("member_added"),
+  v.literal("member_removed"),
+  v.literal("role_changed")
 );
 
 /**
@@ -98,7 +101,8 @@ const activityTypeValidator = v.union(
   v.literal("agent_status_changed"),
   v.literal("runtime_status_changed"),
   v.literal("member_added"),
-  v.literal("member_removed")
+  v.literal("member_removed"),
+  v.literal("member_updated")
 );
 
 /**
@@ -170,15 +174,35 @@ export default defineSchema({
     /** Service token hash for runtime authentication */
     serviceTokenHash: v.optional(v.string()),
     
-    /** Workspace settings (theme, notification preferences). */
+    /** Workspace settings (theme, notification preferences, agent defaults). */
     settings: v.optional(v.object({
       theme: v.optional(v.string()),
       notificationPreferences: v.optional(v.object({
         taskUpdates: v.boolean(),
         agentActivity: v.boolean(),
         emailDigest: v.boolean(),
+        memberUpdates: v.boolean(),
+      })),
+      /** Default OpenClaw config for new agents (admin-editable). */
+      agentDefaults: v.optional(v.object({
+        model: v.optional(v.string()),
+        temperature: v.optional(v.number()),
+        maxTokens: v.optional(v.number()),
+        maxHistoryMessages: v.optional(v.number()),
+        behaviorFlags: v.optional(v.object({
+          canCreateTasks: v.boolean(),
+          canModifyTaskStatus: v.boolean(),
+          canCreateDocuments: v.boolean(),
+          canMentionAgents: v.boolean(),
+        })),
+        rateLimits: v.optional(v.object({
+          requestsPerMinute: v.optional(v.number()),
+          tokensPerDay: v.optional(v.number()),
+        })),
       })),
     })),
+    /** Timestamp when admin requested runtime restart; runtime clears after restart. */
+    restartRequestedAt: v.optional(v.number()),
   })
     .index("by_slug", ["slug"]),
 
@@ -712,4 +736,125 @@ export default defineSchema({
     .index("by_task", ["taskId"])
     .index("by_subscriber", ["subscriberType", "subscriberId"])
     .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"]),
+
+  // ==========================================================================
+  // INVITATIONS
+  // Email-based invites to join an account (pending/accepted/expired).
+  // ==========================================================================
+  invitations: defineTable({
+    accountId: v.id("accounts"),
+    email: v.string(),
+    role: memberRoleValidator,
+    invitedBy: v.string(),
+    /** Unique token for invite link (e.g. /invite/[token]). Set when creating. */
+    token: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired")
+    ),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_email", ["email"])
+    .index("by_account_status", ["accountId", "status"])
+    .index("by_token", ["token"]),
+
+  // ==========================================================================
+  // RUNTIMES (v2)
+  // Dedicated runtime per account for fleet management and upgrades.
+  // ==========================================================================
+  runtimes: defineTable({
+    accountId: v.id("accounts"),
+    provider: v.union(
+      v.literal("digitalocean"),
+      v.literal("fly"),
+      v.literal("aws"),
+      v.literal("gcp")
+    ),
+    providerId: v.string(),
+    ipAddress: v.string(),
+    region: v.string(),
+    openclawVersion: v.string(),
+    runtimeServiceVersion: v.string(),
+    dockerImageTag: v.string(),
+    status: v.union(
+      v.literal("provisioning"),
+      v.literal("online"),
+      v.literal("degraded"),
+      v.literal("offline"),
+      v.literal("upgrading"),
+      v.literal("error")
+    ),
+    lastHealthCheck: v.optional(v.number()),
+    healthScore: v.optional(v.number()),
+    /** Pending upgrade request (cleared after runtime applies or cancels). */
+    pendingUpgrade: v.optional(v.object({
+      targetOpenclawVersion: v.string(),
+      targetRuntimeVersion: v.string(),
+      initiatedAt: v.number(),
+      initiatedBy: v.string(),
+      strategy: v.union(
+        v.literal("immediate"),
+        v.literal("rolling"),
+        v.literal("canary")
+      ),
+    })),
+    /** Last N upgrade results for fleet UI. */
+    upgradeHistory: v.optional(v.array(v.object({
+      fromOpenclawVersion: v.string(),
+      toOpenclawVersion: v.string(),
+      fromRuntimeVersion: v.string(),
+      toRuntimeVersion: v.string(),
+      status: v.union(
+        v.literal("success"),
+        v.literal("failed"),
+        v.literal("rolled_back")
+      ),
+      startedAt: v.number(),
+      completedAt: v.optional(v.number()),
+      duration: v.optional(v.number()),
+      error: v.optional(v.string()),
+      initiatedBy: v.string(),
+    }))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_status", ["status"])
+    .index("by_openclaw_version", ["openclawVersion"]),
+
+  // ==========================================================================
+  // STANDUP SUMMARIES
+  // Daily standup aggregation (completed today, in progress, blocked, review).
+  // ==========================================================================
+  standupSummaries: defineTable({
+    accountId: v.id("accounts"),
+    date: v.string(),
+    summary: v.object({
+      completedToday: v.number(),
+      inProgress: v.number(),
+      blocked: v.number(),
+      needsReview: v.number(),
+      taskIdsCompletedToday: v.array(v.id("tasks")),
+      taskIdsInProgress: v.array(v.id("tasks")),
+      taskIdsBlocked: v.array(v.id("tasks")),
+      taskIdsNeedsReview: v.array(v.id("tasks")),
+    }),
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_date", ["accountId", "date"]),
+
+  // ==========================================================================
+  // SYSTEM CONFIG (key-value)
+  // Feature flags and orchestration config (e.g. fleet_orchestration_enabled, canary_account_id).
+  // ==========================================================================
+  systemConfig: defineTable({
+    key: v.string(),
+    value: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"]),
 });

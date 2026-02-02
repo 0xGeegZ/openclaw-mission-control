@@ -14,7 +14,8 @@ export type ActivityType =
   | "agent_status_changed"
   | "runtime_status_changed"
   | "member_added"
-  | "member_removed";
+  | "member_removed"
+  | "member_updated";
 
 /**
  * Parameters for logging an activity.
@@ -87,6 +88,8 @@ export function getActivityDescription(
       return `${actorName} joined the account`;
     case "member_removed":
       return `${actorName} left the account`;
+    case "member_updated":
+      return `${actorName} changed a member's role`;
     default:
       return `${actorName} performed an action`;
   }

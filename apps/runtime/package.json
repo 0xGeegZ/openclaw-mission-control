@@ -7,9 +7,21 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docker:up": "cd ../.. && bash ./scripts/runtime-docker-up.sh",
+    "docker:up:daemon": "cd ../.. && DAEMON=1 bash ./scripts/runtime-docker-up.sh",
+    "docker:up:openclaw": "cd ../.. && PROFILE=openclaw bash ./scripts/runtime-docker-up.sh",
+    "docker:up:openclaw:daemon": "cd ../.. && PROFILE=openclaw DAEMON=1 bash ./scripts/runtime-docker-up.sh",
+    "docker:down": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml down",
+    "docker:start": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml start",
+    "docker:stop": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml stop",
+    "docker:restart": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml restart",
+    "docker:logs": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml logs -f",
+    "docker:ps": "cd ../.. && docker compose -f apps/runtime/docker-compose.runtime.yml ps",
+    "docker:upgrade": "cd ../.. && ./scripts/runtime-upgrade-local.sh"
   },
   "dependencies": {
+    "@packages/backend": "*",
     "@packages/shared": "*",
     "convex": "^1.31.7"
   },

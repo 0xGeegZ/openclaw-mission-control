@@ -1,7 +1,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { requireServiceAuth, generateServiceToken } from "../lib/service_auth";
+import { requireServiceAuth, generateServiceToken, hashServiceTokenSecret } from "../lib/service_auth";
 import { Id } from "../_generated/dataModel";
 
 /**
@@ -65,6 +65,101 @@ export const provisionServiceToken = action({
     
     // Return plaintext token (caller must store securely)
     return { token };
+  },
+});
+
+/**
+ * Sync a provided service token to an account by storing its hash.
+ * Useful when you already have a token in env and need Convex to accept it.
+ * 
+ * Requires account owner/admin role.
+ */
+export const syncServiceToken = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    // Verify user is authenticated and has owner/admin role
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized: Must be authenticated");
+    }
+
+    // Check account membership and role
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const membership = await ctx.runQuery(internal.memberships.getByAccountUser, {
+      accountId: args.accountId,
+      userId: identity.subject,
+    });
+
+    if (!membership) {
+      throw new Error("Forbidden: Not a member of this account");
+    }
+
+    if (membership.role !== "owner" && membership.role !== "admin") {
+      throw new Error("Forbidden: Requires owner or admin role");
+    }
+
+    const token = args.serviceToken.trim();
+    if (!token.startsWith("mc_service_")) {
+      throw new Error("Invalid service token format");
+    }
+
+    const parts = token.split("_");
+    if (parts.length < 4) {
+      throw new Error("Invalid service token structure");
+    }
+
+    const tokenAccountId = parts[2] as Id<"accounts">;
+    if (tokenAccountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const secret = parts.slice(3).join("_");
+    const hash = await hashServiceTokenSecret(secret);
+
+    await ctx.runMutation(internal.accounts.updateServiceTokenHash, {
+      accountId: args.accountId,
+      serviceTokenHash: hash,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Check if restart was requested and clear the flag if set.
+ * Called by runtime on each health cycle; if true, runtime should exit so process manager restarts it.
+ */
+export const checkAndClearRestartRequested = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ restartRequested: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const restartRequestedAt = account?.restartRequestedAt;
+    if (restartRequestedAt != null) {
+      await ctx.runMutation(internal.accounts.clearRestartRequestedInternal, {
+        accountId: args.accountId,
+      });
+      return { restartRequested: true };
+    }
+    return { restartRequested: false };
   },
 });
 
@@ -354,5 +449,78 @@ export const createMessageFromAgent = action({
     });
     
     return { messageId };
+  },
+});
+
+/** Pending upgrade payload returned to runtime. */
+type PendingUpgradePayload = {
+  targetOpenclawVersion: string;
+  targetRuntimeVersion: string;
+  initiatedAt: number;
+  initiatedBy: string;
+  strategy: "immediate" | "rolling" | "canary";
+} | null;
+
+/**
+ * Get pending upgrade for the account's runtime (service only).
+ * Called by runtime on each health cycle to decide whether to apply an upgrade.
+ */
+export const getPendingUpgrade = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<PendingUpgradePayload> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const runtime = await ctx.runQuery(internal.runtimes.getByAccountInternal, {
+      accountId: args.accountId,
+    });
+    return (runtime?.pendingUpgrade ?? null) as PendingUpgradePayload;
+  },
+});
+
+/**
+ * Record upgrade result after runtime applies or fails an upgrade (service only).
+ */
+export const recordUpgradeResult = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    status: v.union(
+      v.literal("success"),
+      v.literal("failed"),
+      v.literal("rolled_back")
+    ),
+    fromOpenclawVersion: v.string(),
+    toOpenclawVersion: v.string(),
+    fromRuntimeVersion: v.string(),
+    toRuntimeVersion: v.string(),
+    duration: v.optional(v.number()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const runtime = await ctx.runQuery(internal.runtimes.getByAccountInternal, {
+      accountId: args.accountId,
+    });
+    const initiatedBy = runtime?.pendingUpgrade?.initiatedBy ?? "runtime";
+    await ctx.runMutation(internal.runtimes.recordUpgradeResultInternal, {
+      accountId: args.accountId,
+      status: args.status,
+      fromOpenclawVersion: args.fromOpenclawVersion,
+      toOpenclawVersion: args.toOpenclawVersion,
+      fromRuntimeVersion: args.fromRuntimeVersion,
+      toRuntimeVersion: args.toRuntimeVersion,
+      duration: args.duration,
+      error: args.error,
+      initiatedBy,
+    });
+    return { success: true };
   },
 });

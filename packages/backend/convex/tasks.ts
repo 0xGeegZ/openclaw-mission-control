@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
 import { taskStatusValidator } from "./lib/validators";
 import { 
@@ -13,6 +13,21 @@ import {
   createAssignmentNotification,
   createStatusChangeNotification,
 } from "./lib/notifications";
+
+/**
+ * Internal: list tasks for an account (for standup/cron). No auth.
+ */
+export const listForStandup = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("tasks")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+  },
+});
 
 /**
  * List tasks for an account.

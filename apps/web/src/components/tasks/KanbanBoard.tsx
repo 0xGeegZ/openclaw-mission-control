@@ -17,6 +17,7 @@ import { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
 import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 import { CreateTaskDialog } from "./CreateTaskDialog";
+import { BlockedReasonDialog } from "./BlockedReasonDialog";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
@@ -33,6 +34,8 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
   const { accountId, isLoading: isAccountLoading } = useAccount();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showBlockedDialog, setShowBlockedDialog] = useState(false);
+  const [pendingBlockedTask, setPendingBlockedTask] = useState<Doc<"tasks"> | null>(null);
   
   const tasksData = useQuery(
     api.tasks.listByStatus,
@@ -89,11 +92,17 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     
     if (!currentTask || currentTask.status === newStatus) return;
     
+    // For blocked status, show dialog to get reason
+    if (newStatus === "blocked") {
+      setPendingBlockedTask(currentTask);
+      setShowBlockedDialog(true);
+      return;
+    }
+    
     try {
       await updateStatus({ 
         taskId, 
         status: newStatus,
-        // For blocked, would need a dialog to get reason
       });
       toast.success("Task status updated");
     } catch (error) {
@@ -102,6 +111,25 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
       });
     }
   }, [accountId, tasksData, updateStatus]);
+  
+  const handleBlockedConfirm = async (reason: string) => {
+    if (!pendingBlockedTask) return;
+    
+    try {
+      await updateStatus({
+        taskId: pendingBlockedTask._id,
+        status: "blocked",
+        blockedReason: reason,
+      });
+      toast.success("Task marked as blocked");
+      setPendingBlockedTask(null);
+    } catch (error) {
+      toast.error("Failed to update status", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+      throw error;
+    }
+  };
 
   if (isLoading || !tasksData) {
     return <KanbanSkeleton />;
@@ -144,6 +172,16 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
       <CreateTaskDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
+      />
+      
+      <BlockedReasonDialog
+        open={showBlockedDialog}
+        onOpenChange={(open) => {
+          setShowBlockedDialog(open);
+          if (!open) setPendingBlockedTask(null);
+        }}
+        onConfirm={handleBlockedConfirm}
+        taskTitle={pendingBlockedTask?.title}
       />
     </>
   );

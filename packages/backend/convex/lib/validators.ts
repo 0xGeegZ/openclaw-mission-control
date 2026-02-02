@@ -69,7 +69,8 @@ export const activityTypeValidator = v.union(
   v.literal("agent_status_changed"),
   v.literal("runtime_status_changed"),
   v.literal("member_added"),
-  v.literal("member_removed")
+  v.literal("member_removed"),
+  v.literal("member_updated")
 );
 
 /** Runtime status validator */

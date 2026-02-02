@@ -1,78 +1,108 @@
 import { loadConfig, RuntimeConfig } from "./config";
+import { startAgentSync, stopAgentSync } from "./agent-sync";
 import { initConvexClient, getConvexClient, api } from "./convex-client";
-import { initGateway, shutdownGateway } from "./gateway";
 import { startDeliveryLoop, stopDeliveryLoop } from "./delivery";
-import { startHeartbeats, stopHeartbeats } from "./heartbeat";
+import { initGateway, shutdownGateway } from "./gateway";
 import { startHealthServer, stopHealthServer } from "./health";
+import { startHeartbeats, stopHeartbeats } from "./heartbeat";
+import { createLogger, setLogLevel } from "./logger";
 
+const log = createLogger("[Runtime]");
 let globalConfig: RuntimeConfig;
+
+/**
+ * Extract a readable error message.
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+/**
+ * Detect service token auth failures from Convex.
+ */
+function isServiceTokenError(message: string): boolean {
+  return (
+    message.includes("Invalid service token") ||
+    message.includes("Forbidden: Account has no service token configured") ||
+    message.includes("Service token does not match account")
+  );
+}
 
 /**
  * Main entry point for runtime service.
  */
 async function main() {
-  console.log("=== Mission Control Runtime Service ===");
-  
-  // Load configuration (async - detects OpenClaw version)
   const config = await loadConfig();
   globalConfig = config;
-  
-  console.log(`Account ID: ${config.accountId}`);
-  console.log(`Runtime Service: v${config.runtimeServiceVersion}`);
-  console.log(`OpenClaw: v${config.openclawVersion}`);
-  
-  // Initialize Convex client
+  setLogLevel(config.logLevel);
+
+  log.info("=== Mission Control Runtime Service ===");
+  log.info("Account ID:", config.accountId);
+  log.info("Convex URL:", config.convexUrl);
+  log.info("Runtime Service v" + config.runtimeServiceVersion, "OpenClaw v" + config.openclawVersion);
+
   initConvexClient(config);
-  console.log("Convex client initialized");
-  
-  // Initialize OpenClaw gateway
-  await initGateway(config);
-  
-  // Start notification delivery
-  startDeliveryLoop(config);
-  
-  // Start heartbeat scheduler
-  await startHeartbeats(config);
-  
-  // Start health endpoint
-  startHealthServer(config);
-  
-  console.log("Runtime service started successfully");
-  
-  // Graceful shutdown
+  log.info("Convex client initialized");
+
+  try {
+    await initGateway(config);
+    startDeliveryLoop(config);
+    await startHeartbeats(config);
+    startAgentSync(config);
+    startHealthServer(config);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    if (isServiceTokenError(message)) {
+      log.error("Service token rejected by Convex.");
+      log.error("Ensure SERVICE_TOKEN was generated in this deployment:", config.convexUrl);
+      log.error("If you have multiple deployments, regenerate in the one matching CONVEX_URL.");
+    }
+    throw error;
+  }
+
+  log.info("Runtime service started successfully");
+
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  process.on("unhandledRejection", (reason, promise) => {
+    log.error("Unhandled rejection at", promise, "reason:", reason);
+    process.exit(1);
+  });
+  process.on("uncaughtException", (err) => {
+    log.error("Uncaught exception:", err);
+    process.exit(1);
+  });
 }
 
 /**
  * Graceful shutdown handler.
  */
 async function shutdown() {
-  console.log("\nShutting down...");
-  
+  log.info("Shutting down...");
+
   stopDeliveryLoop();
+  stopAgentSync();
   stopHeartbeats();
   await shutdownGateway();
   stopHealthServer();
-  
-  // Mark as offline in Convex
+
   try {
     const client = getConvexClient();
-      // Update status via service action (requires service auth)
-      await client.action(api.service.actions.updateRuntimeStatus as any, {
-        accountId: globalConfig.accountId,
-        status: "offline",
-        serviceToken: globalConfig.serviceToken,
-      });
+    await client.action(api.service.actions.updateRuntimeStatus, {
+      accountId: globalConfig.accountId,
+      status: "offline",
+      serviceToken: globalConfig.serviceToken,
+    });
   } catch (error) {
-    console.error("Failed to update offline status:", error);
+    log.error("Failed to update offline status:", error);
   }
-  
-  console.log("Shutdown complete");
+
+  log.info("Shutdown complete");
   process.exit(0);
 }
 
 main().catch((error) => {
-  console.error("Fatal error:", error);
+  log.error("Fatal error:", error);
   process.exit(1);
 });
