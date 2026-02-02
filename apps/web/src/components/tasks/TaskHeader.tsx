@@ -13,30 +13,57 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@packages/ui/components/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@packages/ui/components/dropdown-menu";
 import { Input } from "@packages/ui/components/input";
 import { Separator } from "@packages/ui/components/separator";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_LABELS } from "@packages/shared";
 import { toast } from "sonner";
-import { Edit2, Check, X, ArrowLeft } from "lucide-react";
+import { Edit2, Check, X, ArrowLeft, MoreHorizontal, Trash2, Settings2, RotateCcw, Calendar, Flag } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { TaskAssignees } from "./TaskAssignees";
+import { TaskEditDialog } from "./TaskEditDialog";
+import { DeleteTaskDialog } from "./DeleteTaskDialog";
+import { BlockedReasonDialog } from "./BlockedReasonDialog";
+import { TaskSubscription } from "./TaskSubscription";
 
 interface TaskHeaderProps {
   task: Doc<"tasks">;
   accountSlug: string;
 }
 
+const PRIORITY_LABELS: Record<number, { label: string; color: string }> = {
+  1: { label: "Critical", color: "bg-red-500" },
+  2: { label: "High", color: "bg-orange-500" },
+  3: { label: "Medium", color: "bg-yellow-500" },
+  4: { label: "Low", color: "bg-blue-500" },
+  5: { label: "Lowest", color: "bg-slate-400" },
+};
+
 /**
  * Task header with title, status, and controls.
  */
 export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   useAccount();
+  const router = useRouter();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(task.title);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showBlockedDialog, setShowBlockedDialog] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null);
   
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
+  const reopenTask = useMutation(api.tasks.reopen);
   
   const handleTitleSave = async () => {
     if (title.trim() === task.title) {
@@ -57,6 +84,13 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   };
   
   const handleStatusChange = async (newStatus: TaskStatus) => {
+    // If moving to blocked, show dialog for reason
+    if (newStatus === "blocked") {
+      setPendingStatus(newStatus);
+      setShowBlockedDialog(true);
+      return;
+    }
+    
     try {
       await updateStatus({
         taskId: task._id,
@@ -69,6 +103,40 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
       });
     }
   };
+  
+  const handleBlockedConfirm = async (reason: string) => {
+    try {
+      await updateStatus({
+        taskId: task._id,
+        status: "blocked",
+        blockedReason: reason,
+      });
+      toast.success("Task marked as blocked");
+      setPendingStatus(null);
+    } catch (error) {
+      toast.error("Failed to update status", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+      throw error;
+    }
+  };
+  
+  const handleReopen = async () => {
+    try {
+      await reopenTask({ taskId: task._id });
+      toast.success("Task reopened");
+    } catch (error) {
+      toast.error("Failed to reopen task", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+  
+  const handleDeleted = () => {
+    router.push(`/${accountSlug}/tasks`);
+  };
+  
+  const priorityInfo = PRIORITY_LABELS[task.priority] ?? PRIORITY_LABELS[3];
   
   return (
     <div className="border-b bg-card">
@@ -126,6 +194,9 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
           )}
           
           <div className="flex items-center gap-2">
+            {/* Follow/Unfollow button */}
+            <TaskSubscription taskId={task._id} />
+            
             <Select value={task.status} onValueChange={handleStatusChange}>
               <SelectTrigger className="w-36">
                 <SelectValue />
@@ -138,6 +209,36 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
                 ))}
               </SelectContent>
             </Select>
+            
+            {/* Actions dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Task actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Edit Details
+                </DropdownMenuItem>
+                {task.status === "done" && (
+                  <DropdownMenuItem onClick={handleReopen}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reopen Task
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Task
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         
@@ -145,8 +246,39 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
           <p className="text-muted-foreground leading-relaxed">{task.description}</p>
         )}
         
-        {/* Assignees section */}
-        <div className="flex items-center gap-4 pt-2">
+        {/* Blocked reason banner */}
+        {task.status === "blocked" && task.blockedReason && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
+            <Flag className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium">Blocked</p>
+              <p className="text-sm opacity-90">{task.blockedReason}</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Metadata row: priority, due date, assignees, labels */}
+        <div className="flex flex-wrap items-center gap-4 pt-2">
+          {/* Priority */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${priorityInfo.color}`} />
+            <span className="text-sm text-muted-foreground">{priorityInfo.label}</span>
+          </div>
+          
+          {/* Due date */}
+          {task.dueDate && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Due {format(new Date(task.dueDate), "MMM d, yyyy")}</span>
+              </div>
+            </>
+          )}
+          
+          <Separator orientation="vertical" className="h-4" />
+          
+          {/* Assignees */}
           <TaskAssignees task={task} />
           
           {task.labels.length > 0 && (
@@ -163,6 +295,26 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
           )}
         </div>
       </div>
+      
+      {/* Dialogs */}
+      <TaskEditDialog
+        task={task}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+      />
+      <DeleteTaskDialog
+        taskId={task._id}
+        taskTitle={task.title}
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onDeleted={handleDeleted}
+      />
+      <BlockedReasonDialog
+        open={showBlockedDialog}
+        onOpenChange={setShowBlockedDialog}
+        onConfirm={handleBlockedConfirm}
+        taskTitle={task.title}
+      />
     </div>
   );
 }

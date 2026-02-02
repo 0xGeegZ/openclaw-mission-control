@@ -56,6 +56,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  LogOut,
+  ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
@@ -90,11 +92,23 @@ export default function SettingsPage({ params }: SettingsPageProps) {
   const [inviteUserEmail, setInviteUserEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  
+  // Email-based invitations
+  const [showEmailInvite, setShowEmailInvite] = useState(false);
+  const [emailInviteAddress, setEmailInviteAddress] = useState("");
+  const [emailInviteRole, setEmailInviteRole] = useState<"member" | "admin">("member");
+  const [emailInviteSubmitting, setEmailInviteSubmitting] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [theme, setThemeState] = useState<"light" | "dark" | "system">("system");
   const [themeSaving, setThemeSaving] = useState(false);
+  
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<Id<"memberships"> | null>(null);
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
 
   const { setTheme: setNextTheme } = useTheme();
 
@@ -102,12 +116,21 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     api.memberships.list,
     accountId ? { accountId } : "skip"
   );
+  
+  const pendingInvitations = useQuery(
+    api.invitations.listByAccount,
+    accountId && isAdmin ? { accountId, status: "pending" } : "skip"
+  );
 
   const updateAccount = useMutation(api.accounts.update);
   const removeAccount = useMutation(api.accounts.remove);
   const inviteMember = useMutation(api.memberships.invite);
   const updateRole = useMutation(api.memberships.updateRole);
   const removeMember = useMutation(api.memberships.remove);
+  const leaveWorkspace = useMutation(api.memberships.leave);
+  const transferOwnership = useMutation(api.memberships.transferOwnership);
+  const createEmailInvite = useMutation(api.invitations.create);
+  const cancelInvitation = useMutation(api.invitations.cancel);
 
   useEffect(() => {
     if (account) {
@@ -263,6 +286,68 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       setShowDeleteConfirm(false);
     }
   };
+  
+  const handleLeaveWorkspace = async () => {
+    if (!accountId) return;
+    setLeaveSubmitting(true);
+    try {
+      await leaveWorkspace({ accountId });
+      toast.success("You have left the workspace");
+      router.replace("/dashboard");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to leave workspace");
+    } finally {
+      setLeaveSubmitting(false);
+      setShowLeaveConfirm(false);
+    }
+  };
+  
+  const handleTransferOwnership = async () => {
+    if (!accountId || !transferTarget) return;
+    setTransferSubmitting(true);
+    try {
+      await transferOwnership({ accountId, newOwnerMembershipId: transferTarget });
+      toast.success("Ownership transferred successfully");
+      setShowTransferDialog(false);
+      setTransferTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to transfer ownership");
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+  
+  const handleEmailInvite = async () => {
+    if (!accountId || !emailInviteAddress.trim()) {
+      toast.error("Email address is required");
+      return;
+    }
+    setEmailInviteSubmitting(true);
+    try {
+      await createEmailInvite({
+        accountId,
+        email: emailInviteAddress.trim(),
+        role: emailInviteRole,
+      });
+      toast.success("Invitation sent to " + emailInviteAddress.trim());
+      setShowEmailInvite(false);
+      setEmailInviteAddress("");
+      setEmailInviteRole("member");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send invitation");
+    } finally {
+      setEmailInviteSubmitting(false);
+    }
+  };
+  
+  const handleCancelInvitation = async (invitationId: Id<"invitations">) => {
+    try {
+      await cancelInvitation({ invitationId });
+      toast.success("Invitation cancelled");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel invitation");
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -402,10 +487,13 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                 </CardHeader>
                 <CardContent>
                   {isAdmin && (
-                    <div className="mb-4">
+                    <div className="mb-4 flex gap-2">
                       <Button onClick={() => setShowInvite(true)}>
                         <Users className="mr-2 h-4 w-4" />
-                        Invite Member
+                        Invite by User ID
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowEmailInvite(true)}>
+                        Invite by Email
                       </Button>
                     </div>
                   )}
@@ -483,6 +571,105 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                   )}
                 </CardContent>
               </Card>
+              
+              {/* Pending Invitations - admin only */}
+              {isAdmin && pendingInvitations && pendingInvitations.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Pending Invitations</CardTitle>
+                    <CardDescription>
+                      {pendingInvitations.length} pending invitation{pendingInvitations.length > 1 ? "s" : ""}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {pendingInvitations.map((invitation) => (
+                        <div
+                          key={invitation._id}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{invitation.email}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              Invited as {invitation.role}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => handleCancelInvitation(invitation._id)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Transfer Ownership - owner only */}
+              {isOwner && members && members.length > 1 && (
+                <Card className="border-amber-500/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <ArrowRightLeft className="h-5 w-5" />
+                      Transfer Ownership
+                    </CardTitle>
+                    <CardDescription>
+                      Transfer workspace ownership to another member
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Transfer to another member</p>
+                        <p className="text-sm text-muted-foreground">
+                          You will become an admin after transferring ownership
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowTransferDialog(true)}
+                      >
+                        Transfer Ownership
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Leave Workspace - non-owners only */}
+              {!isOwner && (
+                <Card className="border-destructive/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive">
+                      <LogOut className="h-5 w-5" />
+                      Leave Workspace
+                    </CardTitle>
+                    <CardDescription>
+                      Remove yourself from this workspace
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Leave this workspace</p>
+                        <p className="text-sm text-muted-foreground">
+                          You will lose access to all workspace data
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        onClick={() => setShowLeaveConfirm(true)}
+                      >
+                        Leave Workspace
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="notifications" className="mt-6 space-y-6">
@@ -704,6 +891,56 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Email invite dialog */}
+      <Dialog open={showEmailInvite} onOpenChange={setShowEmailInvite}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invite by Email</DialogTitle>
+            <DialogDescription>
+              Send an invitation email to join this workspace
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="email-invite">Email Address</Label>
+              <Input
+                id="email-invite"
+                type="email"
+                placeholder="colleague@example.com"
+                value={emailInviteAddress}
+                onChange={(e) => setEmailInviteAddress(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select
+                value={emailInviteRole}
+                onValueChange={(v) => setEmailInviteRole(v as "member" | "admin")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmailInvite(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEmailInvite}
+              disabled={emailInviteSubmitting || !emailInviteAddress.trim()}
+            >
+              {emailInviteSubmitting ? "Sending…" : "Send Invitation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
@@ -724,6 +961,79 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               disabled={deleteSubmitting}
             >
               {deleteSubmitting ? "Deleting…" : "Delete Workspace"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Leave workspace confirmation */}
+      <Dialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave Workspace</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to leave this workspace? You will lose access to all workspace data and will need to be re-invited to rejoin.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLeaveConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleLeaveWorkspace}
+              disabled={leaveSubmitting}
+            >
+              {leaveSubmitting ? "Leaving…" : "Leave Workspace"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Transfer ownership dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={(open) => {
+        setShowTransferDialog(open);
+        if (!open) setTransferTarget(null);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Ownership</DialogTitle>
+            <DialogDescription>
+              Select a member to transfer workspace ownership to. You will become an admin after the transfer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>New Owner</Label>
+              <Select
+                value={transferTarget ?? ""}
+                onValueChange={(v) => setTransferTarget(v as Id<"memberships">)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members?.filter(m => m.role !== "owner").map((member) => (
+                    <SelectItem key={member._id} value={member._id}>
+                      <div className="flex items-center gap-2">
+                        <span>{member.userName}</span>
+                        <span className="text-muted-foreground text-xs">({member.role})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTransferDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTransferOwnership}
+              disabled={transferSubmitting || !transferTarget}
+            >
+              {transferSubmitting ? "Transferring…" : "Transfer Ownership"}
             </Button>
           </DialogFooter>
         </DialogContent>

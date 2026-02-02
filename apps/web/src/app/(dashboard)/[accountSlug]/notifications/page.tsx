@@ -25,6 +25,7 @@ import {
   UserMinus,
   Shield,
   Filter,
+  X,
 } from "lucide-react";
 
 interface NotificationsPageProps {
@@ -71,11 +72,16 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
   const notifications = result?.notifications ?? [];
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
   const markAsRead = useMutation(api.notifications.markAsRead);
+  const removeNotification = useMutation(api.notifications.remove);
 
   const handleMarkAllAsRead = async () => {
     if (accountId) {
       await markAllAsRead({ accountId });
     }
+  };
+  
+  const handleDismiss = async (notificationId: typeof notifications[0]["_id"]) => {
+    await removeNotification({ notificationId });
   };
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
@@ -216,19 +222,32 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
                       ) : (
                         textContent
                       )}
-                      {isUnread && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isUnread && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              markAsRead({ notificationId: notification._id })
+                            }
+                            title="Mark as read"
+                          >
+                            <Check className="h-4 w-4" />
+                            <span className="sr-only">Mark as read</span>
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() =>
-                            markAsRead({ notificationId: notification._id })
-                          }
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDismiss(notification._id)}
+                          title="Dismiss notification"
                         >
-                          <Check className="h-4 w-4" />
-                          <span className="sr-only">Mark as read</span>
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Dismiss</span>
                         </Button>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
