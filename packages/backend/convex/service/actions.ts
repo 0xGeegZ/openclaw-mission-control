@@ -1,7 +1,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { requireServiceAuth, generateServiceToken } from "../lib/service_auth";
+import { requireServiceAuth, generateServiceToken, hashServiceTokenSecret } from "../lib/service_auth";
 import { Id } from "../_generated/dataModel";
 
 /**
@@ -65,6 +65,73 @@ export const provisionServiceToken = action({
     
     // Return plaintext token (caller must store securely)
     return { token };
+  },
+});
+
+/**
+ * Sync a provided service token to an account by storing its hash.
+ * Useful when you already have a token in env and need Convex to accept it.
+ * 
+ * Requires account owner/admin role.
+ */
+export const syncServiceToken = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    // Verify user is authenticated and has owner/admin role
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized: Must be authenticated");
+    }
+
+    // Check account membership and role
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const membership = await ctx.runQuery(internal.memberships.getByAccountUser, {
+      accountId: args.accountId,
+      userId: identity.subject,
+    });
+
+    if (!membership) {
+      throw new Error("Forbidden: Not a member of this account");
+    }
+
+    if (membership.role !== "owner" && membership.role !== "admin") {
+      throw new Error("Forbidden: Requires owner or admin role");
+    }
+
+    const token = args.serviceToken.trim();
+    if (!token.startsWith("mc_service_")) {
+      throw new Error("Invalid service token format");
+    }
+
+    const parts = token.split("_");
+    if (parts.length < 4) {
+      throw new Error("Invalid service token structure");
+    }
+
+    const tokenAccountId = parts[2] as Id<"accounts">;
+    if (tokenAccountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const secret = parts.slice(3).join("_");
+    const hash = await hashServiceTokenSecret(secret);
+
+    await ctx.runMutation(internal.accounts.updateServiceTokenHash, {
+      accountId: args.accountId,
+      serviceTokenHash: hash,
+    });
+
+    return { success: true };
   },
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useEffect } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
@@ -24,6 +24,9 @@ import {
   Zap,
   Shield,
   Save,
+  KeyRound,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   Select,
@@ -59,6 +62,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
   const { account, accountId, isLoading, isAdmin } = useAccount();
   const updateAccount = useMutation(api.accounts.update);
   const requestRestart = useMutation(api.accounts.requestRestart);
+  const provisionServiceToken = useAction(api.service.actions.provisionServiceToken);
+  const syncServiceToken = useAction(api.service.actions.syncServiceToken);
 
   const runtimeStatus = account?.runtimeStatus;
   const runtimeConfig = account?.runtimeConfig;
@@ -78,6 +83,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
   const [rateTpd, setRateTpd] = useState("100000");
   const [isSaving, setIsSaving] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [existingToken, setExistingToken] = useState("");
+  const [isSyncingToken, setIsSyncingToken] = useState(false);
 
   useEffect(() => {
     if (!agentDefaults) return;
@@ -455,6 +465,123 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
               </TabsContent>
               
               <TabsContent value="advanced" className="space-y-6">
+                <Card className="border-border/50 shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-primary" />
+                      Runtime service token
+                    </CardTitle>
+                    <CardDescription>
+                      Used by the Mission Control runtime to authenticate with Convex. Add it to <code className="text-xs bg-muted px-1 rounded">apps/runtime/.env</code> as <code className="text-xs bg-muted px-1 rounded">SERVICE_TOKEN=...</code>. Generating a new token invalidates the previous one.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-4">
+                      {generatedToken ? (
+                        <>
+                          <div className="flex gap-2">
+                            <Input
+                              readOnly
+                              value={generatedToken}
+                              className="font-mono text-sm rounded-xl bg-muted/50"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="rounded-xl shrink-0"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(generatedToken);
+                                setTokenCopied(true);
+                                setTimeout(() => setTokenCopied(false), 2000);
+                              }}
+                            >
+                              {tokenCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-amber-600 dark:text-amber-500">
+                            Copy this token now; it will not be shown again. Any runtime using an old token will stop working.
+                          </p>
+                          <Button
+                            variant="secondary"
+                            className="rounded-xl"
+                            onClick={() => setGeneratedToken(null)}
+                          >
+                            Dismiss
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          className="rounded-xl"
+                          disabled={!accountId || isGeneratingToken}
+                          onClick={async () => {
+                            if (!accountId) return;
+                            setIsGeneratingToken(true);
+                            setGeneratedToken(null);
+                            try {
+                              const { token } = await provisionServiceToken({ accountId });
+                              setGeneratedToken(token);
+                              toast.success("Token generated", { description: "Copy it to your runtime .env as SERVICE_TOKEN." });
+                            } catch (e) {
+                              toast.error("Failed to generate token", { description: e instanceof Error ? e.message : "Unknown error" });
+                            } finally {
+                              setIsGeneratingToken(false);
+                            }
+                          }}
+                        >
+                          <KeyRound className={cn("h-4 w-4 mr-2", isGeneratingToken && "animate-pulse")} />
+                          {isGeneratingToken ? "Generating…" : "Generate service token"}
+                        </Button>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <Label htmlFor="existing-service-token">Use existing token</Label>
+                      <Input
+                        id="existing-service-token"
+                        value={existingToken}
+                        onChange={(event) => setExistingToken(event.target.value)}
+                        placeholder="mc_service_{accountId}_{secret}"
+                        className="font-mono text-sm rounded-xl"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          className="rounded-xl"
+                          disabled={!accountId || isSyncingToken || !existingToken.trim()}
+                          onClick={async () => {
+                            if (!accountId || !existingToken.trim()) return;
+                            setIsSyncingToken(true);
+                            try {
+                              await syncServiceToken({ accountId, serviceToken: existingToken });
+                              toast.success("Token synced", { description: "Convex now accepts the token in your runtime .env." });
+                              setExistingToken("");
+                            } catch (e) {
+                              toast.error("Failed to sync token", { description: e instanceof Error ? e.message : "Unknown error" });
+                            } finally {
+                              setIsSyncingToken(false);
+                            }
+                          }}
+                        >
+                          {isSyncingToken ? "Syncing…" : "Sync token"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          disabled={!existingToken.trim()}
+                          onClick={() => setExistingToken("")}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Syncing stores only the token hash in Convex. The plaintext token is not saved.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
                     <CardTitle>Rate Limiting</CardTitle>

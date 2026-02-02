@@ -36,3 +36,6 @@ yarn-error.log*
 
 # turbo
 .turbo
+
+# Local runtime / OpenClaw persisted data and workspace
+.runtime/
