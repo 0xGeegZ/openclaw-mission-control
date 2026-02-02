@@ -1,7 +1,8 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -17,9 +18,19 @@ import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
-import { ArrowLeft, Bot, Activity, Clock } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@packages/ui/components/dropdown-menu";
+import { ArrowLeft, Bot, Activity, Clock, MoreHorizontal, Settings2, CircleDot, Trash2, ListTodo } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ActivityItem } from "@/components/feed/ActivityItem";
+import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
+import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
+import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -30,7 +41,11 @@ interface AgentDetailPageProps {
  */
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { accountSlug, agentId } = use(params);
-  const { accountId } = useAccount();
+  const router = useRouter();
+  const { accountId, isAdmin } = useAccount();
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
 
   const agent = useQuery(
     api.agents.get,
@@ -39,6 +54,12 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const activities = useQuery(
     api.activities.list,
     accountId ? { accountId, limit: 30 } : "skip"
+  );
+  const agentTasks = useQuery(
+    api.tasks.listByAgent,
+    accountId && agentId
+      ? { accountId, agentId: agentId as Id<"agents"> }
+      : "skip"
   );
 
   const agentActivities =
@@ -54,6 +75,10 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
     error: { variant: "destructive" },
   };
   const status = agent ? statusConfig[agent.status] ?? statusConfig.offline : statusConfig.offline;
+  
+  const handleDeleted = () => {
+    router.push(`/${accountSlug}/agents`);
+  };
 
   if (agentId && agent === null) {
     return (
@@ -89,6 +114,36 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
             </>
           )}
         </div>
+        
+        {/* Actions dropdown - admin only */}
+        {agent && isAdmin && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Agent actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
+                <Settings2 className="mr-2 h-4 w-4" />
+                Edit Agent
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowStatusDialog(true)}>
+                <CircleDot className="mr-2 h-4 w-4" />
+                Change Status
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Agent
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </header>
 
       <div className="flex-1 overflow-auto p-6">
@@ -159,6 +214,42 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 </CardContent>
               </Card>
             </div>
+            {/* Assigned Tasks */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ListTodo className="h-4 w-4" />
+                  Assigned Tasks
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Tasks currently assigned to this agent
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {agentTasks === undefined ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : agentTasks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tasks assigned</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {agentTasks.map((task) => (
+                      <li key={task._id}>
+                        <Link
+                          href={`/${accountSlug}/tasks/${task._id}`}
+                          className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors"
+                        >
+                          <span className="text-sm font-medium truncate">{task.title}</span>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {task.status.replace("_", " ")}
+                          </Badge>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+            
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Activity feed</CardTitle>
@@ -183,6 +274,29 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
           </div>
         ) : null}
       </div>
+      
+      {/* Dialogs */}
+      {agent && (
+        <>
+          <AgentEditDialog
+            agent={agent}
+            open={showEditDialog}
+            onOpenChange={setShowEditDialog}
+          />
+          <AgentDeleteDialog
+            agentId={agent._id}
+            agentName={agent.name}
+            open={showDeleteDialog}
+            onOpenChange={setShowDeleteDialog}
+            onDeleted={handleDeleted}
+          />
+          <AgentStatusDialog
+            agent={agent}
+            open={showStatusDialog}
+            onOpenChange={setShowStatusDialog}
+          />
+        </>
+      )}
     </div>
   );
 }
