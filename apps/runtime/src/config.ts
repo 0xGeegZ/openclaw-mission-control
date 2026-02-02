@@ -1,51 +1,81 @@
+import { execSync } from "child_process";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface RuntimeConfig {
   /** Account ID this runtime serves */
   accountId: Id<"accounts">;
-  
   /** Convex deployment URL */
   convexUrl: string;
-  
   /** Service authentication token */
   serviceToken: string;
-  
   /** Port for health endpoint */
   healthPort: number;
-  
+  /** Bind host for health server (e.g. 127.0.0.1 or 0.0.0.0) */
+  healthHost: string;
   /** Notification poll interval (ms) */
   deliveryInterval: number;
-  
   /** Health check interval to Convex (ms) */
   healthCheckInterval: number;
-  
+  /** Log level */
+  logLevel: LogLevel;
+  /** Delivery backoff base delay (ms) */
+  deliveryBackoffBaseMs: number;
+  /** Delivery backoff max delay (ms) */
+  deliveryBackoffMaxMs: number;
   /** Runtime service version (from package.json or env) */
   runtimeServiceVersion: string;
-  
-  /** OpenClaw version (detected at startup) */
+  /** OpenClaw version (detected at startup or env) */
   openclawVersion: string;
-  
   /** DigitalOcean droplet ID (for tracking) */
   dropletId: string;
-  
   /** Droplet IP address */
   dropletIp: string;
-  
   /** Droplet region */
   dropletRegion: string;
 }
 
 /**
- * Detect OpenClaw version by running `openclaw --version`.
- * Falls back to "unknown" if detection fails.
+ * Normalize env values by trimming whitespace and stripping surrounding quotes.
+ */
+function normalizeEnvValue(value: string | undefined): string | undefined {
+  if (!value) return value;
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/**
+ * Execute a version command quietly (no stderr noise).
+ */
+function execVersionCommand(command: string): string {
+  return execSync(command, {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+/**
+ * Detect OpenClaw version. Uses OPENCLAW_VERSION if set; otherwise runs
+ * openclaw --version (or clawdbot --version). Falls back to "unknown" if detection fails.
  */
 async function detectOpenClawVersion(): Promise<string> {
+  const fromEnv = process.env.OPENCLAW_VERSION;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   try {
-    const { execSync } = await import("child_process");
-    const output = execSync("openclaw --version", { encoding: "utf-8" });
-    return output.trim();
+    try {
+      return execVersionCommand("clawdbot --version") || "unknown";
+    } catch {
+      return execVersionCommand("openclaw --version") || "unknown";
+    }
   } catch {
-    return process.env.OPENCLAW_VERSION || "unknown";
+    return "unknown";
   }
 }
 
@@ -57,26 +87,59 @@ function getRuntimeServiceVersion(): string {
 }
 
 /**
+ * Parse an integer from env with a fallback when invalid.
+ */
+function parseIntOrDefault(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value || "", 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/**
  * Load runtime configuration from environment variables.
  */
 export async function loadConfig(): Promise<RuntimeConfig> {
-  const accountId = process.env.ACCOUNT_ID;
-  const convexUrl = process.env.CONVEX_URL;
-  const serviceToken = process.env.SERVICE_TOKEN;
+  const accountId = normalizeEnvValue(process.env.ACCOUNT_ID);
+  const convexUrl = normalizeEnvValue(process.env.CONVEX_URL);
+  const serviceToken = normalizeEnvValue(process.env.SERVICE_TOKEN);
   
   if (!accountId || !convexUrl || !serviceToken) {
     throw new Error("Missing required environment variables: ACCOUNT_ID, CONVEX_URL, SERVICE_TOKEN");
   }
+
+  if (!serviceToken.startsWith("mc_service_")) {
+    throw new Error("Invalid SERVICE_TOKEN format. Expected a token starting with mc_service_.");
+  }
+
+  const tokenParts = serviceToken.split("_");
+  if (tokenParts.length < 4) {
+    throw new Error("Invalid SERVICE_TOKEN structure. Expected mc_service_{accountId}_{secret}.");
+  }
+
+  const tokenAccountId = tokenParts[2];
+  if (tokenAccountId !== accountId) {
+    throw new Error(
+      `SERVICE_TOKEN account mismatch. Token is for ${tokenAccountId}, but ACCOUNT_ID is ${accountId}.`
+    );
+  }
   
   const openclawVersion = await detectOpenClawVersion();
-  
+  const logLevelRaw = (process.env.LOG_LEVEL || "info").toLowerCase();
+  const logLevel: LogLevel =
+    logLevelRaw === "debug" || logLevelRaw === "info" || logLevelRaw === "warn" || logLevelRaw === "error"
+      ? logLevelRaw
+      : "info";
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
     serviceToken,
-    healthPort: parseInt(process.env.HEALTH_PORT || "3001", 10),
-    deliveryInterval: parseInt(process.env.DELIVERY_INTERVAL || "5000", 10),
-    healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || "60000", 10),
+    healthPort: parseIntOrDefault(process.env.HEALTH_PORT, 3001),
+    healthHost: process.env.HEALTH_HOST || "127.0.0.1",
+    deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
+    healthCheckInterval: parseIntOrDefault(process.env.HEALTH_CHECK_INTERVAL, 60000),
+    logLevel,
+    deliveryBackoffBaseMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_BASE_MS, 5000),
+    deliveryBackoffMaxMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_MAX_MS, 300000),
     runtimeServiceVersion: getRuntimeServiceVersion(),
     openclawVersion,
     dropletId: process.env.DROPLET_ID || "unknown",

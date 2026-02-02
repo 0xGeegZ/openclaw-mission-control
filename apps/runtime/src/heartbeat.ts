@@ -1,6 +1,9 @@
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
+import { createLogger } from "./logger";
+
+const log = createLogger("[Heartbeat]");
 
 interface HeartbeatState {
   isRunning: boolean;
@@ -16,23 +19,21 @@ const state: HeartbeatState = {
  * Start heartbeat scheduling for all agents.
  */
 export async function startHeartbeats(config: RuntimeConfig): Promise<void> {
-  console.log("[Heartbeat] Starting heartbeat scheduler...");
-  
-  // Fetch agents via service action
+  log.info("Starting heartbeat scheduler...");
+
   const client = getConvexClient();
-  // Note: Types will be available after running `npx convex dev`
   const agents = await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
   });
-  
+
   const totalAgents = agents.length;
   agents.forEach((agent: { _id: string; name: string; sessionKey?: string; heartbeatInterval?: number }, index: number) => {
     scheduleHeartbeat(agent, config, index, totalAgents);
   });
 
   state.isRunning = true;
-  console.log(`[Heartbeat] Scheduled ${agents.length} agents (staggered)`);
+  log.info("Scheduled", agents.length, "agents (staggered)");
 }
 
 /** Max window over which to stagger first runs (ms). */
@@ -54,7 +55,7 @@ function scheduleHeartbeat(
 
   const execute = async () => {
     try {
-      console.log(`[Heartbeat] Executing for ${agent.name}`);
+      log.debug("Executing for", agent.name);
       
       // Send heartbeat message to agent
       const heartbeatMessage = `
@@ -83,7 +84,7 @@ Current time: ${new Date().toISOString()}
       });
       
     } catch (error) {
-      console.error(`[Heartbeat] Failed for ${agent.name}:`, error);
+      log.error("Failed for", agent.name, ":", error);
     }
     
     // Schedule next run at full interval (stagger only on first run)
@@ -109,7 +110,7 @@ export function stopHeartbeats(): void {
   }
 
   state.schedules.clear();
-  console.log("[Heartbeat] Stopped all heartbeats");
+  log.info("Stopped all heartbeats");
 }
 
 /**

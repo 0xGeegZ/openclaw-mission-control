@@ -41,6 +41,9 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `HEALTH_CHECK_INTERVAL` | No | Convex status report interval in ms (default `60000`). |
 | `RUNTIME_VERSION` | No | Override version (default: `package.json` version). |
 | `OPENCLAW_VERSION` | No | Override if `openclaw --version` fails. |
+| `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
+| `HEALTH_HOST` | No | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker). |
+| `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No | Backoff on delivery poll errors (defaults `5000`, `300000`). |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION` | No | Infrastructure identifiers (reported in health and Convex). |
 
 ## Running locally
@@ -69,9 +72,35 @@ docker run --env-file apps/runtime/.env -p 3001:3001 mission-control-runtime
 
 Pass env vars via `--env-file` or `-e`; the app does not read `.env` from disk inside the image unless you mount it.
 
+### Docker Compose (local dev)
+
+Use the runtime npm scripts (recommended) to run the runtime (and optionally the OpenClaw gateway). See [docs/runtime/runtime-docker-compose.md](../../docs/runtime/runtime-docker-compose.md) for full instructions.
+
+```bash
+# Runtime only (from apps/runtime)
+npm run docker:up
+
+# Runtime + OpenClaw gateway (Control UI at http://localhost:18789/?token=local)
+npm run docker:up:openclaw
+```
+
+If you prefer direct Compose commands, run them from the repo root:
+
+```bash
+docker compose -f apps/runtime/docker-compose.runtime.yml up --build
+docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build
+```
+
+Upgrade workflow (pull new images and restart):
+
+```bash
+./scripts/runtime-upgrade-local.sh
+# With OpenClaw: PROFILE=openclaw ./scripts/runtime-upgrade-local.sh
+```
+
 ## Health endpoints
 
-- **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts.
+- **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts (including `consecutiveFailures`, `lastErrorAt`, `lastErrorMessage` on errors).
 - **`GET /version`** — Lightweight: runtime version, OpenClaw version, droplet id/region.
 
 Both return JSON. Default port: `3001`.
@@ -91,13 +120,17 @@ On `SIGTERM` or `SIGINT`, the runtime:
 ```
 apps/runtime/
 ├── src/
-│   ├── index.ts      # Entry point; starts gateway, delivery, heartbeat, health
-│   ├── config.ts     # Env-based config and OpenClaw version detection
-│   ├── convex-client.ts  # Convex client for service actions
-│   ├── gateway.ts    # OpenClaw gateway and session registration
-│   ├── delivery.ts   # Notification delivery loop
-│   ├── heartbeat.ts  # Per-agent heartbeat scheduler
-│   └── health.ts     # HTTP health server and Convex status updates
+│   ├── index.ts        # Entry point; starts gateway, delivery, heartbeat, health
+│   ├── config.ts       # Env-based config and OpenClaw version detection
+│   ├── convex-client.ts # Convex client for service actions
+│   ├── gateway.ts      # OpenClaw gateway and session registration
+│   ├── delivery.ts      # Notification delivery loop (with backoff)
+│   ├── heartbeat.ts    # Per-agent heartbeat scheduler
+│   ├── health.ts       # HTTP health server and Convex status updates
+│   ├── logger.ts       # Structured logger with levels and secret redaction
+│   ├── backoff.ts      # Exponential backoff with jitter
+│   └── self-upgrade.ts # Restart and upgrade checks
+├── openclaw/           # OpenClaw gateway container (Dockerfile, start script, template)
 ├── Dockerfile
 ├── .env.example
 └── README.md
@@ -105,5 +138,6 @@ apps/runtime/
 
 ## Further reading
 
+- [docs/runtime/runtime-docker-compose.md](../../docs/runtime/runtime-docker-compose.md) — Docker Compose local dev and upgrade workflow.
 - [docs/build/00-orchestrator.md](../../docs/build/00-orchestrator.md) — Build phases and module 13 (runtime service).
 - [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) — Data flows, service auth, invariants.

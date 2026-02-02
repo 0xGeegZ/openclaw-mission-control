@@ -1,13 +1,19 @@
 import { getConvexClient, api } from "./convex-client";
+import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
-import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { createLogger } from "./logger";
+
+const log = createLogger("[Delivery]");
 
 interface DeliveryState {
   isRunning: boolean;
   lastDelivery: number | null;
   deliveredCount: number;
   failedCount: number;
+  consecutiveFailures: number;
+  lastErrorAt: number | null;
+  lastErrorMessage: string | null;
 }
 
 const state: DeliveryState = {
@@ -15,80 +21,87 @@ const state: DeliveryState = {
   lastDelivery: null,
   deliveredCount: 0,
   failedCount: 0,
+  consecutiveFailures: 0,
+  lastErrorAt: null,
+  lastErrorMessage: null,
 };
 
 /**
  * Start the notification delivery loop.
  * Polls Convex for undelivered agent notifications and delivers to OpenClaw.
+ * Uses exponential backoff with jitter on poll errors.
  */
 export function startDeliveryLoop(config: RuntimeConfig): void {
   if (state.isRunning) return;
   state.isRunning = true;
-  
-  console.log("[Delivery] Starting delivery loop...");
-  
+
+  log.info("Starting delivery loop...");
+
   const poll = async () => {
     if (!state.isRunning) return;
-    
+
     try {
       const client = getConvexClient();
-      
-      // Fetch undelivered notifications via service action
-      // Note: Types will be available after running `npx convex dev`
+
       const notifications = await client.action(api.service.actions.listUndeliveredNotifications, {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
         limit: 50,
       });
-      
+
+      state.consecutiveFailures = 0;
       if (notifications.length > 0) {
-        console.log(`[Delivery] Found ${notifications.length} notifications to deliver`);
+        log.info("Found", notifications.length, "notifications to deliver");
       }
-      
-      // Deliver each notification
+
       for (const notification of notifications) {
         try {
-          // Get full notification context via service action
           const context = await client.action(api.service.actions.getNotificationForDelivery, {
             notificationId: notification._id,
             serviceToken: config.serviceToken,
             accountId: config.accountId,
           });
-          
+
           if (context?.agent) {
-            // Send to OpenClaw session
             await sendToOpenClaw(
               context.agent.sessionKey,
               formatNotificationMessage(context)
             );
-            
-            // Mark as delivered via service action
-            // Note: Types will be available after running `npx convex dev`
             await client.action(api.service.actions.markNotificationDelivered, {
               notificationId: notification._id,
               serviceToken: config.serviceToken,
               accountId: config.accountId,
             });
-            
             state.deliveredCount++;
-            console.log(`[Delivery] Delivered notification ${notification._id}`);
+            log.debug("Delivered notification", notification._id);
           }
         } catch (error) {
           state.failedCount++;
-          console.error(`[Delivery] Failed to deliver ${notification._id}:`, error);
-          // Don't mark as delivered - will retry on next poll
+          state.lastErrorAt = Date.now();
+          state.lastErrorMessage = error instanceof Error ? error.message : String(error);
+          log.warn("Failed to deliver", notification._id, state.lastErrorMessage);
         }
       }
-      
+
       state.lastDelivery = Date.now();
     } catch (error) {
-      console.error("[Delivery] Poll error:", error);
+      state.consecutiveFailures++;
+      state.lastErrorAt = Date.now();
+      state.lastErrorMessage = error instanceof Error ? error.message : String(error);
+      log.error("Poll error:", state.lastErrorMessage);
     }
-    
-    // Schedule next poll
-    setTimeout(poll, config.deliveryInterval);
+
+    const delay =
+      state.consecutiveFailures > 0
+        ? backoffMs(
+            state.consecutiveFailures,
+            config.deliveryBackoffBaseMs,
+            config.deliveryBackoffMaxMs
+          )
+        : config.deliveryInterval;
+    setTimeout(poll, delay);
   };
-  
+
   poll();
 }
 
@@ -97,7 +110,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
  */
 export function stopDeliveryLoop(): void {
   state.isRunning = false;
-  console.log("[Delivery] Stopped delivery loop");
+  log.info("Stopped delivery loop");
 }
 
 /**

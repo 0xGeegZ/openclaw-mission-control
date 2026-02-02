@@ -20,5 +20,9 @@ COPY packages/backend ./packages/backend
 WORKDIR /app/apps/runtime
 RUN npm run build
 
+# Healthcheck: GET /health must return 200
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
+  CMD node -e "require('http').get('http://127.0.0.1:3001/health', (r) => { r.on('data', () => {}); r.on('end', () => process.exit(r.statusCode === 200 ? 0 : 1)); }).on('error', () => process.exit(1));"
+
 # Run
 CMD ["node", "dist/index.js"]
