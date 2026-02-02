@@ -1,4 +1,5 @@
 import { SignIn } from "@clerk/nextjs";
+import Link from "next/link";
 import { softPopClerkTheme } from "@/lib/clerk-theme";
 
 /**
@@ -29,9 +30,9 @@ export default function SignInPage() {
       {/* Additional link */}
       <p className="text-center text-sm text-muted-foreground mt-6">
         Don&apos;t have an account?{" "}
-        <a href="/sign-up" className="text-primary hover:text-primary/80 font-medium transition-colors">
+        <Link href="/sign-up" className="text-primary hover:text-primary/80 font-medium transition-colors">
           Create one for free
-        </a>
+        </Link>
       </p>
     </div>
   );

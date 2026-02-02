@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
@@ -46,6 +46,7 @@ import {
   DialogTrigger,
 } from "@packages/ui/components/dialog";
 import { toast } from "sonner";
+import { getInitials } from "@/lib/utils";
 
 interface MembersPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -56,8 +57,8 @@ interface MembersPageProps {
  * Only accessible to admin and owner roles.
  */
 export default function MembersPage({ params }: MembersPageProps) {
-  const { accountSlug } = use(params);
-  const { account, accountId, isLoading, isAdmin, isOwner } = useAccount();
+  use(params);
+  const { accountId, isAdmin } = useAccount();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
@@ -88,15 +89,6 @@ export default function MembersPage({ params }: MembersPageProps) {
       default:
         return "outline";
     }
-  };
-  
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
   };
   
   if (!isAdmin) {

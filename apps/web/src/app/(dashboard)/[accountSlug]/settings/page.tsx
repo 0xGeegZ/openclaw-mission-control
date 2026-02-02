@@ -41,9 +41,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
+import { useTheme } from "next-themes";
 import {
   Users,
-  Shield,
   Bell,
   Palette,
   Building2,
@@ -53,9 +53,12 @@ import {
   Crown,
   MoreHorizontal,
   UserCog,
-  Mail,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getInitials } from "@/lib/utils";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -78,6 +81,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
   const [taskUpdates, setTaskUpdates] = useState(true);
   const [agentActivity, setAgentActivity] = useState(true);
   const [emailDigest, setEmailDigest] = useState(false);
+  const [memberUpdates, setMemberUpdates] = useState(true);
   const [notifSaving, setNotifSaving] = useState(false);
 
   const [showInvite, setShowInvite] = useState(false);
@@ -89,6 +93,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [theme, setThemeState] = useState<"light" | "dark" | "system">("system");
+  const [themeSaving, setThemeSaving] = useState(false);
+
+  const { setTheme: setNextTheme } = useTheme();
 
   const members = useQuery(
     api.memberships.list,
@@ -108,12 +116,21 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     }
   }, [account, accountSlug]);
 
+  /**
+   * Syncs notification preferences from account into local state.
+   * When account.settings.notificationPreferences is absent, defaults are not applied here (state keeps initial values).
+   */
   useEffect(() => {
-    const prefs = (account as { settings?: { notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean } } })?.settings?.notificationPreferences;
+    const prefs = (account as { settings?: { notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean; memberUpdates?: boolean }; theme?: string } })?.settings?.notificationPreferences;
+    const accountTheme = (account as { settings?: { theme?: string } })?.settings?.theme;
     if (prefs) {
       setTaskUpdates(prefs.taskUpdates ?? true);
       setAgentActivity(prefs.agentActivity ?? true);
       setEmailDigest(prefs.emailDigest ?? false);
+      setMemberUpdates(prefs.memberUpdates ?? true);
+    }
+    if (accountTheme && (accountTheme === "light" || accountTheme === "dark" || accountTheme === "system")) {
+      setThemeState(accountTheme);
     }
   }, [account]);
 
@@ -155,6 +172,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
             taskUpdates,
             agentActivity,
             emailDigest,
+            memberUpdates,
           },
         },
       });
@@ -163,6 +181,24 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setNotifSaving(false);
+    }
+  };
+
+  const handleThemeChange = async (value: "light" | "dark" | "system") => {
+    if (!accountId) return;
+    setThemeState(value);
+    setNextTheme(value);
+    setThemeSaving(true);
+    try {
+      await updateAccount({
+        accountId,
+        settings: { theme: value },
+      });
+      toast.success("Theme saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save theme");
+    } finally {
+      setThemeSaving(false);
     }
   };
 
@@ -227,14 +263,6 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       setShowDeleteConfirm(false);
     }
   };
-
-  const getInitials = (n: string) =>
-    n
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
 
   return (
     <div className="flex flex-col h-full">
@@ -517,6 +545,22 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                         {emailDigest ? "On" : "Off"}
                       </Button>
                     </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Member Updates</p>
+                        <p className="text-sm text-muted-foreground">
+                          Notifications when members join, leave, or roles change
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMemberUpdates((v) => !v)}
+                      >
+                        {memberUpdates ? "On" : "Off"}
+                      </Button>
+                    </div>
                   </div>
                   <Button
                     className="mt-4"
@@ -537,19 +581,31 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                     Theme & Appearance
                   </CardTitle>
                   <CardDescription>
-                    Customize the look and feel of your workspace
+                    Choose a theme for this workspace. Saved per workspace.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                      <Palette className="h-7 w-7 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-lg font-semibold">Theme customization coming soon</h3>
-                    <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                      Choose between light, dark, and custom themes.
-                    </p>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { value: "light" as const, label: "Light", icon: Sun },
+                      { value: "dark" as const, label: "Dark", icon: Moon },
+                      { value: "system" as const, label: "System", icon: Monitor },
+                    ].map(({ value, label, icon: Icon }) => (
+                      <Button
+                        key={value}
+                        variant={theme === value ? "secondary" : "outline"}
+                        className="gap-2"
+                        onClick={() => handleThemeChange(value)}
+                        disabled={themeSaving}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </Button>
+                    ))}
                   </div>
+                  {themeSaving && (
+                    <p className="text-xs text-muted-foreground mt-2">Saving…</p>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

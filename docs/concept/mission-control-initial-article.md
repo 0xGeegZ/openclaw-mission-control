@@ -1,13 +1,13 @@
 # Mission Control (OpenClaw / Clawdbot) — Clean Reference Notes
 
-> Clean, structured **paraphrase** of Bhanu Teja P’s article on X about building “Mission Control” (a multi-agent squad orchestrated with OpenClaw/Clawdbot + a shared Convex app).  
+> Clean, structured **paraphrase** of Bhanu Teja P's article on X about building "Mission Control" (a multi-agent squad orchestrated with OpenClaw/Clawdbot + a shared Convex app).  
 > Source: https://x.com/pbteja1998/status/2017662163540971756
 
 ---
 
 ## 1) Why Mission Control exists
 
-Many AI assistants behave like a “single chat box”:
+Many AI assistants behave like a "single chat box":
 - no durable continuity
 - context scattered across chat threads
 - hard to track work over time
@@ -45,7 +45,7 @@ Message comes in → Gateway routes → Session loads history → Model responds
 ```
 
 ### Cron jobs (scheduled wake-ups)
-Agents don’t need to run “always-on”. Instead:
+Agents don't need to run "always-on". Instead:
 - wake on a schedule
 - check for work
 - act or go back to sleep
@@ -66,10 +66,10 @@ Rule of thumb:
 
 ---
 
-## 3) From one agent to many (a “squad”)
+## 3) From one agent to many (a "squad")
 
 Core insight:
-- “10 agents” = “10 sessions”, each with its own identity and context
+- "10 agents" = "10 sessions", each with its own identity and context
 
 Each agent/session gets:
 - a role
@@ -91,7 +91,7 @@ agent:seo-analyst:main          → Vision
 ## 4) The shared brain: Mission Control app (Convex)
 
 Multiple isolated sessions still need shared coordination.
-Mission Control provides the “office”:
+Mission Control provides the "office":
 - a shared task board (Kanban)
 - threaded comments and history
 - documents/deliverables in one place
@@ -132,7 +132,7 @@ npx convex run documents:create '{ "title": "...", "content": "...", "type": "de
 
 A typical dashboard includes:
 - **Kanban board**: Inbox → Assigned → In Progress → Review → Done
-- **Agent roster**: who’s online, status, current work
+- **Agent roster**: who's online, status, current work
 - **Live feed**: a real-time log of activity + comments
 - **Task detail**: one place to see the whole thread + docs
 
@@ -144,17 +144,17 @@ Design principle:
 
 ## 6) SOUL system: giving agents identity
 
-Each agent gets its own “SOUL” file:
+Each agent gets its own "SOUL" file:
 - name + role
 - personality constraints (how they think / write)
-- what they’re good at
+- what they're good at
 - what they care about
 
 Why it matters:
-- “generalist agents” are often bland
-- constraints produce sharper outputs (e.g., “skeptical tester” finds edge cases)
+- "generalist agents" are often bland
+- constraints produce sharper outputs (e.g., "skeptical tester" finds edge cases)
 
-There’s also an “AGENTS” operational manual:
+There's also an "AGENTS" operational manual:
 - where memory files live
 - how to use the task system
 - when to speak vs. stay quiet
@@ -166,13 +166,13 @@ There’s also an “AGENTS” operational manual:
 
 A practical memory stack:
 
-1. **Session history** (the agent’s own conversation log)
+1. **Session history** (the agent's own conversation log)
 2. **Working memory** (current task state; updated often)
 3. **Daily notes** (what happened today; chronological)
 4. **Long-term memory** (stable facts + decisions; curated)
 
 Golden rule (again):
-> Durable memory is file-based, not “mental”.
+> Durable memory is file-based, not "mental".
 
 ---
 
@@ -181,14 +181,14 @@ Golden rule (again):
 Instead of paying for idle agents, each agent:
 - wakes periodically (e.g., every 15 minutes)
 - checks mentions / assigned tasks / feed
-- does work or reports “OK”
+- does work or reports "OK"
 - sleeps again
 
 Staggered schedules reduce concurrency spikes.
 
 ---
 
-## 9) Mentions + notifications daemon (the “nervous system”)
+## 9) Mentions + notifications daemon (the "nervous system")
 
 Mention model:
 - `@Vision` notifies Vision
@@ -199,7 +199,7 @@ Delivery model:
 - it tries to push the content to the relevant agent session
 - if the agent is asleep, it stays queued until the next wake cycle
 
-Thread subscriptions solve the “mention everyone” problem:
+Thread subscriptions solve the "mention everyone" problem:
 - interacting with a task subscribes you
 - subscribers get future updates automatically
 
@@ -209,8 +209,8 @@ Thread subscriptions solve the “mention everyone” problem:
 
 A scheduled job compiles:
 - what completed today
-- what’s in progress
-- what’s blocked
+- what's in progress
+- what's blocked
 - what needs review
 - key decisions
 
@@ -273,8 +273,7 @@ Everything happens inside a single task thread for traceability.
 ---
 
 ### Notes for your own build
-If your product includes “one server per customer account”, treat that as part of the core architecture:
+If your product includes "one server per customer account", treat that as part of the core architecture:
 - agents live with their account runtime
 - the shared app remains the coordination brain
 - notifications bridge the two worlds (Convex ↔ runtime)
-

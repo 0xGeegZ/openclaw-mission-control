@@ -32,14 +32,14 @@ Every Convex record is scoped to exactly one `accountId`.
 **Hard constraints (non-negotiable):**
 - No cross-account data access (ever).
 - Agent runtime is isolated per customer account (1 server per account).
-- Every “important” event produces an audit trail entry (activities).
+- Every "important" event produces an audit trail entry (activities).
 - Realtime UI updates must be driven by Convex queries/subscriptions (not polling).
 
 ---
 
 ## 1) Context & goal
 
-We are building a “Mission Control” dashboard that makes multiple AI agents work like a real team:
+We are building a "Mission Control" dashboard that makes multiple AI agents work like a real team:
 - tasks move through a Kanban workflow
 - discussions happen in task threads with @mentions and subscriptions
 - documents/deliverables are stored and linked to tasks
@@ -71,7 +71,7 @@ Use project-wide search and symbol navigation to find:
 - existing Convex auth guard helpers (e.g. `requireAccountMember`)
 - existing mutations that write `activities`
 - existing UI patterns for loading/error/empty states
-- existing “service-only” functions (runtime-only) and how they authenticate
+- existing "service-only" functions (runtime-only) and how they authenticate
 
 ### 2.3 Never invent patterns if one exists
 If the repo already has:
@@ -135,7 +135,7 @@ Agent (via runtime tool/script) → Convex service mutation:
 
 ### 4.1 Tenancy
 **Invariant T1:** Every table includes `accountId`.  
-**Invariant T2:** Every query/mutation filters by `accountId` derived from the caller’s identity.  
+**Invariant T2:** Every query/mutation filters by `accountId` derived from the caller's identity.  
 **Invariant T3:** Service-only runtime calls are scoped to exactly one account (service identity includes `accountId` claim).
 
 ### 4.2 Authorization
@@ -199,14 +199,14 @@ All inputs must be validated (zod or equivalent) and all writes must log `activi
 
 ---
 
-## 6) Cursor “Plan Mode” standard (how to write plans)
+## 6) Cursor "Plan Mode" standard (how to write plans)
 
 When the user asks for a feature plan, follow this format exactly.
 
 ### 6.1 Plan template (required headings)
 
 #### 1. Context & goal
-- What we’re building, and why
+- What we're building, and why
 - Constraints: stack, perf, security, backwards compatibility, UX
 
 #### 2. Codebase research summary
@@ -215,7 +215,7 @@ When the user asks for a feature plan, follow this format exactly.
 
 #### 3. High-level design
 - Architecture across frontend / convex / runtime
-- Main data flows: “action → mutation → db → subscription → UI”
+- Main data flows: "action → mutation → db → subscription → UI"
 - Exact names of functions/components/types (if they exist)
 
 #### 4. File & module changes
@@ -252,7 +252,7 @@ When the user asks for a feature plan, follow this format exactly.
 
 ---
 
-## 7) Implementation quality bar (definition of “22/20”)
+## 7) Implementation quality bar (definition of "22/20")
 
 ### 7.1 Every feature must include
 - server-side validation (Convex mutation/query)
@@ -262,8 +262,8 @@ When the user asks for a feature plan, follow this format exactly.
 - idempotency where retries are possible (runtime delivery, webhook-like flows)
 - tests: at least unit tests for parsing/validation and one integration path
 
-### 7.2 “No silent failures”
-- If runtime can’t deliver: record `delivery_failed` activity + keep notification queued
+### 7.2 "No silent failures"
+- If runtime can't deliver: record `delivery_failed` activity + keep notification queued
 - If mutation rejects: return clear error code + message
 - If user lacks permission: explicit forbidden error (not empty data)
 
@@ -280,158 +280,18 @@ When the user asks for a feature plan, follow this format exactly.
 
 ---
 
-## 8) Detailed “core instructions” for agents (SOUL + AGENTS + HEARTBEAT)
+## 8) Detailed "core instructions" for agents (SOUL + AGENTS + HEARTBEAT)
 
 This is the part you copy into your actual agent workspace.
 
 ### 8.1 AGENTS.md (operating manual — English, detailed)
-Use this as your base:
-
-```md
-# AGENTS.md — Mission Control Operating Manual
-
-## What you are
-You are one specialist in a team of AI agents. You collaborate through Mission Control (tasks, threads, docs).
-Your job is to move work forward and leave a clear trail.
-
-## Non-negotiable rules
-1) Everything must be traceable to a task or a doc.
-2) If it matters tomorrow, write it down today:
-   - update WORKING.md
-   - create/update a Mission Control document
-   - or post a message in the task thread
-3) Never assume permissions. If you cannot access something, report it and mark the task BLOCKED.
-4) Always include evidence when you claim facts (sources, logs, repro steps).
-5) Prefer small, finished increments over large vague progress.
-
-## Where to store memory
-- memory/WORKING.md: “what I’m doing right now”, updated every time you act
-- memory/YYYY-MM-DD.md: a chronological log of actions and decisions
-- MEMORY.md: stable decisions, conventions, key learnings
-
-## Required output format for task thread updates
-Post updates using this exact structure:
-
-**Summary**
-- What changed in Mission Control (status/message/doc)
-
-**Work done**
-- Bullet list of concrete actions
-
-**Artifacts**
-- Links/IDs: docs created, files changed, screenshots, logs
-
-**Risks / blockers**
-- What could break
-- What you need from others (explicit)
-
-**Next step (one)**
-- The single most important next action
-
-**Sources**
-- Links if you researched anything
-
-## Task state rules
-- If you start work: move task to IN_PROGRESS (unless already there)
-- If you need human review: move to REVIEW and explain what to review
-- If you are blocked: move to BLOCKED and explain the missing input
-- If done: move to DONE, post final summary, and ensure doc links exist
-
-## Communication rules
-- Be short and concrete in threads.
-- Ask questions only when you cannot proceed after checking:
-  - the task description
-  - the doc library
-  - the activity feed
-  - your WORKING.md and recent daily notes
-
-## Document rules
-When creating a doc, always include:
-- Context (why this doc exists)
-- The decision or deliverable
-- Open questions (if any)
-- “How to verify” (when relevant)
-- Last updated timestamp
-
-## Safety / secrets
-- Never paste secrets (keys, tokens) in threads or docs.
-- If you need credentials, request them via the official secrets path.
-```
+Use this as your base — see `docs/runtime/AGENTS.md` in this repo.
 
 ### 8.2 HEARTBEAT.md (strict checklist — English, detailed)
-```md
-# HEARTBEAT.md — Wake Checklist (Strict)
-
-## 1) Load context (always)
-- Read memory/WORKING.md
-- Read today’s note (memory/YYYY-MM-DD.md)
-- Fetch:
-  - unread notifications (mentions + thread updates)
-  - tasks assigned to me where status != done
-  - last 20 activities for the account
-
-## 2) Decide what to do (priority order)
-1) A direct @mention to me
-2) A task assigned to me and in REVIEW (needs response)
-3) A task assigned to me and in IN_PROGRESS / ASSIGNED
-4) A thread I’m subscribed to with new messages
-5) Otherwise: scan the activity feed for something I can improve
-
-## 3) Execute one atomic action
-Pick one action that can be completed quickly:
-- post a clarifying question (only if truly blocked)
-- write a doc section
-- test a repro step and attach logs
-- update a task status with explanation
-- refactor a small component (developer agent)
-- produce a small deliverable chunk
-
-## 4) Report + persist memory (always)
-- Post a thread update using the required format
-- Update WORKING.md:
-  - Current task
-  - Status
-  - Next step (single)
-- Append a short entry to today’s log with timestamp
-
-## 5) Stand down rules
-If you did not act:
-- Post `HEARTBEAT_OK` only if your team wants that signal
-- Otherwise stay silent to avoid noise
-```
+See `docs/runtime/HEARTBEAT.md` in this repo.
 
 ### 8.3 SOUL template (English, detailed)
-```md
-# SOUL — {AgentName}
-
-Role: {Role}
-Level: {intern|specialist|lead}
-
-## Mission
-One sentence. What outcomes you own.
-
-## Personality constraints
-- 4–6 bullets that shape your behavior (style + priorities)
-
-## Domain strengths
-- Tools you use well
-- Types of problems you solve
-
-## Default operating procedure
-- What you do on heartbeat
-- How you write thread updates
-- What you create as docs vs comments
-
-## Quality checks (must pass)
-- Evidence attached when making claims
-- Clear next step
-- Task state is correct
-
-## What you never do
-- Change stable decisions without updating MEMORY.md
-- Invent facts without sources
-- Leak secrets
-```
+See `docs/runtime/SOUL_TEMPLATE.md` in this repo.
 
 ---
 
@@ -458,7 +318,7 @@ One sentence. What outcomes you own.
 ### DigitalOcean (Droplet per account)
 - doctl droplet create: https://docs.digitalocean.com/reference/doctl/reference/compute/droplet/create/
 
-### Fly.io (strong alternative for “1 app per customer”)
+### Fly.io (strong alternative for "1 app per customer")
 - One app per user: https://fly.io/docs/machines/guides-examples/one-app-per-user-why/
 - Machines: https://fly.io/docs/machines/
 
@@ -471,9 +331,9 @@ One sentence. What outcomes you own.
 ## 10) TODO checklist (how to adopt these instructions)
 
 ### Repo adoption
-- [ ] Add this file to `docs/CURSOR_CORE.md`
-- [ ] Create `docs/AGENTS.md`, `docs/HEARTBEAT.md`, and `docs/SOUL_TEMPLATE.md` based on sections above
-- [ ] Add a “Definition of Done” section to your CONTRIBUTING.md
+- [ ] Add this file to `docs/concept/` (or `docs/CURSOR_CORE.md`)
+- [ ] Use `docs/runtime/AGENTS.md`, `docs/runtime/HEARTBEAT.md`, and `docs/runtime/SOUL_TEMPLATE.md` (already in repo)
+- [ ] Add a "Definition of Done" section to your CONTRIBUTING.md
 - [ ] Add a `runtime/` README explaining service auth and delivery loop
 
 ### Convex invariants
@@ -489,5 +349,5 @@ One sentence. What outcomes you own.
 
 ### Testing + QA
 - [ ] Add unit tests for mention parsing + status transitions
-- [ ] Add integration test for “comment with mention → notification created → delivered”
-- [ ] Add manual QA checklist in the repo wiki/docs
+- [ ] Add integration test for "comment with mention → notification created → delivered"
+- [ ] Add manual QA checklist — see `docs/quality/qa-checklist.md`

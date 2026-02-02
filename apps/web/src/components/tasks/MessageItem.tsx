@@ -39,7 +39,7 @@ export function MessageItem({ message }: MessageItemProps) {
     try {
       await deleteMessage({ messageId: message._id });
       toast.success("Message deleted");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete message");
     }
   };

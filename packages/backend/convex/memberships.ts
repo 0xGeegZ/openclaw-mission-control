@@ -8,6 +8,11 @@ import {
 } from "./lib/auth";
 import { memberRoleValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
+import {
+  createMemberAddedNotification,
+  createMemberRemovedNotification,
+  createRoleChangeNotification,
+} from "./lib/notifications";
 import { Id } from "./_generated/dataModel";
 
 /**
@@ -124,6 +129,17 @@ export const invite = mutation({
       meta: { role: args.role },
     });
 
+    const account = await ctx.db.get(args.accountId);
+    if (account) {
+      await createMemberAddedNotification(
+        ctx,
+        args.accountId,
+        args.userId,
+        account.name,
+        inviterName
+      );
+    }
+
     return membershipId;
   },
 });
@@ -140,8 +156,8 @@ export const updateRole = mutation({
     role: memberRoleValidator,
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
-    
+    const { userId: updaterId, userName: updaterName, account } = await requireAccountAdmin(ctx, args.accountId);
+
     const membership = await ctx.db.get(args.membershipId);
     if (!membership) {
       throw new Error("Not found: Membership does not exist");
@@ -162,9 +178,30 @@ export const updateRole = mutation({
     }
     
     await ctx.db.patch(args.membershipId, { role: args.role });
-    
-    // TODO: Log activity
-    
+
+    await logActivity({
+      ctx,
+      accountId: args.accountId,
+      type: "member_updated",
+      actorType: "user",
+      actorId: updaterId,
+      actorName: updaterName,
+      targetType: "membership",
+      targetId: args.membershipId,
+      targetName: membership.userName,
+      meta: { newRole: args.role },
+    });
+
+    if (account) {
+      await createRoleChangeNotification(
+        ctx,
+        args.accountId,
+        membership.userId,
+        args.role,
+        account.name
+      );
+    }
+
     return args.membershipId;
   },
 });
@@ -180,26 +217,48 @@ export const remove = mutation({
     membershipId: v.id("memberships"),
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
-    
+    const { userId: removerId, userName: removerName, account } = await requireAccountAdmin(ctx, args.accountId);
+
     const membership = await ctx.db.get(args.membershipId);
     if (!membership) {
       throw new Error("Not found: Membership does not exist");
     }
-    
+
     if (membership.accountId !== args.accountId) {
       throw new Error("Forbidden: Membership belongs to different account");
     }
-    
+
     // Cannot remove owner
     if (membership.role === "owner") {
       throw new Error("Forbidden: Cannot remove owner");
     }
-    
+
+    const removedUserId = membership.userId;
+    const removedUserName = membership.userName;
+
     await ctx.db.delete(args.membershipId);
-    
-    // TODO: Log activity
-    
+
+    await logActivity({
+      ctx,
+      accountId: args.accountId,
+      type: "member_removed",
+      actorType: "user",
+      actorId: removerId,
+      actorName: removerName,
+      targetType: "membership",
+      targetId: args.membershipId,
+      targetName: removedUserName,
+    });
+
+    if (account) {
+      await createMemberRemovedNotification(
+        ctx,
+        args.accountId,
+        removedUserId,
+        account.name
+      );
+    }
+
     return true;
   },
 });
@@ -220,11 +279,22 @@ export const leave = mutation({
     if (membership.role === "owner") {
       throw new Error("Forbidden: Owner cannot leave account. Transfer ownership first.");
     }
-    
+
+    await logActivity({
+      ctx,
+      accountId: args.accountId,
+      type: "member_removed",
+      actorType: "user",
+      actorId: membership.userId,
+      actorName: membership.userName,
+      targetType: "membership",
+      targetId: membership._id,
+      targetName: membership.userName,
+      meta: { action: "leave" },
+    });
+
     await ctx.db.delete(membership._id);
-    
-    // TODO: Log activity
-    
+
     return true;
   },
 });
@@ -239,8 +309,8 @@ export const transferOwnership = mutation({
     newOwnerMembershipId: v.id("memberships"),
   },
   handler: async (ctx, args) => {
-    const { membership: currentOwnerMembership } = await requireAccountOwner(ctx, args.accountId);
-    
+    const { membership: currentOwnerMembership, account } = await requireAccountOwner(ctx, args.accountId);
+
     const newOwnerMembership = await ctx.db.get(args.newOwnerMembershipId);
     if (!newOwnerMembership) {
       throw new Error("Not found: Target membership does not exist");
@@ -250,12 +320,43 @@ export const transferOwnership = mutation({
       throw new Error("Forbidden: Target membership belongs to different account");
     }
     
-    // Swap roles
+    const newOwnerUserId = newOwnerMembership.userId;
+    const newOwnerUserName = newOwnerMembership.userName;
+    const oldOwnerUserId = currentOwnerMembership.userId;
+
     await ctx.db.patch(currentOwnerMembership._id, { role: "admin" });
     await ctx.db.patch(args.newOwnerMembershipId, { role: "owner" });
-    
-    // TODO: Log activity
-    
+
+    await logActivity({
+      ctx,
+      accountId: args.accountId,
+      type: "member_updated",
+      actorType: "user",
+      actorId: oldOwnerUserId,
+      actorName: currentOwnerMembership.userName,
+      targetType: "membership",
+      targetId: args.newOwnerMembershipId,
+      targetName: newOwnerUserName,
+      meta: { newRole: "owner", previousOwner: oldOwnerUserId },
+    });
+
+    if (account) {
+      await createRoleChangeNotification(
+        ctx,
+        args.accountId,
+        newOwnerUserId,
+        "owner",
+        account.name
+      );
+      await createRoleChangeNotification(
+        ctx,
+        args.accountId,
+        oldOwnerUserId,
+        "admin",
+        account.name
+      );
+    }
+
     return true;
   },
 });

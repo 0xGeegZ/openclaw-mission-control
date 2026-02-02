@@ -7,7 +7,6 @@ import {
   ArrowRight, 
   Bot, 
   Zap, 
-  Users, 
   CheckCircle2,
   LayoutDashboard,
   MessageSquare,

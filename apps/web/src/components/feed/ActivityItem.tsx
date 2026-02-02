@@ -21,7 +21,7 @@ const actorConfig: Record<string, { icon: typeof User; className: string }> = {
 /**
  * Single activity item in feed.
  */
-export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
+export function ActivityItem({ activity, accountSlug: _accountSlug }: ActivityItemProps) {
   const config = actorConfig[activity.actorType] || actorConfig.system;
   const Icon = config.icon;
   

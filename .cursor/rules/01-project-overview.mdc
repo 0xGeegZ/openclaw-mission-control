@@ -7,8 +7,8 @@ alwaysApply: true
 # Mission Control — Project Overview
 
 **IMPORTANT:** Before implementing ANY changes, read the foundational documentation:
-- `docs/mission-control-initial-article.md` — Original concept and vision
-- `docs/mission-control-cursor-core-instructions.md` — Core engineering instructions
+- `docs/concept/mission-control-initial-article.md` — Original concept and vision
+- `docs/concept/mission-control-cursor-core-instructions.md` — Core engineering instructions
 - `docs/build/00-orchestrator.md` — Build orchestration and module plans
 
 ## What is Mission Control?

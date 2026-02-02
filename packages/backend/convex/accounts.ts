@@ -137,13 +137,32 @@ export const listMyAccounts = query({
   },
 });
 
+const agentDefaultsValidator = v.object({
+  model: v.optional(v.string()),
+  temperature: v.optional(v.number()),
+  maxTokens: v.optional(v.number()),
+  maxHistoryMessages: v.optional(v.number()),
+  behaviorFlags: v.optional(v.object({
+    canCreateTasks: v.boolean(),
+    canModifyTaskStatus: v.boolean(),
+    canCreateDocuments: v.boolean(),
+    canMentionAgents: v.boolean(),
+  })),
+  rateLimits: v.optional(v.object({
+    requestsPerMinute: v.optional(v.number()),
+    tokensPerDay: v.optional(v.number()),
+  })),
+});
+
 const accountSettingsValidator = v.object({
   theme: v.optional(v.string()),
   notificationPreferences: v.optional(v.object({
     taskUpdates: v.boolean(),
     agentActivity: v.boolean(),
     emailDigest: v.boolean(),
+    memberUpdates: v.boolean(),
   })),
+  agentDefaults: v.optional(agentDefaultsValidator),
 });
 
 /**
@@ -181,7 +200,7 @@ export const update = mutation({
       }
     }
     if (args.settings !== undefined) {
-      const current = (account as { settings?: { theme?: string; notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean } } }).settings ?? {};
+      const current = (account as { settings?: { theme?: string; notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean; memberUpdates?: boolean }; agentDefaults?: Record<string, unknown> } }).settings ?? {};
       updates.settings = {
         ...current,
         ...(args.settings.theme !== undefined && { theme: args.settings.theme }),
@@ -191,6 +210,7 @@ export const update = mutation({
             ...args.settings.notificationPreferences,
           },
         }),
+        ...(args.settings.agentDefaults !== undefined && { agentDefaults: args.settings.agentDefaults }),
       };
     }
 
@@ -199,6 +219,36 @@ export const update = mutation({
     }
 
     return args.accountId;
+  },
+});
+
+/**
+ * Request runtime restart (admin only).
+ * Sets restartRequestedAt; runtime service should poll and clear after restart.
+ */
+export const requestRestart = mutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountAdmin(ctx, args.accountId);
+    await ctx.db.patch(args.accountId, { restartRequestedAt: Date.now() });
+    return args.accountId;
+  },
+});
+
+/**
+ * Clear restart requested flag (internal mutation).
+ * Called by runtime after it sees restartRequestedAt and is about to exit.
+ */
+export const clearRestartRequestedInternal = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) return;
+    await ctx.db.patch(args.accountId, { restartRequestedAt: undefined });
   },
 });
 
@@ -244,8 +294,78 @@ export const updateRuntimeStatusInternal = internalMutation({
     }
     
     await ctx.db.patch(args.accountId, updates);
-    
-    // TODO: Log activity
+
+    // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
+    const runtime = await ctx.db
+      .query("runtimes")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .first();
+    const now = Date.now();
+    const cfg = args.config;
+    const UPGRADE_TIMEOUT_MS = 30 * 60 * 1000;
+    if (!runtime) {
+      await ctx.db.insert("runtimes", {
+        accountId: args.accountId,
+        provider: "digitalocean",
+        providerId: cfg?.dropletId ?? "",
+        ipAddress: cfg?.ipAddress ?? "",
+        region: cfg?.region ?? "",
+        openclawVersion: cfg?.openclawVersion ?? "",
+        runtimeServiceVersion: cfg?.runtimeServiceVersion ?? "",
+        dockerImageTag: cfg?.runtimeServiceVersion ?? "latest",
+        status: args.status,
+        lastHealthCheck: cfg?.lastHealthCheck,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      const targetMatches =
+        runtime.pendingUpgrade != null &&
+        cfg?.openclawVersion === runtime.pendingUpgrade.targetOpenclawVersion &&
+        cfg?.runtimeServiceVersion === runtime.pendingUpgrade.targetRuntimeVersion;
+      const pendingAgeMs = runtime.pendingUpgrade ? now - runtime.pendingUpgrade.initiatedAt : 0;
+      const isStale =
+        runtime.pendingUpgrade != null &&
+        !targetMatches &&
+        pendingAgeMs > UPGRADE_TIMEOUT_MS;
+      const nextHistory = targetMatches
+        ? [...(runtime.upgradeHistory ?? []), {
+            fromOpenclawVersion: runtime.openclawVersion,
+            toOpenclawVersion: cfg?.openclawVersion ?? runtime.openclawVersion,
+            fromRuntimeVersion: runtime.runtimeServiceVersion,
+            toRuntimeVersion: cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
+            status: "success" as const,
+            startedAt: runtime.pendingUpgrade?.initiatedAt ?? now,
+            completedAt: now,
+            initiatedBy: runtime.pendingUpgrade?.initiatedBy ?? "runtime",
+          }].slice(-10)
+        : isStale
+          ? [...(runtime.upgradeHistory ?? []), {
+              fromOpenclawVersion: runtime.openclawVersion,
+              toOpenclawVersion: runtime.pendingUpgrade?.targetOpenclawVersion ?? runtime.openclawVersion,
+              fromRuntimeVersion: runtime.runtimeServiceVersion,
+              toRuntimeVersion: runtime.pendingUpgrade?.targetRuntimeVersion ?? runtime.runtimeServiceVersion,
+              status: "failed" as const,
+              startedAt: runtime.pendingUpgrade?.initiatedAt ?? now,
+              completedAt: now,
+              error: "Upgrade timed out",
+              initiatedBy: runtime.pendingUpgrade?.initiatedBy ?? "runtime",
+            }].slice(-10)
+          : runtime.upgradeHistory;
+      await ctx.db.patch(runtime._id, {
+        status: args.status,
+        lastHealthCheck: cfg?.lastHealthCheck,
+        ipAddress: cfg?.ipAddress ?? runtime.ipAddress,
+        region: cfg?.region ?? runtime.region,
+        providerId: cfg?.dropletId ?? runtime.providerId,
+        openclawVersion: cfg?.openclawVersion ?? runtime.openclawVersion,
+        runtimeServiceVersion: cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
+        dockerImageTag: cfg?.runtimeServiceVersion ?? runtime.dockerImageTag,
+        pendingUpgrade: targetMatches || isStale ? undefined : runtime.pendingUpgrade,
+        upgradeHistory: nextHistory,
+        updatedAt: now,
+      });
+    }
     
     return args.accountId;
   },

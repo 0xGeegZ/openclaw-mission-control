@@ -49,7 +49,8 @@ export type ActivityType =
   | "agent_status_changed"
   | "runtime_status_changed"
   | "member_added"
-  | "member_removed";
+  | "member_removed"
+  | "member_updated";
 
 /**
  * Document types.
@@ -67,7 +68,10 @@ export type NotificationType =
   | "mention"
   | "assignment"
   | "thread_update"
-  | "status_change";
+  | "status_change"
+  | "member_added"
+  | "member_removed"
+  | "role_changed";
 
 /**
  * Skill category types.

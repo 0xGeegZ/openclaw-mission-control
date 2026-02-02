@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState, useCallback, useEffect } from "react";
+import { ReactNode, useState, useCallback } from "react";
 import { SidebarContext } from "@/lib/hooks/useSidebar";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
