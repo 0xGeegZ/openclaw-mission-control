@@ -84,6 +84,8 @@ npm run docker:up
 npm run docker:up:openclaw
 ```
 
+For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (default: Haiku 4.5 primary, Sonnet 4.5 fallback). Skills are enabled by default; the gateway image includes Chromium for web tools.
+
 If you prefer direct Compose commands, run them from the repo root:
 
 ```bash

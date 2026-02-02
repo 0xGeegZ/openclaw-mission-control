@@ -6,7 +6,7 @@ This guide covers running the Mission Control runtime (and optional OpenClaw gat
 
 - Docker and Docker Compose (Docker Desktop includes both).
 - Convex deployment with the Mission Control backend and a **service token** scoped to one account.
-- For OpenClaw gateway: Anthropic (or OpenAI) API key for agent models.
+- For OpenClaw gateway: **Vercel AI Gateway** API key (`VERCEL_AI_GATEWAY_API_KEY`); or Anthropic/OpenAI keys for legacy provider.
 
 ## Quick start
 
@@ -45,7 +45,7 @@ This guide covers running the Mission Control runtime (and optional OpenClaw gat
    - Runtime health: `curl -s http://127.0.0.1:3001/health`
    - OpenClaw Control UI: http://localhost:18789/?token=local
 
-  Set `ANTHROPIC_API_KEY` (and optionally `OPENAI_API_KEY`) in `apps/runtime/.env` for the gateway to run agents.
+  Set `VERCEL_AI_GATEWAY_API_KEY` in `apps/runtime/.env` for the gateway (default: Haiku 4.5 primary, Sonnet 4.5 fallback). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
 
 If you prefer, you can still run Compose directly:
 
@@ -75,8 +75,7 @@ See `apps/runtime/.env.example`. Summary:
 | `HEALTH_HOST` | No | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works. |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
 | `CLAWDBOT_GATEWAY_TOKEN` | No | Gateway auth token (default `local` for local dev). |
-| `ANTHROPIC_API_KEY` | For OpenClaw | Anthropic API key for agent models. |
-| `OPENAI_API_KEY` | No | Optional; adds OpenAI models in OpenClaw. |
+| `VERCEL_AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key; when set, agents use Haiku 4.5 primary, Sonnet 4.5 fallback. |
 
 ## Upgrade workflow (local)
 
@@ -118,7 +117,7 @@ These directories are created on first run and are gitignored (`.runtime/`). To 
   If you see errors like `containerd-stargz-grpc/snapshotter` during builds, restart Docker Desktop and retry. If it persists, disable "Use containerd for pulling and storing images" in Docker Desktop > Settings > Features in development.
 
 - **OpenClaw gateway not starting**  
-  Check logs: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw logs openclaw-gateway`. Ensure `ANTHROPIC_API_KEY` is set if you want agents to run. The gateway may still start without it for the Control UI.
+  Check logs: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw logs openclaw-gateway`. Set `VERCEL_AI_GATEWAY_API_KEY` (or `ANTHROPIC_API_KEY`) for agents to run. The gateway may still start without it for the Control UI.
 
 - **Port already in use**  
   Change `HEALTH_PORT` (runtime) or the host port mapping in `apps/runtime/docker-compose.runtime.yml` (e.g. `"127.0.0.1:3002:3001"`). For OpenClaw, change the published port (e.g. `"127.0.0.1:18790:18789"`).

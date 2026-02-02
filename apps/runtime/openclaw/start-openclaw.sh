@@ -34,7 +34,7 @@ else
   echo "Using existing config"
 fi
 
-# Merge env into config
+# Merge env into config (enforced each boot: Vercel gateway, Haiku/Sonnet, skills, browser)
 node << 'EOFNODE'
 const fs = require('fs');
 const configPath = '/root/.clawdbot/clawdbot.json';
@@ -48,19 +48,22 @@ try {
 config.agents = config.agents || {};
 config.agents.defaults = config.agents.defaults || {};
 config.agents.defaults.model = config.agents.defaults.model || {};
+config.agents.defaults.models = config.agents.defaults.models || {};
 config.gateway = config.gateway || {};
 config.channels = config.channels || {};
-const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
-const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
-if (hasAnthropic || hasOpenAI) {
-  delete config.agents.defaults.model.primary;
-}
+config.auth = config.auth || {};
+config.auth.profiles = config.auth.profiles || {};
+config.skills = config.skills || {};
+config.skills.install = config.skills.install || { nodeManager: 'npm' };
+config.skills.entries = config.skills.entries || {};
 
+const hasVercelKey = Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY);
+
+// Gateway and browser (always enforced)
 config.gateway.port = 18789;
 config.gateway.mode = 'local';
 config.gateway.controlUi = config.gateway.controlUi || {};
 config.gateway.controlUi.allowInsecureAuth = true;
-
 config.browser = config.browser || {};
 config.browser.enabled = true;
 config.browser.executablePath = '/usr/bin/chromium';
@@ -73,32 +76,64 @@ if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
   config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
 }
 
-if (hasAnthropic) {
-  config.models = config.models || {};
-  config.models.providers = config.models.providers || {};
-  config.models.providers.anthropic = {
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    api: 'anthropic-messages',
-    models: [
-      { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
-    ],
+// Vercel AI Gateway: auth profile + model defaults (Haiku primary, Sonnet fallback)
+if (hasVercelKey) {
+  config.auth.profiles['vercel-ai-gateway:default'] = {
+    provider: 'vercel-ai-gateway',
+    mode: 'api_key',
   };
-  config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-5-20250929';
-}
-
-if (hasOpenAI) {
-  config.models = config.models || {};
-  config.models.providers = config.models.providers || {};
-  config.models.providers.openai = config.models.providers.openai || {
-    api: 'openai-responses',
-    models: [{ id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 }],
-  };
-  config.agents.defaults.models = config.agents.defaults.models || {};
-  config.agents.defaults.models['openai/gpt-4o'] = { alias: 'GPT-4o' };
-  if (!hasAnthropic) {
-    config.agents.defaults.model.primary = 'openai/gpt-4o';
+  config.env = config.env || {};
+  config.env.VERCEL_AI_GATEWAY_API_KEY = process.env.VERCEL_AI_GATEWAY_API_KEY;
+  config.agents.defaults.model.primary = 'vercel-ai-gateway/anthropic/claude-haiku-4.5';
+  config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
+  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'] = { alias: 'Claude Sonnet 4.5' };
+} else {
+  // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
+  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+  if (hasAnthropic) {
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers.anthropic = {
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      api: 'anthropic-messages',
+      models: [{ id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 }],
+    };
+    config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-5-20250929';
+    config.agents.defaults.model.fallbacks = config.agents.defaults.model.fallbacks || [];
+  }
+  if (hasOpenAI) {
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers.openai = config.models.providers.openai || {
+      api: 'openai-responses',
+      models: [{ id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 }],
+    };
+    config.agents.defaults.models['openai/gpt-4o'] = { alias: 'GPT-4o' };
+    if (!hasAnthropic) {
+      config.agents.defaults.model.primary = 'openai/gpt-4o';
+      config.agents.defaults.model.fallbacks = config.agents.defaults.model.fallbacks || [];
+    }
   }
 }
+
+// Skills: merge ready skills (idempotent enable)
+const readySkills = [
+  'peekaboo', 'bird', 'bluebubbles', 'clawdhub', 'openai-image-gen', 'openai-whisper-api',
+  'video-frames', 'weather', 'apple-reminders', 'cron-gen', 'sql-gen', 'bankr', 'base',
+  'clanker', 'ens-primary-name', 'neynar', 'onchainkit', 'qrcoin', 'yoink', 'zapper',
+  'calendar', 'evm-wallet-skill', 'markdown-converter', 'postgres', 'remind-me',
+];
+readySkills.forEach((id) => {
+  config.skills.entries[id] = config.skills.entries[id] || {};
+  config.skills.entries[id].enabled = true;
+});
+
+// Commands for native/skill execution
+config.commands = config.commands || {};
+config.commands.native = config.commands.native || 'auto';
+config.commands.nativeSkills = config.commands.nativeSkills || 'auto';
 
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');

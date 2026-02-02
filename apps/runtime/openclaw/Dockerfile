@@ -3,7 +3,7 @@
 
 FROM node:22
 
-# Install basic tools + Chromium for browser automation
+# Install basic tools + Chromium (required for OpenClaw web/browser skills)
 RUN apt-get update && apt-get install -y \
     curl \
     git \

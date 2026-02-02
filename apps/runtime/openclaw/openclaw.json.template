@@ -1,11 +1,61 @@
 {
+  "auth": {
+    "profiles": {
+      "vercel-ai-gateway:default": {
+        "provider": "vercel-ai-gateway",
+        "mode": "api_key"
+      }
+    }
+  },
   "agents": {
     "defaults": {
-      "workspace": "/root/clawd"
+      "workspace": "/root/clawd",
+      "model": {
+        "primary": "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+        "fallbacks": ["vercel-ai-gateway/anthropic/claude-sonnet-4.5"]
+      },
+      "models": {
+        "vercel-ai-gateway/anthropic/claude-haiku-4.5": { "alias": "Claude Haiku 4.5" },
+        "vercel-ai-gateway/anthropic/claude-sonnet-4.5": { "alias": "Claude Sonnet 4.5" }
+      },
+      "compaction": { "mode": "safeguard" },
+      "maxConcurrent": 4,
+      "subagents": { "maxConcurrent": 8 }
     }
   },
   "gateway": {
     "port": 18789,
     "mode": "local"
+  },
+  "commands": { "native": "auto", "nativeSkills": "auto" },
+  "skills": {
+    "install": { "nodeManager": "npm" },
+    "entries": {
+      "peekaboo": { "enabled": true },
+      "bird": { "enabled": true },
+      "bluebubbles": { "enabled": true },
+      "clawdhub": { "enabled": true },
+      "openai-image-gen": { "enabled": true },
+      "openai-whisper-api": { "enabled": true },
+      "video-frames": { "enabled": true },
+      "weather": { "enabled": true },
+      "apple-reminders": { "enabled": true },
+      "cron-gen": { "enabled": true },
+      "sql-gen": { "enabled": true },
+      "bankr": { "enabled": true },
+      "base": { "enabled": true },
+      "clanker": { "enabled": true },
+      "ens-primary-name": { "enabled": true },
+      "neynar": { "enabled": true },
+      "onchainkit": { "enabled": true },
+      "qrcoin": { "enabled": true },
+      "yoink": { "enabled": true },
+      "zapper": { "enabled": true },
+      "calendar": { "enabled": true },
+      "evm-wallet-skill": { "enabled": true },
+      "markdown-converter": { "enabled": true },
+      "postgres": { "enabled": true },
+      "remind-me": { "enabled": true }
+    }
   }
 }
