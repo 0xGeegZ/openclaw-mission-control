@@ -1,5 +1,11 @@
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
+import { createLogger } from "./logger";
+
+const log = createLogger("[SelfUpgrade]");
+
+/** When set to "exit" (default), runtime exits on upgrade/restart so process manager can restart. */
+const UPGRADE_MODE = process.env.UPGRADE_MODE || "exit";
 
 /**
  * Check if admin requested runtime restart and exit so process manager restarts the service.
@@ -13,12 +19,13 @@ export async function checkRestartRequested(config: RuntimeConfig): Promise<bool
       serviceToken: config.serviceToken,
     });
     if (result?.restartRequested) {
-      console.log("[SelfUpgrade] Restart requested by admin; exiting for process manager restart.");
-      process.exit(0);
+      log.info("Restart requested by admin; exiting for process manager restart.");
+      if (UPGRADE_MODE === "exit") process.exit(0);
+      return true;
     }
     return result?.restartRequested ?? false;
   } catch (error) {
-    console.error("[SelfUpgrade] Failed to check restart request:", error);
+    log.error("Failed to check restart request:", error);
     return false;
   }
 }
@@ -48,18 +55,21 @@ export async function checkAndApplyPendingUpgrade(config: RuntimeConfig): Promis
     if (pendingUpgrade.strategy !== "immediate") {
       return false;
     }
-    console.log(
-      "[SelfUpgrade] Pending upgrade: runtime %s -> %s, openclaw %s -> %s",
+    log.info(
+      "Pending upgrade: runtime",
       config.runtimeServiceVersion,
+      "->",
       pendingUpgrade.targetRuntimeVersion,
+      "openclaw",
       config.openclawVersion,
+      "->",
       pendingUpgrade.targetOpenclawVersion
     );
-    console.log("[SelfUpgrade] Exiting for process manager to run new image.");
-    process.exit(0);
+    log.info("Exiting for process manager to run new image.");
+    if (UPGRADE_MODE === "exit") process.exit(0);
+    return true;
   } catch (error) {
-    console.error("[SelfUpgrade] Failed to check or apply pending upgrade:", error);
+    log.error("Failed to check or apply pending upgrade:", error);
     return false;
   }
-  return true;
 }

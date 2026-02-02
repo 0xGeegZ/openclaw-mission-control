@@ -1,11 +1,14 @@
 import http from "http";
 import { RuntimeConfig } from "./config";
+import { getConvexClient, api } from "./convex-client";
+import { getAgentSyncState } from "./agent-sync";
 import { getDeliveryState } from "./delivery";
 import { getGatewayState } from "./gateway";
 import { getHeartbeatState } from "./heartbeat";
-import { getConvexClient, api } from "./convex-client";
+import { createLogger } from "./logger";
 import { checkRestartRequested, checkAndApplyPendingUpgrade } from "./self-upgrade";
 
+const log = createLogger("[Health]");
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
 
@@ -39,6 +42,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       const delivery = getDeliveryState();
       const gateway = getGatewayState();
       const heartbeat = getHeartbeatState();
+      const agentSync = getAgentSyncState();
 
       const health = {
         status: gateway.isRunning && delivery.isRunning ? "healthy" : "degraded",
@@ -64,10 +68,20 @@ export function startHealthServer(config: RuntimeConfig): void {
           lastDelivery: delivery.lastDelivery,
           delivered: delivery.deliveredCount,
           failed: delivery.failedCount,
+          consecutiveFailures: delivery.consecutiveFailures,
+          lastErrorAt: delivery.lastErrorAt,
+          lastErrorMessage: delivery.lastErrorMessage,
         },
         heartbeat: {
           running: heartbeat.isRunning,
           scheduledAgents: heartbeat.scheduledCount,
+        },
+        agentSync: {
+          running: agentSync.running,
+          lastSyncAt: agentSync.lastSyncAt,
+          lastError: agentSync.lastError,
+          addedCount: agentSync.addedCount,
+          removedCount: agentSync.removedCount,
         },
         memory: process.memoryUsage(),
 
@@ -83,10 +97,9 @@ export function startHealthServer(config: RuntimeConfig): void {
     res.end("Not Found");
   });
   
-  server.listen(config.healthPort, () => {
-    console.log(`[Health] Server listening on port ${config.healthPort}`);
-    console.log(`[Health] Runtime Service v${config.runtimeServiceVersion}`);
-    console.log(`[Health] OpenClaw v${config.openclawVersion}`);
+  server.listen(config.healthPort, config.healthHost, () => {
+    log.info("Server listening on", config.healthHost + ":" + config.healthPort);
+    log.info("Runtime Service v" + config.runtimeServiceVersion, "OpenClaw v" + config.openclawVersion);
   });
   
   // Periodic health check to Convex (includes version info) and restart check
@@ -112,7 +125,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       await checkRestartRequested(runtimeConfig);
       await checkAndApplyPendingUpgrade(runtimeConfig);
     } catch (error) {
-      console.error("[Health] Failed to update Convex status:", error);
+      log.error("Failed to update Convex status:", error);
     }
   }, config.healthCheckInterval);
 }
