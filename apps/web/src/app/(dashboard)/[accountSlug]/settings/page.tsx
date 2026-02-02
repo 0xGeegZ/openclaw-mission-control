@@ -891,6 +891,56 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Email invite dialog */}
+      <Dialog open={showEmailInvite} onOpenChange={setShowEmailInvite}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invite by Email</DialogTitle>
+            <DialogDescription>
+              Send an invitation email to join this workspace
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="email-invite">Email Address</Label>
+              <Input
+                id="email-invite"
+                type="email"
+                placeholder="colleague@example.com"
+                value={emailInviteAddress}
+                onChange={(e) => setEmailInviteAddress(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select
+                value={emailInviteRole}
+                onValueChange={(v) => setEmailInviteRole(v as "member" | "admin")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmailInvite(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEmailInvite}
+              disabled={emailInviteSubmitting || !emailInviteAddress.trim()}
+            >
+              {emailInviteSubmitting ? "Sending…" : "Send Invitation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
