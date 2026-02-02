@@ -2,7 +2,9 @@ import http from "http";
 import { RuntimeConfig } from "./config";
 import { getDeliveryState } from "./delivery";
 import { getGatewayState } from "./gateway";
+import { getHeartbeatState } from "./heartbeat";
 import { getConvexClient, api } from "./convex-client";
+import { checkRestartRequested, checkAndApplyPendingUpgrade } from "./self-upgrade";
 
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
@@ -32,29 +34,27 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
     
-    // Health endpoint - full status
+    // Health endpoint - full status (used by fleet monitoring UI)
     if (req.url === "/health") {
       const delivery = getDeliveryState();
       const gateway = getGatewayState();
-      
+      const heartbeat = getHeartbeatState();
+
       const health = {
         status: gateway.isRunning && delivery.isRunning ? "healthy" : "degraded",
         uptime: process.uptime(),
-        
-        // Version info
+
         versions: {
           runtimeService: config.runtimeServiceVersion,
           openclaw: config.openclawVersion,
         },
-        
-        // Infrastructure
+
         infrastructure: {
           dropletId: config.dropletId,
           ipAddress: config.dropletIp,
           region: config.dropletRegion,
         },
-        
-        // Component status
+
         gateway: {
           running: gateway.isRunning,
           sessions: gateway.sessions.size,
@@ -65,7 +65,12 @@ export function startHealthServer(config: RuntimeConfig): void {
           delivered: delivery.deliveredCount,
           failed: delivery.failedCount,
         },
-        
+        heartbeat: {
+          running: heartbeat.isRunning,
+          scheduledAgents: heartbeat.scheduledCount,
+        },
+        memory: process.memoryUsage(),
+
         timestamp: Date.now(),
       };
       
@@ -84,14 +89,13 @@ export function startHealthServer(config: RuntimeConfig): void {
     console.log(`[Health] OpenClaw v${config.openclawVersion}`);
   });
   
-  // Periodic health check to Convex (includes version info)
+  // Periodic health check to Convex (includes version info) and restart check
   setInterval(async () => {
     try {
       if (!runtimeConfig) return;
-      
+
       const client = getConvexClient();
-      // Call service action instead of mutation (requires service auth)
-      await client.action(api.service.actions.updateRuntimeStatus as any, {
+      await client.action(api.service.actions.updateRuntimeStatus, {
         accountId: runtimeConfig.accountId,
         status: "online",
         serviceToken: runtimeConfig.serviceToken,
@@ -100,11 +104,13 @@ export function startHealthServer(config: RuntimeConfig): void {
           ipAddress: runtimeConfig.dropletIp,
           region: runtimeConfig.dropletRegion,
           lastHealthCheck: Date.now(),
-          // Version tracking
           openclawVersion: runtimeConfig.openclawVersion,
           runtimeServiceVersion: runtimeConfig.runtimeServiceVersion,
         },
       });
+
+      await checkRestartRequested(runtimeConfig);
+      await checkAndApplyPendingUpgrade(runtimeConfig);
     } catch (error) {
       console.error("[Health] Failed to update Convex status:", error);
     }

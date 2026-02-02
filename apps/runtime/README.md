@@ -18,7 +18,7 @@ The runtime:
 4. **Heartbeat scheduler**: wakes each agent on its schedule to check for work and report status.
 5. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
 
-See [docs/mission-control-initial-article.md](../../docs/mission-control-initial-article.md) and [docs/mission-control-cursor-core-instructions.md](../../docs/mission-control-cursor-core-instructions.md) for full context.
+See [docs/concept/mission-control-initial-article.md](../../docs/concept/mission-control-initial-article.md) and [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) for full context.
 
 ## Prerequisites
 
@@ -106,4 +106,4 @@ apps/runtime/
 ## Further reading
 
 - [docs/build/00-orchestrator.md](../../docs/build/00-orchestrator.md) — Build phases and module 13 (runtime service).
-- [docs/mission-control-cursor-core-instructions.md](../../docs/mission-control-cursor-core-instructions.md) — Data flows, service auth, invariants.
+- [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) — Data flows, service auth, invariants.

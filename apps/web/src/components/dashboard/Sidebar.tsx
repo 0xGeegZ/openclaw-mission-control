@@ -13,7 +13,10 @@ import {
   PanelLeft,
   Shield,
   Cpu,
+  Server,
   Users,
+  Search,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -40,10 +43,13 @@ const navItems = [
   { href: "agents", label: "Agents", icon: Bot, description: "AI agent roster" },
   { href: "docs", label: "Documents", icon: FileText, description: "Shared documents" },
   { href: "feed", label: "Activity", icon: Activity, description: "Recent activity" },
+  { href: "search", label: "Search", icon: Search, description: "Search tasks, docs, agents" },
+  { href: "analytics", label: "Analytics", icon: BarChart3, description: "Workspace analytics" },
 ];
 
 const adminNavItems = [
   { href: "admin/openclaw", label: "OpenClaw", icon: Cpu, description: "OpenClaw configuration" },
+  { href: "admin/fleet", label: "Fleet", icon: Server, description: "Runtime fleet and upgrades" },
   { href: "admin/members", label: "Members", icon: Users, description: "Manage team members" },
 ];
 
@@ -273,14 +279,24 @@ export function Sidebar({ accountSlug }: SidebarProps) {
             "flex items-center",
             isCollapsed ? "flex-col gap-3" : "justify-between"
           )}>
-            <UserButton 
-              afterSignOutUrl="/"
-              appearance={{
-                elements: {
-                  avatarBox: "h-9 w-9",
-                },
-              }}
-            />
+            <div className={cn("flex items-center", isCollapsed ? "flex-col gap-2" : "gap-2")}>
+              <UserButton 
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: "h-9 w-9",
+                  },
+                }}
+              />
+              {!isCollapsed && (
+                <Link
+                  href={`/${accountSlug}/profile`}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Profile
+                </Link>
+              )}
+            </div>
             <div className={cn(
               "flex items-center",
               isCollapsed ? "flex-col gap-2" : "gap-2"

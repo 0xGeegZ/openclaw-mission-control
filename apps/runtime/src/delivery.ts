@@ -35,7 +35,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
       
       // Fetch undelivered notifications via service action
       // Note: Types will be available after running `npx convex dev`
-      const notifications = await client.action(api.service.actions.listUndeliveredNotifications as any, {
+      const notifications = await client.action(api.service.actions.listUndeliveredNotifications, {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
         limit: 50,
@@ -49,7 +49,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
       for (const notification of notifications) {
         try {
           // Get full notification context via service action
-          const context = await client.action(api.service.actions.getNotificationForDelivery as any, {
+          const context = await client.action(api.service.actions.getNotificationForDelivery, {
             notificationId: notification._id,
             serviceToken: config.serviceToken,
             accountId: config.accountId,
@@ -64,7 +64,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             
             // Mark as delivered via service action
             // Note: Types will be available after running `npx convex dev`
-            await client.action(api.service.actions.markNotificationDelivered as any, {
+            await client.action(api.service.actions.markNotificationDelivered, {
               notificationId: notification._id,
               serviceToken: config.serviceToken,
               accountId: config.accountId,

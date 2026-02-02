@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { MobileNav } from "@/components/dashboard/MobileNav";
+import { SyncAccountTheme } from "@/components/dashboard/SyncAccountTheme";
 import { AccountProvider } from "@/components/providers/AccountProvider";
 import { SidebarProvider } from "@/components/providers/SidebarProvider";
 
@@ -21,6 +22,7 @@ export default async function AccountLayout({
   
   return (
     <AccountProvider accountSlug={accountSlug}>
+      <SyncAccountTheme />
       <SidebarProvider>
         <div className="flex h-screen">
           {/* Desktop sidebar */}

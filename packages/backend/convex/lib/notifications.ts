@@ -2,20 +2,32 @@ import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ParsedMention } from "./mentions";
 
+/** Notification preference category. When false, user notifications in that category are skipped (unless forceCreate). */
+export type NotificationPreferenceCategory = "taskUpdates" | "agentActivity" | "memberUpdates";
+
 /**
- * Notification type.
+ * Check whether to create a user notification based on account preferences.
+ * When forceCreate is true (e.g. mandatory system alerts), skip preference check.
  */
-export type NotificationType = 
-  | "mention"
-  | "assignment"
-  | "thread_update"
-  | "status_change";
+export async function shouldCreateUserNotification(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  category: NotificationPreferenceCategory,
+  options?: { forceCreate?: boolean }
+): Promise<boolean> {
+  if (options?.forceCreate) return true;
+  const account = await ctx.db.get(accountId);
+  if (!account) return false;
+  const prefs = (account as { settings?: { notificationPreferences?: Record<string, boolean> } }).settings?.notificationPreferences;
+  if (!prefs) return true; // default: create
+  const value = prefs[category];
+  return value !== false; // undefined or true => create
+}
 
 /**
  * Create notifications for mentions.
  * Called after a message is created with mentions.
- * Agent messages: when the runtime posts a message (service/messages or messages.create with authorType "agent"),
- * these create mention/thread notifications for recipients (agent_message-style notifications).
+ * Respects account notificationPreferences.agentActivity for user recipients.
  */
 export async function createMentionNotifications(
   ctx: MutationCtx,
@@ -27,8 +39,10 @@ export async function createMentionNotifications(
   taskTitle: string
 ): Promise<Id<"notifications">[]> {
   const notificationIds: Id<"notifications">[] = [];
-  
   for (const mention of mentions) {
+    if (mention.type === "user" && !(await shouldCreateUserNotification(ctx, accountId, "agentActivity"))) {
+      continue;
+    }
     const notificationId = await ctx.db.insert("notifications", {
       accountId,
       type: "mention",
@@ -40,16 +54,15 @@ export async function createMentionNotifications(
       body: `You were mentioned in task "${taskTitle}"`,
       createdAt: Date.now(),
     });
-    
     notificationIds.push(notificationId);
   }
-  
   return notificationIds;
 }
 
 /**
  * Create notifications for thread subscribers.
  * Called after a message is created, excluding author and already-mentioned.
+ * Respects account notificationPreferences.agentActivity for user recipients.
  */
 export async function createThreadNotifications(
   ctx: MutationCtx,
@@ -62,25 +75,17 @@ export async function createThreadNotifications(
   taskTitle: string,
   mentionedIds: Set<string>
 ): Promise<Id<"notifications">[]> {
-  // Get all subscribers
   const subscriptions = await ctx.db
     .query("subscriptions")
     .withIndex("by_task", (q) => q.eq("taskId", taskId))
     .collect();
-  
   const notificationIds: Id<"notifications">[] = [];
-  
   for (const subscription of subscriptions) {
-    // Skip author
-    if (subscription.subscriberType === authorType && subscription.subscriberId === authorId) {
+    if (subscription.subscriberType === authorType && subscription.subscriberId === authorId) continue;
+    if (mentionedIds.has(subscription.subscriberId)) continue;
+    if (subscription.subscriberType === "user" && !(await shouldCreateUserNotification(ctx, accountId, "agentActivity"))) {
       continue;
     }
-    
-    // Skip already mentioned (they got a mention notification)
-    if (mentionedIds.has(subscription.subscriberId)) {
-      continue;
-    }
-    
     const notificationId = await ctx.db.insert("notifications", {
       accountId,
       type: "thread_update",
@@ -92,15 +97,14 @@ export async function createThreadNotifications(
       body: `New message in task "${taskTitle}"`,
       createdAt: Date.now(),
     });
-    
     notificationIds.push(notificationId);
   }
-  
   return notificationIds;
 }
 
 /**
  * Create notification for task assignment.
+ * Respects account notificationPreferences.taskUpdates for user recipients. Returns null when skipped.
  */
 export async function createAssignmentNotification(
   ctx: MutationCtx,
@@ -110,7 +114,10 @@ export async function createAssignmentNotification(
   recipientId: string,
   assignerName: string,
   taskTitle: string
-): Promise<Id<"notifications">> {
+): Promise<Id<"notifications"> | null> {
+  if (recipientType === "user" && !(await shouldCreateUserNotification(ctx, accountId, "taskUpdates"))) {
+    return null;
+  }
   return ctx.db.insert("notifications", {
     accountId,
     type: "assignment",
@@ -125,6 +132,7 @@ export async function createAssignmentNotification(
 
 /**
  * Create notification for status change.
+ * Respects account notificationPreferences.taskUpdates for user recipients. Returns null when skipped.
  */
 export async function createStatusChangeNotification(
   ctx: MutationCtx,
@@ -135,7 +143,10 @@ export async function createStatusChangeNotification(
   changerName: string,
   taskTitle: string,
   newStatus: string
-): Promise<Id<"notifications">> {
+): Promise<Id<"notifications"> | null> {
+  if (recipientType === "user" && !(await shouldCreateUserNotification(ctx, accountId, "taskUpdates"))) {
+    return null;
+  }
   return ctx.db.insert("notifications", {
     accountId,
     type: "status_change",
@@ -144,6 +155,80 @@ export async function createStatusChangeNotification(
     taskId,
     title: `Task status changed to ${newStatus}`,
     body: `${changerName} changed "${taskTitle}" to ${newStatus}`,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Create notification when a user is added to the workspace.
+ * Respects account notificationPreferences.memberUpdates. Returns null when skipped.
+ */
+export async function createMemberAddedNotification(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  recipientId: string,
+  accountName: string,
+  inviterName: string
+): Promise<Id<"notifications"> | null> {
+  if (!(await shouldCreateUserNotification(ctx, accountId, "memberUpdates"))) {
+    return null;
+  }
+  return ctx.db.insert("notifications", {
+    accountId,
+    type: "member_added",
+    recipientType: "user",
+    recipientId,
+    title: `Added to ${accountName}`,
+    body: `${inviterName} added you to the workspace`,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Create notification when a user is removed from the workspace.
+ * Respects account notificationPreferences.memberUpdates. Returns null when skipped.
+ */
+export async function createMemberRemovedNotification(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  recipientId: string,
+  accountName: string
+): Promise<Id<"notifications"> | null> {
+  if (!(await shouldCreateUserNotification(ctx, accountId, "memberUpdates"))) {
+    return null;
+  }
+  return ctx.db.insert("notifications", {
+    accountId,
+    type: "member_removed",
+    recipientType: "user",
+    recipientId,
+    title: `Removed from ${accountName}`,
+    body: `You were removed from the workspace`,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Create notification when a member's role changes.
+ * Respects account notificationPreferences.memberUpdates. Returns null when skipped.
+ */
+export async function createRoleChangeNotification(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  recipientId: string,
+  newRole: string,
+  accountName: string
+): Promise<Id<"notifications"> | null> {
+  if (!(await shouldCreateUserNotification(ctx, accountId, "memberUpdates"))) {
+    return null;
+  }
+  return ctx.db.insert("notifications", {
+    accountId,
+    type: "role_changed",
+    recipientType: "user",
+    recipientId,
+    title: `Role updated in ${accountName}`,
+    body: `Your role was changed to ${newRole}`,
     createdAt: Date.now(),
   });
 }

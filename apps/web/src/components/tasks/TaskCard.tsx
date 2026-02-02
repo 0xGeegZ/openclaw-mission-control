@@ -23,6 +23,16 @@ const priorityColors: Record<number, string> = {
   5: "bg-muted-foreground/40",
 };
 
+/** Left border color by task status for at-a-glance visual cue */
+const statusBorderColors: Record<string, string> = {
+  inbox: "border-l-muted-foreground/40",
+  assigned: "border-l-primary/60",
+  in_progress: "border-l-amber-500/70",
+  review: "border-l-violet-500/70",
+  done: "border-l-emerald-500/70",
+  blocked: "border-l-destructive/70",
+};
+
 /**
  * Task card component for Kanban board.
  * Draggable card showing task details.
@@ -41,6 +51,8 @@ export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
     transition,
   };
 
+  const statusBorder = statusBorderColors[task.status] ?? statusBorderColors.inbox;
+
   return (
     <Card
       ref={setNodeRef}
@@ -48,7 +60,8 @@ export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
       {...attributes}
       {...listeners}
       className={cn(
-        "cursor-grab active:cursor-grabbing transition-all",
+        "cursor-grab active:cursor-grabbing transition-all border-l-4",
+        statusBorder,
         "hover:shadow-md hover:border-primary/20",
         isDragging && "opacity-50 shadow-lg rotate-2"
       )}

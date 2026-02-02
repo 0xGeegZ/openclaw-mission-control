@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -22,6 +22,14 @@ import {
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@packages/ui/components/select";
+import { Textarea } from "@packages/ui/components/textarea";
+import {
   FileText,
   FilePlus,
   Search,
@@ -34,6 +42,9 @@ import {
   ChevronRight,
   Trash2,
   ArrowLeft,
+  Copy,
+  Link2,
+  Save,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -61,6 +72,10 @@ export default function DocsPage({ params }: DocsPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<Id<"documents"> | undefined>(undefined);
   const [openDocId, setOpenDocId] = useState<Id<"documents"> | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [linkToTaskDocId, setLinkToTaskDocId] = useState<Id<"documents"> | null>(null);
+  const [linkTaskId, setLinkTaskId] = useState<Id<"tasks"> | "__unlink__">("__unlink__");
 
   const documents = useQuery(
     api.documents.list,
@@ -83,6 +98,13 @@ export default function DocsPage({ params }: DocsPageProps) {
 
   const createDoc = useMutation(api.documents.create);
   const removeDoc = useMutation(api.documents.remove);
+  const updateDoc = useMutation(api.documents.update);
+  const duplicateDoc = useMutation(api.documents.duplicate);
+  const linkToTask = useMutation(api.documents.linkToTask);
+  const tasks = useQuery(
+    api.tasks.list,
+    accountId ? { accountId, limit: 200 } : "skip"
+  );
 
   const isSearching = searchQuery.trim().length >= 2;
   const displayItems: DocItem[] = isSearching && searchResults
@@ -148,6 +170,53 @@ export default function DocsPage({ params }: DocsPageProps) {
       setCurrentFolderId(item._id);
     } else {
       setOpenDocId(item._id);
+    }
+  };
+
+  useEffect(() => {
+    if (openDoc) {
+      setEditTitle(openDoc.title ?? openDoc.name ?? "");
+      setEditContent(openDoc.kind === "file" ? (openDoc.content ?? "") : "");
+    }
+  }, [openDoc]);
+
+  const handleSaveDoc = async () => {
+    if (!openDocId || !openDoc) return;
+    try {
+      await updateDoc({
+        documentId: openDocId,
+        title: editTitle || undefined,
+        content: openDoc.kind === "file" ? editContent : undefined,
+      });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    }
+  };
+
+  const handleDuplicate = async (documentId: Id<"documents">) => {
+    try {
+      await duplicateDoc({ documentId });
+      toast.success("Document duplicated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to duplicate");
+    }
+  };
+
+  const handleLinkToTask = async () => {
+    if (!linkToTaskDocId) return;
+    try {
+      await linkToTask({
+        documentId: linkToTaskDocId,
+        taskId: linkTaskId === "__unlink__" ? undefined : linkTaskId,
+      });
+      toast.success(
+        linkTaskId === "__unlink__" ? "Unlinked from task" : "Linked to task"
+      );
+      setLinkToTaskDocId(null);
+      setLinkTaskId("__unlink__");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to link");
     }
   };
 
@@ -301,7 +370,10 @@ export default function DocsPage({ params }: DocsPageProps) {
               >
                 <div
                   className="flex flex-col items-center text-center flex-1"
-                  onClick={() => handleRowClick(doc)}
+                  onClick={() => {
+                    handleRowClick(doc);
+                    if (doc.type === "file") setOpenDocId(doc._id);
+                  }}
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted mb-3">
                     {doc.type === "folder" ? (
@@ -324,6 +396,18 @@ export default function DocsPage({ params }: DocsPageProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {doc.type === "file" && (
+                        <DropdownMenuItem onClick={() => handleDuplicate(doc._id)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                      )}
+                      {doc.type === "file" && (
+                        <DropdownMenuItem onClick={() => setLinkToTaskDocId(doc._id)}>
+                          <Link2 className="mr-2 h-4 w-4" />
+                          Link to task
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={() => handleDelete(doc._id)}
@@ -367,6 +451,18 @@ export default function DocsPage({ params }: DocsPageProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {doc.type === "file" && (
+                        <DropdownMenuItem onClick={() => handleDuplicate(doc._id)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                      )}
+                      {doc.type === "file" && (
+                        <DropdownMenuItem onClick={() => setLinkToTaskDocId(doc._id)}>
+                          <Link2 className="mr-2 h-4 w-4" />
+                          Link to task
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={() => handleDelete(doc._id)}
@@ -383,20 +479,95 @@ export default function DocsPage({ params }: DocsPageProps) {
         )}
       </div>
 
-      {/* View document dialog */}
+      {/* View/edit document dialog */}
       <Dialog open={!!openDocId} onOpenChange={(open) => !open && setOpenDocId(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{openDoc?.title ?? openDoc?.name ?? "Document"}</DialogTitle>
+            <DialogTitle className="sr-only">
+              {openDoc?.title ?? openDoc?.name ?? "Document"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-auto rounded border bg-muted/30 p-4 text-sm prose prose-sm dark:prose-invert max-w-none">
-            {openDoc?.kind === "folder" ? (
-              <p className="text-muted-foreground">This is a folder.</p>
-            ) : (
-              <pre className="whitespace-pre-wrap font-sans">
-                {openDoc?.content ?? "(empty)"}
-              </pre>
-            )}
+          {openDoc?.kind === "folder" ? (
+            <p className="text-muted-foreground">This is a folder.</p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Title</label>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Document title"
+                />
+              </div>
+              <div className="space-y-2 flex-1 min-h-0 flex flex-col">
+                <label className="text-sm font-medium">Content</label>
+                <Textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  placeholder="Content..."
+                  className="min-h-[200px] flex-1 resize-y"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setOpenDocId(null)}>
+                  Close
+                </Button>
+                <Button onClick={handleSaveDoc}>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Link to task dialog */}
+      <Dialog
+        open={!!linkToTaskDocId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLinkToTaskDocId(null);
+            setLinkTaskId("__unlink__");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Link to task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Task</label>
+              <Select
+                value={linkTaskId}
+                onValueChange={(v) => setLinkTaskId(v as Id<"tasks"> | "__unlink__")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a task (or Unlink)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__unlink__">(Unlink)</SelectItem>
+                  {(tasks ?? []).map((t) => (
+                    <SelectItem key={t._id} value={t._id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLinkToTaskDocId(null);
+                  setLinkTaskId("__unlink__");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleLinkToTask}>Apply</Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -24,36 +24,64 @@ export const get = query({
   },
 });
 
+const notificationTypeValidator = v.union(
+  v.literal("mention"),
+  v.literal("assignment"),
+  v.literal("thread_update"),
+  v.literal("status_change"),
+  v.literal("member_added"),
+  v.literal("member_removed"),
+  v.literal("role_changed")
+);
+
 /**
  * List notifications for the current user.
+ * Supports filter (all | unread), type filter, and limit for pagination.
  */
 export const listMine = query({
   args: {
     accountId: v.id("accounts"),
     unreadOnly: v.optional(v.boolean()),
+    filter: v.optional(v.union(v.literal("all"), v.literal("unread"))),
+    typeFilter: v.optional(notificationTypeValidator),
     limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAccountMember(ctx, args.accountId);
-    
+
     let notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_account_recipient", (q) => 
-        q.eq("accountId", args.accountId)
-         .eq("recipientType", "user")
-         .eq("recipientId", userId)
+      .withIndex("by_account_recipient", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "user")
+          .eq("recipientId", userId)
       )
       .order("desc")
       .collect();
-    
-    // Filter unread only if requested
-    if (args.unreadOnly) {
-      notifications = notifications.filter(n => !n.readAt);
+
+    if (args.filter === "unread" || args.unreadOnly) {
+      notifications = notifications.filter((n) => !n.readAt);
     }
-    
-    // Apply limit
-    const limit = args.limit ?? 50;
-    return notifications.slice(0, limit);
+    if (args.typeFilter) {
+      notifications = notifications.filter((n) => n.type === args.typeFilter);
+    }
+
+    const limit = Math.min(args.limit ?? 50, 100);
+    const start = args.cursor
+      ? notifications.findIndex((n) => n._id === args.cursor) + 1
+      : 0;
+    const page = notifications.slice(start, start + limit);
+    const nextCursor =
+      start + limit < notifications.length
+        ? page[page.length - 1]?._id
+        : null;
+
+    return {
+      notifications: page,
+      nextCursor: nextCursor ?? undefined,
+    };
   },
 });
 

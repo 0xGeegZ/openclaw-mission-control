@@ -59,7 +59,7 @@ async function shutdown() {
   try {
     const client = getConvexClient();
       // Update status via service action (requires service auth)
-      await client.action(api.service.actions.updateRuntimeStatus as any, {
+      await client.action(api.service.actions.updateRuntimeStatus, {
         accountId: globalConfig.accountId,
         status: "offline",
         serviceToken: globalConfig.serviceToken,

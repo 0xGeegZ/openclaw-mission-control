@@ -28,7 +28,7 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   // Fetch agents for this account via service action
   const client = getConvexClient();
   // Note: Types will be available after running `npx convex dev`
-  const agents = await client.action(api.service.actions.listAgents as any, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
   });
@@ -98,7 +98,7 @@ export async function receiveFromOpenClaw(
   
   if (taskId) {
     // Note: Types will be available after running `npx convex dev`
-    await client.action(api.service.actions.createMessageFromAgent as any, {
+    await client.action(api.service.actions.createMessageFromAgent, {
       agentId: session.agentId,
       taskId,
       content: response,
