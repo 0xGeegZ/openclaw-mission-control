@@ -18,6 +18,7 @@ import {
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 import { UserButton } from "@clerk/nextjs";
 import { Separator } from "@packages/ui/components/separator";
 import { Button } from "@packages/ui/components/button";
@@ -66,37 +67,55 @@ export function Sidebar({ accountSlug }: SidebarProps) {
       >
         {/* Logo/Brand */}
         <div className="flex h-16 items-center border-b px-3">
-          <div className="flex items-center justify-between w-full">
-            <Link href={`/${accountSlug}/tasks`} className="flex items-center gap-2.5 group">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary transition-transform group-hover:scale-105 shrink-0">
-                <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
-              </div>
-              {!isCollapsed && (
-                <span className="font-semibold text-foreground whitespace-nowrap">Mission Control</span>
-              )}
-            </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleSidebar}
-                  className={cn("h-8 w-8 shrink-0", isCollapsed && "mx-auto")}
+          <div className={cn(
+            "flex items-center w-full",
+            isCollapsed ? "justify-center" : "justify-between"
+          )}>
+            {isCollapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleSidebar}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary transition-transform hover:scale-105 shrink-0 cursor-pointer group"
+                    aria-label="Expand sidebar"
+                  >
+                    <LayoutDashboard className="h-5 w-5 text-primary-foreground transition-opacity group-hover:opacity-0 absolute" />
+                    <PanelLeft className="h-5 w-5 text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  Expand sidebar
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <>
+                <Link 
+                  href={`/${accountSlug}/tasks`} 
+                  className="flex items-center gap-2.5 group"
                 >
-                  {isCollapsed ? (
-                    <PanelLeft className="h-4 w-4" />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" />
-                  )}
-                  <span className="sr-only">
-                    {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  </span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">
-                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              </TooltipContent>
-            </Tooltip>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary transition-transform group-hover:scale-105 shrink-0">
+                    <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
+                  </div>
+                  <span className="font-semibold text-foreground whitespace-nowrap">Mission Control</span>
+                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={toggleSidebar}
+                      className="h-8 w-8 shrink-0"
+                    >
+                      <PanelLeftClose className="h-4 w-4" />
+                      <span className="sr-only">Collapse sidebar</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs">
+                    Collapse sidebar
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
           </div>
         </div>
         
@@ -262,7 +281,13 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                 },
               }}
             />
-            <NotificationBell accountSlug={accountSlug} />
+            <div className={cn(
+              "flex items-center",
+              isCollapsed ? "flex-col gap-2" : "gap-2"
+            )}>
+              <ThemeSwitcher isCollapsed={isCollapsed} />
+              <NotificationBell accountSlug={accountSlug} />
+            </div>
           </div>
         </div>
       </aside>
