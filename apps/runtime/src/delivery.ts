@@ -42,7 +42,6 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 
     try {
       const client = getConvexClient();
-
       const notifications = await client.action(api.service.actions.listUndeliveredNotifications, {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
