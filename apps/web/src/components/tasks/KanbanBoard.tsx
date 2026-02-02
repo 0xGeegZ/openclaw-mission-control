@@ -160,7 +160,7 @@ function KanbanSkeleton() {
           {/* Column header */}
           <div className="h-10 rounded-lg bg-muted animate-pulse" />
           {/* Task cards */}
-          {Array.from({ length: Math.floor(Math.random() * 3) + 1 }).map((_, j) => (
+          {Array.from({ length: 2 }).map((_, j) => (
             <div key={j} className="h-24 rounded-lg bg-muted/60 animate-pulse" />
           ))}
         </div>

@@ -167,11 +167,10 @@ export const remove = mutation({
   },
 });
 
-/** Alias for listMine (roadmap/frontend API). */
+/**
+ * Frontend API aliases (roadmap). Keep these so the UI can call list / markAsRead / markAllAsRead
+ * without changing backend naming. Do not remove.
+ */
 export const list = listMine;
-
-/** Alias for markRead (roadmap/frontend API). */
 export const markAsRead = markRead;
-
-/** Alias for markAllRead (roadmap/frontend API). */
 export const markAllAsRead = markAllRead;

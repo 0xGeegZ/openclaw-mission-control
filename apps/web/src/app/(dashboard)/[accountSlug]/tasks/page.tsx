@@ -15,7 +15,7 @@ export default async function TasksPage({ params }: TasksPageProps) {
       <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
-          <p className="text-sm text-muted-foreground">Manage and track your team's work</p>
+          <p className="text-sm text-muted-foreground">Manage and track your team&apos;s work</p>
         </div>
       </header>
       

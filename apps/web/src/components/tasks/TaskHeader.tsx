@@ -30,7 +30,7 @@ interface TaskHeaderProps {
  * Task header with title, status, and controls.
  */
 export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
-  const { accountId } = useAccount();
+  useAccount();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(task.title);
   
@@ -50,7 +50,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
       });
       setIsEditingTitle(false);
       toast.success("Task updated");
-    } catch (error) {
+    } catch {
       toast.error("Failed to update task");
     }
   };

@@ -9,7 +9,6 @@ import { TaskThread } from "@/components/tasks/TaskThread";
 import { TaskDocuments } from "@/components/tasks/TaskDocuments";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Card } from "@packages/ui/components/card";
 import { MessageSquare, FileText, AlertCircle } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import Link from "next/link";
@@ -38,7 +37,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
         </div>
         <h1 className="text-xl font-semibold">Task not found</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          This task may have been deleted or you don't have permission to view it.
+          This task may have been deleted or you don&apos;t have permission to view it.
         </p>
         <Button asChild className="mt-4">
           <Link href={`/${accountSlug}/tasks`}>Back to Tasks</Link>

@@ -24,7 +24,7 @@ const statusConfig: Record<string, { color: string; label: string; variant: "def
 /**
  * Agent card component for roster display.
  */
-export function AgentCard({ agent, accountSlug }: AgentCardProps) {
+export function AgentCard({ agent, accountSlug: _accountSlug }: AgentCardProps) {
   const status = statusConfig[agent.status] || statusConfig.offline;
   
   return (

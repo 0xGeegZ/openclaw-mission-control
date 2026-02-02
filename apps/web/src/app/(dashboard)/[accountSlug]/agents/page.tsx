@@ -8,9 +8,8 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import { AgentCard } from "@/components/agents/AgentCard";
 import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import { Button } from "@packages/ui/components/button";
-import { Skeleton } from "@packages/ui/components/skeleton";
 import { Card } from "@packages/ui/components/card";
-import { Plus, Bot, Loader2 } from "lucide-react";
+import { Plus, Bot } from "lucide-react";
 
 interface AgentsPageProps {
   params: Promise<{ accountSlug: string }>;

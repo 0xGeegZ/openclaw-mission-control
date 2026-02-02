@@ -43,7 +43,6 @@ import {
 } from "@packages/ui/components/dropdown-menu";
 import {
   Users,
-  Shield,
   Bell,
   Palette,
   Building2,
@@ -53,9 +52,9 @@ import {
   Crown,
   MoreHorizontal,
   UserCog,
-  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getInitials } from "@/lib/utils";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -108,6 +107,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     }
   }, [account, accountSlug]);
 
+  /**
+   * Syncs notification preferences from account into local state.
+   * When account.settings.notificationPreferences is absent, defaults are not applied here (state keeps initial values).
+   */
   useEffect(() => {
     const prefs = (account as { settings?: { notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean } } })?.settings?.notificationPreferences;
     if (prefs) {
@@ -227,14 +230,6 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       setShowDeleteConfirm(false);
     }
   };
-
-  const getInitials = (n: string) =>
-    n
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
 
   return (
     <div className="flex flex-col h-full">

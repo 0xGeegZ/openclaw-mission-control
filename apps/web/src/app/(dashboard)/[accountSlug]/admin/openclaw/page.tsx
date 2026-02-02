@@ -1,8 +1,6 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
@@ -49,8 +47,8 @@ interface OpenClawPageProps {
  * Only accessible to admin and owner roles.
  */
 export default function OpenClawPage({ params }: OpenClawPageProps) {
-  const { accountSlug } = use(params);
-  const { account, accountId, isLoading, isAdmin } = useAccount();
+  use(params);
+  const { account, isLoading, isAdmin } = useAccount();
   
   // Runtime status
   const runtimeStatus = account?.runtimeStatus;

@@ -88,7 +88,7 @@ function NewAccountContent() {
     
     setIsSubmitting(true);
     try {
-      const accountId = await createAccount({
+      await createAccount({
         name: name.trim(),
         slug: slug.trim(),
       });

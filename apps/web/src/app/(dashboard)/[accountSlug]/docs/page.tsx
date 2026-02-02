@@ -55,8 +55,8 @@ type DocItem = {
  * Supports folder navigation, create file/folder, search, and delete.
  */
 export default function DocsPage({ params }: DocsPageProps) {
-  const { accountSlug } = use(params);
-  const { accountId, isLoading } = useAccount();
+  use(params);
+  const { accountId } = useAccount();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<Id<"documents"> | undefined>(undefined);

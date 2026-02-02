@@ -8,7 +8,6 @@ import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare } from "lucide-react";
-import { ScrollArea } from "@packages/ui/components/scroll-area";
 
 interface TaskThreadProps {
   taskId: Id<"tasks">;
@@ -18,7 +17,7 @@ interface TaskThreadProps {
 /**
  * Task thread component with messages and input.
  */
-export function TaskThread({ taskId, accountSlug }: TaskThreadProps) {
+export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProps) {
   const messages = useQuery(api.messages.listByTask, { taskId });
   const scrollRef = useRef<HTMLDivElement>(null);
   

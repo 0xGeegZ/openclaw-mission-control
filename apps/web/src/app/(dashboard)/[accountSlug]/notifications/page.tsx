@@ -4,12 +4,10 @@ import { use } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import { Card, CardContent } from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Separator } from "@packages/ui/components/separator";
-import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@packages/ui/lib/utils";
 import { 
@@ -19,17 +17,16 @@ import {
   CheckCheck,
   CheckSquare,
   Bot,
-  MessageSquare,
   UserPlus,
   AlertCircle,
   Info,
-  Trash2,
 } from "lucide-react";
 
 interface NotificationsPageProps {
   params: Promise<{ accountSlug: string }>;
 }
 
+/** Display type for icons/colors. Backend sends mention | assignment | thread_update | status_change; we map for UI. */
 type NotificationType = "task_assigned" | "task_completed" | "agent_message" | "member_joined" | "system" | "info";
 
 const notificationIcons: Record<NotificationType, typeof Bell> = {
@@ -54,7 +51,7 @@ const notificationColors: Record<NotificationType, string> = {
  * Notifications page showing all user notifications.
  */
 export default function NotificationsPage({ params }: NotificationsPageProps) {
-  const { accountSlug } = use(params);
+  use(params);
   const { accountId } = useAccount();
   
   const notifications = useQuery(

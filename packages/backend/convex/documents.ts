@@ -402,6 +402,7 @@ async function collectDescendantIds(
 
 /**
  * Delete a document. If it is a folder, cascade-deletes all descendants first.
+ * Order: collect all descendant IDs (depth-first), then delete from leaves to root to satisfy Convex.
  */
 export const remove = mutation({
   args: {
