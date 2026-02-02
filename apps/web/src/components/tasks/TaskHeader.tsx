@@ -20,6 +20,7 @@ import { TaskStatus, TASK_STATUS_LABELS } from "@packages/shared";
 import { toast } from "sonner";
 import { Edit2, Check, X, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { TaskAssignees } from "./TaskAssignees";
 
 interface TaskHeaderProps {
   task: Doc<"tasks">;
@@ -144,18 +145,23 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
           <p className="text-muted-foreground leading-relaxed">{task.description}</p>
         )}
         
-        {task.labels.length > 0 && (
-          <div className="flex items-center gap-2 pt-2">
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex gap-1.5 flex-wrap">
-              {task.labels.map((label) => (
-                <Badge key={label} variant="secondary" className="text-xs">
-                  {label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Assignees section */}
+        <div className="flex items-center gap-4 pt-2">
+          <TaskAssignees task={task} />
+          
+          {task.labels.length > 0 && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <div className="flex gap-1.5 flex-wrap">
+                {task.labels.map((label) => (
+                  <Badge key={label} variant="secondary" className="text-xs">
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
