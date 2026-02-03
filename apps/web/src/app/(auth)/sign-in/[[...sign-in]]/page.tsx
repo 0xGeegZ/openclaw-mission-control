@@ -15,22 +15,25 @@ export default function SignInPage() {
           Welcome back
         </h1>
         <p className="text-muted-foreground mt-2">
-          Sign in to continue to Mission Control
+          Sign in to continue to OpenClaw Mission Control
         </p>
       </div>
-      
-      <SignIn 
+
+      <SignIn
         appearance={softPopClerkTheme}
         routing="path"
         path="/sign-in"
         signUpUrl="/sign-up"
         forceRedirectUrl="/dashboard"
       />
-      
+
       {/* Additional link */}
       <p className="text-center text-sm text-muted-foreground mt-6">
         Don&apos;t have an account?{" "}
-        <Link href="/sign-up" className="text-primary hover:text-primary/80 font-medium transition-colors">
+        <Link
+          href="/sign-up"
+          className="text-primary hover:text-primary/80 font-medium transition-colors"
+        >
           Create one for free
         </Link>
       </p>

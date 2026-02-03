@@ -1,19 +1,20 @@
 ---
-description: Overview of Mission Control project and its structure.
+description: Overview of OpenClaw Mission Control project and its structure.
 globs:
 alwaysApply: true
 ---
 
-# Mission Control — Project Overview
+# OpenClaw Mission Control — Project Overview
 
 **IMPORTANT:** Before implementing ANY changes, read the foundational documentation:
-- `docs/concept/mission-control-initial-article.md` — Original concept and vision
-- `docs/concept/mission-control-cursor-core-instructions.md` — Core engineering instructions
+
+- `docs/concept/openclaw-mission-control-initial-article.md` — Original concept and vision
+- `docs/concept/openclaw-mission-control-cursor-core-instructions.md` — Core engineering instructions
 - `docs/build/00-orchestrator.md` — Build orchestration and module plans
 
-## What is Mission Control?
+## What is OpenClaw Mission Control?
 
-Mission Control is a **multi-agent coordination SaaS** built on top of **OpenClaw (Clawdbot)**. It provides:
+OpenClaw Mission Control is a **multi-agent coordination SaaS** built on top of **OpenClaw (Clawdbot)**. It provides:
 
 - **Shared Brain**: Tasks, threads, documents, activity feed (Convex backend)
 - **Agent Runtime**: Per-account servers running OpenClaw gateway and sessions
@@ -29,22 +30,22 @@ The core premise: AI agents behave like a **real team** — with roles, persiste
 
 ## Tech Stack
 
-| Layer | Technology | Notes |
-|-------|------------|-------|
-| **Node.js** | Node 24 (via nvm) | Required for all development |
-| **Package Manager** | npm | `npm ci` for CI, `npm install` locally |
-| **Frontend** | Next.js 16 (App Router), React 19 | TypeScript strict mode |
-| **UI** | shadcn/ui, Tailwind CSS v4 | Radix primitives, lucide-react icons |
-| **Backend** | Convex | Real-time DB, server functions, auth |
-| **Auth** | Clerk | Via @clerk/nextjs |
-| **Agent Runtime** | OpenClaw (Clawdbot) | Sessions, gateway, cron/heartbeat |
-| **Runtime Servers** | DigitalOcean Droplets | One per customer account |
-| **Monorepo** | Turborepo | Shared packages between apps |
+| Layer               | Technology                        | Notes                                  |
+| ------------------- | --------------------------------- | -------------------------------------- |
+| **Node.js**         | Node 24 (via nvm)                 | Required for all development           |
+| **Package Manager** | npm                               | `npm ci` for CI, `npm install` locally |
+| **Frontend**        | Next.js 16 (App Router), React 19 | TypeScript strict mode                 |
+| **UI**              | shadcn/ui, Tailwind CSS v4        | Radix primitives, lucide-react icons   |
+| **Backend**         | Convex                            | Real-time DB, server functions, auth   |
+| **Auth**            | Clerk                             | Via @clerk/nextjs                      |
+| **Agent Runtime**   | OpenClaw (Clawdbot)               | Sessions, gateway, cron/heartbeat      |
+| **Runtime Servers** | DigitalOcean Droplets             | One per customer account               |
+| **Monorepo**        | Turborepo                         | Shared packages between apps           |
 
 ## Monorepo Structure
 
 ```
-mission-control/
+openclaw-mission-control/
 ├── apps/
 │   ├── web/                      # Next.js web app (main product)
 │   │   ├── app/
@@ -109,38 +110,42 @@ mission-control/
 │
 └── docs/
     ├── build/                    # Build plans for agents
-    ├── mission-control-initial-article.md
-    └── mission-control-cursor-core-instructions.md
+    └── concept/
+        ├── openclaw-mission-control-initial-article.md
+        └── openclaw-mission-control-cursor-core-instructions.md
 ```
 
 ## Key Database Tables (Convex)
 
-| Table | Purpose | Key Fields |
-|-------|---------|------------|
-| `accounts` | Multi-tenant accounts | `name`, `slug`, `runtimeStatus` |
-| `memberships` | User-account relationships | `userId`, `accountId`, `role` |
-| `skills` | Reusable skill/tool definitions | `category`, `config`, `isEnabled` |
-| `agents` | AI agent definitions | `sessionKey`, `status`, `soulContent`, `openclawConfig` |
-| `tasks` | Kanban tasks | `status`, `assignedAgentIds`, `priority` |
-| `messages` | Task thread comments | `taskId`, `content`, `mentions` |
-| `documents` | Markdown deliverables | `title`, `content`, `type` |
-| `activities` | Audit trail | `type`, `actorId`, `targetId` |
-| `notifications` | Delivery queue | `recipientType`, `deliveredAt` |
-| `subscriptions` | Thread subscriptions | `taskId`, `subscriberId` |
+| Table           | Purpose                         | Key Fields                                              |
+| --------------- | ------------------------------- | ------------------------------------------------------- |
+| `accounts`      | Multi-tenant accounts           | `name`, `slug`, `runtimeStatus`                         |
+| `memberships`   | User-account relationships      | `userId`, `accountId`, `role`                           |
+| `skills`        | Reusable skill/tool definitions | `category`, `config`, `isEnabled`                       |
+| `agents`        | AI agent definitions            | `sessionKey`, `status`, `soulContent`, `openclawConfig` |
+| `tasks`         | Kanban tasks                    | `status`, `assignedAgentIds`, `priority`                |
+| `messages`      | Task thread comments            | `taskId`, `content`, `mentions`                         |
+| `documents`     | Markdown deliverables           | `title`, `content`, `type`                              |
+| `activities`    | Audit trail                     | `type`, `actorId`, `targetId`                           |
+| `notifications` | Delivery queue                  | `recipientType`, `deliveredAt`                          |
+| `subscriptions` | Thread subscriptions            | `taskId`, `subscriberId`                                |
 
 ## Core Invariants
 
 ### Multi-Tenancy (CRITICAL)
+
 - **Every table has `accountId`** (except `accounts` itself)
 - **Every query filters by `accountId`**
 - **No cross-account data access** ever
 
 ### OpenClaw Integration
+
 - **Session Key Format**: `agent:{slug}:{accountId}`
 - **Runtime servers**: One DigitalOcean Droplet per customer
 - **Notification flow**: Convex → Runtime → OpenClaw session
 
 ### Task Workflow
+
 ```
 inbox → assigned → in_progress → review → done
            ↓            ↓
@@ -150,18 +155,21 @@ inbox → assigned → in_progress → review → done
 ## Development Rules
 
 ### General
+
 - Use `@` for absolute imports from project root
 - Use `@packages/*` for shared package imports
 - TypeScript strict mode everywhere
 - Functional programming patterns (no classes)
 
 ### Convex Backend
+
 - **snake_case** for all files in `convex/` (required for API dot notation)
 - Always use `.withIndex()` for queries (no full table scans)
 - Auth guards on every query/mutation: `requireAuth()`, `requireAccountMember()`
 - Log activities for all state changes
 
 ### Frontend
+
 - **PascalCase** for React component files
 - **kebab-case** for directories
 - Server components by default, `"use client"` only when needed
@@ -205,6 +213,7 @@ import { KanbanBoard } from "@/components/tasks/KanbanBoard";
 App env is validated via **@packages/env** ([t3-env](https://env.t3.gg/)) in the web app (and, when built, the native app). Use `env` from `@packages/env/nextjs-client` or `@packages/env/nextjs-server` instead of `process.env`.
 
 ### Web App (apps/web/.env.local)
+
 ```
 NEXT_PUBLIC_CONVEX_URL=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
@@ -212,6 +221,7 @@ CLERK_SECRET_KEY=
 ```
 
 ### Runtime Service
+
 ```
 ACCOUNT_ID=
 CONVEX_URL=
@@ -221,6 +231,7 @@ SERVICE_TOKEN=
 ## Build Plans Location
 
 Detailed implementation plans are in `docs/build/`:
+
 - `00-orchestrator.md` — Master orchestration guide
 - `phase-1-foundation/` — Project setup, schema
 - `phase-2-backend/` — Auth, tasks, agents, documents
@@ -232,6 +243,7 @@ Detailed implementation plans are in `docs/build/`:
 ## Quick Reference
 
 ### Start Development
+
 ```bash
 yarn install
 npx convex dev          # Terminal 1
@@ -239,17 +251,20 @@ yarn dev                # Terminal 2
 ```
 
 ### Add shadcn Component
+
 ```bash
 cd apps/web
 npx shadcn@latest add [component]
 ```
 
 ### Type Check
+
 ```bash
 yarn typecheck
 ```
 
 ### Run Lint
+
 ```bash
 yarn lint
 ```

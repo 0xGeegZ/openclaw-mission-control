@@ -1,9 +1,9 @@
 /**
- * Mission Control Native App
- * 
+ * OpenClaw Mission Control Native App
+ *
  * Placeholder for React Native app (v2).
- * 
- * This will be a mobile companion app for Mission Control,
+ *
+ * This will be a mobile companion app for OpenClaw Mission Control,
  * allowing users to manage tasks, view agents, and receive
  * notifications on the go.
  */

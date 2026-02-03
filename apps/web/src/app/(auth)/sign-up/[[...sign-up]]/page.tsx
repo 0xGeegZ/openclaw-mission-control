@@ -15,10 +15,10 @@ export default function SignUpPage() {
           Create your account
         </h1>
         <p className="text-muted-foreground mt-2">
-          Get started with Mission Control in seconds
+          Get started with OpenClaw Mission Control in seconds
         </p>
       </div>
-      
+
       <SignUp
         appearance={softPopClerkTheme}
         routing="path"
@@ -26,15 +26,18 @@ export default function SignUpPage() {
         signInUrl="/sign-in"
         forceRedirectUrl="/dashboard"
       />
-      
+
       {/* Additional link */}
       <p className="text-center text-sm text-muted-foreground mt-6">
         Already have an account?{" "}
-        <Link href="/sign-in" className="text-primary hover:text-primary/80 font-medium transition-colors">
+        <Link
+          href="/sign-in"
+          className="text-primary hover:text-primary/80 font-medium transition-colors"
+        >
           Sign in instead
         </Link>
       </p>
-      
+
       {/* Trust indicators */}
       <div className="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-border/30">
         <div className="text-center">

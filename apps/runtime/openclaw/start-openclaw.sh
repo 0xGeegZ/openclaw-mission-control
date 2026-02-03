@@ -1,5 +1,5 @@
 #!/bin/bash
-# Startup script for OpenClaw gateway in Docker (Mission Control local dev).
+# Startup script for OpenClaw gateway in Docker (OpenClaw Mission Control local dev).
 # 1. Initializes config from template on first run
 # 2. Merges environment variables into clawdbot.json
 # 3. Starts the gateway

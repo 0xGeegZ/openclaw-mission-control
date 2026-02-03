@@ -9,7 +9,7 @@ isProject: false
 
 ## 1. Context & goal
 
-Build a local-dev Docker Compose workflow that runs the Mission Control runtime alongside an OpenClaw gateway, following the patterns from [clawdbot-docker](https://github.com/CrocSwap/clawdbot-docker). Improve the runtime service with safer defaults, reliability guards, and better observability, while keeping per-account isolation and service-token auth intact. Target is local development only, with explicit notes for production parity.
+Build a local-dev Docker Compose workflow that runs the OpenClaw Mission Control runtime alongside an OpenClaw gateway, following the patterns from [clawdbot-docker](https://github.com/CrocSwap/clawdbot-docker). Improve the runtime service with safer defaults, reliability guards, and better observability, while keeping per-account isolation and service-token auth intact. Target is local development only, with explicit notes for production parity.
 
 Key constraints:
 
@@ -24,7 +24,7 @@ Files inspected:
 - Runtime core: [apps/runtime/src/index.ts](apps/runtime/src/index.ts), [apps/runtime/src/config.ts](apps/runtime/src/config.ts), [apps/runtime/src/gateway.ts](apps/runtime/src/gateway.ts), [apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts), [apps/runtime/src/health.ts](apps/runtime/src/health.ts), [apps/runtime/src/self-upgrade.ts](apps/runtime/src/self-upgrade.ts)
 - Runtime build & docs: [apps/runtime/Dockerfile](apps/runtime/Dockerfile), [apps/runtime/README.md](apps/runtime/README.md)
 - Upgrade roadmap: [docs/roadmap/runtime-version-management-v2.md](docs/roadmap/runtime-version-management-v2.md)
-- Core constraints: [docs/concept/mission-control-initial-article.md](docs/concept/mission-control-initial-article.md), [docs/concept/mission-control-cursor-core-instructions.md](docs/concept/mission-control-cursor-core-instructions.md), [docs/build/00-orchestrator.md](docs/build/00-orchestrator.md)
+- Core constraints: [docs/concept/openclaw-mission-control-initial-article.md](docs/concept/openclaw-mission-control-initial-article.md), [docs/concept/openclaw-mission-control-cursor-core-instructions.md](docs/concept/openclaw-mission-control-cursor-core-instructions.md), [docs/build/00-orchestrator.md](docs/build/00-orchestrator.md)
 
 What exists today:
 

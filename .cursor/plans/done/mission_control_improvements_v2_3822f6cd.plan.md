@@ -5,7 +5,7 @@ todos: []
 isProject: false
 ---
 
-# Mission Control Improvements v2 Plan
+# OpenClaw Mission Control Improvements v2 Plan
 
 ## 1. Context & goal
 
@@ -27,7 +27,7 @@ Constraints:
 
 Files and sources inspected:
 
-- Core docs: [docs/mission-control-initial-article.md](docs/mission-control-initial-article.md), [docs/mission-control-cursor-core-instructions.md](docs/mission-control-cursor-core-instructions.md)
+- Core docs: [docs/concept/openclaw-mission-control-initial-article.md](docs/concept/openclaw-mission-control-initial-article.md), [docs/concept/openclaw-mission-control-cursor-core-instructions.md](docs/concept/openclaw-mission-control-cursor-core-instructions.md)
 - Orchestration and roadmap: [docs/build/00-orchestrator.md](docs/build/00-orchestrator.md), [docs/roadmap/missing-features.md](docs/roadmap/missing-features.md), [docs/roadmap/runtime-version-management-v2.md](docs/roadmap/runtime-version-management-v2.md)
 - Prior plans: [.cursor/plans/mission_control_improvements_b9b1535e.plan.md](.cursor/plans/mission_control_improvements_b9b1535e.plan.md), [.cursor/plans/mission_control_improvements_99670ff4.plan.md](.cursor/plans/mission_control_improvements_99670ff4.plan.md)
 - Backend: [packages/backend/convex/schema.ts](packages/backend/convex/schema.ts), [packages/backend/convex/documents.ts](packages/backend/convex/documents.ts), [packages/backend/convex/notifications.ts](packages/backend/convex/notifications.ts), [packages/backend/convex/memberships.ts](packages/backend/convex/memberships.ts), [packages/backend/convex/tasks.ts](packages/backend/convex/tasks.ts), [packages/backend/convex/messages.ts](packages/backend/convex/messages.ts), [packages/backend/convex/lib/notifications.ts](packages/backend/convex/lib/notifications.ts), [packages/backend/convex/accounts.ts](packages/backend/convex/accounts.ts)

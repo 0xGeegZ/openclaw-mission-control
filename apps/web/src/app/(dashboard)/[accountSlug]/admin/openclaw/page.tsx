@@ -4,16 +4,22 @@ import { use, useState, useEffect } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Badge } from "@packages/ui/components/badge";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Separator } from "@packages/ui/components/separator";
-import { 
-  Cpu, 
-  Server, 
+import {
+  Cpu,
+  Server,
   RefreshCw,
   CheckCircle2,
   XCircle,
@@ -62,17 +68,39 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
   const { account, accountId, isLoading, isAdmin } = useAccount();
   const updateAccount = useMutation(api.accounts.update);
   const requestRestart = useMutation(api.accounts.requestRestart);
-  const provisionServiceToken = useAction(api.service.actions.provisionServiceToken);
+  const provisionServiceToken = useAction(
+    api.service.actions.provisionServiceToken,
+  );
   const syncServiceToken = useAction(api.service.actions.syncServiceToken);
 
   const runtimeStatus = account?.runtimeStatus;
   const runtimeConfig = account?.runtimeConfig;
-  const agentDefaults = (account as { settings?: { agentDefaults?: { model?: string; temperature?: number; maxTokens?: number; maxHistoryMessages?: number; behaviorFlags?: { canCreateTasks?: boolean; canModifyTaskStatus?: boolean; canCreateDocuments?: boolean; canMentionAgents?: boolean }; rateLimits?: { requestsPerMinute?: number; tokensPerDay?: number } } } })?.settings?.agentDefaults;
+  const agentDefaults = (
+    account as {
+      settings?: {
+        agentDefaults?: {
+          model?: string;
+          temperature?: number;
+          maxTokens?: number;
+          maxHistoryMessages?: number;
+          behaviorFlags?: {
+            canCreateTasks?: boolean;
+            canModifyTaskStatus?: boolean;
+            canCreateDocuments?: boolean;
+            canMentionAgents?: boolean;
+          };
+          rateLimits?: { requestsPerMinute?: number; tokensPerDay?: number };
+        };
+      };
+    }
+  )?.settings?.agentDefaults;
 
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [temperature, setTemperature] = useState(String(DEFAULT_TEMPERATURE));
   const [maxTokens, setMaxTokens] = useState(String(DEFAULT_MAX_TOKENS));
-  const [maxHistoryMessages, setMaxHistoryMessages] = useState(String(DEFAULT_MAX_HISTORY));
+  const [maxHistoryMessages, setMaxHistoryMessages] = useState(
+    String(DEFAULT_MAX_HISTORY),
+  );
   const [behaviorFlags, setBehaviorFlags] = useState({
     canCreateTasks: false,
     canModifyTaskStatus: true,
@@ -92,14 +120,20 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
   useEffect(() => {
     if (!agentDefaults) return;
     if (agentDefaults.model) setSelectedModel(agentDefaults.model);
-    if (agentDefaults.temperature != null) setTemperature(String(agentDefaults.temperature));
-    if (agentDefaults.maxTokens != null) setMaxTokens(String(agentDefaults.maxTokens));
-    if (agentDefaults.maxHistoryMessages != null) setMaxHistoryMessages(String(agentDefaults.maxHistoryMessages));
-    if (agentDefaults.behaviorFlags) setBehaviorFlags((prev) => ({ ...prev, ...agentDefaults.behaviorFlags }));
-    if (agentDefaults.rateLimits?.requestsPerMinute != null) setRateRpm(String(agentDefaults.rateLimits.requestsPerMinute));
-    if (agentDefaults.rateLimits?.tokensPerDay != null) setRateTpd(String(agentDefaults.rateLimits.tokensPerDay));
+    if (agentDefaults.temperature != null)
+      setTemperature(String(agentDefaults.temperature));
+    if (agentDefaults.maxTokens != null)
+      setMaxTokens(String(agentDefaults.maxTokens));
+    if (agentDefaults.maxHistoryMessages != null)
+      setMaxHistoryMessages(String(agentDefaults.maxHistoryMessages));
+    if (agentDefaults.behaviorFlags)
+      setBehaviorFlags((prev) => ({ ...prev, ...agentDefaults.behaviorFlags }));
+    if (agentDefaults.rateLimits?.requestsPerMinute != null)
+      setRateRpm(String(agentDefaults.rateLimits.requestsPerMinute));
+    if (agentDefaults.rateLimits?.tokensPerDay != null)
+      setRateTpd(String(agentDefaults.rateLimits.tokensPerDay));
   }, [agentDefaults]);
-  
+
   const getStatusIcon = (status: string | undefined) => {
     switch (status) {
       case "online":
@@ -115,9 +149,12 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
         return <Clock className="h-4 w-4 text-muted-foreground" />;
     }
   };
-  
+
   const getStatusBadge = (status: string | undefined) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    const variants: Record<
+      string,
+      "default" | "secondary" | "destructive" | "outline"
+    > = {
       online: "default",
       degraded: "secondary",
       offline: "destructive",
@@ -126,7 +163,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
     };
     return variants[status || ""] || "outline";
   };
-  
+
   // Show loader while checking permissions
   if (isLoading) {
     return (
@@ -141,7 +178,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
       </div>
     );
   }
-  
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20">
@@ -155,22 +192,26 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
       </div>
     );
   }
-  
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-border/50 bg-card/50 backdrop-blur-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">OpenClaw Configuration</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              OpenClaw Configuration
+            </h1>
             <Badge variant="secondary" className="rounded-full">
               <Shield className="h-3 w-3 mr-1" />
               Admin
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage your OpenClaw runtime and agent defaults</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage your OpenClaw runtime and agent defaults
+          </p>
         </div>
       </header>
-      
+
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {isLoading ? (
           <div className="grid gap-6 md:grid-cols-2">
@@ -202,19 +243,23 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   <div className="flex items-center gap-3">
                     {getStatusIcon(runtimeStatus)}
                     <div>
-                      <Badge variant={getStatusBadge(runtimeStatus)} className="capitalize">
+                      <Badge
+                        variant={getStatusBadge(runtimeStatus)}
+                        className="capitalize"
+                      >
                         {runtimeStatus || "Unknown"}
                       </Badge>
                     </div>
                   </div>
                   {runtimeConfig?.lastHealthCheck && (
                     <p className="text-xs text-muted-foreground mt-3">
-                      Last health check: {new Date(runtimeConfig.lastHealthCheck).toLocaleString()}
+                      Last health check:{" "}
+                      {new Date(runtimeConfig.lastHealthCheck).toLocaleString()}
                     </p>
                   )}
                 </CardContent>
               </Card>
-              
+
               <Card className="border-border/50 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -230,12 +275,15 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   </div>
                   {runtimeConfig?.lastUpgradeAt && (
                     <p className="text-xs text-muted-foreground mt-3">
-                      Last upgrade: {new Date(runtimeConfig.lastUpgradeAt).toLocaleDateString()}
+                      Last upgrade:{" "}
+                      {new Date(
+                        runtimeConfig.lastUpgradeAt,
+                      ).toLocaleDateString()}
                     </p>
                   )}
                 </CardContent>
               </Card>
-              
+
               <Card className="border-border/50 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -258,7 +306,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                 </CardContent>
               </Card>
             </div>
-            
+
             {/* Configuration Tabs */}
             <Tabs defaultValue="defaults" className="space-y-6">
               <TabsList className="bg-muted/50">
@@ -275,43 +323,58 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   Advanced
                 </TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="defaults" className="space-y-6">
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
                     <CardTitle>Default Agent Configuration</CardTitle>
                     <CardDescription>
-                      These settings will be applied to new agents by default. Existing agents retain their individual configurations.
+                      These settings will be applied to new agents by default.
+                      Existing agents retain their individual configurations.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="grid gap-6 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="default-model">Default Model</Label>
-                        <Select value={selectedModel} onValueChange={setSelectedModel}>
-                          <SelectTrigger id="default-model" className="rounded-xl">
+                        <Select
+                          value={selectedModel}
+                          onValueChange={setSelectedModel}
+                        >
+                          <SelectTrigger
+                            id="default-model"
+                            className="rounded-xl"
+                          >
                             <SelectValue placeholder="Select model" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
-                            <SelectItem value="claude-opus-4-20250514">Claude Opus 4</SelectItem>
+                            <SelectItem value="claude-sonnet-4-20250514">
+                              Claude Sonnet 4
+                            </SelectItem>
+                            <SelectItem value="claude-opus-4-20250514">
+                              Claude Opus 4
+                            </SelectItem>
                             <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                            <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                            <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
+                            <SelectItem value="gpt-4o-mini">
+                              GPT-4o Mini
+                            </SelectItem>
+                            <SelectItem value="gemini-2.0-flash">
+                              Gemini 2.0 Flash
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
                           The LLM model used for agent responses
                         </p>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="default-temperature">Temperature</Label>
-                        <Input 
+                        <Input
                           id="default-temperature"
-                          type="number" 
-                          min="0" 
-                          max="2" 
+                          type="number"
+                          min="0"
+                          max="2"
                           step="0.1"
                           value={temperature}
                           onChange={(e) => setTemperature(e.target.value)}
@@ -321,14 +384,14 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           Controls randomness (0.0 = focused, 2.0 = creative)
                         </p>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="default-max-tokens">Max Tokens</Label>
-                        <Input 
+                        <Input
                           id="default-max-tokens"
-                          type="number" 
-                          min="256" 
-                          max="32000" 
+                          type="number"
+                          min="256"
+                          max="32000"
                           step="256"
                           value={maxTokens}
                           onChange={(e) => setMaxTokens(e.target.value)}
@@ -338,16 +401,20 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           Maximum tokens in agent responses
                         </p>
                       </div>
-                      
+
                       <div className="space-y-2">
-                        <Label htmlFor="default-history">Max History Messages</Label>
-                        <Input 
+                        <Label htmlFor="default-history">
+                          Max History Messages
+                        </Label>
+                        <Input
                           id="default-history"
-                          type="number" 
-                          min="5" 
-                          max="100" 
+                          type="number"
+                          min="5"
+                          max="100"
                           value={maxHistoryMessages}
-                          onChange={(e) => setMaxHistoryMessages(e.target.value)}
+                          onChange={(e) =>
+                            setMaxHistoryMessages(e.target.value)
+                          }
                           className="rounded-xl"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -355,11 +422,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         </p>
                       </div>
                     </div>
-                    
+
                     <Separator />
-                    
+
                     <div className="flex justify-end">
-                      <Button 
+                      <Button
                         className="rounded-xl shadow-sm"
                         disabled={!accountId || isSaving}
                         onClick={async () => {
@@ -371,20 +438,36 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                               settings: {
                                 agentDefaults: {
                                   model: selectedModel,
-                                  temperature: parseFloat(temperature) || DEFAULT_TEMPERATURE,
-                                  maxTokens: parseInt(maxTokens, 10) || DEFAULT_MAX_TOKENS,
-                                  maxHistoryMessages: parseInt(maxHistoryMessages, 10) || DEFAULT_MAX_HISTORY,
+                                  temperature:
+                                    parseFloat(temperature) ||
+                                    DEFAULT_TEMPERATURE,
+                                  maxTokens:
+                                    parseInt(maxTokens, 10) ||
+                                    DEFAULT_MAX_TOKENS,
+                                  maxHistoryMessages:
+                                    parseInt(maxHistoryMessages, 10) ||
+                                    DEFAULT_MAX_HISTORY,
                                   behaviorFlags,
                                   rateLimits: {
-                                    requestsPerMinute: parseInt(rateRpm, 10) || 20,
-                                    tokensPerDay: parseInt(rateTpd, 10) || 100000,
+                                    requestsPerMinute:
+                                      parseInt(rateRpm, 10) || 20,
+                                    tokensPerDay:
+                                      parseInt(rateTpd, 10) || 100000,
                                   },
                                 },
                               },
                             });
-                            toast.success("Configuration saved", { description: "Default agent settings have been updated." });
+                            toast.success("Configuration saved", {
+                              description:
+                                "Default agent settings have been updated.",
+                            });
                           } catch (e) {
-                            toast.error("Failed to save", { description: e instanceof Error ? e.message : "Unknown error" });
+                            toast.error("Failed to save", {
+                              description:
+                                e instanceof Error
+                                  ? e.message
+                                  : "Unknown error",
+                            });
                           } finally {
                             setIsSaving(false);
                           }
@@ -396,7 +479,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                     </div>
                   </CardContent>
                 </Card>
-                
+
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
                     <CardTitle>Behavior Flags</CardTitle>
@@ -407,21 +490,52 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   <CardContent className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2">
                       {[
-                        { id: "create-tasks", key: "canCreateTasks" as const, label: "Can Create Tasks", description: "Allow agents to create new tasks" },
-                        { id: "modify-status", key: "canModifyTaskStatus" as const, label: "Can Modify Task Status", description: "Allow agents to change task statuses" },
-                        { id: "create-docs", key: "canCreateDocuments" as const, label: "Can Create Documents", description: "Allow agents to create documents" },
-                        { id: "mention-agents", key: "canMentionAgents" as const, label: "Can Mention Agents", description: "Allow agents to mention other agents" },
+                        {
+                          id: "create-tasks",
+                          key: "canCreateTasks" as const,
+                          label: "Can Create Tasks",
+                          description: "Allow agents to create new tasks",
+                        },
+                        {
+                          id: "modify-status",
+                          key: "canModifyTaskStatus" as const,
+                          label: "Can Modify Task Status",
+                          description: "Allow agents to change task statuses",
+                        },
+                        {
+                          id: "create-docs",
+                          key: "canCreateDocuments" as const,
+                          label: "Can Create Documents",
+                          description: "Allow agents to create documents",
+                        },
+                        {
+                          id: "mention-agents",
+                          key: "canMentionAgents" as const,
+                          label: "Can Mention Agents",
+                          description: "Allow agents to mention other agents",
+                        },
                       ].map((flag) => (
-                        <div key={flag.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/30">
-                          <input 
-                            type="checkbox" 
-                            id={flag.id} 
+                        <div
+                          key={flag.id}
+                          className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/30"
+                        >
+                          <input
+                            type="checkbox"
+                            id={flag.id}
                             checked={behaviorFlags[flag.key]}
-                            onChange={(e) => setBehaviorFlags((prev) => ({ ...prev, [flag.key]: e.target.checked }))}
+                            onChange={(e) =>
+                              setBehaviorFlags((prev) => ({
+                                ...prev,
+                                [flag.key]: e.target.checked,
+                              }))
+                            }
                             className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                           />
                           <div>
-                            <Label htmlFor={flag.id} className="font-medium cursor-pointer">
+                            <Label
+                              htmlFor={flag.id}
+                              className="font-medium cursor-pointer"
+                            >
                               {flag.label}
                             </Label>
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -431,11 +545,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         </div>
                       ))}
                     </div>
-                    
+
                     <Separator />
-                    
+
                     <div className="flex justify-end">
-                      <Button 
+                      <Button
                         className="rounded-xl shadow-sm"
                         disabled={!accountId || isSaving}
                         onClick={async () => {
@@ -447,20 +561,36 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                               settings: {
                                 agentDefaults: {
                                   model: selectedModel,
-                                  temperature: parseFloat(temperature) || DEFAULT_TEMPERATURE,
-                                  maxTokens: parseInt(maxTokens, 10) || DEFAULT_MAX_TOKENS,
-                                  maxHistoryMessages: parseInt(maxHistoryMessages, 10) || DEFAULT_MAX_HISTORY,
+                                  temperature:
+                                    parseFloat(temperature) ||
+                                    DEFAULT_TEMPERATURE,
+                                  maxTokens:
+                                    parseInt(maxTokens, 10) ||
+                                    DEFAULT_MAX_TOKENS,
+                                  maxHistoryMessages:
+                                    parseInt(maxHistoryMessages, 10) ||
+                                    DEFAULT_MAX_HISTORY,
                                   behaviorFlags,
                                   rateLimits: {
-                                    requestsPerMinute: parseInt(rateRpm, 10) || 20,
-                                    tokensPerDay: parseInt(rateTpd, 10) || 100000,
+                                    requestsPerMinute:
+                                      parseInt(rateRpm, 10) || 20,
+                                    tokensPerDay:
+                                      parseInt(rateTpd, 10) || 100000,
                                   },
                                 },
                               },
                             });
-                            toast.success("Behavior flags saved", { description: "Default behavior flags have been updated." });
+                            toast.success("Behavior flags saved", {
+                              description:
+                                "Default behavior flags have been updated.",
+                            });
                           } catch (e) {
-                            toast.error("Failed to save", { description: e instanceof Error ? e.message : "Unknown error" });
+                            toast.error("Failed to save", {
+                              description:
+                                e instanceof Error
+                                  ? e.message
+                                  : "Unknown error",
+                            });
                           } finally {
                             setIsSaving(false);
                           }
@@ -473,42 +603,77 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   </CardContent>
                 </Card>
               </TabsContent>
-              
+
               <TabsContent value="models" className="space-y-6">
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
                     <CardTitle>Available Models</CardTitle>
                     <CardDescription>
-                      Configure which models are available for agents in your workspace
+                      Configure which models are available for agents in your
+                      workspace
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
                       {[
-                        { name: "Claude Sonnet 4", provider: "Anthropic", enabled: true, recommended: true },
-                        { name: "Claude Opus 4", provider: "Anthropic", enabled: true, recommended: false },
-                        { name: "GPT-4o", provider: "OpenAI", enabled: true, recommended: false },
-                        { name: "GPT-4o Mini", provider: "OpenAI", enabled: true, recommended: false },
-                        { name: "Gemini 2.0 Flash", provider: "Google", enabled: false, recommended: false },
+                        {
+                          name: "Claude Sonnet 4",
+                          provider: "Anthropic",
+                          enabled: true,
+                          recommended: true,
+                        },
+                        {
+                          name: "Claude Opus 4",
+                          provider: "Anthropic",
+                          enabled: true,
+                          recommended: false,
+                        },
+                        {
+                          name: "GPT-4o",
+                          provider: "OpenAI",
+                          enabled: true,
+                          recommended: false,
+                        },
+                        {
+                          name: "GPT-4o Mini",
+                          provider: "OpenAI",
+                          enabled: true,
+                          recommended: false,
+                        },
+                        {
+                          name: "Gemini 2.0 Flash",
+                          provider: "Google",
+                          enabled: false,
+                          recommended: false,
+                        },
                       ].map((model) => (
-                        <div 
+                        <div
                           key={model.name}
                           className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/30"
                         >
                           <div className="flex items-center gap-3">
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               defaultChecked={model.enabled}
                               className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                             />
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="font-medium">{model.name}</span>
+                                <span className="font-medium">
+                                  {model.name}
+                                </span>
                                 {model.recommended && (
-                                  <Badge variant="secondary" className="text-xs">Recommended</Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    Recommended
+                                  </Badge>
                                 )}
                               </div>
-                              <p className="text-xs text-muted-foreground">{model.provider}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {model.provider}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -517,7 +682,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   </CardContent>
                 </Card>
               </TabsContent>
-              
+
               <TabsContent value="advanced" className="space-y-6">
                 <Card className="border-border/50 shadow-sm">
                   <CardHeader>
@@ -526,7 +691,16 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                       Runtime service token
                     </CardTitle>
                     <CardDescription>
-                      Used by the Mission Control runtime to authenticate with Convex. Add it to <code className="text-xs bg-muted px-1 rounded">apps/runtime/.env</code> as <code className="text-xs bg-muted px-1 rounded">SERVICE_TOKEN=...</code>. Generating a new token invalidates the previous one.
+                      Used by the OpenClaw Mission Control runtime to
+                      authenticate with Convex. Add it to{" "}
+                      <code className="text-xs bg-muted px-1 rounded">
+                        apps/runtime/.env
+                      </code>{" "}
+                      as{" "}
+                      <code className="text-xs bg-muted px-1 rounded">
+                        SERVICE_TOKEN=...
+                      </code>
+                      . Generating a new token invalidates the previous one.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -544,16 +718,23 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                               size="icon"
                               className="rounded-xl shrink-0"
                               onClick={() => {
-                                void navigator.clipboard.writeText(generatedToken);
+                                void navigator.clipboard.writeText(
+                                  generatedToken,
+                                );
                                 setTokenCopied(true);
                                 setTimeout(() => setTokenCopied(false), 2000);
                               }}
                             >
-                              {tokenCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                              {tokenCopied ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
                             </Button>
                           </div>
                           <p className="text-xs text-amber-600 dark:text-amber-500">
-                            Copy this token now; it will not be shown again. Any runtime using an old token will stop working.
+                            Copy this token now; it will not be shown again. Any
+                            runtime using an old token will stop working.
                           </p>
                           <Button
                             variant="secondary"
@@ -572,18 +753,35 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                             setIsGeneratingToken(true);
                             setGeneratedToken(null);
                             try {
-                              const { token } = await provisionServiceToken({ accountId });
+                              const { token } = await provisionServiceToken({
+                                accountId,
+                              });
                               setGeneratedToken(token);
-                              toast.success("Token generated", { description: "Copy it to your runtime .env as SERVICE_TOKEN." });
+                              toast.success("Token generated", {
+                                description:
+                                  "Copy it to your runtime .env as SERVICE_TOKEN.",
+                              });
                             } catch (e) {
-                              toast.error("Failed to generate token", { description: e instanceof Error ? e.message : "Unknown error" });
+                              toast.error("Failed to generate token", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
                             } finally {
                               setIsGeneratingToken(false);
                             }
                           }}
                         >
-                          <KeyRound className={cn("h-4 w-4 mr-2", isGeneratingToken && "animate-pulse")} />
-                          {isGeneratingToken ? "Generating…" : "Generate service token"}
+                          <KeyRound
+                            className={cn(
+                              "h-4 w-4 mr-2",
+                              isGeneratingToken && "animate-pulse",
+                            )}
+                          />
+                          {isGeneratingToken
+                            ? "Generating…"
+                            : "Generate service token"}
                         </Button>
                       )}
                     </div>
@@ -591,11 +789,15 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                     <Separator />
 
                     <div className="space-y-3">
-                      <Label htmlFor="existing-service-token">Use existing token</Label>
+                      <Label htmlFor="existing-service-token">
+                        Use existing token
+                      </Label>
                       <Input
                         id="existing-service-token"
                         value={existingToken}
-                        onChange={(event) => setExistingToken(event.target.value)}
+                        onChange={(event) =>
+                          setExistingToken(event.target.value)
+                        }
                         placeholder="mc_service_{accountId}_{secret}"
                         className="font-mono text-sm rounded-xl"
                       />
@@ -603,16 +805,31 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         <Button
                           variant="secondary"
                           className="rounded-xl"
-                          disabled={!accountId || isSyncingToken || !existingToken.trim()}
+                          disabled={
+                            !accountId ||
+                            isSyncingToken ||
+                            !existingToken.trim()
+                          }
                           onClick={async () => {
                             if (!accountId || !existingToken.trim()) return;
                             setIsSyncingToken(true);
                             try {
-                              await syncServiceToken({ accountId, serviceToken: existingToken });
-                              toast.success("Token synced", { description: "Convex now accepts the token in your runtime .env." });
+                              await syncServiceToken({
+                                accountId,
+                                serviceToken: existingToken,
+                              });
+                              toast.success("Token synced", {
+                                description:
+                                  "Convex now accepts the token in your runtime .env.",
+                              });
                               setExistingToken("");
                             } catch (e) {
-                              toast.error("Failed to sync token", { description: e instanceof Error ? e.message : "Unknown error" });
+                              toast.error("Failed to sync token", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
                             } finally {
                               setIsSyncingToken(false);
                             }
@@ -630,7 +847,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Syncing stores only the token hash in Convex. The plaintext token is not saved.
+                        Syncing stores only the token hash in Convex. The
+                        plaintext token is not saved.
                       </p>
                     </div>
                   </CardContent>
@@ -646,25 +864,29 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   <CardContent className="space-y-6">
                     <div className="grid gap-6 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="rate-rpm">Requests Per Minute (per agent)</Label>
-                        <Input 
+                        <Label htmlFor="rate-rpm">
+                          Requests Per Minute (per agent)
+                        </Label>
+                        <Input
                           id="rate-rpm"
-                          type="number" 
-                          min="1" 
-                          max="100" 
+                          type="number"
+                          min="1"
+                          max="100"
                           value={rateRpm}
                           onChange={(e) => setRateRpm(e.target.value)}
                           className="rounded-xl"
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
-                        <Label htmlFor="rate-tpd">Tokens Per Day (per agent)</Label>
-                        <Input 
+                        <Label htmlFor="rate-tpd">
+                          Tokens Per Day (per agent)
+                        </Label>
+                        <Input
                           id="rate-tpd"
-                          type="number" 
-                          min="1000" 
-                          max="10000000" 
+                          type="number"
+                          min="1000"
+                          max="10000000"
                           value={rateTpd}
                           onChange={(e) => setRateTpd(e.target.value)}
                           className="rounded-xl"
@@ -673,10 +895,12 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                     </div>
                   </CardContent>
                 </Card>
-                
+
                 <Card className="border-border/50 shadow-sm border-destructive/30">
                   <CardHeader>
-                    <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                    <CardTitle className="text-destructive">
+                      Danger Zone
+                    </CardTitle>
                     <CardDescription>
                       These actions can affect your runtime and all agents
                     </CardDescription>
@@ -686,7 +910,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                       <div>
                         <p className="font-medium">Restart Runtime</p>
                         <p className="text-sm text-muted-foreground">
-                          Restart the OpenClaw runtime service. This will briefly interrupt agent operations.
+                          Restart the OpenClaw runtime service. This will
+                          briefly interrupt agent operations.
                         </p>
                       </div>
                       <Button
@@ -698,24 +923,38 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           setIsRestarting(true);
                           try {
                             await requestRestart({ accountId });
-                            toast.success("Restart requested", { description: "The runtime will restart when it polls next." });
+                            toast.success("Restart requested", {
+                              description:
+                                "The runtime will restart when it polls next.",
+                            });
                           } catch (e) {
-                            toast.error("Failed to request restart", { description: e instanceof Error ? e.message : "Unknown error" });
+                            toast.error("Failed to request restart", {
+                              description:
+                                e instanceof Error
+                                  ? e.message
+                                  : "Unknown error",
+                            });
                           } finally {
                             setIsRestarting(false);
                           }
                         }}
                       >
-                        <RefreshCw className={cn("h-4 w-4 mr-2", isRestarting && "animate-spin")} />
+                        <RefreshCw
+                          className={cn(
+                            "h-4 w-4 mr-2",
+                            isRestarting && "animate-spin",
+                          )}
+                        />
                         {isRestarting ? "Requesting…" : "Restart"}
                       </Button>
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/30 bg-destructive/5">
                       <div>
                         <p className="font-medium">Reset All Agent Configs</p>
                         <p className="text-sm text-muted-foreground">
-                          Reset all agents to use default configuration. This cannot be undone.
+                          Reset all agents to use default configuration. This
+                          cannot be undone.
                         </p>
                       </div>
                       <Button variant="destructive" className="rounded-xl">

@@ -2,7 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 /**
- * Mission Control Database Schema
+ * OpenClaw Mission Control Database Schema
  * 
  * Multi-tenant architecture: Every table (except accounts) includes accountId.
  * All queries MUST filter by accountId to enforce tenant isolation.

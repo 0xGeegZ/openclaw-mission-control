@@ -1,10 +1,10 @@
-# Mission Control — Runtime Service
+# OpenClaw Mission Control — Runtime Service
 
-Per-account Node.js service that runs the **OpenClaw (Clawdbot) agent runtime** for a single Mission Control account. One runtime server per customer account; typically deployed on a DigitalOcean Droplet.
+Per-account Node.js service that runs the **OpenClaw (Clawdbot) agent runtime** for a single OpenClaw Mission Control account. One runtime server per customer account; typically deployed on a DigitalOcean Droplet.
 
-## Role in Mission Control
+## Role in OpenClaw Mission Control
 
-Mission Control is a multi-agent coordination SaaS. The runtime is the **agent execution layer**:
+OpenClaw Mission Control is a multi-agent coordination SaaS. The runtime is the **agent execution layer**:
 
 - **Web app** → Dashboard (Kanban, threads, feed); users and Convex client auth.
 - **Convex** → Shared brain (tasks, agents, messages, notifications, activities).
@@ -14,17 +14,17 @@ The runtime:
 
 1. Connects to Convex with a **service token** scoped to one `accountId`.
 2. Starts the **OpenClaw gateway** and registers agent sessions (session keys like `agent:{slug}:{accountId}`).
-3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session via the OpenResponses HTTP API (`POST {OPENCLAW_GATEWAY_URL}/v1/responses` with `x-openclaw-session-key`). Agent replies are **written back** to the task thread in Convex so they appear in the Mission Control web app. The gateway HTTP endpoint must be enabled in OpenClaw config.
+3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session via the OpenResponses HTTP API (`POST {OPENCLAW_GATEWAY_URL}/v1/responses` with `x-openclaw-session-key`). Agent replies are **written back** to the task thread in Convex so they appear in the OpenClaw Mission Control web app. The gateway HTTP endpoint must be enabled in OpenClaw config.
 4. **Heartbeat scheduler**: wakes each agent on its schedule to check for work and report status.
 5. **Agent sync**: periodically fetches the agent list from Convex so new agents go online without restarting the runtime.
 6. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
 
-See [docs/concept/mission-control-initial-article.md](../../docs/concept/mission-control-initial-article.md) and [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) for full context.
+See [docs/concept/openclaw-mission-control-initial-article.md](../../docs/concept/openclaw-mission-control-initial-article.md) and [docs/concept/openclaw-mission-control-cursor-core-instructions.md](../../docs/concept/openclaw-mission-control-cursor-core-instructions.md) for full context.
 
 ## Prerequisites
 
 - **Node 24** (use `nvm use 24` or match repo `.nvmrc`).
-- **Convex deployment** with the Mission Control backend (schema, service actions).
+- **Convex deployment** with the OpenClaw Mission Control backend (schema, service actions).
 - **OpenClaw (Clawdbot)** installed and on `PATH` for session/gateway support (optional for local dev; version is detected at startup).
 - **Service token** for the Convex backend, scoped to the account this runtime serves.
 
@@ -72,8 +72,8 @@ Ensure `.env` is set; the process will exit on startup if `ACCOUNT_ID`, `CONVEX_
 The Dockerfile expects to be built from the **monorepo root** (it copies `apps/runtime`, `packages/shared`, `packages/backend`). Example from repo root:
 
 ```bash
-docker build -f apps/runtime/Dockerfile -t mission-control-runtime .
-docker run --env-file apps/runtime/.env -p 3001:3001 mission-control-runtime
+docker build -f apps/runtime/Dockerfile -t openclaw-mission-control-runtime .
+docker run --env-file apps/runtime/.env -p 3001:3001 openclaw-mission-control-runtime
 ```
 
 Pass env vars via `--env-file` or `-e`; the app does not read `.env` from disk inside the image unless you mount it.
@@ -149,4 +149,4 @@ apps/runtime/
 
 - [docs/runtime/runtime-docker-compose.md](../../docs/runtime/runtime-docker-compose.md) — Docker Compose local dev and upgrade workflow.
 - [docs/build/00-orchestrator.md](../../docs/build/00-orchestrator.md) — Build phases and module 13 (runtime service).
-- [docs/concept/mission-control-cursor-core-instructions.md](../../docs/concept/mission-control-cursor-core-instructions.md) — Data flows, service auth, invariants.
+- [docs/concept/openclaw-mission-control-cursor-core-instructions.md](../../docs/concept/openclaw-mission-control-cursor-core-instructions.md) — Data flows, service auth, invariants.

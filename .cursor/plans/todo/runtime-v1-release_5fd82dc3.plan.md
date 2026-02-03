@@ -9,7 +9,7 @@ isProject: false
 
 ## 1. Context & goal
 
-We need a release-ready v1 path for per-account runtimes that can be provisioned automatically on DigitalOcean, reliably send/receive OpenClaw messages, and manage provider API keys securely from the admin UI. This must follow the current Mission Control architecture (Convex as shared brain, one runtime server per account, strict tenancy) and align the OpenClaw Docker setup with `clawdbot-docker` while preserving your Vercel AI Gateway defaults. Value: removes manual ops, enables real agent execution, reduces onboarding friction, and makes the project safe to open source.
+We need a release-ready v1 path for per-account runtimes that can be provisioned automatically on DigitalOcean, reliably send/receive OpenClaw messages, and manage provider API keys securely from the admin UI. This must follow the current OpenClaw Mission Control architecture (Convex as shared brain, one runtime server per account, strict tenancy) and align the OpenClaw Docker setup with `clawdbot-docker` while preserving your Vercel AI Gateway defaults. Value: removes manual ops, enables real agent execution, reduces onboarding friction, and makes the project safe to open source.
 
 Key constraints:
 

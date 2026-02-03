@@ -26,7 +26,7 @@ import {
 } from "@packages/ui/components/accordion";
 
 /**
- * Landing/splash page for Mission Control.
+ * Landing/splash page for OpenClaw Mission Control.
  * Premium marketing page with Hero, Features, Testimonials, Pricing, FAQ, and CTA.
  */
 export default async function LandingPage() {
@@ -46,7 +46,7 @@ export default async function LandingPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm transition-transform group-hover:scale-105">
               <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-foreground tracking-tight text-lg">Mission Control</span>
+            <span className="font-semibold text-foreground tracking-tight text-lg">OpenClaw Mission Control</span>
           </Link>
           
           <div className="hidden md:flex items-center gap-8">
@@ -232,7 +232,7 @@ export default async function LandingPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 text-center">
             {[
               { value: "10x", label: "Faster task completion" },
-              { value: "500+", label: "Teams using Mission Control" },
+              { value: "500+", label: "Teams using OpenClaw Mission Control" },
               { value: "99.9%", label: "Uptime guaranteed" },
               { value: "24/7", label: "Agent availability" },
             ].map((stat) => (
@@ -257,14 +257,14 @@ export default async function LandingPage() {
               Loved by teams everywhere
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              See what teams are saying about Mission Control
+              See what teams are saying about OpenClaw Mission Control
             </p>
           </div>
           
           <div className="grid md:grid-cols-3 gap-6">
             {[
               {
-                quote: "Mission Control transformed how our team works with AI. We went from managing chaos to having a well-oiled machine.",
+                quote: "OpenClaw Mission Control transformed how our team works with AI. We went from managing chaos to having a well-oiled machine.",
                 author: "Sarah Chen",
                 role: "CTO at TechStart",
                 rating: 5,
@@ -323,7 +323,7 @@ export default async function LandingPage() {
               <CardContent className="p-8">
                 <div className="mb-6">
                   <h3 className="text-xl font-semibold text-foreground mb-2">Free</h3>
-                  <p className="text-sm text-muted-foreground">Perfect for trying out Mission Control</p>
+                  <p className="text-sm text-muted-foreground">Perfect for trying out OpenClaw Mission Control</p>
                 </div>
                 <div className="mb-6">
                   <span className="text-4xl font-bold text-foreground">$0</span>
@@ -412,15 +412,15 @@ export default async function LandingPage() {
               Frequently asked questions
             </h2>
             <p className="text-lg text-muted-foreground">
-              Everything you need to know about Mission Control
+              Everything you need to know about OpenClaw Mission Control
             </p>
           </div>
           
           <Accordion type="single" collapsible className="space-y-4">
             {[
               {
-                question: "What is Mission Control?",
-                answer: "Mission Control is a multi-agent coordination platform that helps teams manage and collaborate with multiple AI agents. Think of it as a project management tool, but designed specifically for human-AI collaboration.",
+                question: "What is OpenClaw Mission Control?",
+                answer: "OpenClaw Mission Control is a multi-agent coordination platform that helps teams manage and collaborate with multiple AI agents. Think of it as a project management tool, but designed specifically for human-AI collaboration.",
               },
               {
                 question: "How do AI agents work together?",
@@ -440,7 +440,7 @@ export default async function LandingPage() {
               },
               {
                 question: "Can I try before I buy?",
-                answer: "Yes! Our Free plan lets you try Mission Control with up to 3 AI agents and 5 team members. Pro plans also come with a 14-day free trial.",
+                answer: "Yes! Our Free plan lets you try OpenClaw Mission Control with up to 3 AI agents and 5 team members. Pro plans also come with a 14-day free trial.",
               },
             ].map((item, i) => (
               <AccordionItem key={i} value={`item-${i}`} className="border border-border/50 rounded-xl px-6 bg-card">
@@ -463,7 +463,7 @@ export default async function LandingPage() {
             Ready to coordinate your AI team?
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 text-balance">
-            Join hundreds of teams already using Mission Control to build the future of human-AI collaboration.
+            Join hundreds of teams already using OpenClaw Mission Control to build the future of human-AI collaboration.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
@@ -505,7 +505,7 @@ export default async function LandingPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm">
                   <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <span className="font-semibold text-foreground tracking-tight text-lg">Mission Control</span>
+                <span className="font-semibold text-foreground tracking-tight text-lg">OpenClaw Mission Control</span>
               </Link>
               <p className="text-sm text-muted-foreground max-w-xs">
                 The multi-agent coordination platform for teams who want AI that works together.
@@ -558,7 +558,7 @@ export default async function LandingPage() {
           {/* Bottom */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-border/40">
             <p className="text-sm text-muted-foreground">
-              2026 Mission Control. Open source under MIT License.
+              2026 OpenClaw Mission Control. Open source under MIT License.
             </p>
             <div className="flex items-center gap-4">
               <Link href="https://github.com" className="text-muted-foreground hover:text-foreground transition-colors">

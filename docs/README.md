@@ -1,4 +1,4 @@
-# Mission Control — Documentation
+# OpenClaw Mission Control — Documentation
 
 Documentation is grouped into subfolders:
 
@@ -6,8 +6,8 @@ Documentation is grouped into subfolders:
 
 Foundational and vision docs:
 
-- **mission-control-initial-article.md** — Original concept and vision (OpenClaw/Clawdbot, squad model, Convex).
-- **mission-control-cursor-core-instructions.md** — Core engineering instructions for Cursor and engineers (architecture, invariants, runtime contract).
+- **openclaw-mission-control-initial-article.md** — Original concept and vision (OpenClaw/Clawdbot, squad model, Convex).
+- **openclaw-mission-control-cursor-core-instructions.md** — Core engineering instructions for Cursor and engineers (architecture, invariants, runtime contract).
 
 ## [runtime/](runtime/)
 

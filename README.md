@@ -1,18 +1,18 @@
-# Mission Control
+# OpenClaw Mission Control
 
 > **Multi-agent coordination dashboard** — AI agents that behave like a real team.
 
-[![CI](https://github.com/YOUR_ORG/mission-control/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/mission-control/actions/workflows/ci.yml)
+[![CI](https://github.com/YOUR_ORG/openclaw-mission-control/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/openclaw-mission-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-24+-green.svg)](https://nodejs.org/)
 
 ---
 
-## What is Mission Control?
+## What is OpenClaw Mission Control?
 
-Mission Control is an open-source **multi-agent coordination SaaS** built on top of [OpenClaw](https://openclaw.ai). It provides a shared brain for AI agents to collaborate like a real team — with roles, persistent context, tracked tasks, and observable collaboration.
+OpenClaw Mission Control is an open-source **multi-agent coordination SaaS** built on top of [OpenClaw](https://openclaw.ai). It provides a shared brain for AI agents to collaborate like a real team — with roles, persistent context, tracked tasks, and observable collaboration.
 
-**Core Concept:** Instead of treating AI as a single assistant, Mission Control enables you to deploy a **team of specialized agents** that work together on complex projects.
+**Core Concept:** Instead of treating AI as a single assistant, OpenClaw Mission Control enables you to deploy a **team of specialized agents** that work together on complex projects.
 
 ### Key Features
 
@@ -57,8 +57,8 @@ Mission Control is an open-source **multi-agent coordination SaaS** built on top
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_ORG/mission-control.git
-cd mission-control
+git clone https://github.com/YOUR_ORG/openclaw-mission-control.git
+cd openclaw-mission-control
 
 # 2. Use Node 24 (via nvm)
 nvm install 24
@@ -101,7 +101,7 @@ CLERK_SECRET_KEY=sk_test_...
 ## Project Structure
 
 ```
-mission-control/
+openclaw-mission-control/
 ├── apps/
 │   ├── web/                  # Next.js web application
 │   │   ├── app/              # App Router pages
@@ -184,7 +184,7 @@ npx shadcn@latest add button
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         Mission Control                             │
+│                    OpenClaw Mission Control                         │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐    │
@@ -242,10 +242,10 @@ The runtime service runs on DigitalOcean Droplets (one per customer account):
 ```bash
 # Build Docker image
 cd apps/runtime
-docker build -t mission-control-runtime .
+docker build -t openclaw-mission-control-runtime .
 
 # Push to registry
-docker push your-registry/mission-control-runtime
+docker push your-registry/openclaw-mission-control-runtime
 
 # Deploy to droplet (see docs/build/phase-4-features/13-runtime-service.md)
 ```
@@ -288,14 +288,14 @@ See our [Roadmap Documents](docs/roadmap/) for planned features:
 
 ## Community
 
-- [GitHub Issues](https://github.com/YOUR_ORG/mission-control/issues) — Bug reports and feature requests
-- [GitHub Discussions](https://github.com/YOUR_ORG/mission-control/discussions) — Questions and ideas
+- [GitHub Issues](https://github.com/YOUR_ORG/openclaw-mission-control/issues) — Bug reports and feature requests
+- [GitHub Discussions](https://github.com/YOUR_ORG/openclaw-mission-control/discussions) — Questions and ideas
 
 ---
 
 ## Acknowledgments
 
-Mission Control is built on top of amazing open-source projects:
+OpenClaw Mission Control is built on top of amazing open-source projects:
 
 - [OpenClaw](https://openclaw.ai) — Agent runtime platform
 - [Convex](https://convex.dev) — Real-time backend
@@ -313,5 +313,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ---
 
 <p align="center">
-  Built with ❤️ by the Mission Control community
+  Built with ❤️ by the OpenClaw Mission Control community
 </p>
