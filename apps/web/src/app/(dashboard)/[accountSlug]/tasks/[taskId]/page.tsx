@@ -64,11 +64,11 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           </TabsList>
         </div>
         
-        <TabsContent value="thread" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
+        <TabsContent value="thread" className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
           <TaskThread taskId={task._id} accountSlug={accountSlug} />
         </TabsContent>
         
-        <TabsContent value="documents" className="flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden">
+        <TabsContent value="documents" className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden">
           <TaskDocuments taskId={task._id} />
         </TabsContent>
       </Tabs>
