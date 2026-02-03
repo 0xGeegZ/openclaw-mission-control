@@ -104,6 +104,12 @@ const DOC_AGENTS_CONTENT = `# AGENTS.md — OpenClaw Mission Control Operating M
 
 You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
 
+## Primary repository
+
+- https://github.com/0xGeegZ/openclaw-mission-control
+- If access fails, mark the task BLOCKED and request credentials.
+- If GH_TOKEN is set, do not run \`gh auth login\`; use \`gh\` commands directly.
+
 ## Non-negotiable rules
 
 1. Everything must be traceable to a task or a doc.
@@ -250,10 +256,21 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 - Multi-tenancy: \`accountId\` on every table; all queries filter by account.
 `;
 
+/** Content for Repository — Primary. */
+const DOC_REPOSITORY_CONTENT = `# Repository — Primary
+
+- **Name:** OpenClaw Mission Control
+- **URL:** https://github.com/0xGeegZ/openclaw-mission-control
+- **Default branch:** master
+- **Access note:** If you see a 404, authentication is missing; request GH_TOKEN.
+- **CLI note:** When GH_TOKEN is set, \`gh auth login\` will error; use \`gh\` commands directly.
+`;
+
 /** Seed documents: title, type reference, content. */
 const seedDocs = [
   { title: "AGENTS.md — Operating Manual", content: DOC_AGENTS_CONTENT },
   { title: "HEARTBEAT.md — Wake Checklist", content: DOC_HEARTBEAT_CONTENT },
+  { title: "Repository — Primary", content: DOC_REPOSITORY_CONTENT },
   { title: "Tech Stack — Frontend", content: DOC_TECH_FRONTEND_CONTENT },
   { title: "Tech Stack — Backend", content: DOC_TECH_BACKEND_CONTENT },
 ] as const;
