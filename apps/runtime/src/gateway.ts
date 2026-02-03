@@ -7,8 +7,36 @@ const log = createLogger("[Gateway]");
 
 
 /**
+ * Collect response text from OpenClaw content fields (string/object/array).
+ */
+function collectOpenClawContentText(content: unknown, parts: string[]): void {
+  if (!content) return;
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    if (trimmed) parts.push(trimmed);
+    return;
+  }
+  if (Array.isArray(content)) {
+    for (const item of content) {
+      collectOpenClawContentText(item, parts);
+    }
+    return;
+  }
+  if (typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === "string") {
+      const trimmed = obj.text.trim();
+      if (trimmed) parts.push(trimmed);
+    }
+    if (typeof obj.content !== "undefined") {
+      collectOpenClawContentText(obj.content, parts);
+    }
+  }
+}
+
+/**
  * Extract agent reply text from OpenClaw /v1/responses JSON body.
- * Handles output_text, output[] items with content/text, or fallback.
+ * Handles output_text, output[] content arrays, and common fallbacks.
  */
 function parseOpenClawResponseBody(body: string): string | null {
   const trimmed = body?.trim();
@@ -24,14 +52,23 @@ function parseOpenClawResponseBody(body: string): string | null {
       for (const item of output) {
         if (item && typeof item === "object") {
           const obj = item as Record<string, unknown>;
-          if (typeof obj.content === "string") parts.push(obj.content.trim());
-          else if (typeof obj.text === "string") parts.push(obj.text.trim());
+          if (typeof obj.content !== "undefined") {
+            collectOpenClawContentText(obj.content, parts);
+          }
+          if (typeof obj.text === "string") {
+            const text = obj.text.trim();
+            if (text) parts.push(text);
+          }
         }
       }
       if (parts.length > 0) return parts.join("\n").trim();
     }
     if (typeof data.text === "string" && data.text.trim()) return data.text.trim();
-    if (typeof data.content === "string" && data.content.trim()) return data.content.trim();
+    if (typeof data.content !== "undefined") {
+      const parts: string[] = [];
+      collectOpenClawContentText(data.content, parts);
+      if (parts.length > 0) return parts.join("\n").trim();
+    }
     return null;
   } catch {
     return null;

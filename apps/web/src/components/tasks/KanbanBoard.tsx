@@ -22,6 +22,24 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 
+const VALID_STATUSES: TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+
+/** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
+function resolveDropTargetToStatus(
+  overId: string,
+  tasksByStatus: Record<TaskStatus, Doc<"tasks">[]> | undefined
+): TaskStatus | null {
+  if (VALID_STATUSES.includes(overId as TaskStatus)) {
+    return overId as TaskStatus;
+  }
+  if (!tasksByStatus) return null;
+  for (const tasks of Object.values(tasksByStatus)) {
+    const task = tasks.find((t) => t._id === overId);
+    if (task) return task.status as TaskStatus;
+  }
+  return null;
+}
+
 interface KanbanBoardProps {
   accountSlug: string;
 }
@@ -76,7 +94,8 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     if (!over || !accountId) return;
     
     const taskId = active.id as Id<"tasks">;
-    const newStatus = over.id as TaskStatus;
+    const newStatus = resolveDropTargetToStatus(String(over.id), tasksData?.tasks);
+    if (newStatus == null) return;
     
     // Find current task
     let currentTask: Doc<"tasks"> | null = null;
