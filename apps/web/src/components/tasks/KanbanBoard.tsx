@@ -143,7 +143,7 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4 px-6">
+        <div className="flex gap-4 overflow-x-auto pb-4 px-6 h-full">
           {TASK_STATUS_ORDER.map((status) => (
             <KanbanColumn
               key={status}
@@ -192,15 +192,17 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
  */
 function KanbanSkeleton() {
   return (
-    <div className="flex gap-4 px-6">
+    <div className="flex gap-4 px-6 h-full">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="w-72 shrink-0 flex flex-col gap-3">
+        <div key={i} className="w-72 shrink-0 flex flex-col gap-3 h-full rounded-xl bg-muted/30 border border-border/50 p-2">
           {/* Column header */}
           <div className="h-10 rounded-lg bg-muted animate-pulse" />
           {/* Task cards */}
-          {Array.from({ length: 2 }).map((_, j) => (
-            <div key={j} className="h-24 rounded-lg bg-muted/60 animate-pulse" />
-          ))}
+          <div className="flex-1 space-y-2">
+            {Array.from({ length: 2 }).map((_, j) => (
+              <div key={j} className="h-24 rounded-lg bg-muted/60 animate-pulse" />
+            ))}
+          </div>
         </div>
       ))}
     </div>
