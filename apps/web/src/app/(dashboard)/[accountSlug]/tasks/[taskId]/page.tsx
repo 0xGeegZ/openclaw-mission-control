@@ -51,21 +51,21 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
       <TaskHeader task={task} accountSlug={accountSlug} />
       
       <Tabs defaultValue="thread" className="flex-1 flex flex-col overflow-hidden">
-        <div className="border-b bg-card px-6">
-          <TabsList className="h-12 bg-transparent p-0 w-auto">
+        <div className="border-b bg-card/80 backdrop-blur-sm px-4">
+          <TabsList className="h-11 bg-transparent p-0 w-auto gap-1">
             <TabsTrigger 
               value="thread" 
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              className="relative h-11 px-4 rounded-none border-b-2 border-transparent bg-transparent shadow-none transition-all data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground hover:text-foreground hover:bg-muted/50"
             >
               <MessageSquare className="h-4 w-4 mr-2" />
-              Thread
+              <span className="font-medium">Thread</span>
             </TabsTrigger>
             <TabsTrigger 
               value="documents"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              className="relative h-11 px-4 rounded-none border-b-2 border-transparent bg-transparent shadow-none transition-all data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground hover:text-foreground hover:bg-muted/50"
             >
               <FileText className="h-4 w-4 mr-2" />
-              Documents
+              <span className="font-medium">Documents</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -93,10 +93,10 @@ function TaskDetailSkeleton() {
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-full max-w-md" />
       </div>
-      <div className="border-b bg-card px-6 py-3">
-        <div className="flex gap-4">
-          <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-6 w-24" />
+      <div className="border-b bg-card/80 px-4 h-11 flex items-center">
+        <div className="flex gap-2">
+          <Skeleton className="h-7 w-24 rounded" />
+          <Skeleton className="h-7 w-28 rounded" />
         </div>
       </div>
       <div className="flex-1 p-6 space-y-4">
