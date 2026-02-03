@@ -20,6 +20,7 @@ import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
+import { Streamdown } from "streamdown";
 
 interface MessageItemProps {
   message: Doc<"messages">;
@@ -171,8 +172,8 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         ) : (
           <>
-            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
-              {message.content}
+            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+              <Streamdown>{message.content}</Streamdown>
             </div>
             
             {message.mentions && message.mentions.length > 0 && (
