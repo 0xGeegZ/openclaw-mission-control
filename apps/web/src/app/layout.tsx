@@ -29,7 +29,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(geistSans.variable, geistMono.variable, "font-sans antialiased")}>
+      <body
+        className={cn(geistSans.variable, geistMono.variable, "font-sans antialiased")}
+        suppressHydrationWarning
+      >
         <ClerkProvider>
           <ThemeProvider>
             <ConvexClientProvider>

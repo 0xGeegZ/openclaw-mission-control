@@ -1,7 +1,24 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
-import { LiveClock } from "@/components/dashboard/LiveClock";
+
+/** Loaded client-only to avoid hydration mismatch (time/locale differ on server vs client). */
+const LiveClock = dynamic(
+  () =>
+    import("@/components/dashboard/LiveClock").then((m) => ({
+      default: m.LiveClock,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-w-24 items-center gap-2 text-sm text-muted-foreground">
+        <span className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="tabular-nums">--:--:--</span>
+      </div>
+    ),
+  }
+);
 
 interface TasksPageHeaderProps {
   accountSlug: string;
