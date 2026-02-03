@@ -6,7 +6,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 import { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
 import { Textarea } from "@packages/ui/components/textarea";
 import { Button } from "@packages/ui/components/button";
-import { Send, Loader2, Bot, Users } from "lucide-react";
+import { Send, Loader2, Bot, Users, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
 import { useAccount } from "@/lib/hooks/useAccount";
@@ -14,6 +14,10 @@ import { useAccount } from "@/lib/hooks/useAccount";
 interface MessageInputProps {
   taskId: Id<"tasks">;
 }
+
+type MentionOption = 
+  | { type: "all"; label: string; description: string }
+  | { type: "agent"; agent: Doc<"agents"> };
 
 /**
  * Message input with send button and @ mention autocomplete.
@@ -27,6 +31,7 @@ export function MessageInput({ taskId }: MessageInputProps) {
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const { accountId } = useAccount();
   const agents = useQuery(
@@ -36,20 +41,29 @@ export function MessageInput({ taskId }: MessageInputProps) {
   
   const createMessage = useMutation(api.messages.create);
   
+  // Loading state for agents
+  const isLoadingAgents = agents === undefined;
+  
   // Filter agents based on mention query
-  const filteredAgents = useMemo(() => {
-    if (!agents) return [];
-    
+  const filteredAgents = useMemo((): MentionOption[] => {
     const query = mentionQuery.toLowerCase();
     
     // Add "all" option at the top
-    const allOption: { type: "all"; label: string; description: string } = {
+    const allOption: MentionOption = {
       type: "all",
       label: "all",
       description: "Mention all agents"
     };
     
-    const agentOptions: { type: "agent"; agent: Doc<"agents"> }[] = agents
+    // If still loading, return just the "all" option if it matches
+    if (!agents) {
+      if ("all".includes(query)) {
+        return [allOption];
+      }
+      return [];
+    }
+    
+    const agentOptions: MentionOption[] = agents
       .filter(agent => 
         agent.name.toLowerCase().includes(query) ||
         agent.slug.toLowerCase().includes(query) ||
@@ -58,7 +72,7 @@ export function MessageInput({ taskId }: MessageInputProps) {
       .map(agent => ({ type: "agent" as const, agent }));
     
     // Include "all" if query matches
-    const options: (typeof allOption | typeof agentOptions[number])[] = [];
+    const options: MentionOption[] = [];
     if ("all".includes(query)) {
       options.push(allOption);
     }
@@ -116,7 +130,7 @@ export function MessageInput({ taskId }: MessageInputProps) {
     }, 0);
   }, [content, mentionStartIndex, mentionQuery.length]);
   
-  const handleMentionSelect = useCallback((option: typeof filteredAgents[number]) => {
+  const handleMentionSelect = useCallback((option: MentionOption) => {
     if (option.type === "all") {
       insertMention("all");
     } else {
@@ -187,10 +201,8 @@ export function MessageInput({ taskId }: MessageInputProps) {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
-        dropdownRef.current && 
-        !dropdownRef.current.contains(e.target as Node) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(e.target as Node)
+        containerRef.current && 
+        !containerRef.current.contains(e.target as Node)
       ) {
         setShowMentionDropdown(false);
       }
@@ -199,108 +211,178 @@ export function MessageInput({ taskId }: MessageInputProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (showMentionDropdown && dropdownRef.current) {
+      const selectedElement = dropdownRef.current.querySelector(`[data-index="${selectedMentionIndex}"]`);
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [selectedMentionIndex, showMentionDropdown]);
   
   return (
-    <form onSubmit={handleSubmit} className="border-t bg-card p-4">
-      <div className="flex gap-3 items-end">
-        <div className="flex-1 relative">
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={handleContentChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message... (use @ to mention agents)"
-            rows={2}
-            className={cn(
-              "resize-none min-h-[80px] transition-all",
-              "focus-visible:ring-primary/50"
-            )}
-          />
-          
-          {/* Mention Autocomplete Dropdown */}
-          {showMentionDropdown && filteredAgents.length > 0 && (
+    <div ref={containerRef} className="border-t bg-card/80 backdrop-blur-sm">
+      <form onSubmit={handleSubmit} className="p-4">
+        <div className="relative">
+          {/* Mention Autocomplete Dropdown - positioned above input */}
+          {showMentionDropdown && (
             <div 
               ref={dropdownRef}
-              className="absolute bottom-full left-0 mb-2 w-72 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-50"
+              className="absolute bottom-full left-0 right-0 mb-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 max-w-sm"
             >
-              <div className="px-3 py-2 border-b border-border bg-muted/50">
-                <p className="text-xs font-medium text-muted-foreground">Mention an agent</p>
+              <div className="px-3 py-2.5 border-b border-border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <p className="text-xs font-medium text-foreground">Mention an agent</p>
+                </div>
               </div>
-              <div className="max-h-48 overflow-y-auto">
-                {filteredAgents.map((option, index) => (
-                  <button
-                    key={option.type === "all" ? "all" : option.agent._id}
-                    type="button"
-                    onClick={() => handleMentionSelect(option)}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
-                      index === selectedMentionIndex 
-                        ? "bg-accent text-accent-foreground" 
-                        : "hover:bg-accent/50"
-                    )}
-                  >
-                    {option.type === "all" ? (
-                      <>
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <Users className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">@all</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {option.description}
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                          <Bot className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">@{option.agent.slug}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {option.agent.name} - {option.agent.role}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </button>
-                ))}
+              
+              {isLoadingAgents ? (
+                <div className="px-3 py-6 flex flex-col items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">Loading agents...</p>
+                </div>
+              ) : filteredAgents.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {filteredAgents.map((option, index) => (
+                    <button
+                      key={option.type === "all" ? "all" : option.agent._id}
+                      type="button"
+                      data-index={index}
+                      onClick={() => handleMentionSelect(option)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all rounded-lg",
+                        index === selectedMentionIndex 
+                          ? "bg-primary text-primary-foreground" 
+                          : "hover:bg-accent"
+                      )}
+                    >
+                      {option.type === "all" ? (
+                        <>
+                          <div className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
+                            index === selectedMentionIndex 
+                              ? "bg-primary-foreground/20" 
+                              : "bg-primary/10"
+                          )}>
+                            <Users className={cn(
+                              "h-4 w-4",
+                              index === selectedMentionIndex ? "text-primary-foreground" : "text-primary"
+                            )} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">@all</p>
+                            <p className={cn(
+                              "text-xs truncate",
+                              index === selectedMentionIndex 
+                                ? "text-primary-foreground/70" 
+                                : "text-muted-foreground"
+                            )}>
+                              {option.description}
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
+                            index === selectedMentionIndex 
+                              ? "bg-primary-foreground/20" 
+                              : "bg-secondary"
+                          )}>
+                            <Bot className={cn(
+                              "h-4 w-4",
+                              index === selectedMentionIndex 
+                                ? "text-primary-foreground" 
+                                : "text-secondary-foreground"
+                            )} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">@{option.agent.slug}</p>
+                            <p className={cn(
+                              "text-xs truncate",
+                              index === selectedMentionIndex 
+                                ? "text-primary-foreground/70" 
+                                : "text-muted-foreground"
+                            )}>
+                              {option.agent.name} - {option.agent.role}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-3 py-6 text-center">
+                  <Bot className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">No agents found</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">Try a different search term</p>
+                </div>
+              )}
+              
+              <div className="px-3 py-2 border-t border-border bg-muted/30">
+                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-background rounded border font-mono">Tab</kbd>
+                    <span>select</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1 py-0.5 bg-background rounded border font-mono">Esc</kbd>
+                    <span>close</span>
+                  </span>
+                </div>
               </div>
             </div>
           )}
           
-          {/* Empty state when no agents match */}
-          {showMentionDropdown && filteredAgents.length === 0 && (
-            <div 
-              ref={dropdownRef}
-              className="absolute bottom-full left-0 mb-2 w-72 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-50"
-            >
-              <div className="px-3 py-4 text-center">
-                <Bot className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No agents found</p>
-              </div>
+          {/* Input area */}
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <Textarea
+                ref={textareaRef}
+                value={content}
+                onChange={handleContentChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Write a message... Use @ to mention agents"
+                rows={1}
+                className={cn(
+                  "resize-none min-h-[52px] py-3.5 px-4 rounded-xl border-border/50 bg-background",
+                  "focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-primary/50",
+                  "placeholder:text-muted-foreground/60 text-sm leading-relaxed"
+                )}
+              />
             </div>
-          )}
+            <Button 
+              type="submit" 
+              disabled={!content.trim() || isSubmitting} 
+              size="icon"
+              className="h-[52px] w-[52px] rounded-xl shrink-0 shadow-sm"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+              <span className="sr-only">Send message</span>
+            </Button>
+          </div>
           
-          <p className="text-xs text-muted-foreground mt-1.5">
-            Press <kbd className="px-1.5 py-0.5 text-[10px] font-semibold bg-muted rounded border">Enter</kbd> to send, <kbd className="px-1.5 py-0.5 text-[10px] font-semibold bg-muted rounded border">Shift + Enter</kbd> for new line
-          </p>
+          {/* Keyboard hints */}
+          <div className="flex items-center gap-4 mt-2 px-1">
+            <p className="text-[11px] text-muted-foreground/70">
+              <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-muted/50 rounded border border-border/50 mr-1">Enter</kbd>
+              send
+            </p>
+            <p className="text-[11px] text-muted-foreground/70">
+              <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-muted/50 rounded border border-border/50 mr-1">Shift+Enter</kbd>
+              new line
+            </p>
+          </div>
         </div>
-        <Button 
-          type="submit" 
-          disabled={!content.trim() || isSubmitting} 
-          size="icon"
-          className="h-10 w-10 shrink-0"
-        >
-          {isSubmitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-          <span className="sr-only">Send message</span>
-        </Button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

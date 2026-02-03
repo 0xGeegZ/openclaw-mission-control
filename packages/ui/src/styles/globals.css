@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Resolve from repo root so dev (Turbopack) finds the plugin when processing this file from packages/ui */
+@plugin "../../../../node_modules/@tailwindcss/typography";
 @source "../";
 @source "../../../apps/web/src";
 

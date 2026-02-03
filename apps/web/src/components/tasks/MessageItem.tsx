@@ -7,7 +7,7 @@ import { Badge } from "@packages/ui/components/badge";
 import { Textarea } from "@packages/ui/components/textarea";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@clerk/nextjs";
-import { MoreVertical, Trash2, User, Bot, Edit2, Check, X, Loader2 } from "lucide-react";
+import { MoreVertical, Trash2, User, Bot, Edit2, Check, X, Loader2, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,7 @@ import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
+import { Streamdown } from "streamdown";
 
 interface MessageItemProps {
   message: Doc<"messages">;
@@ -40,7 +41,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const isAuthor = message.authorType === "user" && message.authorId === userId;
   const isAgent = message.authorType === "agent";
   const authorName = message.authorType === "user" 
-    ? "User"
+    ? "You"
     : "Agent";
   
   const handleDelete = async () => {
@@ -85,43 +86,52 @@ export function MessageItem({ message }: MessageItemProps) {
   
   return (
     <div className={cn(
-      "flex gap-3 group rounded-lg p-3 -mx-3 transition-colors",
-      "hover:bg-muted/50"
+      "flex gap-3 group rounded-xl p-4 -mx-2 transition-all",
+      isAgent 
+        ? "bg-muted/30 border border-border/40" 
+        : "hover:bg-muted/30"
     )}>
       <Avatar className={cn(
-        "h-9 w-9 shrink-0 border shadow-sm",
-        isAgent ? "bg-secondary" : "bg-primary/10"
+        "h-10 w-10 shrink-0 ring-2 ring-background shadow-sm",
+        isAgent 
+          ? "bg-gradient-to-br from-primary/20 to-primary/5" 
+          : "bg-gradient-to-br from-secondary to-secondary/80"
       )}>
-        <AvatarFallback className={cn(
-          "text-xs font-medium",
-          isAgent ? "text-secondary-foreground" : "text-primary"
-        )}>
-          {isAgent ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
+        <AvatarFallback className="bg-transparent">
+          {isAgent ? (
+            <Bot className="h-5 w-5 text-primary" />
+          ) : (
+            <User className="h-5 w-5 text-secondary-foreground" />
+          )}
         </AvatarFallback>
       </Avatar>
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-sm">{authorName}</span>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="font-semibold text-sm text-foreground">{authorName}</span>
           {isAgent && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+            <Badge 
+              variant="secondary" 
+              className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 gap-1"
+            >
+              <Sparkles className="h-2.5 w-2.5" />
               AI
             </Badge>
           )}
-          <span className="text-xs text-muted-foreground">
+          <span className="text-[11px] text-muted-foreground/70">
             {formatDistanceToNow(message.createdAt, { addSuffix: true })}
           </span>
           {message.editedAt && (
-            <span className="text-xs text-muted-foreground italic">(edited)</span>
+            <span className="text-[11px] text-muted-foreground/60">(edited)</span>
           )}
         </div>
         
         {isEditing ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="min-h-[80px] resize-none text-sm"
+              className="min-h-[80px] resize-none text-sm rounded-lg"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Escape") handleCancelEdit();
@@ -136,6 +146,7 @@ export function MessageItem({ message }: MessageItemProps) {
                 size="sm"
                 onClick={handleSaveEdit}
                 disabled={isUpdating || !editContent.trim()}
+                className="h-8"
               >
                 {isUpdating ? (
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -149,25 +160,30 @@ export function MessageItem({ message }: MessageItemProps) {
                 variant="ghost"
                 onClick={handleCancelEdit}
                 disabled={isUpdating}
+                className="h-8"
               >
                 <X className="mr-1.5 h-3.5 w-3.5" />
                 Cancel
               </Button>
-              <span className="text-xs text-muted-foreground ml-auto">
-                Press Cmd+Enter to save
+              <span className="text-[11px] text-muted-foreground/70 ml-auto">
+                <kbd className="px-1 py-0.5 bg-muted rounded border text-[10px]">Cmd+Enter</kbd> to save
               </span>
             </div>
           </div>
         ) : (
           <>
-            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
-              {message.content}
+            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+              <Streamdown>{message.content}</Streamdown>
             </div>
             
             {message.mentions && message.mentions.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {message.mentions.map((mention, i) => (
-                  <Badge key={i} variant="outline" className="text-xs font-normal">
+                  <Badge 
+                    key={i} 
+                    variant="outline" 
+                    className="text-xs font-medium bg-primary/5 text-primary border-primary/20 hover:bg-primary/10 transition-colors"
+                  >
                     @{mention.name}
                   </Badge>
                 ))}
@@ -183,20 +199,20 @@ export function MessageItem({ message }: MessageItemProps) {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
             >
               <MoreVertical className="h-4 w-4" />
               <span className="sr-only">Message options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleEdit}>
-              <Edit2 className="mr-2 h-4 w-4" />
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem onClick={handleEdit} className="gap-2">
+              <Edit2 className="h-4 w-4" />
               Edit
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
+            <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive gap-2">
+              <Trash2 className="h-4 w-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

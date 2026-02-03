@@ -7,7 +7,7 @@ import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Sparkles } from "lucide-react";
 
 interface TaskThreadProps {
   taskId: Id<"tasks">;
@@ -32,40 +32,54 @@ export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProp
   }, [messages?.length]);
   
   return (
-    <div className="flex flex-col h-full">
+    <div className="absolute inset-0 flex flex-col bg-background">
+      {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="p-4 space-y-1">
+        <div className="max-w-3xl mx-auto px-4 py-6">
           {messages === undefined ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex gap-3 p-3">
-                  <Skeleton className="h-9 w-9 rounded-full shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
+                <div key={i} className="flex gap-3">
+                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2 pt-1">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-full max-w-md" />
+                    <Skeleton className="h-4 w-3/4 max-w-sm" />
                   </div>
                 </div>
               ))}
             </div>
           ) : messages.length > 0 ? (
-            messages.map((message) => (
-              <MessageItem key={message._id} message={message} />
-            ))
+            <div className="space-y-1">
+              {messages.map((message) => (
+                <MessageItem key={message._id} message={message} />
+              ))}
+            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                <MessageSquare className="h-7 w-7 text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="relative mb-6">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10">
+                  <MessageSquare className="h-7 w-7 text-primary/60" />
+                </div>
+                <div className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                </div>
               </div>
-              <h3 className="text-lg font-semibold">No messages yet</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                Start the conversation by sending a message or mentioning an agent.
+              <h3 className="text-lg font-semibold text-foreground">Start the conversation</h3>
+              <p className="text-sm text-muted-foreground mt-2 max-w-xs leading-relaxed">
+                Send a message or use <span className="font-medium text-foreground">@</span> to mention an agent and get things started.
               </p>
             </div>
           )}
         </div>
       </div>
-      <MessageInput taskId={taskId} />
+      
+      {/* Input area - sticky at bottom */}
+      <div className="shrink-0 w-full">
+        <div className="max-w-3xl mx-auto">
+          <MessageInput taskId={taskId} />
+        </div>
+      </div>
     </div>
   );
 }
