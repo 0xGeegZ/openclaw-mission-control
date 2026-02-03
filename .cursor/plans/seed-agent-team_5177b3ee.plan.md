@@ -4,16 +4,16 @@ overview: Extend the Convex seed to create a 3‑agent repo‑maintenance team (
 todos:
   - id: update-seed-roster
     content: Adjust seed roster to 3 agents (PM/Engineer/QA)
-    status: pending
+    status: completed
   - id: seed-skills
     content: Add skills seeding and assign to agents
-    status: pending
+    status: completed
   - id: seed-docs
     content: Seed AGENTS/HEARTBEAT + tech stack docs
-    status: pending
+    status: completed
   - id: idempotency-checks
     content: Ensure seed remains idempotent and reports counts
-    status: pending
+    status: completed
 isProject: false
 ---
 
