@@ -1,11 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  FileText, 
+import {
+  LayoutDashboard,
+  CheckSquare,
+  FileText,
   Activity,
   Settings,
   Bot,
@@ -21,9 +22,33 @@ import {
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
-import { ThemeSwitcher } from "./ThemeSwitcher";
-import { UserButton } from "@clerk/nextjs";
+
+/** Loaded client-only to avoid hydration mismatch (theme from next-themes is undefined on server). */
+const ThemeSwitcher = dynamic(
+  () => import("./ThemeSwitcher").then((m) => ({ default: m.ThemeSwitcher })),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="flex h-9 min-w-28 items-center gap-1 rounded-lg bg-muted p-1"
+        aria-hidden
+      />
+    ),
+  }
+);
 import { Separator } from "@packages/ui/components/separator";
+
+/** Loaded client-only to avoid hydration mismatch (Clerk’s server output differs from client). */
+const SidebarUserButton = dynamic(
+  () =>
+    import("./SidebarUserButton").then((m) => ({
+      default: m.SidebarUserButton,
+    })),
+  {
+    ssr: false,
+    loading: () => <div className="h-9 w-9 shrink-0 rounded-full bg-muted" aria-hidden />,
+  }
+);
 import { Button } from "@packages/ui/components/button";
 import {
   Tooltip,
@@ -280,14 +305,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
             isCollapsed ? "flex-col gap-3" : "justify-between"
           )}>
             <div className={cn("flex items-center", isCollapsed ? "flex-col gap-2" : "gap-2")}>
-              <UserButton 
-                afterSignOutUrl="/"
-                appearance={{
-                  elements: {
-                    avatarBox: "h-9 w-9",
-                  },
-                }}
-              />
+              <SidebarUserButton />
               {!isCollapsed && (
                 <Link
                   href={`/${accountSlug}/profile`}
