@@ -22,20 +22,22 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 
-const VALID_STATUSES: TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+const VALID_STATUSES: readonly TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+
+function isValidStatus(value: string): value is TaskStatus {
+  return (VALID_STATUSES as readonly string[]).includes(value);
+}
 
 /** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
 function resolveDropTargetToStatus(
   overId: string,
   tasksByStatus: Record<TaskStatus, Doc<"tasks">[]> | undefined
 ): TaskStatus | null {
-  if (VALID_STATUSES.includes(overId as TaskStatus)) {
-    return overId as TaskStatus;
-  }
+  if (isValidStatus(overId)) return overId;
   if (!tasksByStatus) return null;
   for (const tasks of Object.values(tasksByStatus)) {
-    const task = tasks.find((t) => t._id === overId);
-    if (task) return task.status as TaskStatus;
+    const task = tasks.find((t) => String(t._id) === overId);
+    if (task && isValidStatus(task.status)) return task.status as TaskStatus;
   }
   return null;
 }
@@ -110,17 +112,18 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     }
     
     if (!currentTask || currentTask.status === newStatus) return;
-    
+    if (!isValidStatus(newStatus)) return;
+
     // For blocked status, show dialog to get reason
     if (newStatus === "blocked") {
       setPendingBlockedTask(currentTask);
       setShowBlockedDialog(true);
       return;
     }
-    
+
     try {
-      await updateStatus({ 
-        taskId, 
+      await updateStatus({
+        taskId,
         status: newStatus,
       });
       toast.success("Task status updated");
