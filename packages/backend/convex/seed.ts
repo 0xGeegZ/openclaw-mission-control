@@ -299,6 +299,44 @@ function defaultOpenclawConfig(
   };
 }
 
+/**
+ * Build seed OpenClaw config while preserving optional existing settings.
+ */
+function buildSeedOpenclawConfig(
+  skillIds: Id<"skills">[],
+  behaviorFlags: { canCreateTasks: boolean },
+  existingConfig?: {
+    systemPromptPrefix?: string;
+    rateLimits?: {
+      requestsPerMinute: number;
+      tokensPerDay?: number;
+    };
+    contextConfig?: {
+      customContextSources?: string[];
+    };
+    behaviorFlags?: {
+      requiresApprovalForActions?: string[];
+    };
+  },
+) {
+  const seedConfig = defaultOpenclawConfig(skillIds, behaviorFlags);
+
+  return {
+    ...seedConfig,
+    systemPromptPrefix: existingConfig?.systemPromptPrefix,
+    rateLimits: existingConfig?.rateLimits,
+    contextConfig: {
+      ...seedConfig.contextConfig,
+      customContextSources: existingConfig?.contextConfig?.customContextSources,
+    },
+    behaviorFlags: {
+      ...seedConfig.behaviorFlags,
+      requiresApprovalForActions:
+        existingConfig?.behaviorFlags?.requiresApprovalForActions,
+    },
+  };
+}
+
 type AgentRole = "squad-lead" | "engineer" | "qa";
 
 /**
@@ -338,6 +376,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
+- Review tasks in REVIEW promptly; close them (move to DONE) with a clear acceptance note.
 - Write docs for decisions; link from task threads.
 
 ## Quality checks (must pass)
@@ -654,19 +693,30 @@ async function runSeedWithOwner(
       )
       .unique();
 
-    if (existingAgent) {
-      agentsExisting += 1;
-      continue;
-    }
-
     const skillIds: Id<"skills">[] = a.skillSlugs
       .map((slug) => slugToId[slug])
       .filter((id): id is Id<"skills"> => id !== undefined);
-
     const soulContent = buildSoulContent(a.name, a.role, a.agentRole);
-    const openclawConfig = defaultOpenclawConfig(skillIds, {
-      canCreateTasks: a.canCreateTasks,
-    });
+    const openclawConfig = buildSeedOpenclawConfig(
+      skillIds,
+      { canCreateTasks: a.canCreateTasks },
+      existingAgent?.openclawConfig,
+    );
+    const sessionKey = `agent:${a.slug}:${accountId}`;
+
+    if (existingAgent) {
+      await ctx.db.patch(existingAgent._id, {
+        name: a.name,
+        role: a.role,
+        description: a.description,
+        sessionKey,
+        heartbeatInterval: a.heartbeatInterval,
+        soulContent,
+        openclawConfig,
+      });
+      agentsExisting += 1;
+      continue;
+    }
 
     await ctx.db.insert("agents", {
       accountId,
@@ -674,7 +724,7 @@ async function runSeedWithOwner(
       slug: a.slug,
       role: a.role,
       description: a.description,
-      sessionKey: `agent:${a.slug}:${accountId}`,
+      sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
       soulContent,
