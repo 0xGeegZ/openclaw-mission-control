@@ -2,12 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { toast } from "sonner";
 import { Building2 } from "lucide-react";
 
@@ -76,25 +88,26 @@ function NewAccountContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;
-    
+
     // Validate slug format
     const slugRegex = /^[a-z0-9-]+$/;
     if (!slugRegex.test(slug)) {
       toast.error("Invalid slug", {
-        description: "Slug can only contain lowercase letters, numbers, and hyphens",
+        description:
+          "Slug can only contain lowercase letters, numbers, and hyphens",
       });
       return;
     }
-    
+
     setIsSubmitting(true);
     try {
       await createAccount({
         name: name.trim(),
         slug: slug.trim(),
       });
-      
+
       toast.success("Account created successfully");
-      
+
       // Redirect to the new account
       router.push(`/${slug.trim()}/tasks`);
     } catch (error) {
@@ -105,7 +118,7 @@ function NewAccountContent() {
       setIsSubmitting(false);
     }
   };
-  
+
   const handleSlugChange = (value: string) => {
     // Auto-generate slug from name
     const generatedSlug = value
@@ -115,7 +128,7 @@ function NewAccountContent() {
     setSlug(generatedSlug);
     setName(value);
   };
-  
+
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-md">
@@ -125,7 +138,7 @@ function NewAccountContent() {
           </div>
           <CardTitle className="text-2xl">Create Your Account</CardTitle>
           <CardDescription>
-            Get started by creating your first Mission Control account
+            Get started by creating your first OpenClaw Mission Control account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -144,7 +157,7 @@ function NewAccountContent() {
                 This will be displayed as your account name
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="slug">Account Slug</Label>
               <Input
@@ -162,13 +175,14 @@ function NewAccountContent() {
                 pattern="[a-z0-9-]+"
               />
               <p className="text-xs text-muted-foreground">
-                Used in your account URL: mission-control.app/{slug || "..."}
+                Used in your account URL: openclaw-mission-control.app/
+                {slug || "..."}
               </p>
             </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full" 
+
+            <Button
+              type="submit"
+              className="w-full"
               disabled={isSubmitting || !name.trim() || !slug.trim()}
             >
               {isSubmitting ? "Creating..." : "Create Account"}

@@ -29,7 +29,7 @@ Files inspected:
 - [apps/runtime/openclaw/openclaw.json.template](apps/runtime/openclaw/openclaw.json.template) — gateway config lacks HTTP endpoint enablement.
 - [apps/runtime/openclaw/start-openclaw.sh](apps/runtime/openclaw/start-openclaw.sh) — merges env into OpenClaw config; sets `CLAWDBOT_GATEWAY_TOKEN`.
 - [apps/runtime/.env.example](apps/runtime/.env.example), [apps/runtime/README.md](apps/runtime/README.md), [docs/runtime/runtime-docker-compose.md](docs/runtime/runtime-docker-compose.md) — env docs to update.
-- [docs/concept/mission-control-initial-article.md](docs/concept/mission-control-initial-article.md) and [docs/concept/mission-control-cursor-core-instructions.md](docs/concept/mission-control-cursor-core-instructions.md) — runtime is responsible for delivering agent notifications/heartbeats via the gateway.
+- [docs/concept/openclaw-mission-control-initial-article.md](docs/concept/openclaw-mission-control-initial-article.md) and [docs/concept/openclaw-mission-control-cursor-core-instructions.md](docs/concept/openclaw-mission-control-cursor-core-instructions.md) — runtime is responsible for delivering agent notifications/heartbeats via the gateway.
 - OpenClaw OpenResponses HTTP API doc (OpenResponses API) — endpoint, headers, and auth model.
 
 Key existing patterns:

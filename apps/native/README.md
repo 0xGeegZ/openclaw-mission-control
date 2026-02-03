@@ -1,4 +1,4 @@
-# Mission Control Native App
+# OpenClaw Mission Control Native App
 
 **Status:** Placeholder for v2
 

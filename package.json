@@ -1,5 +1,5 @@
 {
-  "name": "mission-control",
+  "name": "openclaw-mission-control",
   "private": true,
   "scripts": {
     "dev": "turbo run dev",

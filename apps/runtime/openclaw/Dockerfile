@@ -1,4 +1,4 @@
-# OpenClaw (Clawdbot) gateway image for Mission Control local dev.
+# OpenClaw (Clawdbot) gateway image for OpenClaw Mission Control local dev.
 # Based on https://github.com/CrocSwap/clawdbot-docker
 
 FROM node:22

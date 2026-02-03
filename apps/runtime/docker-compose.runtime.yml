@@ -1,4 +1,4 @@
-# Mission Control runtime + optional OpenClaw gateway (local dev).
+# OpenClaw Mission Control runtime + optional OpenClaw gateway (local dev).
 # Usage (from repo root):
 #   docker compose -f apps/runtime/docker-compose.runtime.yml up --build
 #   With OpenClaw gateway:
@@ -7,7 +7,7 @@
 
 services:
   runtime:
-    image: mission-control-runtime
+    image: openclaw-mission-control-runtime
     build:
       context: ../..
       dockerfile: apps/runtime/Dockerfile
@@ -24,7 +24,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "const port = process.env.HEALTH_PORT || '3001'; require('http').get('http://127.0.0.1:' + port + '/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"
+          "const port = process.env.HEALTH_PORT || '3001'; require('http').get('http://127.0.0.1:' + port + '/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));",
         ]
       interval: 30s
       timeout: 10s
@@ -32,7 +32,7 @@ services:
       start_period: 15s
 
   openclaw-gateway:
-    image: mission-control-openclaw
+    image: openclaw-mission-control-openclaw
     build:
       context: ./openclaw
       dockerfile: Dockerfile

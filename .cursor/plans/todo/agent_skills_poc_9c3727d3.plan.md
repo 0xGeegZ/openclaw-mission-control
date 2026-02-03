@@ -32,7 +32,7 @@ isProject: false
 
 ## 1. Context & goal
 
-We need a POC where agents can install and persist skills themselves, while humans can securely provide required API keys through the UI. This must fit the Mission Control “team + traceable work” spirit from the concept docs, maintain tenant isolation, and avoid storing plaintext secrets in Convex. We will also align runtime/docker behavior with the upstream clawdbot-docker patterns and add open‑source readiness items.
+We need a POC where agents can install and persist skills themselves, while humans can securely provide required API keys through the UI. This must fit the OpenClaw Mission Control “team + traceable work” spirit from the concept docs, maintain tenant isolation, and avoid storing plaintext secrets in Convex. We will also align runtime/docker behavior with the upstream clawdbot-docker patterns and add open‑source readiness items.
 
 **Value to the project:**
 

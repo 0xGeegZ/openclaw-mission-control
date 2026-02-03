@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local upgrade helper for Mission Control runtime stack.
+# Local upgrade helper for OpenClaw Mission Control runtime stack.
 # Uses docker compose pull / down / up as in docs/roadmap/runtime-version-management-v2.md.
 # Run from repo root. Requires docker compose and apps/runtime/.env.
 

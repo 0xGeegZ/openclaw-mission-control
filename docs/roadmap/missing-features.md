@@ -1,4 +1,4 @@
-# Mission Control - Missing Features & Backend Requirements
+# OpenClaw Mission Control - Missing Features & Backend Requirements
 
 This document outlines the frontend pages that have been scaffolded and require backend implementation.
 
