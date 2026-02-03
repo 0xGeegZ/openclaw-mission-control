@@ -32,9 +32,9 @@ export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProp
   }, [messages?.length]);
   
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full overflow-hidden bg-background">
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-3xl mx-auto px-4 py-6">
           {messages === undefined ? (
             <div className="space-y-6">
@@ -74,9 +74,11 @@ export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProp
         </div>
       </div>
       
-      {/* Input area */}
-      <div className="max-w-3xl mx-auto w-full">
-        <MessageInput taskId={taskId} />
+      {/* Input area - sticky at bottom */}
+      <div className="shrink-0 w-full">
+        <div className="max-w-3xl mx-auto">
+          <MessageInput taskId={taskId} />
+        </div>
       </div>
     </div>
   );
