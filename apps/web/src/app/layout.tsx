@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { cn } from "@packages/ui/lib/utils";
-import "@packages/ui/styles/globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { Toaster } from "sonner";
+
+// You can select a different theme from the styles folder
+import "@packages/ui/styles/soft-pop-theme.css";
 
 const geistSans = Geist({ 
   subsets: ["latin"],
