@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, internalMutation } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
@@ -520,115 +520,228 @@ async function ensureDocs(
   return { created, existing };
 }
 
+/** Auth-like shape used by both run (Clerk) and runInternal (env). */
+interface SeedOwner {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatarUrl?: string;
+}
+
 /**
- * Idempotent seed: creates demo account (if missing), skills, reference docs, and 3 agents (PM, Engineer, QA).
- * Call from Convex dashboard (Run function) while signed in; the current user becomes the demo account owner.
+ * Resolve account to seed: prefer the owner's first account (by membership).
+ * If none and createDemoIfNone, create the demo account and add owner; otherwise throw.
+ */
+async function resolveSeedAccount(
+  ctx: MutationCtx,
+  ownerUserId: string,
+  owner: SeedOwner,
+  createDemoIfNone: boolean,
+): Promise<{
+  account: { _id: Id<"accounts">; slug: string };
+  accountId: Id<"accounts">;
+}> {
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_user", (q) => q.eq("userId", ownerUserId))
+    .collect();
+
+  if (memberships.length > 0) {
+    const first = memberships[0];
+    const account = await ctx.db.get(first.accountId);
+    if (account) {
+      return {
+        account: { _id: account._id, slug: account.slug },
+        accountId: account._id,
+      };
+    }
+  }
+
+  if (!createDemoIfNone) {
+    throw new Error(
+      "User has no accounts. Create an account in the app first (e.g. from the dashboard), then run the seed.",
+    );
+  }
+
+  const accountId = await ctx.db.insert("accounts", {
+    name: DEMO_NAME,
+    slug: DEMO_SLUG,
+    plan: "free",
+    runtimeStatus: "offline",
+    createdAt: Date.now(),
+  });
+  await ctx.db.insert("memberships", {
+    accountId,
+    userId: owner.userId,
+    userName: owner.userName,
+    userEmail: owner.userEmail,
+    userAvatarUrl: owner.userAvatarUrl,
+    role: "owner",
+    joinedAt: Date.now(),
+  });
+  const account = await ctx.db.get(accountId);
+  if (!account) throw new Error("Failed to create account");
+  return {
+    account: { _id: account._id, slug: account.slug },
+    accountId: account._id,
+  };
+}
+
+/**
+ * Core seed logic: ensure skills, docs, and agents for a given account.
+ * Shared by run (user auth) and runInternal (env-based, for CLI).
+ */
+async function runSeedWithOwner(
+  ctx: MutationCtx,
+  owner: SeedOwner,
+  options: { createDemoIfNone: boolean },
+): Promise<{
+  accountId: Id<"accounts">;
+  slug: string;
+  skillsCreated: number;
+  skillsExisting: number;
+  skillsDisabledSkipped: number;
+  docsCreated: number;
+  docsExisting: number;
+  agentsCreated: number;
+  agentsExisting: number;
+}> {
+  const { accountId, account } = await resolveSeedAccount(
+    ctx,
+    owner.userId,
+    owner,
+    options.createDemoIfNone,
+  );
+
+  const {
+    slugToId,
+    created: skillsCreated,
+    existing: skillsExisting,
+    disabledSkipped: skillsDisabledSkipped,
+  } = await ensureSkills(ctx, accountId);
+  const { created: docsCreated, existing: docsExisting } = await ensureDocs(
+    ctx,
+    accountId,
+    owner.userId,
+  );
+
+  let agentsCreated = 0;
+  let agentsExisting = 0;
+  const now = Date.now();
+
+  for (const a of seedAgents) {
+    const existingAgent = await ctx.db
+      .query("agents")
+      .withIndex("by_account_slug", (q) =>
+        q.eq("accountId", accountId).eq("slug", a.slug),
+      )
+      .unique();
+
+    if (existingAgent) {
+      agentsExisting += 1;
+      continue;
+    }
+
+    const skillIds: Id<"skills">[] = a.skillSlugs
+      .map((slug) => slugToId[slug])
+      .filter((id): id is Id<"skills"> => id !== undefined);
+
+    const soulContent = buildSoulContent(a.name, a.role, a.agentRole);
+    const openclawConfig = defaultOpenclawConfig(skillIds, {
+      canCreateTasks: a.canCreateTasks,
+    });
+
+    await ctx.db.insert("agents", {
+      accountId,
+      name: a.name,
+      slug: a.slug,
+      role: a.role,
+      description: a.description,
+      sessionKey: `agent:${a.slug}:${accountId}`,
+      status: "offline",
+      heartbeatInterval: a.heartbeatInterval,
+      soulContent,
+      openclawConfig,
+      createdAt: now,
+    });
+    agentsCreated += 1;
+  }
+
+  return {
+    accountId,
+    slug: account.slug,
+    skillsCreated,
+    skillsExisting,
+    skillsDisabledSkipped,
+    docsCreated,
+    docsExisting,
+    agentsCreated,
+    agentsExisting,
+  };
+}
+
+/**
+ * Idempotent seed: seeds the current user's first account (or creates demo account if they have none).
+ * Call from the app or Convex dashboard (Run function) while signed in.
  * Safe to run multiple times: creates only missing skills/docs/agents by slug or title.
  *
  * Return payload:
- * - skillsCreated / skillsExisting: skills created this run vs already present. skillsExisting counts only
- *   *enabled* existing skills; existing-but-disabled skills are reported in skillsDisabledSkipped and are
- *   not assigned to agents.
- * - docsCreated / docsExisting: reference docs created vs already present (by title + type).
- * - agentsCreated / agentsExisting: agents created vs already present (by slug).
+ * - accountId, slug: account that was seeded.
+ * - skillsCreated / skillsExisting, docsCreated / docsExisting, agentsCreated / agentsExisting.
  */
 export const run = mutation({
   args: {},
   handler: async (ctx) => {
     const auth = await requireAuth(ctx);
-
-    let account = await ctx.db
-      .query("accounts")
-      .withIndex("by_slug", (q) => q.eq("slug", DEMO_SLUG))
-      .unique();
-
-    if (!account) {
-      const accountId = await ctx.db.insert("accounts", {
-        name: DEMO_NAME,
-        slug: DEMO_SLUG,
-        plan: "free",
-        runtimeStatus: "offline",
-        createdAt: Date.now(),
-      });
-      await ctx.db.insert("memberships", {
-        accountId,
+    return runSeedWithOwner(
+      ctx,
+      {
         userId: auth.userId,
         userName: auth.userName,
         userEmail: auth.userEmail,
         userAvatarUrl: auth.userAvatarUrl,
-        role: "owner",
-        joinedAt: Date.now(),
-      });
-      account = await ctx.db.get(accountId);
-      if (!account) throw new Error("Failed to create account");
-    }
-
-    const accountId = account._id;
-
-    const {
-      slugToId,
-      created: skillsCreated,
-      existing: skillsExisting,
-      disabledSkipped: skillsDisabledSkipped,
-    } = await ensureSkills(ctx, accountId);
-    const { created: docsCreated, existing: docsExisting } = await ensureDocs(
-      ctx,
-      accountId,
-      auth.userId,
+      },
+      { createDemoIfNone: true },
     );
+  },
+});
 
-    let agentsCreated = 0;
-    let agentsExisting = 0;
-    const now = Date.now();
-
-    for (const a of seedAgents) {
-      const existingAgent = await ctx.db
-        .query("agents")
-        .withIndex("by_account_slug", (q) =>
-          q.eq("accountId", accountId).eq("slug", a.slug),
-        )
-        .unique();
-
-      if (existingAgent) {
-        agentsExisting += 1;
-        continue;
-      }
-
-      const skillIds: Id<"skills">[] = a.skillSlugs
-        .map((slug) => slugToId[slug])
-        .filter((id): id is Id<"skills"> => id !== undefined);
-
-      const soulContent = buildSoulContent(a.name, a.role, a.agentRole);
-      const openclawConfig = defaultOpenclawConfig(skillIds, {
-        canCreateTasks: a.canCreateTasks,
-      });
-
-      await ctx.db.insert("agents", {
-        accountId,
-        name: a.name,
-        slug: a.slug,
-        role: a.role,
-        description: a.description,
-        sessionKey: `agent:${a.slug}:${accountId}`,
-        status: "offline",
-        heartbeatInterval: a.heartbeatInterval,
-        soulContent,
-        openclawConfig,
-        createdAt: now,
-      });
-      agentsCreated += 1;
+/**
+ * Internal seed for CLI: no user token required.
+ * Seeds the first account that CLERK_USER_ID is a member of (your account).
+ * Uses Convex env var CLERK_USER_ID (required) = your Clerk user ID.
+ * Run with: npx convex run seed:runInternal '{}'
+ * Set env first: npx convex env set CLERK_USER_ID <your-clerk-user-id>
+ * You must have at least one account in the app; the seed does not create an account.
+ */
+export const runInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId =
+      (typeof process.env.CLERK_USER_ID === "string" &&
+        process.env.CLERK_USER_ID.trim()) ||
+      "";
+    if (!userId) {
+      throw new Error(
+        "CLERK_USER_ID not set. Set it in Convex Dashboard (Deployment Settings > Environment Variables) or run: npx convex env set CLERK_USER_ID <your-clerk-user-id>",
+      );
     }
-
-    return {
-      accountId,
-      slug: DEMO_SLUG,
-      skillsCreated,
-      skillsExisting,
-      skillsDisabledSkipped,
-      docsCreated,
-      docsExisting,
-      agentsCreated,
-      agentsExisting,
+    const owner: SeedOwner = {
+      userId,
+      userName:
+        (typeof process.env.SEED_DEMO_OWNER_NAME === "string" &&
+          process.env.SEED_DEMO_OWNER_NAME.trim()) ||
+        "Demo Owner",
+      userEmail:
+        (typeof process.env.SEED_DEMO_OWNER_EMAIL === "string" &&
+          process.env.SEED_DEMO_OWNER_EMAIL.trim()) ||
+        "",
+      userAvatarUrl:
+        typeof process.env.SEED_DEMO_OWNER_AVATAR_URL === "string" &&
+        process.env.SEED_DEMO_OWNER_AVATAR_URL.trim()
+          ? process.env.SEED_DEMO_OWNER_AVATAR_URL.trim()
+          : undefined,
     };
+    return runSeedWithOwner(ctx, owner, { createDemoIfNone: false });
   },
 });
