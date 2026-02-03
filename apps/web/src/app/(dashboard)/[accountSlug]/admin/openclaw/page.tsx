@@ -127,6 +127,21 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
     return variants[status || ""] || "outline";
   };
   
+  // Show loader while checking permissions
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-20">
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-muted mb-5">
+          <RefreshCw className="h-10 w-10 text-muted-foreground animate-spin" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground">Loading...</h2>
+        <p className="text-sm text-muted-foreground mt-2 max-w-md text-center">
+          Checking your permissions...
+        </p>
+      </div>
+    );
+  }
+  
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20">
@@ -389,7 +404,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                       Control what actions agents can perform by default
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2">
                       {[
                         { id: "create-tasks", key: "canCreateTasks" as const, label: "Can Create Tasks", description: "Allow agents to create new tasks" },
@@ -415,6 +430,45 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           </div>
                         </div>
                       ))}
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div className="flex justify-end">
+                      <Button 
+                        className="rounded-xl shadow-sm"
+                        disabled={!accountId || isSaving}
+                        onClick={async () => {
+                          if (!accountId) return;
+                          setIsSaving(true);
+                          try {
+                            await updateAccount({
+                              accountId,
+                              settings: {
+                                agentDefaults: {
+                                  model: selectedModel,
+                                  temperature: parseFloat(temperature) || DEFAULT_TEMPERATURE,
+                                  maxTokens: parseInt(maxTokens, 10) || DEFAULT_MAX_TOKENS,
+                                  maxHistoryMessages: parseInt(maxHistoryMessages, 10) || DEFAULT_MAX_HISTORY,
+                                  behaviorFlags,
+                                  rateLimits: {
+                                    requestsPerMinute: parseInt(rateRpm, 10) || 20,
+                                    tokensPerDay: parseInt(rateTpd, 10) || 100000,
+                                  },
+                                },
+                              },
+                            });
+                            toast.success("Behavior flags saved", { description: "Default behavior flags have been updated." });
+                          } catch (e) {
+                            toast.error("Failed to save", { description: e instanceof Error ? e.message : "Unknown error" });
+                          } finally {
+                            setIsSaving(false);
+                          }
+                        }}
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        {isSaving ? "Saving..." : "Save Behavior Flags"}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

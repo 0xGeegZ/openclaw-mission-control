@@ -47,34 +47,28 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
   }
   
   return (
-    <div className="flex flex-col h-full bg-muted/30">
+    <div className="flex flex-col h-full min-h-0 bg-muted/30">
       <TaskHeader task={task} accountSlug={accountSlug} />
       
-      <Tabs defaultValue="thread" className="flex-1 flex flex-col overflow-hidden">
-        <div className="border-b bg-card px-6">
-          <TabsList className="h-12 bg-transparent p-0 w-auto">
-            <TabsTrigger 
-              value="thread" 
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
+      <Tabs defaultValue="thread" className="flex-1 flex flex-col min-h-0">
+        <div className="shrink-0 border-b bg-card px-4">
+          <TabsList variant="line" className="h-10">
+            <TabsTrigger value="thread" className="px-4 gap-2">
+              <MessageSquare className="h-4 w-4" />
               Thread
             </TabsTrigger>
-            <TabsTrigger 
-              value="documents"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <FileText className="h-4 w-4 mr-2" />
+            <TabsTrigger value="documents" className="px-4 gap-2">
+              <FileText className="h-4 w-4" />
               Documents
             </TabsTrigger>
           </TabsList>
         </div>
         
-        <TabsContent value="thread" className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden">
+        <TabsContent value="thread" className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
           <TaskThread taskId={task._id} accountSlug={accountSlug} />
         </TabsContent>
         
-        <TabsContent value="documents" className="flex-1 overflow-auto mt-0 data-[state=inactive]:hidden">
+        <TabsContent value="documents" className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden">
           <TaskDocuments taskId={task._id} />
         </TabsContent>
       </Tabs>
@@ -87,16 +81,16 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
  */
 function TaskDetailSkeleton() {
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b bg-card p-6 space-y-4">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="shrink-0 border-b bg-card p-6 space-y-4">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-full max-w-md" />
       </div>
-      <div className="border-b bg-card px-6 py-3">
-        <div className="flex gap-4">
-          <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-6 w-24" />
+      <div className="shrink-0 border-b bg-card px-4 h-10 flex items-center">
+        <div className="flex gap-2">
+          <Skeleton className="h-6 w-20 rounded" />
+          <Skeleton className="h-6 w-24 rounded" />
         </div>
       </div>
       <div className="flex-1 p-6 space-y-4">
