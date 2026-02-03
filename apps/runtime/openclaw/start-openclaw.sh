@@ -11,6 +11,10 @@ if pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
   exit 0
 fi
 
+if [ -n "${VERCEL_AI_GATEWAY_API_KEY:-}" ] && [ -z "${AI_GATEWAY_API_KEY:-}" ]; then
+  export AI_GATEWAY_API_KEY="$VERCEL_AI_GATEWAY_API_KEY"
+fi
+
 CONFIG_DIR="/root/.clawdbot"
 CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
 TEMPLATE_DIR="/root/.clawdbot-templates"
@@ -53,6 +57,9 @@ config.gateway = config.gateway || {};
 config.channels = config.channels || {};
 config.auth = config.auth || {};
 config.auth.profiles = config.auth.profiles || {};
+if (config.auth.profiles['vercel-ai-gateway:default']) {
+  delete config.auth.profiles['vercel-ai-gateway:default'].apiKey;
+}
 config.skills = config.skills || {};
 config.skills.install = config.skills.install || { nodeManager: 'npm' };
 config.skills.entries = config.skills.entries || {};
@@ -62,6 +69,10 @@ const hasVercelKey = Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY);
 // Gateway and browser (always enforced)
 config.gateway.port = 18789;
 config.gateway.mode = 'local';
+config.gateway.http = config.gateway.http || {};
+config.gateway.http.endpoints = config.gateway.http.endpoints || {};
+config.gateway.http.endpoints.responses = config.gateway.http.endpoints.responses || {};
+config.gateway.http.endpoints.responses.enabled = true;
 config.gateway.controlUi = config.gateway.controlUi || {};
 config.gateway.controlUi.allowInsecureAuth = true;
 config.browser = config.browser || {};
@@ -71,9 +82,9 @@ config.browser.headless = true;
 config.browser.noSandbox = true;
 config.browser.defaultProfile = 'clawd';
 
-if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
+if (process.env.OPENCLAW_GATEWAY_TOKEN) {
   config.gateway.auth = config.gateway.auth || {};
-  config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+  config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
 // Vercel AI Gateway: auth profile + model defaults (Haiku primary, Sonnet fallback)
@@ -83,7 +94,10 @@ if (hasVercelKey) {
     mode: 'api_key',
   };
   config.env = config.env || {};
-  config.env.VERCEL_AI_GATEWAY_API_KEY = process.env.VERCEL_AI_GATEWAY_API_KEY;
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_AI_GATEWAY_API_KEY;
+  if (gatewayKey) {
+    config.env.AI_GATEWAY_API_KEY = gatewayKey;
+  }
   config.agents.defaults.model.primary = 'vercel-ai-gateway/anthropic/claude-haiku-4.5';
   config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
@@ -145,10 +159,14 @@ find "$CONFIG_DIR" -name "SingletonLock" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonSocket" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonCookie" -delete 2>/dev/null || true
 
-TOKEN="${CLAWDBOT_GATEWAY_TOKEN:-local}"
+TOKEN="${OPENCLAW_GATEWAY_TOKEN-local}"
 echo ""
 echo "============================================================"
-echo " Open the Control UI at: http://localhost:18789/?token=${TOKEN}"
+if [ -n "$TOKEN" ]; then
+  echo " Open the Control UI at: http://localhost:18789/?token=${TOKEN}"
+else
+  echo " Open the Control UI at: http://localhost:18789/"
+fi
 echo "============================================================"
 echo ""
 
@@ -166,7 +184,11 @@ else
   echo "WARNING: Chromium failed to start. Browser automation may be unavailable."
 fi
 
-clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind lan --token "$TOKEN" &
+if [ -n "$TOKEN" ]; then
+  clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind lan --token "$TOKEN" &
+else
+  clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind local &
+fi
 GATEWAY_PID=$!
 trap "kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait" SIGTERM SIGINT
 wait $GATEWAY_PID

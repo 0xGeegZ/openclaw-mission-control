@@ -36,6 +36,12 @@ export interface RuntimeConfig {
   dropletIp: string;
   /** Droplet region */
   dropletRegion: string;
+  /** OpenClaw gateway base URL for OpenResponses (e.g. http://127.0.0.1:18789); empty = disabled */
+  openclawGatewayUrl: string;
+  /** OpenClaw gateway auth token (Bearer); optional for local gateway URLs (empty = no auth) */
+  openclawGatewayToken: string | undefined;
+  /** Timeout for OpenClaw /v1/responses requests (ms); default 60000 for long agent runs */
+  openclawRequestTimeoutMs: number;
 }
 
 /**
@@ -131,6 +137,12 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       ? logLevelRaw
       : "info";
 
+  const openclawGatewayUrl = parseOpenClawGatewayUrl();
+  const openclawGatewayToken = resolveOpenClawGatewayToken(
+    openclawGatewayUrl,
+    parseOpenClawGatewayToken()
+  );
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
@@ -148,5 +160,75 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     dropletId: process.env.DROPLET_ID || "unknown",
     dropletIp: process.env.DROPLET_IP || "unknown",
     dropletRegion: process.env.DROPLET_REGION || "unknown",
+    openclawGatewayUrl,
+    openclawGatewayToken,
+    openclawRequestTimeoutMs: parseIntOrDefault(process.env.OPENCLAW_REQUEST_TIMEOUT_MS, 60000),
   };
+}
+
+/**
+ * Parse OpenClaw gateway URL from env. Defaults to local host when unset;
+ * empty string disables the gateway (send will fail with descriptive error).
+ */
+function parseOpenClawGatewayUrl(): string {
+  const raw = normalizeEnvValue(process.env.OPENCLAW_GATEWAY_URL);
+  if (raw === undefined || raw === null) return "http://127.0.0.1:18789";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    new URL(trimmed);
+  } catch {
+    throw new Error(
+      "Invalid OPENCLAW_GATEWAY_URL. Expected a valid URL like http://127.0.0.1:18789."
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * Parse OpenClaw gateway token from OPENCLAW_GATEWAY_TOKEN.
+ * Undefined means env var unset or blank; callers may apply defaults.
+ */
+function parseOpenClawGatewayToken(): string | undefined {
+  if (process.env.OPENCLAW_GATEWAY_TOKEN === undefined) return undefined;
+  const v = normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
+  if (v === undefined) return undefined;
+  if (!v.trim()) return "";
+  return v.trim();
+}
+
+/**
+ * Resolve gateway token defaults based on URL safety.
+ * Local gateway URLs allow no auth; non-local URLs require a token.
+ */
+function resolveOpenClawGatewayToken(
+  gatewayUrl: string,
+  token: string | undefined
+): string | undefined {
+  if (token !== undefined) return token;
+  if (!gatewayUrl) return undefined;
+  const host = getGatewayHost(gatewayUrl);
+  if (!host) return undefined;
+  if (isLocalGatewayHost(host)) return "local";
+  throw new Error("OPENCLAW_GATEWAY_TOKEN is required for non-local OPENCLAW_GATEWAY_URL.");
+}
+
+/**
+ * Extract the hostname from a gateway URL, or null when invalid.
+ */
+function getGatewayHost(gatewayUrl: string): string | null {
+  if (!gatewayUrl) return null;
+  try {
+    return new URL(gatewayUrl).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Determine if the gateway host is local for safe default token usage.
+ */
+function isLocalGatewayHost(host: string): boolean {
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", "openclaw-gateway"]);
+  return localHosts.has(host);
 }

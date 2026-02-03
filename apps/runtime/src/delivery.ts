@@ -62,10 +62,21 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
           });
 
           if (context?.agent) {
-            await sendToOpenClaw(
+            const responseText = await sendToOpenClaw(
               context.agent.sessionKey,
               formatNotificationMessage(context)
             );
+            const taskId = context.notification?.taskId;
+            if (taskId && responseText?.trim()) {
+              await client.action(api.service.actions.createMessageFromAgent, {
+                agentId: context.agent._id,
+                taskId,
+                content: responseText.trim(),
+                serviceToken: config.serviceToken,
+                accountId: config.accountId,
+                sourceNotificationId: notification._id,
+              });
+            }
             await client.action(api.service.actions.markNotificationDelivered, {
               notificationId: notification._id,
               serviceToken: config.serviceToken,
@@ -121,6 +132,7 @@ export function getDeliveryState(): DeliveryState {
 
 /**
  * Format notification message for OpenClaw.
+ * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
  */
 function formatNotificationMessage(context: any): string {
   const { notification, task } = context;
@@ -133,6 +145,8 @@ function formatNotificationMessage(context: any): string {
 ${notification.body}
 
 ${task ? `Task: ${task.title} (${task.status})` : ""}
+
+Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 
 ---
 Notification ID: ${notification._id}

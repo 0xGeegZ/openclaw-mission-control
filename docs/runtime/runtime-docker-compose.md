@@ -43,9 +43,9 @@ This guide covers running the Mission Control runtime (and optional OpenClaw gat
    ```
 
    - Runtime health: `curl -s http://127.0.0.1:3001/health`
-   - OpenClaw Control UI: http://localhost:18789/?token=local
+  - OpenClaw Control UI: http://localhost:18789/ (or `?token=...` if set)
 
-  Set `VERCEL_AI_GATEWAY_API_KEY` in `apps/runtime/.env` for the gateway (default: Haiku 4.5 primary, Sonnet 4.5 fallback). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
+  Set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789` in `apps/runtime/.env` so the runtime can send messages to agent sessions via the OpenResponses HTTP endpoint (`POST /v1/responses`). The gateway template and start script enable this endpoint on every boot. Agent responses from OpenClaw are **written back** to the Mission Control task thread (shared brain) for notification-triggered runs (mentions, assignments, thread updates). Set `VERCEL_AI_GATEWAY_API_KEY` for the gateway (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
 
 If you prefer, you can still run Compose directly:
 
@@ -75,8 +75,11 @@ See `apps/runtime/.env.example`. Summary:
 | `HEALTH_HOST` | No | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works. |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
 | `AGENT_SYNC_INTERVAL` | No | Agent list sync interval in ms; new agents picked up without restart (default `60000`). |
-| `CLAWDBOT_GATEWAY_TOKEN` | No | Gateway auth token (default `local` for local dev). |
-| `VERCEL_AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key; when set, agents use Haiku 4.5 primary, Sonnet 4.5 fallback. |
+| `OPENCLAW_GATEWAY_URL` | No | OpenClaw gateway base URL for sending messages to sessions. Default `http://127.0.0.1:18789`; with profile `openclaw` set `http://openclaw-gateway:18789` so the runtime can reach the gateway. |
+| `OPENCLAW_GATEWAY_TOKEN` | No | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only. |
+| `OPENCLAW_REQUEST_TIMEOUT_MS` | No | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase if agent runs are long. |
+| `AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used. |
+| `VERCEL_AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key; mapped to `AI_GATEWAY_API_KEY`. |
 
 ## Upgrade workflow (local)
 

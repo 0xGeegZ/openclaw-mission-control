@@ -527,11 +527,15 @@ export default defineSchema({
     
     /** Timestamp of last edit (if edited) */
     editedAt: v.optional(v.number()),
+    
+    /** Idempotency: notification that triggered this agent message (prevents duplicate write-back). */
+    sourceNotificationId: v.optional(v.id("notifications")),
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
     .index("by_account", ["accountId"])
-    .index("by_author", ["authorType", "authorId"]),
+    .index("by_author", ["authorType", "authorId"])
+    .index("by_source_notification", ["sourceNotificationId"]),
 
   // ==========================================================================
   // DOCUMENTS

@@ -1,6 +1,6 @@
 /**
  * Minimal structured logger with levels and secret redaction.
- * Never log SERVICE_TOKEN or CLAWDBOT_GATEWAY_TOKEN values.
+ * Never log SERVICE_TOKEN or OPENCLAW_GATEWAY_TOKEN values.
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -14,13 +14,13 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 
 const REDACT_EQUALS_PATTERNS = [
   /\bSERVICE_TOKEN\s*=\s*[^\s]+/gi,
-  /\bCLAWDBOT_GATEWAY_TOKEN\s*=\s*[^\s]+/gi,
+  /\bOPENCLAW_GATEWAY_TOKEN\s*=\s*[^\s]+/gi,
   /\btoken\s*=\s*[^\s]+/gi,
 ];
 
 const REDACT_COLON_PATTERNS = [
   /\bSERVICE_TOKEN\b\s*:\s*"?[^"\s]+"?/gi,
-  /\bCLAWDBOT_GATEWAY_TOKEN\b\s*:\s*"?[^"\s]+"?/gi,
+  /\bOPENCLAW_GATEWAY_TOKEN\b\s*:\s*"?[^"\s]+"?/gi,
   /\bserviceToken\b\s*:\s*"?[^"\s]+"?/gi,
   /\btoken\b\s*:\s*"?[^"\s]+"?/gi,
 ];
