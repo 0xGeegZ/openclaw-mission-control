@@ -62,6 +62,8 @@ export function startHealthServer(config: RuntimeConfig): void {
         gateway: {
           running: gateway.isRunning,
           sessions: gateway.sessions.size,
+          lastSendAt: gateway.lastSendAt,
+          lastSendError: gateway.lastSendError,
         },
         delivery: {
           running: delivery.isRunning,

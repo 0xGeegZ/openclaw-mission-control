@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import { env } from "@packages/env/nextjs-client";
 import { useAccount } from "@/lib/hooks/useAccount";
 import {
   Card,
@@ -25,7 +26,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
-import { ArrowLeft, Bot, Activity, Clock, MoreHorizontal, Settings2, CircleDot, Trash2, ListTodo } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  Activity,
+  Clock,
+  MoreHorizontal,
+  Settings2,
+  CircleDot,
+  Trash2,
+  ListTodo,
+  ExternalLink,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
@@ -37,12 +49,20 @@ interface AgentDetailPageProps {
 }
 
 /**
+ * Return the OpenClaw UI URL if configured in client env.
+ */
+function getOpenClawUiUrl(): string | undefined {
+  return env.NEXT_PUBLIC_OPENCLAW_UI_URL;
+}
+
+/**
  * Agent detail page: config, recent activity, stats.
  */
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { accountSlug, agentId } = use(params);
   const router = useRouter();
   const { accountId, isAdmin } = useAccount();
+  const openclawUiUrl = getOpenClawUiUrl();
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
@@ -117,32 +137,42 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
         
         {/* Actions dropdown - admin only */}
         {agent && isAdmin && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Agent actions</span>
+          <div className="flex items-center gap-2">
+            {openclawUiUrl && (
+              <Button variant="outline" asChild>
+                <a href={openclawUiUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  OpenClaw UI
+                </a>
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
-                <Settings2 className="mr-2 h-4 w-4" />
-                Edit Agent
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowStatusDialog(true)}>
-                <CircleDot className="mr-2 h-4 w-4" />
-                Change Status
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => setShowDeleteDialog(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Agent
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Agent actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Edit Agent
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowStatusDialog(true)}>
+                  <CircleDot className="mr-2 h-4 w-4" />
+                  Change Status
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Agent
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </header>
 

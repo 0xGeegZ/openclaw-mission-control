@@ -14,6 +14,7 @@ import { createMentionNotifications, createThreadNotifications } from "../lib/no
 /**
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread.
+ * When sourceNotificationId is provided, returns existing message id if one already exists (idempotency).
  */
 export const createFromAgent = internalMutation({
   args: {
@@ -21,6 +22,7 @@ export const createFromAgent = internalMutation({
     taskId: v.id("tasks"),
     content: v.string(),
     attachments: v.optional(v.array(attachmentValidator)),
+    sourceNotificationId: v.optional(v.id("notifications")),
   },
   handler: async (ctx, args) => {
     // Get agent info
@@ -38,6 +40,19 @@ export const createFromAgent = internalMutation({
     // Verify same account
     if (task.accountId !== agent.accountId) {
       throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Idempotency: if we already have a message for this notification, return it
+    if (args.sourceNotificationId) {
+      const existing = await ctx.db
+        .query("messages")
+        .withIndex("by_source_notification", (q) =>
+          q.eq("sourceNotificationId", args.sourceNotificationId!)
+        )
+        .first();
+      if (existing) {
+        return existing._id;
+      }
     }
     
     // Parse and resolve mentions
@@ -60,6 +75,7 @@ export const createFromAgent = internalMutation({
       mentions,
       attachments: args.attachments,
       createdAt: Date.now(),
+      sourceNotificationId: args.sourceNotificationId,
     });
     
     // Auto-subscribe agent to thread

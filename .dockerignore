@@ -1,0 +1,16 @@
+.git
+.gitignore
+**/.DS_Store
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+**/.runtime
+**/.cursor
+**/.cache
+**/.env
+**/.env.local
+**/.env.development
+**/.env.production
+**/.env.test

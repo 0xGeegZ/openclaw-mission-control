@@ -389,7 +389,8 @@ export const updateAgentHeartbeat = action({
 
 /**
  * Create a message from an agent.
- * Called by runtime when agent posts to a thread.
+ * Called by runtime when agent posts to a thread (e.g. after OpenClaw response write-back).
+ * Optional sourceNotificationId enables idempotent delivery (no duplicate messages on retry).
  */
 export const createMessageFromAgent = action({
   args: {
@@ -404,6 +405,7 @@ export const createMessageFromAgent = action({
       name: v.string(),
       size: v.number(),
     }))),
+    sourceNotificationId: v.optional(v.id("notifications")),
   },
   handler: async (ctx, args): Promise<{ messageId: Id<"messages"> }> => {
     // Validate service token
@@ -446,6 +448,7 @@ export const createMessageFromAgent = action({
       taskId: args.taskId,
       content: args.content,
       attachments: args.attachments,
+      sourceNotificationId: args.sourceNotificationId,
     });
     
     return { messageId };

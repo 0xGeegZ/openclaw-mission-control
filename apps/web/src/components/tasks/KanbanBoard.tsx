@@ -22,6 +22,26 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 
+const VALID_STATUSES: readonly TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+
+function isValidStatus(value: string): value is TaskStatus {
+  return (VALID_STATUSES as readonly string[]).includes(value);
+}
+
+/** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
+function resolveDropTargetToStatus(
+  overId: string,
+  tasksByStatus: Record<TaskStatus, Doc<"tasks">[]> | undefined
+): TaskStatus | null {
+  if (isValidStatus(overId)) return overId;
+  if (!tasksByStatus) return null;
+  for (const tasks of Object.values(tasksByStatus)) {
+    const task = tasks.find((t) => String(t._id) === overId);
+    if (task && isValidStatus(task.status)) return task.status as TaskStatus;
+  }
+  return null;
+}
+
 interface KanbanBoardProps {
   accountSlug: string;
 }
@@ -76,7 +96,8 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     if (!over || !accountId) return;
     
     const taskId = active.id as Id<"tasks">;
-    const newStatus = over.id as TaskStatus;
+    const newStatus = resolveDropTargetToStatus(String(over.id), tasksData?.tasks);
+    if (newStatus == null) return;
     
     // Find current task
     let currentTask: Doc<"tasks"> | null = null;
@@ -91,17 +112,18 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
     }
     
     if (!currentTask || currentTask.status === newStatus) return;
-    
+    if (!isValidStatus(newStatus)) return;
+
     // For blocked status, show dialog to get reason
     if (newStatus === "blocked") {
       setPendingBlockedTask(currentTask);
       setShowBlockedDialog(true);
       return;
     }
-    
+
     try {
-      await updateStatus({ 
-        taskId, 
+      await updateStatus({
+        taskId,
         status: newStatus,
       });
       toast.success("Task status updated");

@@ -14,7 +14,7 @@ The runtime:
 
 1. Connects to Convex with a **service token** scoped to one `accountId`.
 2. Starts the **OpenClaw gateway** and registers agent sessions (session keys like `agent:{slug}:{accountId}`).
-3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session.
+3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session via the OpenResponses HTTP API (`POST {OPENCLAW_GATEWAY_URL}/v1/responses` with `x-openclaw-session-key`). Agent replies are **written back** to the task thread in Convex so they appear in the Mission Control web app. The gateway HTTP endpoint must be enabled in OpenClaw config.
 4. **Heartbeat scheduler**: wakes each agent on its schedule to check for work and report status.
 5. **Agent sync**: periodically fetches the agent list from Convex so new agents go online without restarting the runtime.
 6. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
@@ -46,6 +46,10 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
 | `HEALTH_HOST` | No | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker). |
 | `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No | Backoff on delivery poll errors (defaults `5000`, `300000`). |
+| `OPENCLAW_GATEWAY_URL` | No | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
+| `OPENCLAW_GATEWAY_TOKEN` | No | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only. |
+| `OPENCLAW_REQUEST_TIMEOUT_MS` | No | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase for long agent runs. |
+| `AI_GATEWAY_API_KEY` | No | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used. |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION` | No | Infrastructure identifiers (reported in health and Convex). |
 
 ## Running locally
@@ -82,11 +86,11 @@ Use the runtime npm scripts (recommended) to run the runtime (and optionally the
 # Runtime only (from apps/runtime)
 npm run docker:up
 
-# Runtime + OpenClaw gateway (Control UI at http://localhost:18789/?token=local)
+# Runtime + OpenClaw gateway (Control UI at http://localhost:18789/ or ?token=... if set)
 npm run docker:up:openclaw
 ```
 
-For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (default: Haiku 4.5 primary, Sonnet 4.5 fallback). Skills are enabled by default; the gateway image includes Chromium for web tools.
+For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
 If you prefer direct Compose commands, run them from the repo root:
 
