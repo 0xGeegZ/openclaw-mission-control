@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { 
   DndContext, 
   DragEndEvent, 
@@ -18,6 +18,7 @@ import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 import { CreateTaskDialog } from "./CreateTaskDialog";
 import { BlockedReasonDialog } from "./BlockedReasonDialog";
+import { TaskDetailSheet } from "./TaskDetailSheet";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
@@ -44,21 +45,30 @@ function resolveDropTargetToStatus(
 
 interface KanbanBoardProps {
   accountSlug: string;
+  filterByAgentId?: Id<"agents"> | null;
+  statusFilter?: TaskStatus;
 }
 
 /**
  * Kanban board component with drag-and-drop.
  * Main interface for task management.
  */
-export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
+export function KanbanBoard({ accountSlug, filterByAgentId, statusFilter }: KanbanBoardProps) {
   const { accountId, isLoading: isAccountLoading } = useAccount();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
   const [pendingBlockedTask, setPendingBlockedTask] = useState<Doc<"tasks"> | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
+  const [showTaskSheet, setShowTaskSheet] = useState(false);
   
   const tasksData = useQuery(
     api.tasks.listByStatus,
+    accountId ? { accountId } : "skip"
+  );
+  
+  const agents = useQuery(
+    api.agents.getRoster,
     accountId ? { accountId } : "skip"
   );
   
@@ -66,6 +76,33 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
   const isLoading = isAccountLoading || (accountId && tasksData === undefined);
   
   const updateStatus = useMutation(api.tasks.updateStatus);
+  
+  // Filter tasks by agent if filterByAgentId is set
+  const filteredTasksData = useMemo(() => {
+    if (!tasksData?.tasks || !filterByAgentId) return tasksData?.tasks;
+    
+    const filtered: Record<TaskStatus, Doc<"tasks">[]> = {
+      inbox: [],
+      assigned: [],
+      in_progress: [],
+      review: [],
+      done: [],
+      blocked: [],
+    };
+    
+    for (const [status, tasks] of Object.entries(tasksData.tasks)) {
+      filtered[status as TaskStatus] = tasks.filter(task => 
+        task.assignedAgentIds.includes(filterByAgentId)
+      );
+    }
+    
+    return filtered;
+  }, [tasksData?.tasks, filterByAgentId]);
+  
+  const handleTaskClick = useCallback((taskId: Id<"tasks">) => {
+    setSelectedTaskId(taskId);
+    setShowTaskSheet(true);
+  }, []);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -156,6 +193,14 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
   if (isLoading || !tasksData) {
     return <KanbanSkeleton />;
   }
+  
+  // Use filtered tasks if filter is active, otherwise use all tasks
+  const displayTasks = filteredTasksData ?? tasksData.tasks;
+  
+  // Determine which statuses to show based on filter
+  const statusesToShow = statusFilter 
+    ? [statusFilter] 
+    : [...TASK_STATUS_ORDER, "blocked" as TaskStatus];
 
   return (
     <>
@@ -165,28 +210,28 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4 px-6 h-full">
-          {TASK_STATUS_ORDER.map((status) => (
+        <div className="flex gap-4 overflow-x-auto pb-4 px-4 h-full">
+          {statusesToShow.map((status) => (
             <KanbanColumn
               key={status}
               status={status}
-              tasks={tasksData.tasks[status] || []}
+              tasks={displayTasks[status] || []}
               accountSlug={accountSlug}
               onAddTask={status === "inbox" ? () => setShowCreateDialog(true) : undefined}
+              onTaskClick={handleTaskClick}
+              agents={agents}
             />
           ))}
-          
-          {/* Blocked column */}
-          <KanbanColumn
-            status="blocked"
-            tasks={tasksData.tasks.blocked || []}
-            accountSlug={accountSlug}
-          />
         </div>
         
         <DragOverlay>
           {activeTask && (
-            <TaskCard task={activeTask} accountSlug={accountSlug} isDragging />
+            <TaskCard 
+              task={activeTask} 
+              accountSlug={accountSlug} 
+              isDragging 
+              assignedAgents={agents?.filter(a => activeTask.assignedAgentIds.includes(a._id))}
+            />
           )}
         </DragOverlay>
       </DndContext>
@@ -204,6 +249,13 @@ export function KanbanBoard({ accountSlug }: KanbanBoardProps) {
         }}
         onConfirm={handleBlockedConfirm}
         taskTitle={pendingBlockedTask?.title}
+      />
+      
+      <TaskDetailSheet
+        taskId={selectedTaskId}
+        accountSlug={accountSlug}
+        open={showTaskSheet}
+        onOpenChange={setShowTaskSheet}
       />
     </>
   );
