@@ -53,6 +53,7 @@ import React from "react";
 /**
  * Renders message content with inline styled @mentions.
  * Replaces @name patterns with styled span elements.
+ * Uses inline spans for text fragments to keep mentions on the same line.
  */
 function renderContentWithMentions(
   content: string,
@@ -77,42 +78,43 @@ function renderContentWithMentions(
     const mentionName = match[1];
     const mention = mentionMap.get(mentionName.toLowerCase());
 
-    // Add text before this match
+    // Add text before this match as inline span
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index);
       parts.push(
-        <Streamdown key={`text-${lastIndex}`}>{textBefore}</Streamdown>
+        <span key={`text-${lastIndex}`}>{textBefore}</span>
       );
     }
 
     if (mention) {
-      // Render styled mention
+      // Render styled mention badge inline
       parts.push(
         <span
           key={`mention-${match.index}`}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default align-middle"
           title={`Mentioned: ${mention.name}`}
         >
           @{mention.name}
         </span>
       );
     } else {
-      // Not a valid mention, render as plain text
+      // Not a valid mention, render as plain inline text
       parts.push(
-        <Streamdown key={`text-${match.index}`}>{match[0]}</Streamdown>
+        <span key={`text-${match.index}`}>{match[0]}</span>
       );
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text after last match
+  // Add remaining text after last match as inline span
   if (lastIndex < content.length) {
     const textAfter = content.slice(lastIndex);
-    parts.push(<Streamdown key={`text-${lastIndex}`}>{textAfter}</Streamdown>);
+    parts.push(<span key={`text-${lastIndex}`}>{textAfter}</span>);
   }
 
-  return parts.length > 0 ? <>{parts}</> : <Streamdown>{content}</Streamdown>;
+  // Wrap in a span to ensure inline flow
+  return parts.length > 0 ? <span>{parts}</span> : <Streamdown>{content}</Streamdown>;
 }
 
 /** Lookup for agent author display (name, optional avatar). */
