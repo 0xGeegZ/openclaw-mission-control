@@ -764,7 +764,8 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
-    .index("by_account_created", ["accountId", "createdAt"]),
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_task", ["taskId"]),
 
   // ==========================================================================
   // SUBSCRIPTIONS

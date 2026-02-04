@@ -7,7 +7,12 @@ import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TaskHeader } from "@/components/tasks/TaskHeader";
 import { TaskThread } from "@/components/tasks/TaskThread";
 import { TaskDocuments } from "@/components/tasks/TaskDocuments";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@packages/ui/components/tabs";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, FileText, AlertCircle } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
@@ -22,13 +27,13 @@ interface TaskDetailPageProps {
  */
 export default function TaskDetailPage({ params }: TaskDetailPageProps) {
   const { accountSlug, taskId } = use(params);
-  
+
   const task = useQuery(api.tasks.get, { taskId: taskId as Id<"tasks"> });
-  
+
   if (task === undefined) {
     return <TaskDetailSkeleton />;
   }
-  
+
   if (task === null) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
@@ -37,7 +42,8 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
         </div>
         <h1 className="text-xl font-semibold">Task not found</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          This task may have been deleted or you don&apos;t have permission to view it.
+          This task may have been deleted or you don&apos;t have permission to
+          view it.
         </p>
         <Button asChild className="mt-4">
           <Link href={`/${accountSlug}/tasks`}>Back to Tasks</Link>
@@ -45,11 +51,11 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
       </div>
     );
   }
-  
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-muted/30">
       <TaskHeader task={task} accountSlug={accountSlug} />
-      
+
       <Tabs defaultValue="thread" className="flex-1 flex flex-col min-h-0">
         <div className="shrink-0 border-b bg-card px-4">
           <TabsList variant="line" className="h-10">
@@ -63,12 +69,22 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
             </TabsTrigger>
           </TabsList>
         </div>
-        
-        <TabsContent value="thread" className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
-          <TaskThread taskId={task._id} accountSlug={accountSlug} />
+
+        <TabsContent
+          value="thread"
+          className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
+        >
+          <TaskThread
+            taskId={task._id}
+            accountSlug={accountSlug}
+            accountId={task.accountId}
+          />
         </TabsContent>
-        
-        <TabsContent value="documents" className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden">
+
+        <TabsContent
+          value="documents"
+          className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden"
+        >
           <TaskDocuments taskId={task._id} />
         </TabsContent>
       </Tabs>

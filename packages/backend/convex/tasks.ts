@@ -2,8 +2,8 @@ import { v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
 import { taskStatusValidator } from "./lib/validators";
-import { 
-  isValidTransition, 
+import {
+  isValidTransition,
   validateStatusRequirements,
   TaskStatus,
   TASK_STATUS_ORDER,
@@ -41,18 +41,18 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     let tasksQuery = ctx.db
       .query("tasks")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId));
-    
+
     const tasks = await tasksQuery.collect();
-    
+
     // Filter by status if provided
-    let filteredTasks = args.status 
-      ? tasks.filter(t => t.status === args.status)
+    let filteredTasks = args.status
+      ? tasks.filter((t) => t.status === args.status)
       : tasks;
-    
+
     // Sort by priority (lower = higher priority) then by createdAt
     filteredTasks.sort((a, b) => {
       if (a.priority !== b.priority) {
@@ -60,12 +60,12 @@ export const list = query({
       }
       return b.createdAt - a.createdAt;
     });
-    
+
     // Apply limit
     if (args.limit) {
       filteredTasks = filteredTasks.slice(0, args.limit);
     }
-    
+
     return filteredTasks;
   },
 });
@@ -80,12 +80,12 @@ export const listByStatus = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
-    
+
     // Group by status
     const grouped: Record<TaskStatus, typeof tasks> = {
       inbox: [],
@@ -95,11 +95,11 @@ export const listByStatus = query({
       done: [],
       blocked: [],
     };
-    
+
     for (const task of tasks) {
       grouped[task.status as TaskStatus].push(task);
     }
-    
+
     // Sort each group by priority then createdAt
     for (const status of Object.keys(grouped) as TaskStatus[]) {
       grouped[status].sort((a, b) => {
@@ -109,7 +109,7 @@ export const listByStatus = query({
         return b.createdAt - a.createdAt;
       });
     }
-    
+
     return {
       columns: TASK_STATUS_ORDER,
       tasks: grouped,
@@ -129,7 +129,7 @@ export const get = query({
     if (!task) {
       return null;
     }
-    
+
     await requireAccountMember(ctx, task.accountId);
     return task;
   },
@@ -145,13 +145,13 @@ export const listByAgent = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
-    
-    return tasks.filter(t => t.assignedAgentIds.includes(args.agentId));
+
+    return tasks.filter((t) => t.assignedAgentIds.includes(args.agentId));
   },
 });
 
@@ -168,10 +168,13 @@ export const create = mutation({
     dueDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { userId, userName } = await requireAccountMember(ctx, args.accountId);
-    
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      args.accountId,
+    );
+
     const now = Date.now();
-    
+
     const taskId = await ctx.db.insert("tasks", {
       accountId: args.accountId,
       title: args.title,
@@ -186,7 +189,7 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -199,7 +202,7 @@ export const create = mutation({
       targetId: taskId,
       targetName: args.title,
     });
-    
+
     return taskId;
   },
 });
@@ -221,21 +224,24 @@ export const update = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     const updates: Record<string, unknown> = {
       updatedAt: Date.now(),
     };
-    
+
     if (args.title !== undefined) updates.title = args.title;
     if (args.description !== undefined) updates.description = args.description;
     if (args.priority !== undefined) updates.priority = args.priority;
     if (args.labels !== undefined) updates.labels = args.labels;
     if (args.dueDate !== undefined) updates.dueDate = args.dueDate;
-    
+
     await ctx.db.patch(args.taskId, updates);
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -247,9 +253,9 @@ export const update = mutation({
       targetType: "task",
       targetId: args.taskId,
       targetName: args.title ?? task.title,
-      meta: { updates: Object.keys(updates).filter(k => k !== "updatedAt") },
+      meta: { updates: Object.keys(updates).filter((k) => k !== "updatedAt") },
     });
-    
+
     return args.taskId;
   },
 });
@@ -268,45 +274,48 @@ export const updateStatus = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     const currentStatus = task.status as TaskStatus;
     const nextStatus = args.status as TaskStatus;
-    
+
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
       throw new Error(
-        `Invalid transition: Cannot move from '${currentStatus}' to '${nextStatus}'`
+        `Invalid transition: Cannot move from '${currentStatus}' to '${nextStatus}'`,
       );
     }
-    
+
     // Validate requirements
-    const hasAssignees = 
+    const hasAssignees =
       task.assignedUserIds.length > 0 || task.assignedAgentIds.length > 0;
     const requirementError = validateStatusRequirements(
       nextStatus,
       hasAssignees,
-      args.blockedReason
+      args.blockedReason,
     );
-    
+
     if (requirementError) {
       throw new Error(`Invalid status change: ${requirementError}`);
     }
-    
+
     // Build updates
     const updates: Record<string, unknown> = {
       status: nextStatus,
       updatedAt: Date.now(),
     };
-    
+
     // Set or clear blocked reason
     if (nextStatus === "blocked") {
       updates.blockedReason = args.blockedReason;
     } else if (currentStatus === "blocked") {
       updates.blockedReason = undefined;
     }
-    
+
     await ctx.db.patch(args.taskId, updates);
 
     for (const uid of task.assignedUserIds) {
@@ -318,7 +327,7 @@ export const updateStatus = mutation({
         uid,
         userName,
         task.title,
-        nextStatus
+        nextStatus,
       );
     }
     for (const agentId of task.assignedAgentIds) {
@@ -332,7 +341,7 @@ export const updateStatus = mutation({
           agentId,
           userName,
           task.title,
-          nextStatus
+          nextStatus,
         );
       }
     }
@@ -372,17 +381,20 @@ export const assign = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     const updates: Record<string, unknown> = {
       updatedAt: Date.now(),
     };
-    
+
     if (args.assignedUserIds !== undefined) {
       updates.assignedUserIds = args.assignedUserIds;
     }
-    
+
     if (args.assignedAgentIds !== undefined) {
       // Validate agents exist and belong to account
       for (const agentId of args.assignedAgentIds) {
@@ -393,17 +405,19 @@ export const assign = mutation({
       }
       updates.assignedAgentIds = args.assignedAgentIds;
     }
-    
+
     await ctx.db.patch(args.taskId, updates);
 
     const previousUserIds = new Set(task.assignedUserIds);
     const previousAgentIds = new Set(task.assignedAgentIds);
-    const newUserIds = args.assignedUserIds !== undefined
-      ? args.assignedUserIds.filter((uid) => !previousUserIds.has(uid))
-      : [];
-    const newAgentIds = args.assignedAgentIds !== undefined
-      ? args.assignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
-      : [];
+    const newUserIds =
+      args.assignedUserIds !== undefined
+        ? args.assignedUserIds.filter((uid) => !previousUserIds.has(uid))
+        : [];
+    const newAgentIds =
+      args.assignedAgentIds !== undefined
+        ? args.assignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
+        : [];
 
     for (const uid of newUserIds) {
       await createAssignmentNotification(
@@ -413,7 +427,7 @@ export const assign = mutation({
         "user",
         uid,
         userName,
-        task.title
+        task.title,
       );
     }
     for (const agentId of newAgentIds) {
@@ -424,7 +438,7 @@ export const assign = mutation({
         "agent",
         agentId,
         userName,
-        task.title
+        task.title,
       );
     }
 
@@ -461,35 +475,48 @@ export const remove = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     // Delete associated messages
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
-    
+
     for (const message of messages) {
       await ctx.db.delete(message._id);
     }
-    
+
     // Delete associated subscriptions
     const subscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
-    
+
     for (const subscription of subscriptions) {
       await ctx.db.delete(subscription._id);
     }
-    
+
+    // Delete associated notifications
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+
+    for (const notification of notifications) {
+      await ctx.db.delete(notification._id);
+    }
+
     // Delete task
     await ctx.db.delete(args.taskId);
-    
+
     // Note: Don't log delete activity since task is gone
     // Could log to a separate audit log if needed
-    
+
     return true;
   },
 });
@@ -507,18 +534,21 @@ export const reopen = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
+
     if (task.status !== "done") {
       throw new Error("Invalid operation: Can only reopen done tasks");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     await ctx.db.patch(args.taskId, {
       status: "review",
       updatedAt: Date.now(),
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -532,7 +562,7 @@ export const reopen = mutation({
       targetName: task.title,
       meta: { oldStatus: "done", newStatus: "review", reopened: true },
     });
-    
+
     return args.taskId;
   },
 });

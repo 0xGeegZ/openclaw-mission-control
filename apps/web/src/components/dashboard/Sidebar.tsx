@@ -182,7 +182,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                     <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
                   </div>
                   <span className="font-semibold text-foreground whitespace-nowrap">
-                    OpenClaw Mission Control
+                    Mission Control
                   </span>
                 </Link>
                 <Tooltip>

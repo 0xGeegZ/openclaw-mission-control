@@ -69,7 +69,6 @@ export const listByTask = query({
     if (args.limit && messages.length > args.limit) {
       messages = messages.slice(-args.limit);
     }
-
     // Resolve attachment URLs at read time so clients get fresh URLs
     const result = [];
     for (const msg of messages) {
@@ -238,7 +237,6 @@ export const create = mutation({
         });
       }
     }
-
     // Parse and resolve mentions
     let mentions;
 
@@ -310,6 +308,9 @@ export const create = mutation({
 
     // Create thread update notifications
     const mentionedIds = new Set(mentions.map((m) => m.id));
+    const hasAgentMentions = mentions.some(
+      (mention) => mention.type === "agent",
+    );
     await createThreadNotifications(
       ctx,
       accountId,
@@ -320,6 +321,7 @@ export const create = mutation({
       userName,
       task.title,
       mentionedIds,
+      hasAgentMentions,
     );
 
     return messageId;

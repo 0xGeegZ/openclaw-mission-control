@@ -17,7 +17,6 @@ import {
   createMentionNotifications,
   createThreadNotifications,
 } from "../lib/notifications";
-
 /**
  * Register a completed upload for a task on behalf of an agent.
  */
@@ -167,7 +166,6 @@ export const createFromAgent = internalMutation({
         });
       }
     }
-
     // Parse and resolve mentions
     let mentions;
 
@@ -243,6 +241,9 @@ export const createFromAgent = internalMutation({
 
     // Create thread update notifications
     const mentionedIds = new Set(mentions.map((m) => m.id));
+    const hasAgentMentions = mentions.some(
+      (mention) => mention.type === "agent",
+    );
     await createThreadNotifications(
       ctx,
       agent.accountId,
@@ -253,6 +254,7 @@ export const createFromAgent = internalMutation({
       agent.name,
       task.title,
       mentionedIds,
+      hasAgentMentions,
     );
 
     return messageId;
