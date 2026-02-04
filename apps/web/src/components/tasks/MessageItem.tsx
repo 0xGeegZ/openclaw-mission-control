@@ -48,14 +48,14 @@ import { api } from "@packages/backend/convex/_generated/api";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
 import { Streamdown } from "streamdown";
-import React from "react";
+import React, { useMemo } from "react";
 
 /**
  * Renders a mention badge inline.
  */
 const MentionBadge = ({ name }: { name: string }) => (
   <span
-    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default align-baseline"
+    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default"
     title={`Mentioned: ${name}`}
   >
     @{name}
@@ -63,100 +63,106 @@ const MentionBadge = ({ name }: { name: string }) => (
 );
 
 /**
- * Renders message content with inline styled @mentions.
- * For simple messages (single paragraph with mentions), renders inline to prevent line breaks.
- * For complex messages (with markdown like code blocks, lists, etc.), uses Streamdown.
+ * Process text content to replace @mentions with styled badges.
+ * Returns an array of strings and React nodes.
  */
-function renderContentWithMentions(
-  content: string,
-  mentions?: Array<{ name: string; id?: string }>
-): React.ReactNode {
-  // If no mentions, just use Streamdown as normal
-  if (!mentions || mentions.length === 0) {
-    return <Streamdown>{content}</Streamdown>;
+function processTextWithMentions(
+  text: string,
+  mentionMap: Map<string, { name: string; id?: string }>
+): (string | React.ReactNode)[] {
+  if (!text || mentionMap.size === 0) {
+    return [text];
   }
 
-  // Check if content has complex markdown that requires Streamdown's full rendering
-  const hasComplexMarkdown = /```|^\s*[-*+]\s|^\s*\d+\.\s|^#+\s|^\s*>/m.test(content);
-
-  if (hasComplexMarkdown) {
-    // For complex markdown, use Streamdown but with CSS to help inline mentions
-    // Create a map of lowercase mention names for case-insensitive matching
-    const mentionMap = new Map(
-      mentions.map((m) => [m.name.toLowerCase(), m])
-    );
-
-    // Replace @mentions with a placeholder that won't be affected by markdown
-    const MENTION_PLACEHOLDER = "___MENTION_";
-    const mentionIndices: string[] = [];
-    
-    const processedContent = content.replace(/@(\w+)/g, (match, mentionName) => {
-      const mention = mentionMap.get(mentionName.toLowerCase());
-      if (mention) {
-        mentionIndices.push(mention.name);
-        return `${MENTION_PLACEHOLDER}${mentionIndices.length - 1}___`;
+  const parts = text.split(/(@\w+)/g);
+  return parts
+    .map((part, index) => {
+      const mentionMatch = part.match(/^@(\w+)$/);
+      if (mentionMatch) {
+        const mentionName = mentionMatch[1];
+        const mention = mentionMap.get(mentionName.toLowerCase());
+        if (mention) {
+          return <MentionBadge key={`mention-${index}`} name={mention.name} />;
+        }
       }
-      return match;
-    });
-
-    // Render with Streamdown, then we'd need post-processing which isn't possible
-    // Fall back to simple rendering for now
-    return renderSimpleWithMentions(content, mentions);
-  }
-
-  // For simple text, render inline to keep mentions on the same line
-  return renderSimpleWithMentions(content, mentions);
+      return part;
+    })
+    .filter((part) => part !== "");
 }
 
 /**
- * Renders simple text content with inline mentions (no complex markdown).
- * Keeps everything on one line by using inline elements only.
+ * Creates Streamdown custom components that process mentions inline.
+ * Overrides p, span, li, etc. to inject mention badges while keeping content inline.
  */
-function renderSimpleWithMentions(
-  content: string,
-  mentions: Array<{ name: string; id?: string }>
-): React.ReactNode {
-  const mentionMap = new Map(
-    mentions.map((m) => [m.name.toLowerCase(), m])
-  );
-
-  const mentionRegex = /@(\w+)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = mentionRegex.exec(content)) !== null) {
-    const mentionName = match[1];
-    const mention = mentionMap.get(mentionName.toLowerCase());
-
-    // Add text before this match
-    if (match.index > lastIndex) {
-      parts.push(
-        <Streamdown key={`text-${lastIndex}`} as="span">
-          {content.slice(lastIndex, match.index)}
-        </Streamdown>
-      );
+function createMentionComponents(
+  mentionMap: Map<string, { name: string; id?: string }>
+) {
+  const processChildren = (children: React.ReactNode): React.ReactNode => {
+    if (typeof children === "string") {
+      const processed = processTextWithMentions(children, mentionMap);
+      return processed.length === 1 && typeof processed[0] === "string"
+        ? processed[0]
+        : <>{processed}</>;
     }
-
-    if (mention) {
-      parts.push(<MentionBadge key={`mention-${match.index}`} name={mention.name} />);
-    } else {
-      parts.push(<span key={`text-${match.index}`}>{match[0]}</span>);
+    if (Array.isArray(children)) {
+      return children.map((child, index) => {
+        if (typeof child === "string") {
+          const processed = processTextWithMentions(child, mentionMap);
+          return processed.length === 1 && typeof processed[0] === "string"
+            ? processed[0]
+            : <React.Fragment key={index}>{processed}</React.Fragment>;
+        }
+        return child;
+      });
     }
+    return children;
+  };
 
-    lastIndex = match.index + match[0].length;
-  }
+  return {
+    p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+      <p {...props}>{processChildren(children)}</p>
+    ),
+    span: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => (
+      <span {...props}>{processChildren(children)}</span>
+    ),
+    li: ({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) => (
+      <li {...props}>{processChildren(children)}</li>
+    ),
+    td: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+      <td {...props}>{processChildren(children)}</td>
+    ),
+    th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+      <th {...props}>{processChildren(children)}</th>
+    ),
+  };
+}
 
-  // Add remaining text
-  if (lastIndex < content.length) {
-    parts.push(
-      <Streamdown key={`text-${lastIndex}`} as="span">
-        {content.slice(lastIndex)}
-      </Streamdown>
+/**
+ * Component that renders message content with inline styled @mentions using Streamdown.
+ * Uses custom components to process mentions in all text-containing elements.
+ */
+function MessageContent({
+  content,
+  mentions,
+}: {
+  content: string;
+  mentions?: Array<{ name: string; id?: string }>;
+}) {
+  const components = useMemo(() => {
+    if (!mentions || mentions.length === 0) {
+      return undefined;
+    }
+    const mentionMap = new Map(
+      mentions.map((m) => [m.name.toLowerCase(), m])
     );
-  }
+    return createMentionComponents(mentionMap);
+  }, [mentions]);
 
-  return <span className="inline">{parts}</span>;
+  return (
+    <Streamdown components={components}>
+      {content}
+    </Streamdown>
+  );
 }
 
 /** Lookup for agent author display (name, optional avatar). */
@@ -374,7 +380,7 @@ export function MessageItem({
         ) : (
           <>
             <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
-              {renderContentWithMentions(message.content, message.mentions)}
+              <MessageContent content={message.content} mentions={message.mentions} />
             </div>
 
             {message.authorType === "user" &&
