@@ -7,12 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@packages/ui/component
 import { Badge } from "@packages/ui/components/badge";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
 import { cn } from "@packages/ui/lib/utils";
-import Link from "next/link";
+import { formatDistanceToNow } from "date-fns";
+import { ChevronRight } from "lucide-react";
 
 interface TaskCardProps {
   task: Doc<"tasks">;
-  accountSlug: string;
+  accountSlug?: string; // Kept for compatibility but not currently used
   isDragging?: boolean;
+  onClick?: () => void;
+  assignedAgents?: Doc<"agents">[];
 }
 
 const priorityColors: Record<number, string> = {
@@ -35,9 +38,9 @@ const statusBorderColors: Record<string, string> = {
 
 /**
  * Task card component for Kanban board.
- * Draggable card showing task details.
+ * Draggable card showing task details with rich information.
  */
-export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
+export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -52,6 +55,17 @@ export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
   };
 
   const statusBorder = statusBorderColors[task.status] ?? statusBorderColors.inbox;
+  
+  // Get the first assigned agent for display
+  const primaryAgent = assignedAgents?.[0];
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Only trigger onClick if not dragging
+    if (onClick && !isDragging) {
+      e.stopPropagation();
+      onClick();
+    }
+  };
 
   return (
     <Card
@@ -59,50 +73,103 @@ export function TaskCard({ task, accountSlug, isDragging }: TaskCardProps) {
       style={style}
       {...attributes}
       {...listeners}
+      onClick={handleClick}
       className={cn(
-        "cursor-grab active:cursor-grabbing transition-all border-l-4",
+        "cursor-grab active:cursor-grabbing transition-all border-l-4 group",
         statusBorder,
-        "hover:shadow-md hover:border-primary/20",
-        isDragging && "opacity-50 shadow-lg rotate-2"
+        "hover:shadow-md hover:border-primary/20 hover:bg-accent/30",
+        isDragging && "opacity-50 shadow-lg rotate-2",
+        onClick && "cursor-pointer"
       )}
     >
       <CardHeader className="p-3 pb-2">
         <div className="flex items-start justify-between gap-2">
-          <Link 
-            href={`/${accountSlug}/tasks/${task._id}`}
-            className="hover:underline flex-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <CardTitle className="text-sm font-medium line-clamp-2">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <div 
+              className={cn(
+                "w-2 h-2 rounded-full shrink-0 mt-1.5",
+                priorityColors[task.priority] || priorityColors[5]
+              )}
+              title={`Priority ${task.priority}`}
+            />
+            <CardTitle className="text-sm font-medium line-clamp-2 text-balance">
               {task.title}
             </CardTitle>
-          </Link>
-          <div 
-            className={cn(
-              "w-2 h-2 rounded-full shrink-0 mt-1",
-              priorityColors[task.priority] || priorityColors[5]
-            )}
-            title={`Priority ${task.priority}`}
-          />
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         </div>
       </CardHeader>
-      <CardContent className="p-3 pt-0">
-        <div className="flex items-center justify-between">
+      
+      <CardContent className="p-3 pt-0 space-y-2.5">
+        {/* Description preview */}
+        {task.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+            {task.description}
+          </p>
+        )}
+        
+        {/* Agent and timestamp row */}
+        <div className="flex items-center justify-between gap-2">
+          {primaryAgent ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Avatar className="h-5 w-5 border border-background">
+                <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                  {primaryAgent.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs text-muted-foreground truncate">
+                {primaryAgent.name}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground/60">Unassigned</span>
+          )}
+          
+          <span className="text-[10px] text-muted-foreground/70 shrink-0">
+            {formatDistanceToNow(task.updatedAt, { addSuffix: false })}
+          </span>
+        </div>
+        
+        {/* Labels */}
+        {task.labels.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {task.labels.slice(0, 2).map((label) => (
-              <Badge key={label} variant="secondary" className="text-xs">
+            {task.labels.slice(0, 3).map((label) => (
+              <Badge 
+                key={label} 
+                variant="outline" 
+                className="text-[10px] px-1.5 py-0 h-5 bg-muted/50 border-border/50 font-normal"
+              >
                 {label}
               </Badge>
             ))}
+            {task.labels.length > 3 && (
+              <Badge 
+                variant="outline" 
+                className="text-[10px] px-1.5 py-0 h-5 bg-muted/50 border-border/50 font-normal"
+              >
+                +{task.labels.length - 3}
+              </Badge>
+            )}
           </div>
-          <div className="flex -space-x-2">
-            {task.assignedAgentIds.slice(0, 3).map((id) => (
-              <Avatar key={id} className="h-6 w-6 border-2 border-background">
-                <AvatarFallback className="text-xs">A</AvatarFallback>
+        )}
+        
+        {/* Additional assignees indicator */}
+        {assignedAgents && assignedAgents.length > 1 && (
+          <div className="flex items-center justify-end -space-x-1.5">
+            {assignedAgents.slice(1, 4).map((agent) => (
+              <Avatar key={agent._id} className="h-5 w-5 border-2 border-background">
+                <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
+                  {agent.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
               </Avatar>
             ))}
+            {assignedAgents.length > 4 && (
+              <div className="h-5 w-5 rounded-full border-2 border-background bg-muted flex items-center justify-center">
+                <span className="text-[9px] text-muted-foreground">+{assignedAgents.length - 4}</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

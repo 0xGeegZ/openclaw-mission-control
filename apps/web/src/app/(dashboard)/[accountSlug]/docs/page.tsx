@@ -45,7 +45,10 @@ import {
   Copy,
   Link2,
   Save,
+  Eye,
+  Edit3,
 } from "lucide-react";
+import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -76,6 +79,7 @@ export default function DocsPage({ params }: DocsPageProps) {
   const [editContent, setEditContent] = useState("");
   const [linkToTaskDocId, setLinkToTaskDocId] = useState<Id<"documents"> | null>(null);
   const [linkTaskId, setLinkTaskId] = useState<Id<"tasks"> | "__unlink__">("__unlink__");
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const documents = useQuery(
     api.documents.list,
@@ -180,6 +184,8 @@ export default function DocsPage({ params }: DocsPageProps) {
     const t = setTimeout(() => {
       setEditTitle(title);
       setEditContent(content);
+      // Start in view mode if there's content, edit mode if empty
+      setIsEditMode(!content.trim());
     }, 0);
     return () => clearTimeout(t);
   }, [openDoc]);
@@ -485,41 +491,103 @@ export default function DocsPage({ params }: DocsPageProps) {
 
       {/* View/edit document dialog */}
       <Dialog open={!!openDocId} onOpenChange={(open) => !open && setOpenDocId(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="sr-only">
-              {openDoc?.title ?? openDoc?.name ?? "Document"}
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
           {openDoc?.kind === "folder" ? (
-            <p className="text-muted-foreground">This is a folder.</p>
+            <div className="p-6">
+              <DialogHeader>
+                <DialogTitle>Folder</DialogTitle>
+              </DialogHeader>
+              <p className="text-muted-foreground mt-2">This is a folder.</p>
+            </div>
           ) : (
             <>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Title</label>
-                <Input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  placeholder="Document title"
-                />
+              {/* Header with title and mode toggle */}
+              <div className="flex items-center justify-between gap-4 p-4 border-b bg-muted/30">
+                <DialogHeader className="flex-1 space-y-0">
+                  {isEditMode ? (
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Document title"
+                      className="text-lg font-semibold h-auto py-1 px-2 -ml-2 bg-transparent border-transparent focus:border-input focus:bg-background"
+                    />
+                  ) : (
+                    <DialogTitle className="text-lg font-semibold">
+                      {editTitle || "Untitled"}
+                    </DialogTitle>
+                  )}
+                </DialogHeader>
+                
+                {/* View/Edit toggle */}
+                <div className="flex items-center gap-1 border rounded-lg p-1 bg-background">
+                  <Button
+                    variant={!isEditMode ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => setIsEditMode(false)}
+                  >
+                    <Eye className="h-4 w-4" />
+                    View
+                  </Button>
+                  <Button
+                    variant={isEditMode ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => setIsEditMode(true)}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2 flex-1 min-h-0 flex flex-col">
-                <label className="text-sm font-medium">Content</label>
-                <Textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  placeholder="Content..."
-                  className="min-h-[200px] flex-1 resize-y"
-                />
+              
+              {/* Content area */}
+              <div className="flex-1 min-h-0 overflow-auto">
+                {isEditMode ? (
+                  <div className="h-full flex flex-col">
+                    <Textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="Write your content here using Markdown...&#10;&#10;# Headings&#10;**Bold text** and *italic text*&#10;- Bullet points&#10;- Lists&#10;&#10;> Blockquotes&#10;&#10;`code snippets`"
+                      className="flex-1 min-h-[300px] resize-none border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-sm leading-relaxed p-4"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-6">
+                    {editContent.trim() ? (
+                      <MarkdownRenderer content={editContent} />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                        <FileText className="h-12 w-12 mb-3 opacity-50" />
+                        <p>No content yet</p>
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          onClick={() => setIsEditMode(true)}
+                          className="mt-2"
+                        >
+                          Click to add content
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setOpenDocId(null)}>
-                  Close
-                </Button>
-                <Button onClick={handleSaveDoc}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save
-                </Button>
+              
+              {/* Footer with actions */}
+              <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
+                <p className="text-xs text-muted-foreground">
+                  {isEditMode ? "Supports Markdown formatting" : ""}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setOpenDocId(null)}>
+                    Close
+                  </Button>
+                  <Button onClick={handleSaveDoc}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save
+                  </Button>
+                </div>
               </div>
             </>
           )}

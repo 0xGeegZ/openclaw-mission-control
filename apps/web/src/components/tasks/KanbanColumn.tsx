@@ -2,7 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Doc } from "@packages/backend/convex/_generated/dataModel";
+import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { TaskCard } from "./TaskCard";
 import { cn } from "@packages/ui/lib/utils";
 import { TaskStatus } from "@packages/shared";
@@ -21,6 +21,8 @@ interface KanbanColumnProps {
   tasks: Doc<"tasks">[];
   accountSlug: string;
   onAddTask?: () => void;
+  onTaskClick?: (taskId: Id<"tasks">) => void;
+  agents?: Doc<"agents">[];
 }
 
 /**
@@ -31,9 +33,17 @@ export function KanbanColumn({
   status, 
   tasks, 
   accountSlug, 
-  onAddTask 
+  onAddTask,
+  onTaskClick,
+  agents,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  
+  // Helper to get assigned agents for a task
+  const getAssignedAgents = (task: Doc<"tasks">) => {
+    if (!agents) return [];
+    return agents.filter(agent => task.assignedAgentIds.includes(agent._id));
+  };
 
   return (
     <div 
@@ -44,7 +54,16 @@ export function KanbanColumn({
     >
       <div className="flex items-center justify-between px-3 py-3 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">{TASK_STATUS_LABELS[status]}</h3>
+          <span className={cn(
+            "w-2 h-2 rounded-full",
+            status === "inbox" && "bg-muted-foreground/40",
+            status === "assigned" && "bg-primary",
+            status === "in_progress" && "bg-amber-500",
+            status === "review" && "bg-violet-500",
+            status === "done" && "bg-emerald-500",
+            status === "blocked" && "bg-destructive"
+          )} />
+          <h3 className="font-semibold text-sm uppercase tracking-wide">{TASK_STATUS_LABELS[status]}</h3>
           <span className="text-xs font-medium text-muted-foreground bg-background rounded-md px-2 py-0.5 border">
             {tasks.length}
           </span>
@@ -72,7 +91,13 @@ export function KanbanColumn({
       >
         <SortableContext items={tasks.map(t => t._id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
-            <TaskCard key={task._id} task={task} accountSlug={accountSlug} />
+            <TaskCard 
+              key={task._id} 
+              task={task} 
+              accountSlug={accountSlug}
+              onClick={onTaskClick ? () => onTaskClick(task._id) : undefined}
+              assignedAgents={getAssignedAgents(task)}
+            />
           ))}
         </SortableContext>
         {tasks.length === 0 && (

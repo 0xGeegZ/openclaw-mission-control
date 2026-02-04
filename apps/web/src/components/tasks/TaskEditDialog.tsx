@@ -117,10 +117,11 @@ export function TaskEditDialog({ task, open, onOpenChange }: TaskEditDialogProps
               id="edit-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add more details about this task..."
-              rows={3}
-              className="resize-none"
+              placeholder="Add more details about this task...&#10;&#10;Supports **Markdown** formatting"
+              rows={4}
+              className="resize-none font-mono text-sm"
             />
+            <p className="text-xs text-muted-foreground">Supports Markdown formatting</p>
           </div>
 
           {/* Priority & Due Date row */}
