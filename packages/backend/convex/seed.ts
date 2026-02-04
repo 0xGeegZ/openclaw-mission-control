@@ -172,6 +172,33 @@ Post updates using this exact structure:
 - If you are blocked: move to BLOCKED and explain the missing input
 - If done: move to DONE, post final summary, and ensure doc links exist
 
+## How to update task status (required)
+
+**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until the runtime endpoint is called. That causes repeated notifications and an infinite loop. You **must** call the task-status endpoint below to set status; then post your summary.
+
+Before posting a thread update that changes status, call the runtime tool:
+
+- Endpoint: \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status\`
+- Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
+- Body: \`{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }\`
+
+Rules:
+
+- Only use \`in_progress\`, \`review\`, \`done\`, \`blocked\`
+- \`blockedReason\` is required when status is \`blocked\`
+- \`inbox\`/\`assigned\` are handled by assignment changes, not this tool
+
+Example:
+
+\`\`\`bash
+curl -X POST "http://127.0.0.1:3001/agent/task-status" \
+  -H "Content-Type: application/json" \
+  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -d '{"taskId":"tsk_123","status":"review"}'
+\`\`\`
+
+**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, call this endpoint with \`"status": "done"\` **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+
 ## Communication rules
 
 - Be short and concrete in threads.
@@ -386,6 +413,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
 - Review tasks in REVIEW promptly; close them (move to DONE) with a clear acceptance note.
+- When closing a task (move to DONE): always call the runtime task-status endpoint with status "done" first (POST .../agent/task-status). Then post your acceptance note. Posting in the thread alone does not update the task status and causes a loop.
 - Write docs for decisions; link from task threads.
 
 ## Quality checks (must pass)

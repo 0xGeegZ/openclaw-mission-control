@@ -575,7 +575,7 @@ function formatNotificationMessage(context: any): string {
 
 ${notification.body}
 
-${task ? `Task: ${task.title} (${task.status})` : ""}
+${task ? `Task: ${task.title} (${task.status})\nTask ID: ${task._id}` : ""}
 ${taskDescription}
 ${repositoryDetails}
 ${messageDetails}
@@ -590,6 +590,7 @@ If you need to change task status, call the runtime tool BEFORE posting a thread
 - Header: x-openclaw-session-key: agent:{slug}:{accountId}
 - Body: { "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }
 - Note: inbox/assigned are handled by assignment changes, not this tool.
+${task?.status === "review" ? '\nIf you are accepting this task as done, you MUST call the task-status endpoint with status "done" before posting. Posting alone does not change the task status.' : ""}
 
 Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 

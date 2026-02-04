@@ -74,6 +74,8 @@ Post updates using this exact structure:
 
 ## How to update task status (required)
 
+**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until the runtime endpoint is called. That causes repeated notifications and an infinite loop. You **must** call the task-status endpoint below to set status; then post your summary.
+
 Before posting a thread update that changes status, call the runtime tool:
 
 - Endpoint: `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status`
@@ -94,6 +96,8 @@ curl -X POST "http://127.0.0.1:3001/agent/task-status" \
   -H "x-openclaw-session-key: agent:engineer:acc_123" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
+
+**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, call this endpoint with `"status": "done"` **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ## Orchestrator (squad lead)
 
