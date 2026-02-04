@@ -12,16 +12,16 @@ export interface ParsedMention {
 
 /**
  * Parse mentions from message content.
- * Supports: @username, @"full name", @agentslug, @all
- * 
+ * Supports: @username, @user-name, @"full name", @agentslug, @all
+ *
  * @param content - Message content
  * @returns Array of mention strings (unresolved)
  */
 export function extractMentionStrings(content: string): string[] {
-  const pattern = /@(\w+|"[^"]+")/g;
+  const pattern = /@(\w+(?:-\w+)*|"[^"]+")/g;
   const matches = content.match(pattern) || [];
-  
-  return matches.map(m => {
+
+  return matches.map((m) => {
     // Remove @ prefix
     let mention = m.slice(1);
     // Remove quotes if present
@@ -41,7 +41,7 @@ export function hasAllMention(content: string): boolean {
 
 /**
  * Resolve mention strings to actual users and agents.
- * 
+ *
  * @param ctx - Convex context
  * @param accountId - Account to search within
  * @param mentionStrings - Array of mention strings to resolve
@@ -50,36 +50,37 @@ export function hasAllMention(content: string): boolean {
 export async function resolveMentions(
   ctx: QueryCtx,
   accountId: Id<"accounts">,
-  mentionStrings: string[]
+  mentionStrings: string[],
 ): Promise<ParsedMention[]> {
   if (mentionStrings.length === 0) {
     return [];
   }
-  
+
   const mentions: ParsedMention[] = [];
   const resolved = new Set<string>();
-  
+
   // Fetch all members and agents for the account
   const memberships = await ctx.db
     .query("memberships")
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
-  
+
   const agents = await ctx.db
     .query("agents")
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
-  
+
   for (const mentionStr of mentionStrings) {
     // Skip if already resolved
     if (resolved.has(mentionStr)) continue;
-    
+
     // Try to match user by name (case-insensitive)
-    const matchedMember = memberships.find(m => 
-      m.userName.toLowerCase() === mentionStr ||
-      m.userEmail.toLowerCase().split('@')[0] === mentionStr
+    const matchedMember = memberships.find(
+      (m) =>
+        m.userName.toLowerCase() === mentionStr ||
+        m.userEmail.toLowerCase().split("@")[0] === mentionStr,
     );
-    
+
     if (matchedMember) {
       mentions.push({
         type: "user",
@@ -89,13 +90,14 @@ export async function resolveMentions(
       resolved.add(mentionStr);
       continue;
     }
-    
+
     // Try to match agent by slug or name
-    const matchedAgent = agents.find(a => 
-      a.slug.toLowerCase() === mentionStr ||
-      a.name.toLowerCase() === mentionStr
+    const matchedAgent = agents.find(
+      (a) =>
+        a.slug.toLowerCase() === mentionStr ||
+        a.name.toLowerCase() === mentionStr,
     );
-    
+
     if (matchedAgent) {
       mentions.push({
         type: "agent",
@@ -104,10 +106,10 @@ export async function resolveMentions(
       });
       resolved.add(mentionStr);
     }
-    
+
     // If no match, skip (don't include unresolved mentions)
   }
-  
+
   return mentions;
 }
 
@@ -117,16 +119,16 @@ export async function resolveMentions(
 export async function getAllMentions(
   ctx: QueryCtx,
   accountId: Id<"accounts">,
-  excludeAuthorId?: string
+  excludeAuthorId?: string,
 ): Promise<ParsedMention[]> {
   const mentions: ParsedMention[] = [];
-  
+
   // Get all members
   const memberships = await ctx.db
     .query("memberships")
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
-  
+
   for (const m of memberships) {
     if (m.userId !== excludeAuthorId) {
       mentions.push({
@@ -136,13 +138,13 @@ export async function getAllMentions(
       });
     }
   }
-  
+
   // Get all agents
   const agents = await ctx.db
     .query("agents")
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
-  
+
   for (const a of agents) {
     if (a._id !== excludeAuthorId) {
       mentions.push({
@@ -152,6 +154,6 @@ export async function getAllMentions(
       });
     }
   }
-  
+
   return mentions;
 }

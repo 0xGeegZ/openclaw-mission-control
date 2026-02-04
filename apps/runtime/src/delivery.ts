@@ -178,7 +178,7 @@ export function getDeliveryState(): DeliveryState {
 
 /**
  * Decide whether a notification should be delivered to an agent.
- * Skips agent-authored thread updates to prevent agent-to-agent reply loops.
+ * Skips thread updates to reduce noise and avoid reply loops.
  */
 function shouldDeliverToAgent(context: any): boolean {
   const notificationType = context?.notification?.type;
@@ -189,11 +189,29 @@ function shouldDeliverToAgent(context: any): boolean {
 }
 
 /**
+ * Format full thread context lines for delivery.
+ */
+function formatThreadContext(thread: any[] | undefined): string {
+  if (!thread || thread.length === 0) return "";
+  const lines = ["Thread history (full):"];
+  for (const item of thread) {
+    const authorLabel =
+      item.authorName ?? `${item.authorType}:${item.authorId}`;
+    const timestamp = item.createdAt
+      ? new Date(item.createdAt).toISOString()
+      : "unknown_time";
+    const content = item.content?.trim() || "(empty)";
+    lines.push(`- [${timestamp}] ${authorLabel}: ${content}`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Format notification message for OpenClaw.
  * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
  */
 function formatNotificationMessage(context: any): string {
-  const { notification, task, message } = context;
+  const { notification, task, message, thread } = context;
   const taskDescription = task?.description?.trim()
     ? `Task description:\n${task.description.trim()}`
     : "";
@@ -206,6 +224,7 @@ function formatNotificationMessage(context: any): string {
         `Message ID: ${message._id}`,
       ].join("\n")
     : "";
+  const threadDetails = formatThreadContext(thread);
 
   return `
 ## Notification: ${notification.type}
@@ -217,6 +236,9 @@ ${notification.body}
 ${task ? `Task: ${task.title} (${task.status})` : ""}
 ${taskDescription}
 ${messageDetails}
+${threadDetails}
+
+Use the thread history above before asking for missing info. Do not request items already present there.
 
 Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 
