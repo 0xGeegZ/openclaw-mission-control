@@ -178,13 +178,20 @@ export function getDeliveryState(): DeliveryState {
 
 /**
  * Decide whether a notification should be delivered to an agent.
- * Skips thread updates to reduce noise and avoid reply loops.
+ * Skips agent-authored thread updates unless the recipient is assigned to the task,
+ * which avoids agent-to-agent reply loops while still notifying the responsible agent.
  */
 function shouldDeliverToAgent(context: any): boolean {
   const notificationType = context?.notification?.type;
   const messageAuthorType = context?.message?.authorType;
-  if (notificationType === "thread_update" && messageAuthorType === "agent")
-    return false;
+
+  if (notificationType === "thread_update" && messageAuthorType === "agent") {
+    const recipientId = context?.notification?.recipientId;
+    const assignedAgentIds = context?.task?.assignedAgentIds;
+    if (!Array.isArray(assignedAgentIds)) return false;
+    return assignedAgentIds.includes(recipientId);
+  }
+
   return true;
 }
 
