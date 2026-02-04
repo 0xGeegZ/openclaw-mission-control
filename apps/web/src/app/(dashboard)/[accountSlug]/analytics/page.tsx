@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { TASK_STATUS_LABELS } from "@packages/shared";
 import type { TaskStatus } from "@packages/shared";
@@ -37,21 +43,21 @@ import {
 
 // Define colors for task statuses (computed, not CSS vars)
 const STATUS_COLORS: Record<TaskStatus, string> = {
-  inbox: "#6b7280",      // gray
-  assigned: "#8b5cf6",   // violet
+  inbox: "#6b7280", // gray
+  assigned: "#8b5cf6", // violet
   in_progress: "#3b82f6", // blue
-  review: "#f59e0b",     // amber
-  done: "#22c55e",       // green
-  blocked: "#ef4444",    // red
+  review: "#f59e0b", // amber
+  done: "#22c55e", // green
+  blocked: "#ef4444", // red
 };
 
 // Define colors for agent statuses
 const AGENT_STATUS_COLORS: Record<string, string> = {
-  online: "#22c55e",   // green
-  busy: "#f59e0b",     // amber
-  idle: "#6b7280",     // gray
-  offline: "#9ca3af",  // light gray
-  error: "#ef4444",    // red
+  online: "#22c55e", // green
+  busy: "#f59e0b", // amber
+  idle: "#6b7280", // gray
+  offline: "#9ca3af", // light gray
+  error: "#ef4444", // red
 };
 
 interface AnalyticsPageProps {
@@ -67,7 +73,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
   const summary = useQuery(
     api.analytics.getSummary,
-    accountId ? { accountId } : "skip"
+    accountId ? { accountId } : "skip",
   );
 
   const statusOrder: TaskStatus[] = [
@@ -114,8 +120,10 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   // Calculate active tasks (in_progress + review)
   const activeTasks = useMemo(() => {
     if (!summary) return 0;
-    return (summary.taskCountByStatus["in_progress"] ?? 0) + 
-           (summary.taskCountByStatus["review"] ?? 0);
+    return (
+      (summary.taskCountByStatus["in_progress"] ?? 0) +
+      (summary.taskCountByStatus["review"] ?? 0)
+    );
   }, [summary]);
 
   const chartConfig: ChartConfig = {
@@ -130,7 +138,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
             <BarChart3 className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Analytics</h1>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+              Analytics
+            </h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
               Task and agent overview for this workspace
             </p>
@@ -140,7 +150,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {summary === undefined ? (
-          <div className="space-y-6 max-w-5xl animate-in fade-in duration-300">
+          <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats skeleton */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -179,7 +189,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
             </div>
           </div>
         ) : (
-          <div className="space-y-6 max-w-5xl">
+          <div className="space-y-6">
             {/* Stats cards */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
               <Card className="relative overflow-hidden">
@@ -191,7 +201,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                   <ListTodo className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl sm:text-3xl font-bold">{summary.totalTasks}</div>
+                  <div className="text-2xl sm:text-3xl font-bold">
+                    {summary.totalTasks}
+                  </div>
                   <Link
                     href={`/${accountSlug}/tasks`}
                     className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
@@ -210,7 +222,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                   <Bot className="h-4 w-4 text-violet-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl sm:text-3xl font-bold">{summary.totalAgents}</div>
+                  <div className="text-2xl sm:text-3xl font-bold">
+                    {summary.totalAgents}
+                  </div>
                   <Link
                     href={`/${accountSlug}/agents`}
                     className="text-xs text-violet-500 hover:underline inline-flex items-center gap-1 mt-1"
@@ -229,7 +243,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                   <TrendingUp className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl sm:text-3xl font-bold">{completionRate}%</div>
+                  <div className="text-2xl sm:text-3xl font-bold">
+                    {completionRate}%
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {summary.taskCountByStatus["done"] ?? 0} tasks done
                   </p>
@@ -245,7 +261,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                   <Activity className="h-4 w-4 text-amber-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl sm:text-3xl font-bold">{summary.recentActivityCount}</div>
+                  <div className="text-2xl sm:text-3xl font-bold">
+                    {summary.recentActivityCount}
+                  </div>
                   <Link
                     href={`/${accountSlug}/feed`}
                     className="text-xs text-amber-600 hover:underline inline-flex items-center gap-1 mt-1"
@@ -265,7 +283,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                     <BarChart3 className="h-4 w-4 text-primary" />
                     Tasks by Status
                   </CardTitle>
-                  <CardDescription>Distribution across Kanban columns</CardDescription>
+                  <CardDescription>
+                    Distribution across Kanban columns
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {summary.totalTasks === 0 ? (
@@ -273,24 +293,36 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
                         <ListTodo className="h-6 w-6 text-muted-foreground/50" />
                       </div>
-                      <p className="text-sm text-muted-foreground">No tasks yet</p>
-                      <Link href={`/${accountSlug}/tasks`} className="text-xs text-primary hover:underline mt-1">
+                      <p className="text-sm text-muted-foreground">
+                        No tasks yet
+                      </p>
+                      <Link
+                        href={`/${accountSlug}/tasks`}
+                        className="text-xs text-primary hover:underline mt-1"
+                      >
                         Create your first task
                       </Link>
                     </div>
                   ) : (
-                    <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart 
-                          data={taskChartData} 
+                        <BarChart
+                          data={taskChartData}
                           layout="vertical"
                           margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
                         >
-                          <XAxis type="number" tickLine={false} axisLine={false} />
-                          <YAxis 
-                            dataKey="label" 
-                            type="category" 
-                            tickLine={false} 
+                          <XAxis
+                            type="number"
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            dataKey="label"
+                            type="category"
+                            tickLine={false}
                             axisLine={false}
                             width={80}
                             tick={{ fontSize: 12 }}
@@ -299,8 +331,8 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                             content={<ChartTooltipContent hideIndicator />}
                             cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
                           />
-                          <Bar 
-                            dataKey="count" 
+                          <Bar
+                            dataKey="count"
                             radius={[0, 4, 4, 0]}
                             maxBarSize={24}
                           >
@@ -322,7 +354,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                     <PieChartIcon className="h-4 w-4 text-violet-500" />
                     Agent Status
                   </CardTitle>
-                  <CardDescription>Current state of your agents</CardDescription>
+                  <CardDescription>
+                    Current state of your agents
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {summary.totalAgents === 0 ? (
@@ -330,13 +364,21 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
                         <Bot className="h-6 w-6 text-muted-foreground/50" />
                       </div>
-                      <p className="text-sm text-muted-foreground">No agents yet</p>
-                      <Link href={`/${accountSlug}/agents`} className="text-xs text-primary hover:underline mt-1">
+                      <p className="text-sm text-muted-foreground">
+                        No agents yet
+                      </p>
+                      <Link
+                        href={`/${accountSlug}/agents`}
+                        className="text-xs text-primary hover:underline mt-1"
+                      >
                         Create your first agent
                       </Link>
                     </div>
                   ) : (
-                    <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -361,12 +403,17 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                       {/* Custom legend */}
                       <div className="flex flex-wrap justify-center gap-4 mt-2">
                         {agentChartData.map((item) => (
-                          <div key={item.status} className="flex items-center gap-1.5 text-xs">
-                            <div 
-                              className="h-2.5 w-2.5 rounded-full" 
+                          <div
+                            key={item.status}
+                            className="flex items-center gap-1.5 text-xs"
+                          >
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
                               style={{ backgroundColor: item.fill }}
                             />
-                            <span className="text-muted-foreground">{item.label}</span>
+                            <span className="text-muted-foreground">
+                              {item.label}
+                            </span>
                             <span className="font-medium">{item.count}</span>
                           </div>
                         ))}
@@ -381,33 +428,39 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Task Pipeline</CardTitle>
-                <CardDescription>Visual representation of task flow</CardDescription>
+                <CardDescription>
+                  Visual representation of task flow
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {statusOrder.map((status) => {
                     const count = summary.taskCountByStatus[status] ?? 0;
-                    const percentage = summary.totalTasks > 0 
-                      ? Math.round((count / summary.totalTasks) * 100) 
-                      : 0;
+                    const percentage =
+                      summary.totalTasks > 0
+                        ? Math.round((count / summary.totalTasks) * 100)
+                        : 0;
                     return (
                       <div key={status} className="space-y-1.5">
                         <div className="flex items-center justify-between text-sm">
                           <span className="flex items-center gap-2">
-                            <div 
-                              className="h-2.5 w-2.5 rounded-full" 
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
                               style={{ backgroundColor: STATUS_COLORS[status] }}
                             />
                             {TASK_STATUS_LABELS[status]}
                           </span>
                           <span className="font-medium tabular-nums">
-                            {count} <span className="text-muted-foreground font-normal">({percentage}%)</span>
+                            {count}{" "}
+                            <span className="text-muted-foreground font-normal">
+                              ({percentage}%)
+                            </span>
                           </span>
                         </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full rounded-full transition-all duration-500 ease-out"
-                            style={{ 
+                            style={{
                               width: `${percentage}%`,
                               backgroundColor: STATUS_COLORS[status],
                             }}
