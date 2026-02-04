@@ -27,7 +27,7 @@ export default function SearchPage({ params }: SearchPageProps) {
     api.search.globalSearch,
     accountId && query.trim().length >= 2
       ? { accountId, searchQuery: query.trim(), limitPerCategory: 15 }
-      : "skip"
+      : "skip",
   );
 
   const hasQuery = query.trim().length >= 2;
@@ -64,9 +64,12 @@ export default function SearchPage({ params }: SearchPageProps) {
                 <Search className="h-8 w-8 text-muted-foreground/50" />
               </div>
             </div>
-            <h3 className="text-lg font-semibold text-foreground">Search your workspace</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Search your workspace
+            </h3>
             <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
-              Find tasks, documents, and agents by entering at least 2 characters.
+              Find tasks, documents, and agents by entering at least 2
+              characters.
             </p>
           </div>
         ) : result === undefined ? (
@@ -92,9 +95,15 @@ export default function SearchPage({ params }: SearchPageProps) {
                 <Search className="h-8 w-8 text-amber-500/60" />
               </div>
             </div>
-            <h3 className="text-lg font-semibold text-foreground">No results found</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              No results found
+            </h3>
             <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
-              No matches for "<span className="font-medium text-foreground">{query.trim()}</span>". Try different keywords or check your spelling.
+              No matches for &quot;
+              <span className="font-medium text-foreground">
+                {query.trim()}
+              </span>
+              &quot;. Try different keywords or check your spelling.
             </p>
           </div>
         ) : (
@@ -114,7 +123,9 @@ export default function SearchPage({ params }: SearchPageProps) {
                     >
                       <ListTodo className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{t.title}</p>
+                        <p className="font-medium text-sm truncate">
+                          {t.title}
+                        </p>
                         <p className="text-xs text-muted-foreground capitalize">
                           {t.status}
                         </p>
@@ -159,7 +170,9 @@ export default function SearchPage({ params }: SearchPageProps) {
                     >
                       <Bot className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{a.title}</p>
+                        <p className="font-medium text-sm truncate">
+                          {a.title}
+                        </p>
                         {a.role && (
                           <p className="text-xs text-muted-foreground">
                             {a.role}

@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
-import { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
+import { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
   Sheet,
   SheetContent,
@@ -10,21 +10,25 @@ import {
   SheetTitle,
 } from "@packages/ui/components/sheet";
 import { Badge } from "@packages/ui/components/badge";
-import { Button } from "@packages/ui/components/button";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
 
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@packages/ui/components/tabs";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { formatDistanceToNow, format } from "date-fns";
-import { 
-  ArrowUpRight, 
-  Calendar, 
-  MessageSquare, 
+import {
+  ArrowUpRight,
+  Calendar,
+  MessageSquare,
   FileText,
   Clock,
   Flag,
-  Tag
+  Tag,
 } from "lucide-react";
 import Link from "next/link";
 import { TASK_STATUS_LABELS } from "@packages/shared";
@@ -39,51 +43,96 @@ interface TaskDetailSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const PRIORITY_CONFIG: Record<number, { label: string; color: string; bgColor: string }> = {
-  1: { label: "Critical", color: "bg-red-500", bgColor: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
-  2: { label: "High", color: "bg-orange-500", bgColor: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
-  3: { label: "Medium", color: "bg-amber-500", bgColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  4: { label: "Low", color: "bg-blue-500", bgColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
-  5: { label: "Lowest", color: "bg-slate-400", bgColor: "bg-slate-400/10 text-slate-600 dark:text-slate-400 border-slate-400/20" },
+const PRIORITY_CONFIG: Record<
+  number,
+  { label: string; color: string; bgColor: string }
+> = {
+  1: {
+    label: "Critical",
+    color: "bg-red-500",
+    bgColor: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  },
+  2: {
+    label: "High",
+    color: "bg-orange-500",
+    bgColor:
+      "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  },
+  3: {
+    label: "Medium",
+    color: "bg-amber-500",
+    bgColor:
+      "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  },
+  4: {
+    label: "Low",
+    color: "bg-blue-500",
+    bgColor:
+      "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  },
+  5: {
+    label: "Lowest",
+    color: "bg-slate-400",
+    bgColor:
+      "bg-slate-400/10 text-slate-600 dark:text-slate-400 border-slate-400/20",
+  },
 };
 
 const STATUS_CONFIG: Record<string, { color: string; bgColor: string }> = {
-  inbox: { color: "bg-slate-400", bgColor: "bg-slate-400/10 text-slate-600 dark:text-slate-400 border-slate-400/20" },
-  assigned: { color: "bg-primary", bgColor: "bg-primary/10 text-primary border-primary/20" },
-  in_progress: { color: "bg-amber-500", bgColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  review: { color: "bg-violet-500", bgColor: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
-  done: { color: "bg-emerald-500", bgColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" },
-  blocked: { color: "bg-destructive", bgColor: "bg-destructive/10 text-destructive border-destructive/20" },
+  inbox: {
+    color: "bg-slate-400",
+    bgColor:
+      "bg-slate-400/10 text-slate-600 dark:text-slate-400 border-slate-400/20",
+  },
+  assigned: {
+    color: "bg-primary",
+    bgColor: "bg-primary/10 text-primary border-primary/20",
+  },
+  in_progress: {
+    color: "bg-amber-500",
+    bgColor:
+      "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  },
+  review: {
+    color: "bg-violet-500",
+    bgColor:
+      "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+  },
+  done: {
+    color: "bg-emerald-500",
+    bgColor:
+      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+  },
+  blocked: {
+    color: "bg-destructive",
+    bgColor: "bg-destructive/10 text-destructive border-destructive/20",
+  },
 };
 
 /**
  * Task detail sheet component.
  * Opens as a slide-over panel showing full task details.
  */
-export function TaskDetailSheet({ 
-  taskId, 
-  accountSlug, 
-  open, 
-  onOpenChange 
+export function TaskDetailSheet({
+  taskId,
+  accountSlug,
+  open,
+  onOpenChange,
 }: TaskDetailSheetProps) {
-  const task = useQuery(
-    api.tasks.get,
-    taskId ? { taskId } : "skip"
-  );
+  const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
 
   const agents = useQuery(
     api.agents.getRoster,
-    task?.accountId ? { accountId: task.accountId } : "skip"
+    task?.accountId ? { accountId: task.accountId } : "skip",
   );
 
-  const assignedAgents = agents?.filter(agent => 
-    task?.assignedAgentIds.includes(agent._id)
-  ) ?? [];
+  const assignedAgents =
+    agents?.filter((agent) => task?.assignedAgentIds.includes(agent._id)) ?? [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="right" 
+      <SheetContent
+        side="right"
         className="w-full sm:w-[50vw] sm:max-w-none p-0 flex flex-col"
         showCloseButton={true}
         headerActions={
@@ -109,38 +158,52 @@ export function TaskDetailSheet({
           <>
             <SheetHeader className="p-5 pb-4 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
               <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-2">
-                <div className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`} />
-                <span className="uppercase tracking-widest font-medium text-[10px]">Task Detail</span>
+                <div
+                  className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
+                />
+                <span className="uppercase tracking-widest font-medium text-[10px]">
+                  Task Detail
+                </span>
               </div>
-              
+
               <SheetTitle className="text-xl font-bold leading-tight text-balance pr-16">
                 {task.title}
               </SheetTitle>
             </SheetHeader>
-            
+
             <div className="p-5 space-y-4 shrink-0 border-b border-border/50">
               {/* Status badge */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className={`gap-1.5 border ${STATUS_CONFIG[task.status]?.bgColor}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`} />
+                <Badge
+                  variant="outline"
+                  className={`gap-1.5 border ${STATUS_CONFIG[task.status]?.bgColor}`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
+                  />
                   {TASK_STATUS_LABELS[task.status]}
                 </Badge>
-                
+
                 {task.priority && (
-                  <Badge variant="outline" className={`gap-1.5 border ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_CONFIG[task.priority]?.color || PRIORITY_CONFIG[3].color}`} />
+                  <Badge
+                    variant="outline"
+                    className={`gap-1.5 border ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${PRIORITY_CONFIG[task.priority]?.color || PRIORITY_CONFIG[3].color}`}
+                    />
                     {PRIORITY_CONFIG[task.priority]?.label || "Medium"}
                   </Badge>
                 )}
               </div>
-              
+
               {/* Description */}
               {task.description && (
                 <div className="text-sm leading-relaxed">
                   <MarkdownRenderer content={task.description} compact />
                 </div>
               )}
-              
+
               {/* Blocked reason */}
               {task.status === "blocked" && task.blockedReason && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
@@ -148,22 +211,31 @@ export function TaskDetailSheet({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Blocked Reason</p>
                     <div className="text-sm opacity-90">
-                      <MarkdownRenderer content={task.blockedReason} compact className="prose-p:my-1" />
+                      <MarkdownRenderer
+                        content={task.blockedReason}
+                        compact
+                        className="prose-p:my-1"
+                      />
                     </div>
                   </div>
                 </div>
               )}
-              
+
               {/* Metadata grid */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 {/* Assignees */}
                 <div className="space-y-2 p-3 rounded-xl bg-muted/30">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">Assignees</span>
+                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
+                    Assignees
+                  </span>
                   <div className="flex items-center gap-2">
                     {assignedAgents.length > 0 ? (
                       <div className="flex -space-x-2">
                         {assignedAgents.slice(0, 4).map((agent) => (
-                          <Avatar key={agent._id} className="h-7 w-7 ring-2 ring-background shadow-sm">
+                          <Avatar
+                            key={agent._id}
+                            className="h-7 w-7 ring-2 ring-background shadow-sm"
+                          >
                             <AvatarFallback className="text-[10px] font-semibold bg-gradient-to-br from-primary/15 to-primary/5 text-primary">
                               {agent.name.slice(0, 2).toUpperCase()}
                             </AvatarFallback>
@@ -171,49 +243,66 @@ export function TaskDetailSheet({
                         ))}
                         {assignedAgents.length > 4 && (
                           <div className="h-7 w-7 rounded-full ring-2 ring-background bg-muted flex items-center justify-center shadow-sm">
-                            <span className="text-[10px] font-semibold text-muted-foreground">+{assignedAgents.length - 4}</span>
+                            <span className="text-[10px] font-semibold text-muted-foreground">
+                              +{assignedAgents.length - 4}
+                            </span>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground/60 text-xs italic">Unassigned</span>
+                      <span className="text-muted-foreground/60 text-xs italic">
+                        Unassigned
+                      </span>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Due date */}
                 <div className="space-y-2 p-3 rounded-xl bg-muted/30">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">Due Date</span>
+                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
+                    Due Date
+                  </span>
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5 text-muted-foreground/60" />
                     <span className="text-sm">
-                      {task.dueDate 
-                        ? format(new Date(task.dueDate), "MMM d, yyyy")
-                        : <span className="text-muted-foreground/60 italic">No due date</span>
-                      }
+                      {task.dueDate ? (
+                        format(new Date(task.dueDate), "MMM d, yyyy")
+                      ) : (
+                        <span className="text-muted-foreground/60 italic">
+                          No due date
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Created */}
                 <div className="space-y-2 p-3 rounded-xl bg-muted/30">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">Created</span>
+                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
+                    Created
+                  </span>
                   <div className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    <span className="text-sm tabular-nums">{formatDistanceToNow(task.createdAt, { addSuffix: true })}</span>
+                    <span className="text-sm tabular-nums">
+                      {formatDistanceToNow(task.createdAt, { addSuffix: true })}
+                    </span>
                   </div>
                 </div>
-                
+
                 {/* Updated */}
                 <div className="space-y-2 p-3 rounded-xl bg-muted/30">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">Updated</span>
+                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
+                    Updated
+                  </span>
                   <div className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    <span className="text-sm tabular-nums">{formatDistanceToNow(task.updatedAt, { addSuffix: true })}</span>
+                    <span className="text-sm tabular-nums">
+                      {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
+                    </span>
                   </div>
                 </div>
               </div>
-              
+
               {/* Labels */}
               {task.labels.length > 0 && (
                 <div className="space-y-2 p-3 rounded-xl bg-muted/30">
@@ -223,7 +312,11 @@ export function TaskDetailSheet({
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {task.labels.map((label) => (
-                      <Badge key={label} variant="secondary" className="text-xs bg-background/50 border border-border/30">
+                      <Badge
+                        key={label}
+                        variant="secondary"
+                        className="text-xs bg-background/50 border border-border/30"
+                      >
                         {label}
                       </Badge>
                     ))}
@@ -231,9 +324,12 @@ export function TaskDetailSheet({
                 </div>
               )}
             </div>
-            
+
             {/* Tabs for Thread / Documents */}
-            <Tabs defaultValue="thread" className="flex-1 flex flex-col min-h-0">
+            <Tabs
+              defaultValue="thread"
+              className="flex-1 flex flex-col min-h-0"
+            >
               <div className="shrink-0 border-b px-4">
                 <TabsList variant="line" className="h-10">
                   <TabsTrigger value="thread" className="px-4 gap-2 text-sm">
@@ -246,9 +342,9 @@ export function TaskDetailSheet({
                   </TabsTrigger>
                 </TabsList>
               </div>
-              
-              <TabsContent 
-                value="thread" 
+
+              <TabsContent
+                value="thread"
                 className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
               >
                 <TaskThread
@@ -257,9 +353,9 @@ export function TaskDetailSheet({
                   accountId={task.accountId}
                 />
               </TabsContent>
-              
-              <TabsContent 
-                value="documents" 
+
+              <TabsContent
+                value="documents"
                 className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
               >
                 <ScrollArea className="h-full">

@@ -27,7 +27,9 @@ export const getSummary = query({
   handler: async (ctx, args): Promise<AnalyticsSummary> => {
     await requireAccountMember(ctx, args.accountId);
 
-    const [tasks, agents, activities] = await Promise.all([
+    const since = Date.now() - ONE_DAY_MS;
+
+    const [tasks, agents, recentActivities] = await Promise.all([
       ctx.db
         .query("tasks")
         .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
@@ -38,7 +40,9 @@ export const getSummary = query({
         .collect(),
       ctx.db
         .query("activities")
-        .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
+        .withIndex("by_account_created", (q) =>
+          q.eq("accountId", args.accountId).gte("createdAt", since),
+        )
         .collect(),
     ]);
 
@@ -59,11 +63,11 @@ export const getSummary = query({
       agentCountByStatus[a.status] = (agentCountByStatus[a.status] ?? 0) + 1;
     }
 
-    const since = Date.now() - ONE_DAY_MS;
-    const recentActivityCount = activities.filter((a) => a.createdAt >= since).length;
+    const recentActivityCount = recentActivities.length;
 
     return {
-      taskCountByStatus: taskCountByStatus as AnalyticsSummary["taskCountByStatus"],
+      taskCountByStatus:
+        taskCountByStatus as AnalyticsSummary["taskCountByStatus"],
       agentCountByStatus,
       totalTasks: tasks.length,
       totalAgents: agents.length,

@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
-import { FileText, File, ExternalLink } from "lucide-react";
+import { FileText, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@packages/ui/components/card";
 import { Badge } from "@packages/ui/components/badge";
@@ -19,7 +19,7 @@ interface TaskDocumentsProps {
  */
 export function TaskDocuments({ taskId }: TaskDocumentsProps) {
   const documents = useQuery(api.documents.listByTask, { taskId });
-  
+
   if (documents === undefined) {
     return (
       <div className="p-6 space-y-3">
@@ -39,7 +39,7 @@ export function TaskDocuments({ taskId }: TaskDocumentsProps) {
       </div>
     );
   }
-  
+
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center px-6">
@@ -48,22 +48,21 @@ export function TaskDocuments({ taskId }: TaskDocumentsProps) {
             <FileText className="h-8 w-8 text-blue-500/60" />
           </div>
         </div>
-        <h3 className="text-lg font-semibold text-foreground">No documents yet</h3>
+        <h3 className="text-lg font-semibold text-foreground">
+          No documents yet
+        </h3>
         <p className="text-sm text-muted-foreground/70 mt-2 max-w-xs leading-relaxed">
-          Documents and files linked to this task will appear here for easy access.
+          Documents and files linked to this task will appear here for easy
+          access.
         </p>
       </div>
     );
   }
-  
+
   return (
     <div className="p-6 space-y-3">
       {documents.map((doc) => (
-        <Link
-          key={doc._id}
-          href={`/docs/${doc._id}`}
-          className="block group"
-        >
+        <Link key={doc._id} href={`/docs/${doc._id}`} className="block group">
           <Card className="hover:shadow-md hover:border-primary/20 transition-all">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">

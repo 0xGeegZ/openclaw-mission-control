@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -58,7 +59,10 @@ export function TaskThread({
   /** Agents currently "typing" (readAt set, deliveredAt empty, within window). */
   const typingAgents = useMemo(() => {
     if (!receipts) return [];
-    const agentsMap = new Map<string, { id: string; name: string; avatarUrl?: string }>();
+    const agentsMap = new Map<
+      string,
+      { id: string; name: string; avatarUrl?: string }
+    >();
     for (const r of receipts) {
       if (
         r.readAt != null &&
@@ -76,7 +80,9 @@ export function TaskThread({
         }
       }
     }
-    return Array.from(agentsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(agentsMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [receipts, agentsByAuthorId, now]);
 
   /** Latest user-authored message (for read receipt). */
@@ -105,7 +111,9 @@ export function TaskThread({
         }
       }
     }
-    return Array.from(agentsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(agentsMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [latestUserMessage, receipts, agentsByAuthorId]);
 
   // Auto-scroll to bottom on new messages
@@ -141,13 +149,10 @@ export function TaskThread({
               {messages.map((message, index) => {
                 const prevMessage = index > 0 ? messages[index - 1] : null;
                 const showDivider =
-                  prevMessage &&
-                  prevMessage.authorType !== message.authorType;
+                  prevMessage && prevMessage.authorType !== message.authorType;
                 return (
                   <div key={message._id}>
-                    {showDivider && (
-                      <div className="h-px bg-border/30 my-3" />
-                    )}
+                    {showDivider && <div className="h-px bg-border/30 my-3" />}
                     <MessageItem
                       message={message}
                       agentsByAuthorId={agentsByAuthorId}
@@ -197,9 +202,11 @@ export function TaskThread({
                   title={agent.name}
                 >
                   {agent.avatarUrl ? (
-                    <img
+                    <Image
                       src={agent.avatarUrl}
                       alt={agent.name}
+                      width={28}
+                      height={28}
                       className="h-full w-full object-cover"
                     />
                   ) : (
