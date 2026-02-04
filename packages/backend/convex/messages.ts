@@ -204,6 +204,8 @@ export const update = mutation({
 
 /**
  * Delete a message.
+ * Authors can delete their own messages.
+ * Admins and owners can delete any message.
  */
 export const remove = mutation({
   args: {
@@ -215,11 +217,14 @@ export const remove = mutation({
       throw new Error("Not found: Message does not exist");
     }
     
-    const { userId } = await requireAccountMember(ctx, message.accountId);
+    const { userId, membership } = await requireAccountMember(ctx, message.accountId);
     
-    // Only author can delete (or admin - could add later)
-    if (message.authorType !== "user" || message.authorId !== userId) {
-      throw new Error("Forbidden: Only author can delete message");
+    const isAuthor = message.authorType === "user" && message.authorId === userId;
+    const isAdminOrOwner = membership.role === "admin" || membership.role === "owner";
+    
+    // Allow deletion if author OR if admin/owner
+    if (!isAuthor && !isAdminOrOwner) {
+      throw new Error("Forbidden: Only author or admin can delete message");
     }
     
     await ctx.db.delete(args.messageId);
