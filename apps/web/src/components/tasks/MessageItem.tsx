@@ -64,6 +64,7 @@ const MentionBadge = ({ name }: { name: string }) => (
 
 /**
  * Process text content to replace @mentions with styled badges.
+ * Supports both @word and @"name with spaces" patterns.
  * Returns an array of strings and React nodes.
  */
 function processTextWithMentions(
@@ -74,20 +75,38 @@ function processTextWithMentions(
     return [text];
   }
 
-  const parts = text.split(/(@\w+)/g);
-  return parts
-    .map((part, index) => {
-      const mentionMatch = part.match(/^@(\w+)$/);
-      if (mentionMatch) {
-        const mentionName = mentionMatch[1];
-        const mention = mentionMap.get(mentionName.toLowerCase());
-        if (mention) {
-          return <MentionBadge key={`mention-${index}`} name={mention.name} />;
-        }
-      }
-      return part;
-    })
-    .filter((part) => part !== "");
+  // Match both @word and @"quoted name" patterns
+  const mentionRegex = /@(?:"([^"]+)"|(\w+))/g;
+  const parts: (string | React.ReactNode)[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(text)) !== null) {
+    // Add text before this match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    // Get the mention name (either from quoted group or word group)
+    const mentionName = match[1] || match[2];
+    const mention = mentionMap.get(mentionName.toLowerCase());
+
+    if (mention) {
+      parts.push(<MentionBadge key={`mention-${match.index}`} name={mention.name} />);
+    } else {
+      // Not a valid mention, keep original text
+      parts.push(match[0]);
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after last match
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.filter((part) => part !== "");
 }
 
 /**
