@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from "@packages/ui/components/alert-dialog";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bot, AlertTriangle, Trash2 } from "lucide-react";
 
 interface AgentDeleteDialogProps {
   agentId: Id<"agents">;
@@ -56,25 +56,46 @@ export function AgentDeleteDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="sm:max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Agent</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete{" "}
-            <span className="font-medium text-foreground">{agentName}</span>?
-            This will remove the agent from all task assignments and delete
-            associated data. This action cannot be undone.
-          </AlertDialogDescription>
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+            </div>
+            <div>
+              <AlertDialogTitle className="text-lg">Delete Agent</AlertDialogTitle>
+              <AlertDialogDescription className="mt-1">
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </div>
+          </div>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+        <div className="py-4 px-1">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/50 mb-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
+              <Bot className="h-4 w-4 text-violet-500" />
+            </div>
+            <span className="font-medium">{agentName}</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            This will remove the agent from all task assignments and permanently delete all associated data.
+          </p>
+        </div>
+        <AlertDialogFooter className="gap-2 sm:gap-2">
+          <AlertDialogCancel disabled={isDeleting} className="rounded-lg">
+            Cancel
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
             disabled={isDeleting}
-            className="bg-destructive text-white hover:bg-destructive/90"
+            className="bg-destructive text-white hover:bg-destructive/90 rounded-lg gap-2"
           >
-            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isDeleting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            {isDeleting ? "Deleting..." : "Delete Agent"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

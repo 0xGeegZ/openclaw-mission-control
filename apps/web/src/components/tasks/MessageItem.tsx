@@ -32,6 +32,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@packages/ui/components/alert-dialog";
 import { Button } from "@packages/ui/components/button";
 import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -144,6 +154,8 @@ export function MessageItem({
   const [copied, setCopied] = useState(false);
   const deleteMessage = useMutation(api.messages.remove);
   const updateMessage = useMutation(api.messages.update);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isAuthor = message.authorType === "user" && message.authorId === userId;
   const isAgent = message.authorType === "agent";
@@ -159,11 +171,15 @@ export function MessageItem({
         ? agentAuthor.name
         : "Agent";
   const handleDelete = async () => {
+    setIsDeleting(true);
     try {
       await deleteMessage({ messageId: message._id });
       toast.success("Message deleted");
+      setShowDeleteConfirm(false);
     } catch {
       toast.error("Failed to delete message");
+    } finally {
+      setIsDeleting(false);
     }
   };
   const handleCopy = async () => {
@@ -385,7 +401,7 @@ export function MessageItem({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={handleDelete}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="text-destructive focus:text-destructive gap-2 text-sm rounded-lg"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -396,6 +412,40 @@ export function MessageItem({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Message</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this message? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3 px-1">
+            <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-muted-foreground line-clamp-3">
+              {message.content}
+            </div>
+          </div>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel disabled={isDeleting} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-white hover:bg-destructive/90 rounded-lg gap-2"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

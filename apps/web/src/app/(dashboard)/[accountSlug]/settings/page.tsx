@@ -58,6 +58,8 @@ import {
   Monitor,
   LogOut,
   ArrowRightLeft,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
@@ -944,23 +946,47 @@ export default function SettingsPage({ params }: SettingsPageProps) {
 
       {/* Delete confirmation */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Workspace</DialogTitle>
-            <DialogDescription>
-              This will permanently delete this workspace and all its data. This action cannot be undone.
-            </DialogDescription>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg">Delete Workspace</DialogTitle>
+                <DialogDescription className="mt-1">
+                  This action cannot be undone.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="py-4 px-1">
+            <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20 mb-3">
+              <p className="text-sm font-medium text-destructive">Warning: Permanent deletion</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                All tasks, agents, documents, and team data will be permanently deleted.
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete <span className="font-semibold text-foreground">{account?.name}</span>?
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} className="rounded-lg">
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteWorkspace}
               disabled={deleteSubmitting}
+              className="rounded-lg gap-2"
             >
-              {deleteSubmitting ? "Deleting…" : "Delete Workspace"}
+              {deleteSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {deleteSubmitting ? "Deleting..." : "Delete Workspace"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -968,23 +994,42 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       
       {/* Leave workspace confirmation */}
       <Dialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Leave Workspace</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to leave this workspace? You will lose access to all workspace data and will need to be re-invited to rejoin.
-            </DialogDescription>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                <LogOut className="h-6 w-6 text-amber-500" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg">Leave Workspace</DialogTitle>
+                <DialogDescription className="mt-1">
+                  You will need to be re-invited to rejoin.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLeaveConfirm(false)}>
+          <div className="py-4 px-1">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to leave <span className="font-semibold text-foreground">{account?.name}</span>? 
+              You will lose access to all workspace data including tasks, documents, and conversations.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowLeaveConfirm(false)} className="rounded-lg">
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="default"
               onClick={handleLeaveWorkspace}
               disabled={leaveSubmitting}
+              className="rounded-lg gap-2 bg-amber-500 hover:bg-amber-600 text-white"
             >
-              {leaveSubmitting ? "Leaving…" : "Leave Workspace"}
+              {leaveSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
+              {leaveSubmitting ? "Leaving..." : "Leave Workspace"}
             </Button>
           </DialogFooter>
         </DialogContent>
