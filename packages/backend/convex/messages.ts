@@ -3,14 +3,17 @@ import { mutation, query } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
 import { attachmentValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
-import { 
-  extractMentionStrings, 
-  resolveMentions, 
+import {
+  extractMentionStrings,
+  resolveMentions,
   hasAllMention,
   getAllMentions,
 } from "./lib/mentions";
 import { ensureSubscribed } from "./subscriptions";
-import { createMentionNotifications, createThreadNotifications } from "./lib/notifications";
+import {
+  createMentionNotifications,
+  createThreadNotifications,
+} from "./lib/notifications";
 
 /**
  * List messages for a task thread.
@@ -25,22 +28,22 @@ export const listByTask = query({
     if (!task) {
       return [];
     }
-    
+
     await requireAccountMember(ctx, task.accountId);
-    
+
     let messages = await ctx.db
       .query("messages")
       .withIndex("by_task_created", (q) => q.eq("taskId", args.taskId))
       .collect();
-    
+
     // Sort by created (oldest first for chat)
     messages.sort((a, b) => a.createdAt - b.createdAt);
-    
+
     // Apply limit (from end for most recent)
     if (args.limit && messages.length > args.limit) {
       messages = messages.slice(-args.limit);
     }
-    
+
     return messages;
   },
 });
@@ -57,7 +60,7 @@ export const get = query({
     if (!message) {
       return null;
     }
-    
+
     await requireAccountMember(ctx, message.accountId);
     return message;
   },
@@ -77,12 +80,15 @@ export const create = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
-    const { userId, userName, accountId } = await requireAccountMember(ctx, task.accountId);
-    
+
+    const { userId, userName, accountId } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
     // Parse and resolve mentions
     let mentions;
-    
+
     if (hasAllMention(args.content)) {
       // @all - mention everyone except author
       mentions = await getAllMentions(ctx, accountId, userId);
@@ -91,7 +97,7 @@ export const create = mutation({
       const mentionStrings = extractMentionStrings(args.content);
       mentions = await resolveMentions(ctx, accountId, mentionStrings);
     }
-    
+
     // Create message
     const messageId = await ctx.db.insert("messages", {
       accountId,
@@ -103,15 +109,21 @@ export const create = mutation({
       attachments: args.attachments,
       createdAt: Date.now(),
     });
-    
+
     // Auto-subscribe author to thread
     await ensureSubscribed(ctx, accountId, args.taskId, "user", userId);
-    
+
     // Auto-subscribe mentioned entities
     for (const mention of mentions) {
-      await ensureSubscribed(ctx, accountId, args.taskId, mention.type, mention.id);
+      await ensureSubscribed(
+        ctx,
+        accountId,
+        args.taskId,
+        mention.type,
+        mention.id,
+      );
     }
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -123,13 +135,13 @@ export const create = mutation({
       targetType: "message",
       targetId: messageId,
       targetName: task.title,
-      meta: { 
+      meta: {
         taskId: args.taskId,
         mentionCount: mentions.length,
         hasAttachments: !!args.attachments?.length,
       },
     });
-    
+
     // Create mention notifications
     if (mentions.length > 0) {
       await createMentionNotifications(
@@ -139,12 +151,15 @@ export const create = mutation({
         messageId,
         mentions,
         userName,
-        task.title
+        task.title,
       );
     }
-    
+
     // Create thread update notifications
-    const mentionedIds = new Set(mentions.map(m => m.id));
+    const mentionedIds = new Set(mentions.map((m) => m.id));
+    const hasAgentMentions = mentions.some(
+      (mention) => mention.type === "agent",
+    );
     await createThreadNotifications(
       ctx,
       accountId,
@@ -154,9 +169,10 @@ export const create = mutation({
       userId,
       userName,
       task.title,
-      mentionedIds
+      mentionedIds,
+      hasAgentMentions,
     );
-    
+
     return messageId;
   },
 });
@@ -174,30 +190,30 @@ export const update = mutation({
     if (!message) {
       throw new Error("Not found: Message does not exist");
     }
-    
+
     const { userId } = await requireAccountMember(ctx, message.accountId);
-    
+
     // Only author can edit
     if (message.authorType !== "user" || message.authorId !== userId) {
       throw new Error("Forbidden: Only author can edit message");
     }
-    
+
     // Re-parse mentions from new content
     let mentions;
-    
+
     if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, message.accountId, userId);
     } else {
       const mentionStrings = extractMentionStrings(args.content);
       mentions = await resolveMentions(ctx, message.accountId, mentionStrings);
     }
-    
+
     await ctx.db.patch(args.messageId, {
       content: args.content,
       mentions,
       editedAt: Date.now(),
     });
-    
+
     return args.messageId;
   },
 });
@@ -214,16 +230,16 @@ export const remove = mutation({
     if (!message) {
       throw new Error("Not found: Message does not exist");
     }
-    
+
     const { userId } = await requireAccountMember(ctx, message.accountId);
-    
+
     // Only author can delete (or admin - could add later)
     if (message.authorType !== "user" || message.authorId !== userId) {
       throw new Error("Forbidden: Only author can delete message");
     }
-    
+
     await ctx.db.delete(args.messageId);
-    
+
     return true;
   },
 });
@@ -240,7 +256,7 @@ export const getCount = query({
       .query("messages")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
-    
+
     return messages.length;
   },
 });

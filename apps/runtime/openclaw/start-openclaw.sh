@@ -64,6 +64,16 @@ config.skills = config.skills || {};
 config.skills.install = config.skills.install || { nodeManager: 'npm' };
 config.skills.entries = config.skills.entries || {};
 
+/** Inject GitHub auth token for gh CLI in sandboxed exec. */
+const githubToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+if (githubToken) {
+  config.agents.defaults.sandbox = config.agents.defaults.sandbox || {};
+  config.agents.defaults.sandbox.docker = config.agents.defaults.sandbox.docker || {};
+  config.agents.defaults.sandbox.docker.env = config.agents.defaults.sandbox.docker.env || {};
+  config.agents.defaults.sandbox.docker.env.GH_TOKEN = githubToken;
+  config.agents.defaults.sandbox.docker.env.GITHUB_TOKEN = githubToken;
+}
+
 const hasVercelKey = Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY);
 
 // Gateway and browser (always enforced)

@@ -3,13 +3,16 @@ import { internalMutation } from "../_generated/server";
 import { attachmentValidator } from "../lib/validators";
 import { logActivity } from "../lib/activity";
 import { ensureSubscribed } from "../subscriptions";
-import { 
-  extractMentionStrings, 
-  resolveMentions, 
+import {
+  extractMentionStrings,
+  resolveMentions,
   hasAllMention,
   getAllMentions,
 } from "../lib/mentions";
-import { createMentionNotifications, createThreadNotifications } from "../lib/notifications";
+import {
+  createMentionNotifications,
+  createThreadNotifications,
+} from "../lib/notifications";
 
 /**
  * Create a message from an agent.
@@ -30,13 +33,13 @@ export const createFromAgent = internalMutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     // Get task info
     const task = await ctx.db.get(args.taskId);
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
-    
+
     // Verify same account
     if (task.accountId !== agent.accountId) {
       throw new Error("Forbidden: Task belongs to different account");
@@ -47,24 +50,24 @@ export const createFromAgent = internalMutation({
       const existing = await ctx.db
         .query("messages")
         .withIndex("by_source_notification", (q) =>
-          q.eq("sourceNotificationId", args.sourceNotificationId!)
+          q.eq("sourceNotificationId", args.sourceNotificationId!),
         )
         .first();
       if (existing) {
         return existing._id;
       }
     }
-    
+
     // Parse and resolve mentions
     let mentions;
-    
+
     if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, agent.accountId, args.agentId);
     } else {
       const mentionStrings = extractMentionStrings(args.content);
       mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
     }
-    
+
     // Create message
     const messageId = await ctx.db.insert("messages", {
       accountId: agent.accountId,
@@ -77,15 +80,27 @@ export const createFromAgent = internalMutation({
       createdAt: Date.now(),
       sourceNotificationId: args.sourceNotificationId,
     });
-    
+
     // Auto-subscribe agent to thread
-    await ensureSubscribed(ctx, agent.accountId, args.taskId, "agent", args.agentId);
-    
+    await ensureSubscribed(
+      ctx,
+      agent.accountId,
+      args.taskId,
+      "agent",
+      args.agentId,
+    );
+
     // Auto-subscribe mentioned entities
     for (const mention of mentions) {
-      await ensureSubscribed(ctx, agent.accountId, args.taskId, mention.type, mention.id);
+      await ensureSubscribed(
+        ctx,
+        agent.accountId,
+        args.taskId,
+        mention.type,
+        mention.id,
+      );
     }
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -97,12 +112,12 @@ export const createFromAgent = internalMutation({
       targetType: "message",
       targetId: messageId,
       targetName: task.title,
-      meta: { 
+      meta: {
         taskId: args.taskId,
         mentionCount: mentions.length,
       },
     });
-    
+
     // Create mention notifications
     if (mentions.length > 0) {
       await createMentionNotifications(
@@ -112,12 +127,15 @@ export const createFromAgent = internalMutation({
         messageId,
         mentions,
         agent.name,
-        task.title
+        task.title,
       );
     }
-    
+
     // Create thread update notifications
-    const mentionedIds = new Set(mentions.map(m => m.id));
+    const mentionedIds = new Set(mentions.map((m) => m.id));
+    const hasAgentMentions = mentions.some(
+      (mention) => mention.type === "agent",
+    );
     await createThreadNotifications(
       ctx,
       agent.accountId,
@@ -127,9 +145,10 @@ export const createFromAgent = internalMutation({
       args.agentId,
       agent.name,
       task.title,
-      mentionedIds
+      mentionedIds,
+      hasAgentMentions,
     );
-    
+
     return messageId;
   },
 });

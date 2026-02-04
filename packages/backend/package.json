@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "convex dev",
     "setup": "convex dev --until-success",
+    "seed": "convex run seed:runInternal",
     "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN === 'true') process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
     "typecheck": "tsc --noEmit -p convex"
   },

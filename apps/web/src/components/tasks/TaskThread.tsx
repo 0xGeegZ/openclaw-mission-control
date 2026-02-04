@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -12,25 +12,41 @@ import { MessageSquare, Sparkles } from "lucide-react";
 interface TaskThreadProps {
   taskId: Id<"tasks">;
   accountSlug: string;
+  accountId: Id<"accounts">;
 }
 
 /**
  * Task thread component with messages and input.
  */
-export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProps) {
+export function TaskThread({
+  taskId,
+  accountSlug: _accountSlug,
+  accountId,
+}: TaskThreadProps) {
   const messages = useQuery(api.messages.listByTask, { taskId });
+  const agents = useQuery(api.agents.list, { accountId });
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
+  /** Map agent id -> { name, avatarUrl } for message author display */
+  const agentsByAuthorId = useMemo(() => {
+    if (!agents) return undefined;
+    const map: Record<string, { name: string; avatarUrl?: string }> = {};
+    for (const a of agents) {
+      map[a._id] = { name: a.name, avatarUrl: a.avatarUrl };
+    }
+    return map;
+  }, [agents]);
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({ 
+      scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: "smooth"
+        behavior: "smooth",
       });
     }
   }, [messages?.length]);
-  
+
   return (
     <div className="absolute inset-0 flex flex-col bg-background">
       {/* Messages area */}
@@ -52,7 +68,11 @@ export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProp
           ) : messages.length > 0 ? (
             <div className="space-y-1">
               {messages.map((message) => (
-                <MessageItem key={message._id} message={message} />
+                <MessageItem
+                  key={message._id}
+                  message={message}
+                  agentsByAuthorId={agentsByAuthorId}
+                />
               ))}
             </div>
           ) : (
@@ -65,15 +85,19 @@ export function TaskThread({ taskId, accountSlug: _accountSlug }: TaskThreadProp
                   <Sparkles className="h-3 w-3 text-primary" />
                 </div>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">Start the conversation</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                Start the conversation
+              </h3>
               <p className="text-sm text-muted-foreground mt-2 max-w-xs leading-relaxed">
-                Send a message or use <span className="font-medium text-foreground">@</span> to mention an agent and get things started.
+                Send a message or use{" "}
+                <span className="font-medium text-foreground">@</span> to
+                mention an agent and get things started.
               </p>
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Input area - sticky at bottom */}
       <div className="shrink-0 w-full">
         <div className="max-w-3xl mx-auto">

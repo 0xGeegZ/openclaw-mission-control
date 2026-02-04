@@ -42,11 +42,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 
     try {
       const client = getConvexClient();
-      const notifications = await client.action(api.service.actions.listUndeliveredNotifications, {
-        accountId: config.accountId,
-        serviceToken: config.serviceToken,
-        limit: 50,
-      });
+      const notifications = await client.action(
+        api.service.actions.listUndeliveredNotifications,
+        {
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
+          limit: 50,
+        },
+      );
 
       state.consecutiveFailures = 0;
       if (notifications.length > 0) {
@@ -55,16 +58,45 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 
       for (const notification of notifications) {
         try {
-          const context = await client.action(api.service.actions.getNotificationForDelivery, {
-            notificationId: notification._id,
-            serviceToken: config.serviceToken,
-            accountId: config.accountId,
-          });
+          const context = await client.action(
+            api.service.actions.getNotificationForDelivery,
+            {
+              notificationId: notification._id,
+              serviceToken: config.serviceToken,
+              accountId: config.accountId,
+            },
+          );
 
           if (context?.agent) {
+            if (context.notification?.taskId && !context.task) {
+              await client.action(
+                api.service.actions.markNotificationDelivered,
+                {
+                  notificationId: notification._id,
+                  serviceToken: config.serviceToken,
+                  accountId: config.accountId,
+                },
+              );
+              state.deliveredCount++;
+              log.debug("Skipped delivery for missing task", notification._id);
+              continue;
+            }
+            if (!shouldDeliverToAgent(context)) {
+              await client.action(
+                api.service.actions.markNotificationDelivered,
+                {
+                  notificationId: notification._id,
+                  serviceToken: config.serviceToken,
+                  accountId: config.accountId,
+                },
+              );
+              state.deliveredCount++;
+              log.debug("Skipped delivery for notification", notification._id);
+              continue;
+            }
             const responseText = await sendToOpenClaw(
               context.agent.sessionKey,
-              formatNotificationMessage(context)
+              formatNotificationMessage(context),
             );
             const taskId = context.notification?.taskId;
             if (taskId && responseText?.trim()) {
@@ -84,12 +116,25 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             });
             state.deliveredCount++;
             log.debug("Delivered notification", notification._id);
+          } else if (context?.notification) {
+            await client.action(api.service.actions.markNotificationDelivered, {
+              notificationId: notification._id,
+              serviceToken: config.serviceToken,
+              accountId: config.accountId,
+            });
+            state.deliveredCount++;
+            log.debug("Skipped delivery for missing agent", notification._id);
           }
         } catch (error) {
           state.failedCount++;
           state.lastErrorAt = Date.now();
-          state.lastErrorMessage = error instanceof Error ? error.message : String(error);
-          log.warn("Failed to deliver", notification._id, state.lastErrorMessage);
+          state.lastErrorMessage =
+            error instanceof Error ? error.message : String(error);
+          log.warn(
+            "Failed to deliver",
+            notification._id,
+            state.lastErrorMessage,
+          );
         }
       }
 
@@ -97,7 +142,8 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
     } catch (error) {
       state.consecutiveFailures++;
       state.lastErrorAt = Date.now();
-      state.lastErrorMessage = error instanceof Error ? error.message : String(error);
+      state.lastErrorMessage =
+        error instanceof Error ? error.message : String(error);
       log.error("Poll error:", state.lastErrorMessage);
     }
 
@@ -106,7 +152,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
         ? backoffMs(
             state.consecutiveFailures,
             config.deliveryBackoffBaseMs,
-            config.deliveryBackoffMaxMs
+            config.deliveryBackoffMaxMs,
           )
         : config.deliveryInterval;
     setTimeout(poll, delay);
@@ -131,11 +177,41 @@ export function getDeliveryState(): DeliveryState {
 }
 
 /**
+ * Decide whether a notification should be delivered to an agent.
+ * Skips thread updates to reduce noise and avoid reply loops.
+ */
+function shouldDeliverToAgent(context: any): boolean {
+  const notificationType = context?.notification?.type;
+  const messageAuthorType = context?.message?.authorType;
+  if (notificationType === "thread_update" && messageAuthorType === "agent")
+    return false;
+  return true;
+}
+
+/**
+ * Format full thread context lines for delivery.
+ */
+function formatThreadContext(thread: any[] | undefined): string {
+  if (!thread || thread.length === 0) return "";
+  const lines = ["Thread history (full):"];
+  for (const item of thread) {
+    const authorLabel =
+      item.authorName ?? `${item.authorType}:${item.authorId}`;
+    const timestamp = item.createdAt
+      ? new Date(item.createdAt).toISOString()
+      : "unknown_time";
+    const content = item.content?.trim() || "(empty)";
+    lines.push(`- [${timestamp}] ${authorLabel}: ${content}`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Format notification message for OpenClaw.
  * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
  */
 function formatNotificationMessage(context: any): string {
-  const { notification, task, message } = context;
+  const { notification, task, message, thread } = context;
   const taskDescription = task?.description?.trim()
     ? `Task description:\n${task.description.trim()}`
     : "";
@@ -148,7 +224,8 @@ function formatNotificationMessage(context: any): string {
         `Message ID: ${message._id}`,
       ].join("\n")
     : "";
-  
+  const threadDetails = formatThreadContext(thread);
+
   return `
 ## Notification: ${notification.type}
 
@@ -159,6 +236,9 @@ ${notification.body}
 ${task ? `Task: ${task.title} (${task.status})` : ""}
 ${taskDescription}
 ${messageDetails}
+${threadDetails}
+
+Use the thread history above before asking for missing info. Do not request items already present there.
 
 Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 
