@@ -84,8 +84,20 @@ export function TaskDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent 
         side="right" 
-        className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl p-0 flex flex-col"
+        className="w-full sm:w-[50vw] sm:max-w-none p-0 flex flex-col"
         showCloseButton={true}
+        headerActions={
+          task && (
+            <Link
+              href={`/${accountSlug}/tasks/${task._id}`}
+              className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
+              title="Open full page"
+            >
+              <ArrowUpRight className="size-4" />
+              <span className="sr-only">Open full page</span>
+            </Link>
+          )
+        }
       >
         {task === undefined ? (
           <TaskDetailSkeleton />
@@ -95,26 +107,15 @@ export function TaskDetailSheet({
           </div>
         ) : (
           <>
-            <SheetHeader className="p-5 pb-0 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-3">
+            <SheetHeader className="p-5 pb-4 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-2">
                 <div className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`} />
                 <span className="uppercase tracking-widest font-medium text-[10px]">Task Detail</span>
               </div>
               
-              <div className="flex items-start justify-between gap-4">
-                <SheetTitle className="text-xl font-bold leading-tight text-balance pr-8">
-                  {task.title}
-                </SheetTitle>
-              </div>
-              
-              <div className="flex items-center gap-2 mt-3">
-                <Button variant="outline" size="sm" asChild className="rounded-lg shadow-sm">
-                  <Link href={`/${accountSlug}/tasks/${task._id}`}>
-                    <ArrowUpRight className="h-3.5 w-3.5 mr-1.5" />
-                    Open Full Page
-                  </Link>
-                </Button>
-              </div>
+              <SheetTitle className="text-xl font-bold leading-tight text-balance pr-16">
+                {task.title}
+              </SheetTitle>
             </SheetHeader>
             
             <div className="p-5 space-y-4 shrink-0 border-b border-border/50">
