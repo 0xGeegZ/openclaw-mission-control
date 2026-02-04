@@ -137,19 +137,29 @@ export function TaskThread({
               ))}
             </div>
           ) : messages.length > 0 ? (
-            <div className="space-y-1">
-              {messages.map((message) => (
-                <MessageItem
-                  key={message._id}
-                  message={message}
-                  agentsByAuthorId={agentsByAuthorId}
-                  readByAgents={
-                    latestUserMessage?._id === message._id
-                      ? readByAgentsForLatestUser
-                      : undefined
-                  }
-                />
-              ))}
+            <div className="space-y-2">
+              {messages.map((message, index) => {
+                const prevMessage = index > 0 ? messages[index - 1] : null;
+                const showDivider =
+                  prevMessage &&
+                  prevMessage.authorType !== message.authorType;
+                return (
+                  <div key={message._id}>
+                    {showDivider && (
+                      <div className="h-px bg-border/30 my-3" />
+                    )}
+                    <MessageItem
+                      message={message}
+                      agentsByAuthorId={agentsByAuthorId}
+                      readByAgents={
+                        latestUserMessage?._id === message._id
+                          ? readByAgentsForLatestUser
+                          : undefined
+                      }
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -176,14 +186,14 @@ export function TaskThread({
 
       {/* Typing indicator - single row above input */}
       {typingAgents.length > 0 && (
-        <div className="shrink-0 px-4 py-2 max-w-3xl mx-auto w-full">
-          <div className="flex items-center gap-2">
+        <div className="shrink-0 px-4 py-3 max-w-3xl mx-auto w-full">
+          <div className="inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-muted/40 border border-border/30 shadow-sm">
             {/* Agent avatars */}
-            <div className="flex items-center -space-x-1.5">
+            <div className="flex items-center -space-x-2">
               {typingAgents.slice(0, 3).map((agent) => (
                 <div
                   key={agent.id}
-                  className="relative h-6 w-6 rounded-full ring-2 ring-background overflow-hidden bg-primary/10"
+                  className="relative h-7 w-7 rounded-full ring-2 ring-background overflow-hidden bg-gradient-to-br from-primary/20 to-primary/5 shadow-sm"
                   title={agent.name}
                 >
                   {agent.avatarUrl ? (
@@ -193,15 +203,15 @@ export function TaskThread({
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center text-[10px] font-medium text-primary">
+                    <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-primary">
                       {agent.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                 </div>
               ))}
               {typingAgents.length > 3 && (
-                <div className="h-6 w-6 rounded-full bg-muted ring-2 ring-background flex items-center justify-center">
-                  <span className="text-[9px] font-medium text-muted-foreground">
+                <div className="h-7 w-7 rounded-full bg-muted ring-2 ring-background flex items-center justify-center shadow-sm">
+                  <span className="text-[10px] font-semibold text-muted-foreground">
                     +{typingAgents.length - 3}
                   </span>
                 </div>
@@ -209,17 +219,17 @@ export function TaskThread({
             </div>
 
             {/* Animated typing dots */}
-            <div className="flex items-center gap-0.5 px-2 py-1 rounded-full bg-muted/50">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.3s]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.15s]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce" />
+            <div className="flex items-center gap-1 px-1">
+              <span className="h-2 w-2 rounded-full bg-primary/70 animate-typing-dot" />
+              <span className="h-2 w-2 rounded-full bg-primary/70 animate-typing-dot-delay-1" />
+              <span className="h-2 w-2 rounded-full bg-primary/70 animate-typing-dot-delay-2" />
             </div>
 
             {/* Typing text */}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground font-medium">
               {typingAgents.length === 1
                 ? `${typingAgents[0].name} is typing`
-                : `${typingAgents.length} agents are typing`}
+                : `${typingAgents.length} agents typing`}
             </span>
           </div>
         </div>

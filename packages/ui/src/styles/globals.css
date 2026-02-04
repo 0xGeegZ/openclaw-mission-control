@@ -85,3 +85,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom animations for thread UI */
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.animate-typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.animate-typing-dot-delay-1 {
+  animation: typing-dot 1.4s ease-in-out infinite 0.2s;
+}
+
+.animate-typing-dot-delay-2 {
+  animation: typing-dot 1.4s ease-in-out infinite 0.4s;
+}

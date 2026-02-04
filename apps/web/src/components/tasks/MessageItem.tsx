@@ -144,15 +144,17 @@ export function MessageItem({
   return (
     <div
       className={cn(
-        "flex gap-3 group rounded-xl p-4 -mx-2 transition-all",
-        isAgent ? "bg-muted/30 border border-border/40" : "hover:bg-muted/30",
+        "flex gap-3.5 group rounded-2xl p-4 -mx-2 transition-all duration-200",
+        isAgent
+          ? "bg-gradient-to-br from-muted/40 to-muted/20 border border-border/30"
+          : "hover:bg-muted/20",
       )}
     >
       <Avatar
         className={cn(
-          "h-10 w-10 shrink-0 ring-2 ring-background shadow-sm",
+          "h-9 w-9 shrink-0 ring-2 ring-background shadow-md",
           isAgent
-            ? "bg-gradient-to-br from-primary/20 to-primary/5"
+            ? "bg-gradient-to-br from-primary/15 to-primary/5"
             : "bg-gradient-to-br from-secondary to-secondary/80",
         )}
       >
@@ -164,34 +166,34 @@ export function MessageItem({
         ) : (
           <AvatarFallback className="bg-transparent">
             {isAgent ? (
-              <Bot className="h-5 w-5 text-primary" />
+              <Bot className="h-4 w-4 text-primary" />
             ) : (
-              <User className="h-5 w-5 text-secondary-foreground" />
+              <User className="h-4 w-4 text-secondary-foreground" />
             )}
           </AvatarFallback>
         )}
       </Avatar>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-center gap-2 mb-2">
           <span className="font-semibold text-sm text-foreground">
             {authorName}
           </span>
           {isAgent && (
             <Badge
               variant="secondary"
-              className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 gap-1"
+              className="text-[9px] px-1.5 py-0 h-[18px] bg-primary/10 text-primary border border-primary/20 gap-0.5 font-medium"
             >
-              <Sparkles className="h-2.5 w-2.5" />
+              <Sparkles className="h-2 w-2" />
               AI
             </Badge>
           )}
-          <span className="text-[11px] text-muted-foreground/70">
+          <span className="text-[11px] text-muted-foreground/60 tabular-nums">
             {formatDistanceToNow(message.createdAt, { addSuffix: true })}
           </span>
           {message.editedAt && (
-            <span className="text-[11px] text-muted-foreground/60">
-              (edited)
+            <span className="text-[10px] text-muted-foreground/50 italic">
+              edited
             </span>
           )}
         </div>
@@ -266,33 +268,33 @@ export function MessageItem({
             {message.authorType === "user" &&
               readByAgents &&
               readByAgents.length > 0 && (
-                <div className="mt-2 flex items-center gap-1.5">
-                  <CheckCheck className="h-3 w-3 text-primary/60" />
+                <div className="mt-3 flex items-center gap-2">
+                  <CheckCheck className="h-3.5 w-3.5 text-primary/50" />
                   <div className="flex items-center -space-x-1.5">
-                    {readByAgents.slice(0, 5).map((agent) => (
+                    {readByAgents.slice(0, 4).map((agent) => (
                       <Avatar
                         key={agent.id}
-                        className="h-5 w-5 ring-2 ring-background border border-border/50"
-                        title={agent.name}
+                        className="h-5 w-5 ring-[1.5px] ring-background shadow-sm"
+                        title={`Seen by ${agent.name}`}
                       >
                         {agent.avatarUrl ? (
                           <AvatarImage src={agent.avatarUrl} alt={agent.name} />
                         ) : null}
-                        <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-medium">
+                        <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-primary text-[8px] font-semibold">
                           {agent.name.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                     ))}
-                    {readByAgents.length > 5 && (
-                      <div className="h-5 w-5 rounded-full bg-muted ring-2 ring-background flex items-center justify-center">
-                        <span className="text-[8px] font-medium text-muted-foreground">
-                          +{readByAgents.length - 5}
+                    {readByAgents.length > 4 && (
+                      <div className="h-5 w-5 rounded-full bg-muted/80 ring-[1.5px] ring-background flex items-center justify-center shadow-sm">
+                        <span className="text-[8px] font-semibold text-muted-foreground">
+                          +{readByAgents.length - 4}
                         </span>
                       </div>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground/60 ml-0.5">
-                    Seen
+                  <span className="text-[10px] text-muted-foreground/50 font-medium">
+                    Seen by {readByAgents.length === 1 ? readByAgents[0].name : `${readByAgents.length} agents`}
                   </span>
                 </div>
               )}
@@ -306,24 +308,24 @@ export function MessageItem({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 rounded-lg hover:bg-muted"
             >
-              <MoreVertical className="h-4 w-4" />
+              <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="sr-only">Message options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onClick={handleCopy} className="gap-2">
+          <DropdownMenuContent align="end" className="w-32 rounded-xl">
+            <DropdownMenuItem onClick={handleCopy} className="gap-2 text-sm rounded-lg">
               {copied ? (
-                <CheckCheck className="h-4 w-4 text-green-500" />
+                <CheckCheck className="h-3.5 w-3.5 text-green-500" />
               ) : (
-                <Copy className="h-4 w-4" />
+                <Copy className="h-3.5 w-3.5" />
               )}
               {copied ? "Copied!" : "Copy"}
             </DropdownMenuItem>
             {isAuthor && (
-              <DropdownMenuItem onClick={handleEdit} className="gap-2">
-                <Edit2 className="h-4 w-4" />
+              <DropdownMenuItem onClick={handleEdit} className="gap-2 text-sm rounded-lg">
+                <Edit2 className="h-3.5 w-3.5" />
                 Edit
               </DropdownMenuItem>
             )}
@@ -332,9 +334,9 @@ export function MessageItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleDelete}
-                  className="text-destructive focus:text-destructive gap-2"
+                  className="text-destructive focus:text-destructive gap-2 text-sm rounded-lg"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                   Delete
                 </DropdownMenuItem>
               </>
