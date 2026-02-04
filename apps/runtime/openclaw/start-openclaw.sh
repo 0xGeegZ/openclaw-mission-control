@@ -41,6 +41,7 @@ fi
 # Merge env into config (enforced each boot: Vercel gateway, Haiku/Sonnet, skills, browser)
 node << 'EOFNODE'
 const fs = require('fs');
+const path = require('path');
 const configPath = '/root/.clawdbot/clawdbot.json';
 let config = {};
 try {
@@ -159,8 +160,127 @@ config.commands = config.commands || {};
 config.commands.native = config.commands.native || 'auto';
 config.commands.nativeSkills = config.commands.nativeSkills || 'auto';
 
+/**
+ * Recursively collect session store files under the OpenClaw data root.
+ */
+function collectSessionStores(rootDir) {
+  const stores = [];
+  if (!fs.existsSync(rootDir)) return stores;
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name === 'sessions.json') {
+        const normalized = fullPath.replace(/\\/g, '/');
+        if (normalized.includes('/sessions/sessions.json')) {
+          stores.push(fullPath);
+        }
+      }
+    }
+  }
+  return stores;
+}
+
+/**
+ * Normalize updatedAt values to milliseconds since epoch.
+ */
+function parseUpdatedAt(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed < 1e12 ? parsed * 1000 : parsed;
+    }
+  }
+  return null;
+}
+
+/**
+ * Prune a session store by removing entries older than the cutoff.
+ */
+function pruneSessionStore(storePath, cutoffMs, clearAll) {
+  let raw = '';
+  try {
+    raw = fs.readFileSync(storePath, 'utf8');
+  } catch {
+    return 0;
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return 0;
+  }
+  let removed = 0;
+  for (const [key, entry] of Object.entries(data)) {
+    if (clearAll) {
+      delete data[key];
+      removed += 1;
+      continue;
+    }
+    const updatedAt = parseUpdatedAt(entry && entry.updatedAt);
+    if (updatedAt !== null && updatedAt < cutoffMs) {
+      delete data[key];
+      removed += 1;
+    }
+  }
+  if (removed > 0) {
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2));
+  }
+  return removed;
+}
+
+/**
+ * Prune OpenClaw session stores based on OPENCLAW_SESSION_RETENTION_DAYS.
+ */
+function pruneSessionsIfConfigured() {
+  if (process.env.OPENCLAW_SESSION_RETENTION_DAYS === undefined) return;
+  const raw = process.env.OPENCLAW_SESSION_RETENTION_DAYS.trim();
+  if (!raw) return;
+  const retentionDays = Number(raw);
+  if (!Number.isFinite(retentionDays) || retentionDays < 0) {
+    console.warn('OPENCLAW_SESSION_RETENTION_DAYS must be a non-negative number; skipping prune.');
+    return;
+  }
+  const dataRoot = '/root/.clawdbot';
+  const stores = collectSessionStores(dataRoot);
+  if (stores.length === 0) return;
+  const clearAll = retentionDays === 0;
+  const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  let totalRemoved = 0;
+  for (const storePath of stores) {
+    totalRemoved += pruneSessionStore(storePath, cutoffMs, clearAll);
+  }
+  if (totalRemoved > 0) {
+    const mode = clearAll ? 'cleared' : `pruned (>${retentionDays} days old)`;
+    console.log(`Session store ${mode}: removed ${totalRemoved} entries`);
+  }
+}
+
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');
+try {
+  pruneSessionsIfConfigured();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn('Session prune failed:', message);
+}
 EOFNODE
 
 rm -f /tmp/clawdbot-gateway.lock "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
@@ -168,6 +288,32 @@ find "$CONFIG_DIR" -name "*.lock" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonLock" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonSocket" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonCookie" -delete 2>/dev/null || true
+
+WORKSPACE_DIR="/root/clawd"
+BOOTSTRAP_FILE="$WORKSPACE_DIR/BOOTSTRAP.md"
+REPO_DIR="$WORKSPACE_DIR/openclaw-mission-control"
+
+if [ -f "$BOOTSTRAP_FILE" ]; then
+  echo "Removing BOOTSTRAP.md to avoid bootstrap mode..."
+  rm -f "$BOOTSTRAP_FILE"
+fi
+
+mkdir -p "$WORKSPACE_DIR/memory" "$WORKSPACE_DIR/deliverables"
+touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md"
+DAILY_MEMORY_FILE="$WORKSPACE_DIR/memory/$(date +%F).md"
+touch "$DAILY_MEMORY_FILE"
+
+sync_doc_if_changed() {
+  local src="$1"
+  local dest="$2"
+
+  if [ -f "$src" ] && { [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; }; then
+    cp "$src" "$dest"
+  fi
+}
+
+sync_doc_if_changed "$REPO_DIR/docs/runtime/HEARTBEAT.md" "$WORKSPACE_DIR/HEARTBEAT.md"
+sync_doc_if_changed "$REPO_DIR/docs/runtime/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
 
 TOKEN="${OPENCLAW_GATEWAY_TOKEN-local}"
 echo ""

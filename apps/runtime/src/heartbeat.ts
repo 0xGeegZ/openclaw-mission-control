@@ -26,10 +26,10 @@ export async function startHeartbeats(config: RuntimeConfig): Promise<void> {
   log.info("Starting heartbeat scheduler...");
 
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  }) as AgentForHeartbeat[];
+  })) as AgentForHeartbeat[];
 
   const totalAgents = agents.length;
   agents.forEach((agent, index) => {
@@ -58,13 +58,15 @@ function scheduleHeartbeat(
   agent: AgentForHeartbeat,
   config: RuntimeConfig,
   index: number,
-  totalAgents: number
+  totalAgents: number,
 ): void {
   const intervalMinutes = agent.heartbeatInterval ?? 5;
   const intervalMs = intervalMinutes * 60 * 1000;
   const staggerWindow = Math.min(intervalMs * 0.4, STAGGER_WINDOW_MS);
   const initialDelay =
-    totalAgents <= 1 ? 0 : (index / totalAgents) * staggerWindow + Math.random() * 2000; // Small jitter per agent
+    totalAgents <= 1
+      ? 0
+      : (index / totalAgents) * staggerWindow + Math.random() * 2000; // Small jitter per agent
 
   const execute = () => runHeartbeatCycle(agent, config, intervalMs);
   const timeout = setTimeout(execute, initialDelay);
@@ -78,7 +80,7 @@ function scheduleHeartbeat(
 function runHeartbeatCycle(
   agent: AgentForHeartbeat,
   config: RuntimeConfig,
-  intervalMs: number
+  intervalMs: number,
 ): void {
   const execute = async () => {
     try {
@@ -87,12 +89,11 @@ function runHeartbeatCycle(
       const heartbeatMessage = `
 ## Heartbeat Check
 
-Execute your heartbeat protocol:
-1. Check for assigned tasks
-2. Check for unread mentions
-3. Review activity feed
-4. Take one action if appropriate
-5. Report status
+Follow the HEARTBEAT.md checklist.
+- Load context (WORKING.md, memory, mentions, assigned tasks, activity feed).
+- Take one concrete action if appropriate.
+- If you took action, post a thread update using AGENTS.md format and update memory.
+- If you did not take action, reply with a single line: HEARTBEAT_OK
 
 Current time: ${new Date().toISOString()}
 `.trim();
@@ -112,7 +113,10 @@ Current time: ${new Date().toISOString()}
 
     if (state.isRunning && state.schedules.has(agent._id)) {
       const nextDelay = intervalMs + Math.random() * 30 * 1000; // Up to 30s jitter
-      const timeout = setTimeout(() => runHeartbeatCycle(agent, config, intervalMs), nextDelay);
+      const timeout = setTimeout(
+        () => runHeartbeatCycle(agent, config, intervalMs),
+        nextDelay,
+      );
       state.schedules.set(agent._id, timeout);
     }
   };
@@ -125,7 +129,7 @@ Current time: ${new Date().toISOString()}
  */
 export function ensureHeartbeatScheduled(
   agent: AgentForHeartbeat,
-  config: RuntimeConfig
+  config: RuntimeConfig,
 ): void {
   const intervalMinutes = agent.heartbeatInterval ?? 5;
   const existingInterval = state.intervals.get(agent._id);
@@ -144,7 +148,7 @@ export function ensureHeartbeatScheduled(
   const initialDelay = Math.random() * 2000; // Small jitter for sync-added agents
   const timeout = setTimeout(
     () => runHeartbeatCycle(agent, config, intervalMs),
-    initialDelay
+    initialDelay,
   );
   state.schedules.set(agent._id, timeout);
   state.intervals.set(agent._id, intervalMinutes);

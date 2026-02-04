@@ -6,7 +6,7 @@ import {
   isAttachmentTypeAndSizeAllowed,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
-import { ensureSubscribed } from "../subscriptions";
+import { ensureSubscribed, ensureOrchestratorSubscribed } from "../subscriptions";
 import {
   extractMentionStrings,
   resolveMentions,
@@ -17,6 +17,7 @@ import {
   createMentionNotifications,
   createThreadNotifications,
 } from "../lib/notifications";
+
 /**
  * Register a completed upload for a task on behalf of an agent.
  */
@@ -238,6 +239,8 @@ export const createFromAgent = internalMutation({
         task.title,
       );
     }
+
+    await ensureOrchestratorSubscribed(ctx, agent.accountId, args.taskId);
 
     // Create thread update notifications
     const mentionedIds = new Set(mentions.map((m) => m.id));

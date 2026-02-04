@@ -19,7 +19,8 @@ export interface ParsedMention {
  */
 export function extractMentionStrings(content: string): string[] {
   const pattern = /@(\w+(?:-\w+)*|"[^"]+")/g;
-  const matches = content.match(pattern) || [];
+  const sanitized = stripQuotedContent(content);
+  const matches = sanitized.match(pattern) || [];
 
   return matches.map((m) => {
     // Remove @ prefix
@@ -36,7 +37,20 @@ export function extractMentionStrings(content: string): string[] {
  * Check if content contains @all mention.
  */
 export function hasAllMention(content: string): boolean {
-  return /@all\b/i.test(content);
+  return /@all\b/i.test(stripQuotedContent(content));
+}
+
+/**
+ * Strip quoted/cited content so mentions are only parsed from the new message body.
+ * Removes fenced code blocks, inline code, and blockquoted lines.
+ */
+function stripQuotedContent(content: string): string {
+  const withoutFences = content.replace(/```[\s\S]*?```/g, "");
+  const withoutInlineCode = withoutFences.replace(/`[^`]*`/g, "");
+  return withoutInlineCode
+    .split("\n")
+    .filter((line) => !line.trim().startsWith(">"))
+    .join("\n");
 }
 
 /**

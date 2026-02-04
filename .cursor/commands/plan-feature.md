@@ -8,6 +8,7 @@ The plan must be detailed enough that:
 
 - If we give it to **100 different engineers**, at least **85%** of the resulting code would be very similar.
 - A **junior engineer** can implement the feature by following the plan step by step.
+- Running command .cursor/commands/code-review-checklist.md agains the plan you gonna write should not return any issues or warnings.
 
 ---
 

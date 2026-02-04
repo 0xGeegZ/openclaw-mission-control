@@ -32,25 +32,26 @@ See [docs/concept/openclaw-mission-control-initial-article.md](../../docs/concep
 
 Copy [.env.example](./.env.example) to `.env` and set:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ACCOUNT_ID` | Yes | Convex `accounts` document ID this runtime serves. |
-| `CONVEX_URL` | Yes | Convex deployment URL (e.g. `https://xxx.convex.cloud`). |
-| `SERVICE_TOKEN` | Yes | Token for Convex service-only actions (account-scoped). |
-| `HEALTH_PORT` | No | HTTP port for health server (default `3001`). |
-| `DELIVERY_INTERVAL` | No | Notification poll interval in ms (default `5000`). |
-| `HEALTH_CHECK_INTERVAL` | No | Convex status report interval in ms (default `60000`). |
-| `AGENT_SYNC_INTERVAL` | No | Agent list sync interval in ms; new agents picked up without restart (default `60000`). |
-| `RUNTIME_VERSION` | No | Override version (default: `package.json` version). |
-| `OPENCLAW_VERSION` | No | Override if `openclaw --version` fails. |
-| `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
-| `HEALTH_HOST` | No | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker). |
-| `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No | Backoff on delivery poll errors (defaults `5000`, `300000`). |
-| `OPENCLAW_GATEWAY_URL` | No | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
-| `OPENCLAW_GATEWAY_TOKEN` | No | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only. |
-| `OPENCLAW_REQUEST_TIMEOUT_MS` | No | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase for long agent runs. |
-| `AI_GATEWAY_API_KEY` | No | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used. |
-| `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION` | No | Infrastructure identifiers (reported in health and Convex). |
+| Variable                                              | Required | Description                                                                                                                                                                                                                            |
+| ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_ID`                                          | Yes      | Convex `accounts` document ID this runtime serves.                                                                                                                                                                                     |
+| `CONVEX_URL`                                          | Yes      | Convex deployment URL (e.g. `https://xxx.convex.cloud`).                                                                                                                                                                               |
+| `SERVICE_TOKEN`                                       | Yes      | Token for Convex service-only actions (account-scoped).                                                                                                                                                                                |
+| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3001`).                                                                                                                                                                                          |
+| `DELIVERY_INTERVAL`                                   | No       | Notification poll interval in ms (default `5000`).                                                                                                                                                                                     |
+| `HEALTH_CHECK_INTERVAL`                               | No       | Convex status report interval in ms (default `60000`).                                                                                                                                                                                 |
+| `AGENT_SYNC_INTERVAL`                                 | No       | Agent list sync interval in ms; new agents picked up without restart (default `60000`).                                                                                                                                                |
+| `RUNTIME_VERSION`                                     | No       | Override version (default: `package.json` version).                                                                                                                                                                                    |
+| `OPENCLAW_VERSION`                                    | No       | Override if `openclaw --version` fails.                                                                                                                                                                                                |
+| `LOG_LEVEL`                                           | No       | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                                                               |
+| `HEALTH_HOST`                                         | No       | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker).                                                                                                                                                         |
+| `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                           |
+| `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
+| `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                     |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                            |
+| `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                            |
+| `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                      |
+| `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                            |
 
 ## Running locally
 

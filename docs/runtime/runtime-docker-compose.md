@@ -19,7 +19,6 @@ This guide covers running the OpenClaw Mission Control runtime (and optional Ope
    ```
 
    Edit `apps/runtime/.env` and set:
-
    - `ACCOUNT_ID` — Convex `accounts` document ID this runtime serves.
    - `CONVEX_URL` — Your Convex deployment URL (e.g. `https://xxx.convex.cloud`).
    - `SERVICE_TOKEN` — Service token for Convex (account-scoped).
@@ -43,9 +42,10 @@ This guide covers running the OpenClaw Mission Control runtime (and optional Ope
    ```
 
    - Runtime health: `curl -s http://127.0.0.1:3001/health`
-  - OpenClaw Control UI: http://localhost:18789/ (or `?token=...` if set)
 
-  Set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789` in `apps/runtime/.env` so the runtime can send messages to agent sessions via the OpenResponses HTTP endpoint (`POST /v1/responses`). The gateway template and start script enable this endpoint on every boot. Agent responses from OpenClaw are **written back** to the OpenClaw Mission Control task thread (shared brain) for notification-triggered runs (mentions, assignments, thread updates). Set `VERCEL_AI_GATEWAY_API_KEY` for the gateway (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
+- OpenClaw Control UI: http://localhost:18789/ (or `?token=...` if set)
+
+Set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789` in `apps/runtime/.env` so the runtime can send messages to agent sessions via the OpenResponses HTTP endpoint (`POST /v1/responses`). The gateway template and start script enable this endpoint on every boot. Agent responses from OpenClaw are **written back** to the OpenClaw Mission Control task thread (shared brain) for notification-triggered runs (mentions, assignments, thread updates). Set `VERCEL_AI_GATEWAY_API_KEY` for the gateway (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
 
 If you prefer, you can still run Compose directly:
 
@@ -67,19 +67,20 @@ Ports are bound to `127.0.0.1` by default so only the host can access them. Do n
 
 See `apps/runtime/.env.example`. Summary:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ACCOUNT_ID` | Yes | Convex account ID this runtime serves. |
-| `CONVEX_URL` | Yes | Convex deployment URL. |
-| `SERVICE_TOKEN` | Yes | Convex service token (account-scoped). |
-| `HEALTH_HOST` | No | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works. |
-| `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error` (default `info`). |
-| `AGENT_SYNC_INTERVAL` | No | Agent list sync interval in ms; new agents picked up without restart (default `60000`). |
-| `OPENCLAW_GATEWAY_URL` | No | OpenClaw gateway base URL for sending messages to sessions. Default `http://127.0.0.1:18789`; with profile `openclaw` set `http://openclaw-gateway:18789` so the runtime can reach the gateway. |
-| `OPENCLAW_GATEWAY_TOKEN` | No | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only. |
-| `OPENCLAW_REQUEST_TIMEOUT_MS` | No | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase if agent runs are long. |
-| `AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used. |
-| `VERCEL_AI_GATEWAY_API_KEY` | For OpenClaw | Vercel AI Gateway API key; mapped to `AI_GATEWAY_API_KEY`. |
+| Variable                          | Required     | Description                                                                                                                                                                                     |
+| --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_ID`                      | Yes          | Convex account ID this runtime serves.                                                                                                                                                          |
+| `CONVEX_URL`                      | Yes          | Convex deployment URL.                                                                                                                                                                          |
+| `SERVICE_TOKEN`                   | Yes          | Convex service token (account-scoped).                                                                                                                                                          |
+| `HEALTH_HOST`                     | No           | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works.                                                                                                                   |
+| `LOG_LEVEL`                       | No           | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                        |
+| `AGENT_SYNC_INTERVAL`             | No           | Agent list sync interval in ms; new agents picked up without restart (default `60000`).                                                                                                         |
+| `OPENCLAW_GATEWAY_URL`            | No           | OpenClaw gateway base URL for sending messages to sessions. Default `http://127.0.0.1:18789`; with profile `openclaw` set `http://openclaw-gateway:18789` so the runtime can reach the gateway. |
+| `OPENCLAW_GATEWAY_TOKEN`          | No           | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                              |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`     | No           | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase if agent runs are long.                                                  |
+| `OPENCLAW_SESSION_RETENTION_DAYS` | No           | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                     |
+| `AI_GATEWAY_API_KEY`              | For OpenClaw | Vercel AI Gateway API key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                           |
+| `VERCEL_AI_GATEWAY_API_KEY`       | For OpenClaw | Vercel AI Gateway API key; mapped to `AI_GATEWAY_API_KEY`.                                                                                                                                      |
 
 ## Upgrade workflow (local)
 
@@ -90,6 +91,7 @@ To pull new images and restart the stack (aligned with [runtime-version-manageme
 ```
 
 With OpenClaw profile:
+
 ```bash
 PROFILE=openclaw ./scripts/runtime-upgrade-local.sh
 ```
@@ -108,6 +110,7 @@ When using profile `openclaw`, Compose mounts:
 - `.runtime/openclaw-workspace` → Agent workspace (persists across restarts).
 
 These directories are created on first run and are gitignored (`.runtime/`). To reset OpenClaw state, remove `.runtime/openclaw-data` and `.runtime/openclaw-workspace` and restart.
+If you only need to trim the session list shown at `/sessions`, set `OPENCLAW_SESSION_RETENTION_DAYS` (or `0` to clear) in `apps/runtime/.env` and restart the gateway; this prunes `sessions.json` entries but keeps transcripts/workspace intact.
 
 ## Troubleshooting
 

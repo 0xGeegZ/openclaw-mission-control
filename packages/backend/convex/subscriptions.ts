@@ -185,3 +185,24 @@ export async function ensureSubscribed(
     });
   }
 }
+
+/**
+ * Ensure the account's orchestrator (squad lead) is subscribed to the task thread.
+ * No-op if orchestratorAgentId is not set or agent does not belong to the account.
+ */
+export async function ensureOrchestratorSubscribed(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  taskId: Id<"tasks">,
+): Promise<void> {
+  const account = await ctx.db.get(accountId);
+  if (!account) return;
+
+  const orchestratorAgentId = (account.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)?.orchestratorAgentId;
+  if (!orchestratorAgentId) return;
+
+  const agent = await ctx.db.get(orchestratorAgentId);
+  if (!agent || agent.accountId !== accountId) return;
+
+  await ensureSubscribed(ctx, accountId, taskId, "agent", orchestratorAgentId);
+}

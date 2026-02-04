@@ -27,6 +27,10 @@ if [ -n "$PROFILE" ]; then
   compose_args+=( --profile "$PROFILE" )
 fi
 
+# Clean up any leftover containers/networks from a previous failed run to avoid
+# "network ... not found" when Docker has stale references (common on macOS).
+docker compose "${compose_args[@]}" down --remove-orphans 2>/dev/null || true
+
 up_args=( up )
 if [ "$DAEMON" = "1" ]; then
   up_args+=( -d )
@@ -52,11 +56,13 @@ if [ "$PRUNE_ON_FAIL" = "1" ]; then
 fi
 
 cat <<'EOF' >&2
-Docker build failed.
-If you see containerd-stargz snapshotter errors on macOS:
-- Restart Docker Desktop, then retry
-- Or disable "Use containerd for pulling and storing images" in Docker Desktop > Settings > Features in development
+Docker compose failed.
+- If you see "failed to set up container networking: network ... not found": run
+  "npm run docker:down" (or "docker compose -f apps/runtime/docker-compose.runtime.yml down --remove-orphans"),
+  then restart Docker Desktop and retry.
+- If you see containerd-stargz snapshotter errors on macOS: restart Docker Desktop, or disable
+  "Use containerd for pulling and storing images" in Docker Desktop > Settings > Features in development.
 
-Then rerun the command.
+Then rerun: npm run docker:up:openclaw
 EOF
 exit 1

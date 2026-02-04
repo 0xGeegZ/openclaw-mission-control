@@ -1,7 +1,7 @@
 /**
  * Task status type.
  */
-export type TaskStatus = 
+export type TaskStatus =
   | "inbox"
   | "assigned"
   | "in_progress"
@@ -15,7 +15,7 @@ export type TaskStatus =
  */
 export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ["assigned"],
-  assigned: ["in_progress", "blocked"],
+  assigned: ["in_progress", "blocked", "inbox"],
   in_progress: ["review", "blocked"],
   review: ["done", "in_progress"],
   done: [], // Cannot transition from done
@@ -35,14 +35,14 @@ export const TASK_STATUS_ORDER: TaskStatus[] = [
 
 /**
  * Check if a status transition is valid.
- * 
+ *
  * @param currentStatus - Current task status
  * @param nextStatus - Proposed next status
  * @returns True if transition is allowed
  */
 export function isValidTransition(
   currentStatus: TaskStatus,
-  nextStatus: TaskStatus
+  nextStatus: TaskStatus,
 ): boolean {
   const allowed = TASK_STATUS_TRANSITIONS[currentStatus];
   return allowed.includes(nextStatus);
@@ -51,7 +51,7 @@ export function isValidTransition(
 /**
  * Validate status transition requirements.
  * Returns error message if invalid, null if valid.
- * 
+ *
  * @param nextStatus - Proposed next status
  * @param hasAssignees - Whether task has assignees
  * @param blockedReason - Blocked reason (if transitioning to blocked)
@@ -60,23 +60,28 @@ export function isValidTransition(
 export function validateStatusRequirements(
   nextStatus: TaskStatus,
   hasAssignees: boolean,
-  blockedReason?: string
+  blockedReason?: string,
 ): string | null {
   // "assigned" requires at least one assignee
   if (nextStatus === "assigned" && !hasAssignees) {
     return "Cannot move to 'assigned' without at least one assignee";
   }
-  
+
+  // "inbox" requires zero assignees
+  if (nextStatus === "inbox" && hasAssignees) {
+    return "Cannot move to 'inbox' while assignees remain";
+  }
+
   // "in_progress" requires at least one assignee
   if (nextStatus === "in_progress" && !hasAssignees) {
     return "Cannot move to 'in_progress' without at least one assignee";
   }
-  
+
   // "blocked" requires a reason
   if (nextStatus === "blocked" && !blockedReason) {
     return "Cannot move to 'blocked' without providing a reason";
   }
-  
+
   return null;
 }
 
