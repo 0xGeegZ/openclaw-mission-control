@@ -8,7 +8,7 @@ import { ActivityItem } from "@/components/feed/ActivityItem";
 import { ActivityFilters, type ActivityFilterType } from "@/components/feed/ActivityFilters";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Card } from "@packages/ui/components/card";
-import { Activity } from "lucide-react";
+import { Activity, TrendingUp } from "lucide-react";
 
 interface FeedPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -35,10 +35,23 @@ export default function FeedPage({ params }: FeedPageProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Activity Feed</h1>
-          <p className="text-sm text-muted-foreground">Recent actions across your workspace</p>
+      <header className="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-card to-card/80">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-amber-500/10 shadow-sm">
+            <Activity className="h-6 w-6 text-amber-500" />
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">Activity Feed</h1>
+              {activities && activities.length > 0 && (
+                <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">
+                  <TrendingUp className="h-3 w-3" />
+                  {activities.length} recent
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5">Recent actions across your workspace</p>
+          </div>
         </div>
         <ActivityFilters value={filterType} onValueChange={setFilterType} />
       </header>
@@ -58,19 +71,19 @@ export default function FeedPage({ params }: FeedPageProps) {
               ))}
             </Card>
           ) : filteredActivities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                <Activity className="h-7 w-7 text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 mb-4 shadow-sm">
+                <Activity className="h-8 w-8 text-muted-foreground/50" />
               </div>
-              <h3 className="text-lg font-semibold">No activity yet</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+              <h3 className="text-lg font-semibold text-foreground">No activity yet</h3>
+              <p className="text-sm text-muted-foreground/70 mt-1.5 max-w-sm leading-relaxed">
                 {filterType === "all"
                   ? "Activity from your team and agents will appear here."
                   : "No activities match the selected filter."}
               </p>
             </div>
           ) : (
-            <Card className="divide-y divide-border">
+            <Card className="divide-y divide-border/50 overflow-hidden shadow-sm">
               {filteredActivities.map((activity) => (
                 <ActivityItem
                   key={activity._id}
