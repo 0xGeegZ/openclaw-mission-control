@@ -4,7 +4,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
-import { MessageItem } from "./MessageItem";
+import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, Sparkles } from "lucide-react";
@@ -55,21 +55,28 @@ export function TaskThread({
     return map;
   }, [agents]);
 
-  /** Agent names currently "typing" (readAt set, deliveredAt empty, within window). */
-  const typingAgentNames = useMemo(() => {
+  /** Agents currently "typing" (readAt set, deliveredAt empty, within window). */
+  const typingAgents = useMemo(() => {
     if (!receipts) return [];
-    const names = new Set<string>();
+    const agentsMap = new Map<string, { id: string; name: string; avatarUrl?: string }>();
     for (const r of receipts) {
       if (
         r.readAt != null &&
         r.deliveredAt == null &&
         now - r.readAt <= TYPING_WINDOW_MS
       ) {
-        const name = agentsByAuthorId?.[r.recipientId]?.name ?? "Agent";
-        names.add(name);
+        const agent = agentsByAuthorId?.[r.recipientId];
+        const name = agent?.name ?? "Agent";
+        if (!agentsMap.has(r.recipientId)) {
+          agentsMap.set(r.recipientId, {
+            id: r.recipientId,
+            name,
+            avatarUrl: agent?.avatarUrl,
+          });
+        }
       }
     }
-    return Array.from(names).sort();
+    return Array.from(agentsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [receipts, agentsByAuthorId, now]);
 
   /** Latest user-authored message (for read receipt). */
@@ -81,17 +88,24 @@ export function TaskThread({
     return null;
   }, [messages]);
 
-  /** Agent names that have "read" the latest user message (readAt set for that messageId). */
-  const readByAgentsForLatestUser = useMemo(() => {
+  /** Agents that have "read" the latest user message (readAt set for that messageId). */
+  const readByAgentsForLatestUser = useMemo((): ReadByAgent[] => {
     if (!latestUserMessage || !receipts) return [];
-    const names = new Set<string>();
+    const agentsMap = new Map<string, ReadByAgent>();
     for (const r of receipts) {
       if (r.messageId === latestUserMessage._id && r.readAt != null) {
-        const name = agentsByAuthorId?.[r.recipientId]?.name ?? "Agent";
-        names.add(name);
+        const agent = agentsByAuthorId?.[r.recipientId];
+        const name = agent?.name ?? "Agent";
+        if (!agentsMap.has(r.recipientId)) {
+          agentsMap.set(r.recipientId, {
+            id: r.recipientId,
+            name,
+            avatarUrl: agent?.avatarUrl,
+          });
+        }
       }
     }
-    return Array.from(names).sort();
+    return Array.from(agentsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [latestUserMessage, receipts, agentsByAuthorId]);
 
   // Auto-scroll to bottom on new messages
@@ -161,14 +175,53 @@ export function TaskThread({
       </div>
 
       {/* Typing indicator - single row above input */}
-      {typingAgentNames.length > 0 && (
+      {typingAgents.length > 0 && (
         <div className="shrink-0 px-4 py-2 max-w-3xl mx-auto w-full">
-          <p className="text-sm text-muted-foreground flex items-center gap-1">
-            <span className="inline-flex animate-pulse">...</span>
-            {typingAgentNames.length === 1
-              ? `${typingAgentNames[0]} is typing`
-              : `${typingAgentNames.length} agents are typing`}
-          </p>
+          <div className="flex items-center gap-2">
+            {/* Agent avatars */}
+            <div className="flex items-center -space-x-1.5">
+              {typingAgents.slice(0, 3).map((agent) => (
+                <div
+                  key={agent.id}
+                  className="relative h-6 w-6 rounded-full ring-2 ring-background overflow-hidden bg-primary/10"
+                  title={agent.name}
+                >
+                  {agent.avatarUrl ? (
+                    <img
+                      src={agent.avatarUrl}
+                      alt={agent.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-[10px] font-medium text-primary">
+                      {agent.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {typingAgents.length > 3 && (
+                <div className="h-6 w-6 rounded-full bg-muted ring-2 ring-background flex items-center justify-center">
+                  <span className="text-[9px] font-medium text-muted-foreground">
+                    +{typingAgents.length - 3}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Animated typing dots */}
+            <div className="flex items-center gap-0.5 px-2 py-1 rounded-full bg-muted/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.3s]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.15s]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce" />
+            </div>
+
+            {/* Typing text */}
+            <span className="text-xs text-muted-foreground">
+              {typingAgents.length === 1
+                ? `${typingAgents[0].name} is typing`
+                : `${typingAgents.length} agents are typing`}
+            </span>
+          </div>
         </div>
       )}
 

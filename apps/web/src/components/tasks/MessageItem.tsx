@@ -45,12 +45,19 @@ export type AgentsByAuthorId = Record<
   { name: string; avatarUrl?: string }
 >;
 
+/** Agent info for read receipts display */
+export interface ReadByAgent {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+}
+
 interface MessageItemProps {
   message: Doc<"messages">;
   /** Map of agent id -> display info; used to show which agent wrote each message */
   agentsByAuthorId?: AgentsByAuthorId;
-  /** Agent display names that have "read" this message (for user-authored messages). */
-  readByAgents?: string[];
+  /** Agents that have "read" this message (for user-authored messages). */
+  readByAgents?: ReadByAgent[];
 }
 
 /**
@@ -259,9 +266,35 @@ export function MessageItem({
             {message.authorType === "user" &&
               readByAgents &&
               readByAgents.length > 0 && (
-                <p className="mt-2 text-[11px] text-muted-foreground/70">
-                  Seen by {readByAgents.join(", ")}
-                </p>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <CheckCheck className="h-3 w-3 text-primary/60" />
+                  <div className="flex items-center -space-x-1.5">
+                    {readByAgents.slice(0, 5).map((agent) => (
+                      <Avatar
+                        key={agent.id}
+                        className="h-5 w-5 ring-2 ring-background border border-border/50"
+                        title={agent.name}
+                      >
+                        {agent.avatarUrl ? (
+                          <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-medium">
+                          {agent.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                    {readByAgents.length > 5 && (
+                      <div className="h-5 w-5 rounded-full bg-muted ring-2 ring-background flex items-center justify-center">
+                        <span className="text-[8px] font-medium text-muted-foreground">
+                          +{readByAgents.length - 5}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground/60 ml-0.5">
+                    Seen
+                  </span>
+                </div>
               )}
           </>
         )}
