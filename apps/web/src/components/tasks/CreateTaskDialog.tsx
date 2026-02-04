@@ -17,7 +17,7 @@ import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Textarea } from "@packages/ui/components/textarea";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, FileText } from "lucide-react";
 
 interface CreateTaskDialogProps {
   open: boolean;
@@ -64,14 +64,23 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Task</DialogTitle>
-          <DialogDescription>
-            Add a new task to your inbox. You can assign agents and set priority later.
-          </DialogDescription>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary/10">
+              <Plus className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <DialogTitle className="text-lg">Create Task</DialogTitle>
+              <DialogDescription className="text-sm mt-0.5">
+                Add a new task to your inbox
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title" className="text-sm font-medium">
+              Title
+            </Label>
             <Input
               id="title"
               value={title}
@@ -79,29 +88,50 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               placeholder="What needs to be done?"
               required
               autoFocus
+              className="h-11"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="description">
-              Description <span className="text-muted-foreground font-normal">(optional)</span>
+            <Label htmlFor="description" className="text-sm font-medium flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              Description
+              <span className="text-muted-foreground/60 font-normal text-xs">(optional)</span>
             </Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add more details about this task...&#10;&#10;Supports **Markdown** formatting"
+              placeholder="Add more details about this task..."
               rows={4}
-              className="resize-none font-mono text-sm"
+              className="resize-none text-sm"
             />
-            <p className="text-xs text-muted-foreground">Supports Markdown formatting</p>
+            <p className="text-[11px] text-muted-foreground/60">Supports Markdown formatting</p>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="gap-2 sm:gap-2 pt-2">
+            <Button 
+              type="button" 
+              variant="ghost" 
+              onClick={() => onOpenChange(false)}
+              className="text-muted-foreground"
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !title.trim()}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isSubmitting ? "Creating..." : "Create Task"}
+            <Button 
+              type="submit" 
+              disabled={isSubmitting || !title.trim()}
+              className="min-w-[120px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Task
+                </>
+              )}
             </Button>
           </DialogFooter>
         </form>

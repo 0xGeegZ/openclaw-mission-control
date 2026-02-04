@@ -42,13 +42,15 @@ export function TaskDocuments({ taskId }: TaskDocumentsProps) {
   
   if (documents.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-          <File className="h-7 w-7 text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+        <div className="relative mb-5">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 shadow-sm">
+            <FileText className="h-8 w-8 text-blue-500/60" />
+          </div>
         </div>
-        <h3 className="text-lg font-semibold">No documents</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          Documents linked to this task will appear here.
+        <h3 className="text-lg font-semibold text-foreground">No documents yet</h3>
+        <p className="text-sm text-muted-foreground/70 mt-2 max-w-xs leading-relaxed">
+          Documents and files linked to this task will appear here for easy access.
         </p>
       </div>
     );

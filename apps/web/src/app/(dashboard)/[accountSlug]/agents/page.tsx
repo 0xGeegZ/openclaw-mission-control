@@ -9,7 +9,7 @@ import { AgentCard } from "@/components/agents/AgentCard";
 import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import { Button } from "@packages/ui/components/button";
 import { Card } from "@packages/ui/components/card";
-import { Plus, Bot } from "lucide-react";
+import { Plus, Bot, Sparkles } from "lucide-react";
 
 interface AgentsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -32,16 +32,29 @@ export default function AgentsPage({ params }: AgentsPageProps) {
   
   // Show loading state when account or roster is loading
   const isLoading = isAccountLoading || (accountId && roster === undefined);
+  const onlineCount = roster?.filter(a => a.status === "online" || a.status === "busy").length ?? 0;
   
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Agents</h1>
-          <p className="text-sm text-muted-foreground">Manage your AI agent roster</p>
+      <header className="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-card to-card/80">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-violet-500/10 shadow-sm">
+            <Bot className="h-6 w-6 text-violet-500" />
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">Agents</h1>
+              {roster && roster.length > 0 && (
+                <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                  {onlineCount} online
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5">Manage your AI agent roster</p>
+          </div>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="mr-2 h-4 w-4" />
+        <Button onClick={() => setShowCreate(true)} className="shadow-sm">
+          <Sparkles className="mr-2 h-4 w-4" />
           Add Agent
         </Button>
       </header>
@@ -63,17 +76,17 @@ export default function AgentsPage({ params }: AgentsPageProps) {
             ))}
           </div>
         ) : roster && roster.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-              <Bot className="h-7 w-7 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 mb-5 shadow-sm">
+              <Bot className="h-10 w-10 text-violet-500/60" />
             </div>
-            <h3 className="text-lg font-semibold">No agents yet</h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-              Create your first AI agent to start building your team.
+            <h3 className="text-xl font-semibold text-foreground">No agents yet</h3>
+            <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
+              Create your first AI agent to start building your intelligent team.
             </p>
-            <Button onClick={() => setShowCreate(true)} className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Agent
+            <Button onClick={() => setShowCreate(true)} className="mt-6 shadow-sm">
+              <Sparkles className="mr-2 h-4 w-4" />
+              Create Your First Agent
             </Button>
           </div>
         ) : (

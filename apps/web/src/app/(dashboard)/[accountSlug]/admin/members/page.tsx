@@ -45,8 +45,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@packages/ui/components/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@packages/ui/components/alert-dialog";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
+import { AlertTriangle, Loader2 } from "lucide-react";
+import { Id } from "@packages/backend/convex/_generated/dataModel";
 
 interface MembersPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -62,6 +74,8 @@ export default function MembersPage({ params }: MembersPageProps) {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
+  const [memberToRemove, setMemberToRemove] = useState<{ id: Id<"memberships">; name: string } | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   
   // Fetch members
   const members = useQuery(
@@ -275,7 +289,7 @@ export default function MembersPage({ params }: MembersPageProps) {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             className="rounded-lg text-destructive focus:text-destructive"
-                            onClick={() => toast.success("Member removed")}
+                            onClick={() => setMemberToRemove({ id: member._id, name: member.userName })}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Remove
@@ -310,6 +324,56 @@ export default function MembersPage({ params }: MembersPageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Remove member confirmation */}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <AlertDialogTitle className="text-lg">Remove Member</AlertDialogTitle>
+                <AlertDialogDescription className="mt-1">
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <div className="py-4 px-1">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to remove{" "}
+              <span className="font-semibold text-foreground">{memberToRemove?.name}</span>{" "}
+              from this workspace? They will lose access to all workspace data and will need to be re-invited.
+            </p>
+          </div>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel disabled={isRemoving} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setIsRemoving(true);
+                // Simulate removal - replace with actual mutation
+                await new Promise(resolve => setTimeout(resolve, 500));
+                toast.success("Member removed", { description: `${memberToRemove?.name} has been removed from the workspace` });
+                setMemberToRemove(null);
+                setIsRemoving(false);
+              }}
+              disabled={isRemoving}
+              className="bg-destructive text-white hover:bg-destructive/90 rounded-lg gap-2"
+            >
+              {isRemoving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {isRemoving ? "Removing..." : "Remove Member"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

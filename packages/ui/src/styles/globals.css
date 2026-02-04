@@ -85,3 +85,75 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom animations for thread UI */
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.animate-typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.animate-typing-dot-delay-1 {
+  animation: typing-dot 1.4s ease-in-out infinite 0.2s;
+}
+
+.animate-typing-dot-delay-2 {
+  animation: typing-dot 1.4s ease-in-out infinite 0.4s;
+}
+
+/* Enhanced focus states for accessibility */
+@layer utilities {
+  /* Visible focus ring for keyboard navigation */
+  .focus-ring {
+    @apply outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring;
+  }
+  
+  /* Skip link for keyboard users */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:shadow-lg;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-typing-dot,
+    .animate-typing-dot-delay-1,
+    .animate-typing-dot-delay-2 {
+      animation: none;
+      opacity: 0.6;
+    }
+    
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+  
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    .border-border\/30,
+    .border-border\/50 {
+      border-color: var(--border);
+    }
+  }
+}

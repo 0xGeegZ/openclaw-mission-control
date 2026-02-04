@@ -15,6 +15,10 @@ import {
   Paperclip,
   X,
   FileText,
+  ArrowRight,
+  FileCheck,
+  MessageSquareText,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
@@ -299,12 +303,12 @@ export function MessageInput({
     [onSuggestionClick],
   );
 
-  // Suggested prompts
+  // Suggested prompts with icons
   const suggestions = [
-    "What are the next steps for this task?",
-    "Summarize the current status",
-    "Help me draft a response",
-    "List all action items",
+    { text: "What are the next steps for this task?", icon: ArrowRight },
+    { text: "Summarize the current status", icon: FileCheck },
+    { text: "Help me draft a response", icon: MessageSquareText },
+    { text: "List all action items", icon: ListChecks },
   ];
 
   // Scroll selected item into view
@@ -326,21 +330,27 @@ export function MessageInput({
         {showSuggestions && !content && (
           <div className="px-4 pt-4 pb-2">
             <div className="grid grid-cols-2 gap-2">
-              {suggestions.map((suggestion, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => handleSuggestionSelect(suggestion)}
-                  className={cn(
-                    "px-4 py-3 text-left text-sm rounded-xl transition-all",
-                    "border border-primary/20 hover:border-primary/40",
-                    "bg-background hover:bg-accent/50",
-                    "text-foreground/80 hover:text-foreground",
-                  )}
-                >
-                  {suggestion}
-                </button>
-              ))}
+              {suggestions.map((suggestion, index) => {
+                const Icon = suggestion.icon;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleSuggestionSelect(suggestion.text)}
+                    className={cn(
+                      "group/suggestion flex items-start gap-3 px-4 py-3 text-left text-sm rounded-xl transition-all duration-200",
+                      "border border-border/50 hover:border-primary/30",
+                      "bg-background hover:bg-primary/5",
+                      "text-foreground/70 hover:text-foreground",
+                    )}
+                  >
+                    <div className="shrink-0 h-8 w-8 rounded-lg bg-muted/50 group-hover/suggestion:bg-primary/10 flex items-center justify-center transition-colors">
+                      <Icon className="h-4 w-4 text-muted-foreground group-hover/suggestion:text-primary transition-colors" />
+                    </div>
+                    <span className="pt-1 leading-snug">{suggestion.text}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -370,11 +380,13 @@ export function MessageInput({
                     </p>
                   </div>
                 ) : filteredAgents.length > 0 ? (
-                  <div className="max-h-64 overflow-y-auto p-1">
+                  <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label="Agent suggestions">
                     {filteredAgents.map((option, index) => (
                       <button
                         key={option.type === "all" ? "all" : option.agent._id}
                         type="button"
+                        role="option"
+                        aria-selected={index === selectedMentionIndex}
                         data-index={index}
                         onClick={() => handleMentionSelect(option)}
                         className={cn(
@@ -545,6 +557,11 @@ export function MessageInput({
                 onKeyDown={handleKeyDown}
                 placeholder="Send a message..."
                 rows={1}
+                aria-label="Message input"
+                aria-describedby="message-input-hints"
+                aria-expanded={showMentionDropdown}
+                aria-haspopup="listbox"
+                aria-autocomplete="list"
                 className={cn(
                   "resize-none min-h-[56px] py-4 px-4 border-0 bg-transparent",
                   "focus-visible:ring-0 focus-visible:ring-offset-0",
@@ -614,25 +631,25 @@ export function MessageInput({
             </div>
 
             {/* Keyboard hints */}
-            <div className="flex items-center gap-4 mt-2 px-1">
-              <p className="text-[11px] text-muted-foreground/70">
-                <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-muted/50 rounded border border-border/50 mr-1">
+            <div id="message-input-hints" className="flex items-center gap-3 mt-2 px-1 opacity-60 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
                   Enter
                 </kbd>
                 send
-              </p>
-              <p className="text-[11px] text-muted-foreground/70">
-                <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-muted/50 rounded border border-border/50 mr-1">
+              </span>
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
                   Shift+Enter
                 </kbd>
                 new line
-              </p>
-              <p className="text-[11px] text-muted-foreground/70">
-                <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-muted/50 rounded border border-border/50 mr-1">
+              </span>
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
                   @
                 </kbd>
-                mention agent
-              </p>
+                mention
+              </span>
             </div>
           </div>
         </form>

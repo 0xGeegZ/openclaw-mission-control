@@ -50,17 +50,17 @@ export function TasksPageHeader({ accountSlug, selectedAgentId, onClearFilter }:
     : null;
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
-      <div className="flex items-center gap-4">
-        <div>
+    <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b bg-card">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
-            <h1 className="text-lg font-semibold uppercase tracking-wide">
+            <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+            <h1 className="text-base sm:text-lg font-semibold uppercase tracking-wide truncate">
               {selectedAgent ? `${selectedAgent.name}'s Tasks` : "Mission Queue"}
             </h1>
           </div>
           {!selectedAgent && (
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 hidden sm:block">
               Manage and track your team&apos;s work
             </p>
           )}
@@ -68,9 +68,9 @@ export function TasksPageHeader({ accountSlug, selectedAgentId, onClearFilter }:
         
         {/* Filter indicator */}
         {selectedAgent && onClearFilter && (
-          <Badge variant="secondary" className="gap-1.5 pl-2 pr-1">
-            <span className="text-xs">Filtering by</span>
-            <span className="font-medium">{selectedAgent.name}</span>
+          <Badge variant="secondary" className="gap-1.5 pl-2 pr-1 shrink-0">
+            <span className="text-xs hidden sm:inline">Filtering by</span>
+            <span className="font-medium text-xs sm:text-sm">{selectedAgent.name}</span>
             <Button 
               variant="ghost" 
               size="icon" 
@@ -84,7 +84,7 @@ export function TasksPageHeader({ accountSlug, selectedAgentId, onClearFilter }:
         )}
       </div>
       
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4 sm:gap-6 overflow-x-auto scrollbar-hide">
         <DashboardStats accountSlug={accountSlug} />
         <LiveClock />
       </div>

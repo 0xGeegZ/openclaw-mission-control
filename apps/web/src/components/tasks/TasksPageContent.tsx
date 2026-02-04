@@ -106,12 +106,12 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
       </div>
       
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Sidebar toggle - positioned at left edge when collapsed, at sidebar edge when expanded */}
+        {/* Sidebar toggle - hidden on mobile, positioned at left edge when collapsed */}
         <Button
           variant="ghost"
           size="icon"
           className={cn(
-            "absolute top-4 z-20 h-6 w-6 rounded-full border bg-background shadow-sm hover:bg-accent transition-all duration-300",
+            "absolute top-4 z-20 h-6 w-6 rounded-full border bg-background shadow-sm hover:bg-accent transition-all duration-300 hidden md:flex",
             sidebarCollapsed ? "left-2" : "left-[15rem]"
           )}
           onClick={() => {
@@ -132,9 +132,9 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
           </span>
         </Button>
         
-        {/* Agents sidebar */}
+        {/* Agents sidebar - hidden on mobile */}
         <div className={cn(
-          "relative transition-all duration-300 ease-in-out shrink-0",
+          "relative transition-all duration-300 ease-in-out shrink-0 hidden md:block",
           sidebarCollapsed ? "w-0" : "w-64"
         )}>
           <div className={cn(

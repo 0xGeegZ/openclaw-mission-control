@@ -71,36 +71,42 @@ const navItems = [
     label: "Tasks",
     icon: CheckSquare,
     description: "Manage tasks",
+    color: "text-emerald-500",
   },
   {
     href: "agents",
     label: "Agents",
     icon: Bot,
     description: "AI agent roster",
+    color: "text-violet-500",
   },
   {
     href: "docs",
     label: "Documents",
     icon: FileText,
     description: "Shared documents",
+    color: "text-blue-500",
   },
   {
     href: "feed",
     label: "Activity",
     icon: Activity,
     description: "Recent activity",
+    color: "text-amber-500",
   },
   {
     href: "search",
     label: "Search",
     icon: Search,
     description: "Search tasks, docs, agents",
+    color: "text-slate-500",
   },
   {
     href: "analytics",
     label: "Analytics",
     icon: BarChart3,
     description: "Workspace analytics",
+    color: "text-cyan-500",
   },
 ];
 
@@ -229,16 +235,16 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                     <Link
                       href={href}
                       className={cn(
-                        "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
+                        "flex items-center justify-center rounded-xl text-sm font-medium transition-all duration-200 h-10 w-10 mx-auto",
                         isActive
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
+                      <Icon className={cn("h-4 w-4 shrink-0", !isActive && item.color)} />
                     </Link>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">
+                  <TooltipContent side="right" className="text-xs font-medium">
                     {item.description}
                   </TooltipContent>
                 </Tooltip>
@@ -247,14 +253,17 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                   key={item.href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                    "group flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 px-3 py-2.5",
                     isActive
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  <Icon className={cn(
+                    "h-4 w-4 shrink-0 transition-colors",
+                    isActive ? "" : item.color
+                  )} />
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
@@ -268,16 +277,16 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                 <Link
                   href={`/${accountSlug}/${settingsItem.href}`}
                   className={cn(
-                    "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
+                    "flex items-center justify-center rounded-xl text-sm font-medium transition-all duration-200 h-10 w-10 mx-auto",
                     pathname.startsWith(`/${accountSlug}/${settingsItem.href}`)
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   <settingsItem.icon className="h-4 w-4 shrink-0" />
                 </Link>
               </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">
+              <TooltipContent side="right" className="text-xs font-medium">
                 {settingsItem.description}
               </TooltipContent>
             </Tooltip>
@@ -285,10 +294,10 @@ export function Sidebar({ accountSlug }: SidebarProps) {
             <Link
               href={`/${accountSlug}/${settingsItem.href}`}
               className={cn(
-                "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 px-3 py-2.5",
                 pathname.startsWith(`/${accountSlug}/${settingsItem.href}`)
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               <settingsItem.icon className="h-4 w-4 shrink-0" />
@@ -302,7 +311,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
               <Separator className="my-4" />
 
               {!isCollapsed && (
-                <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">
                   <Shield className="h-3 w-3" />
                   Admin
                 </div>
@@ -320,16 +329,16 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                         <Link
                           href={href}
                           className={cn(
-                            "flex items-center justify-center rounded-lg text-sm font-medium transition-all h-10 w-10 mx-auto",
+                            "flex items-center justify-center rounded-xl text-sm font-medium transition-all duration-200 h-10 w-10 mx-auto",
                             isActive
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                              ? "bg-amber-500 text-white shadow-md"
+                              : "text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400",
                           )}
                         >
-                          <Icon className="h-4 w-4 shrink-0" />
+                          <Icon className={cn("h-4 w-4 shrink-0", !isActive && "text-amber-500")} />
                         </Link>
                       </TooltipTrigger>
-                      <TooltipContent side="right" className="text-xs">
+                      <TooltipContent side="right" className="text-xs font-medium">
                         {item.description}
                       </TooltipContent>
                     </Tooltip>
@@ -338,13 +347,13 @@ export function Sidebar({ accountSlug }: SidebarProps) {
                       key={item.href}
                       href={href}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-all px-3 py-2.5",
+                        "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 px-3 py-2.5",
                         isActive
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                          ? "bg-amber-500 text-white shadow-md"
+                          : "text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
+                      <Icon className={cn("h-4 w-4 shrink-0", !isActive && "text-amber-500")} />
                       {item.label}
                     </Link>
                   );

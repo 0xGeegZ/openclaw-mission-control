@@ -16,7 +16,7 @@ import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bot, Sparkles, AtSign, Briefcase } from "lucide-react";
 
 interface CreateAgentDialogProps {
   open: boolean;
@@ -73,14 +73,21 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Agent</DialogTitle>
-          <DialogDescription>
-            Add a new AI agent to your team roster. Configure their role and capabilities.
-          </DialogDescription>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-violet-500/10">
+              <Bot className="h-5 w-5 text-violet-500" />
+            </div>
+            <div>
+              <DialogTitle className="text-lg">Create Agent</DialogTitle>
+              <DialogDescription className="text-sm mt-0.5">
+                Add a new AI agent to your team
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name" className="text-sm font-medium">Name</Label>
             <Input
               id="name"
               value={name}
@@ -88,11 +95,14 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
               placeholder="e.g., Research Assistant"
               required
               autoFocus
+              className="h-11"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="slug">
-              Slug <span className="text-muted-foreground font-normal">(auto-generated)</span>
+            <Label htmlFor="slug" className="text-sm font-medium flex items-center gap-2">
+              <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+              Mention Handle
+              <span className="text-muted-foreground/60 font-normal text-xs">(auto-generated)</span>
             </Label>
             <Input
               id="slug"
@@ -100,30 +110,51 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/\s/g, "-"))}
               placeholder="agent-slug"
               required
-              className="font-mono text-sm"
+              className="font-mono text-sm h-11"
             />
-            <p className="text-xs text-muted-foreground">
-              Used to mention this agent in messages with @{slug || "agent-slug"}
+            <p className="text-[11px] text-muted-foreground/60">
+              Mention this agent in messages with <code className="px-1 py-0.5 rounded bg-muted text-[10px]">@{slug || "agent-slug"}</code>
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="role">
-              Role <span className="text-muted-foreground font-normal">(optional)</span>
+            <Label htmlFor="role" className="text-sm font-medium flex items-center gap-2">
+              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+              Role
+              <span className="text-muted-foreground/60 font-normal text-xs">(optional)</span>
             </Label>
             <Input
               id="role"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="e.g., Squad Lead, SEO Analyst, Content Writer"
+              className="h-11"
             />
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="gap-2 sm:gap-2 pt-2">
+            <Button 
+              type="button" 
+              variant="ghost" 
+              onClick={() => onOpenChange(false)}
+              className="text-muted-foreground"
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !name.trim() || !slug.trim()}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isSubmitting ? "Creating..." : "Create Agent"}
+            <Button 
+              type="submit" 
+              disabled={isSubmitting || !name.trim() || !slug.trim()}
+              className="min-w-[130px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Create Agent
+                </>
+              )}
             </Button>
           </DialogFooter>
         </form>

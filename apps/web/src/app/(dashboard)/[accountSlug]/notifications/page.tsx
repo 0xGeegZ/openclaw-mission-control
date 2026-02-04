@@ -147,15 +147,21 @@ export default function NotificationsPage({ params }: NotificationsPageProps) {
               </CardContent>
             </Card>
           ) : notifications.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                  <BellOff className="h-7 w-7 text-muted-foreground" />
+            <Card className="overflow-hidden">
+              <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="relative mb-5">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50 shadow-sm">
+                    <BellOff className="h-8 w-8 text-muted-foreground/50" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-emerald-500/10 flex items-center justify-center ring-2 ring-card">
+                    <Check className="h-3 w-3 text-emerald-500" />
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold">No notifications yet</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                  When you receive notifications about tasks, agents, or team
-                  activity, they will appear here.
+                <h3 className="text-lg font-semibold text-foreground">All caught up!</h3>
+                <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
+                  {filter === "unread" 
+                    ? "No unread notifications. Check 'All' to see your notification history."
+                    : "When you receive notifications about tasks, agents, or team activity, they will appear here."}
                 </p>
               </CardContent>
             </Card>
