@@ -389,7 +389,7 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 - Fallback order: `agent.openclawConfig?.behaviorFlags` → `account.settings?.agentDefaults?.behaviorFlags` → `DEFAULT_OPENCLAW_CONFIG.behaviorFlags` from `[packages/shared/src/constants/index.ts](packages/shared/src/constants/index.ts)`.
 - Use this helper in all agent-facing actions to enforce `canCreateTasks`, `canModifyTaskStatus`, `canCreateDocuments`, `canMentionAgents`.
 
-2. **Add internal mutation: create task from agent**
+1. **Add internal mutation: create task from agent**
 
 - In `[packages/backend/convex/service/tasks.ts](packages/backend/convex/service/tasks.ts)`, add `createFromAgent` internal mutation with args:
   - `agentId`, `title`, `description?`, `priority?`, `labels?`, `dueDate?`, `status?`, `blockedReason?`.
@@ -399,7 +399,7 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 - Call `ensureOrchestratorSubscribed(ctx, accountId, taskId)` and `ensureSubscribed` for the creating agent when auto-assigned.
 - Log `task_created` activity with `actorType: "agent"` and `actorName: agent.name`.
 
-3. **Add service action: createTaskFromAgent**
+1. **Add service action: createTaskFromAgent**
 
 - In `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)`, add `createTaskFromAgent` action:
   - Validate service token + account match.
@@ -407,7 +407,7 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
   - Compute effective `canCreateTasks`; throw `Forbidden` if false.
   - Call `internal.service.tasks.createFromAgent` and return `{ taskId }`.
 
-4. **Add service action: createDocumentFromAgent**
+1. **Add service action: createDocumentFromAgent**
 
 - Add `createDocumentFromAgent` action in `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)`:
   - Validate service token + account match.
@@ -416,18 +416,18 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
   - If `taskId` is provided, verify the task exists and belongs to the account (add a small internal query in `service/tasks.ts` or validate in `service/documents.ts`).
   - Call `internal.service.documents.createOrUpdateFromAgent` and return `{ documentId }`.
 
-5. **Gate task status updates**
+1. **Gate task status updates**
 
 - Update `updateTaskStatusFromAgent` action to check `canModifyTaskStatus` using the helper; throw `Forbidden` when false.
 
-6. **Gate agent mentions**
+1. **Gate agent mentions**
 
 - Update `createMessageFromAgent` action to compute `allowAgentMentions = canMentionAgents`.
 - Update `[packages/backend/convex/service/messages.ts](packages/backend/convex/service/messages.ts)` `createFromAgent` args to include `allowAgentMentions: v.boolean()`.
 - If `allowAgentMentions=false`, filter resolved mentions to **users only** before creating notifications/subscriptions (keep message content unchanged).
 - For `@all`, still mention users, but exclude agents.
 
-7. **Runtime endpoints (local-only tools)**
+1. **Runtime endpoints (local-only tools)**
 
 - Add `POST /agent/task-create` in `[apps/runtime/src/health.ts](apps/runtime/src/health.ts)`:
   - Required: `title`. Optional: `description`, `priority`, `labels`, `dueDate`, `status`, `blockedReason`.
@@ -439,13 +439,13 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
   - Validate `type` is one of `deliverable|note|template|reference`.
   - Call `api.service.actions.createDocumentFromAgent`; return `{ success: true, documentId }`.
 
-8. **Apply account defaults + allow per-agent overrides**
+1. **Apply account defaults + allow per-agent overrides**
 
 - In `[packages/backend/convex/agents.ts](packages/backend/convex/agents.ts)`, update `create` to merge account `settings.agentDefaults` into the base config.
 - Allow behavior flags to be **omitted** for agents that should inherit defaults (so account defaults can change without rewriting each agent).
 - Ensure update paths still validate `openclawConfig` schema.
 
-9. **UI: per-agent behavior flags**
+1. **UI: per-agent behavior flags**
 
 - Create `[apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx](apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx)` with:
   - “Use account defaults” toggle (when on, checkboxes are disabled and show account defaults).
@@ -454,11 +454,11 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
   - When “Use account defaults” is enabled, omit `behaviorFlags` from the config payload to allow fallback.
 - Mount the card in `[apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/page.tsx)` under the agent info cards.
 
-10. **UI: admin defaults**
+1. **UI: admin defaults**
 
 - In `[apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx)`, add a small callout: “These are defaults. Individual agents can override in their detail page.”
 
-11. **Docs + prompt updates**
+1. **Docs + prompt updates**
 
 - Update `[docs/runtime/AGENTS.md](docs/runtime/AGENTS.md)` with:
   - “How to create tasks” (`/agent/task-create`) example.
@@ -504,22 +504,22 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 ## 9. TODO checklist
 
 - **Backend**
-  - [ ] Add behavior-flag resolution helper in `packages/backend/convex/service/actions.ts`.
-  - [ ] Add `internal.service.tasks.createFromAgent` with status rules, auto-assign, and activity logging.
-  - [ ] Add `service.actions.createTaskFromAgent` and `service.actions.createDocumentFromAgent` with gating.
-  - [ ] Gate `updateTaskStatusFromAgent` by `canModifyTaskStatus`.
-  - [ ] Gate `createMessageFromAgent` by `canMentionAgents` and pass `allowAgentMentions`.
-  - [ ] Update `service/messages.createFromAgent` to filter agent mentions when disallowed.
-  - [ ] Update `agents.create` to apply defaults and allow behaviorFlags to be omitted.
+  - Add behavior-flag resolution helper in `packages/backend/convex/service/actions.ts`.
+  - Add `internal.service.tasks.createFromAgent` with status rules, auto-assign, and activity logging.
+  - Add `service.actions.createTaskFromAgent` and `service.actions.createDocumentFromAgent` with gating.
+  - Gate `updateTaskStatusFromAgent` by `canModifyTaskStatus`.
+  - Gate `createMessageFromAgent` by `canMentionAgents` and pass `allowAgentMentions`.
+  - Update `service/messages.createFromAgent` to filter agent mentions when disallowed.
+  - Update `agents.create` to apply defaults and allow behaviorFlags to be omitted.
 - **Runtime**
-  - [ ] Add `POST /agent/task-create` endpoint in `apps/runtime/src/health.ts`.
-  - [ ] Add `POST /agent/document` endpoint in `apps/runtime/src/health.ts`.
-  - [ ] Update `apps/runtime/src/delivery.ts` prompt to list capabilities and tool URLs.
+  - Add `POST /agent/task-create` endpoint in `apps/runtime/src/health.ts`.
+  - Add `POST /agent/document` endpoint in `apps/runtime/src/health.ts`.
+  - Update `apps/runtime/src/delivery.ts` prompt to list capabilities and tool URLs.
 - **Frontend**
-  - [ ] Add `AgentBehaviorFlagsCard` component and mount it in agent detail page.
-  - [ ] Update OpenClaw admin page copy to clarify defaults vs overrides.
+  - Add `AgentBehaviorFlagsCard` component and mount it in agent detail page.
+  - Update OpenClaw admin page copy to clarify defaults vs overrides.
 - **Docs**
-  - [ ] Update `docs/runtime/AGENTS.md` with task-create + document tool instructions and mention gating.
-  - [ ] Update `docs/concept/openclaw-mission-control-cursor-core-instructions.md` service function list.
+  - Update `docs/runtime/AGENTS.md` with task-create + document tool instructions and mention gating.
+  - Update `docs/concept/openclaw-mission-control-cursor-core-instructions.md` service function list.
 - **QA**
-  - [ ] Run the manual QA checklist for all flags and UI overrides.
+  - Run the manual QA checklist for all flags and UI overrides.
