@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
   isValidTransition,
@@ -8,6 +9,10 @@ import {
 } from "../lib/task_workflow";
 import { logActivity } from "../lib/activity";
 import { createStatusChangeNotification } from "../lib/notifications";
+import {
+  ensureSubscribed,
+  ensureOrchestratorSubscribed,
+} from "../subscriptions";
 
 /**
  * Service-only task queries for runtime service.
@@ -23,6 +28,87 @@ export const getInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.taskId);
+  },
+});
+
+/**
+ * Create a task on behalf of an agent (service-only).
+ * Enforces status requirements; auto-assigns creating agent when status is assigned/in_progress and no assignees.
+ */
+export const createFromAgent = internalMutation({
+  args: {
+    agentId: v.id("agents"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    dueDate: v.optional(v.number()),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    const accountId = agent.accountId;
+    const now = Date.now();
+
+    const assignedUserIds: string[] = [];
+    let assignedAgentIds: Id<"agents">[] = [];
+    const requestedStatus = (args.status ?? "inbox") as TaskStatus;
+    if (
+      (requestedStatus === "assigned" || requestedStatus === "in_progress") &&
+      assignedUserIds.length === 0
+    ) {
+      assignedAgentIds = [args.agentId];
+    }
+    const hasAssignees =
+      assignedUserIds.length > 0 || assignedAgentIds.length > 0;
+    const requirementError = validateStatusRequirements(
+      requestedStatus,
+      hasAssignees,
+      args.blockedReason,
+    );
+    if (requirementError) {
+      throw new Error(`Invalid status at creation: ${requirementError}`);
+    }
+
+    const taskId = await ctx.db.insert("tasks", {
+      accountId,
+      title: args.title,
+      description: args.description,
+      status: requestedStatus,
+      priority: args.priority ?? 3,
+      assignedUserIds,
+      assignedAgentIds,
+      labels: args.labels ?? [],
+      dueDate: args.dueDate,
+      blockedReason:
+        requestedStatus === "blocked" ? args.blockedReason : undefined,
+      createdBy: args.agentId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await logActivity({
+      ctx,
+      accountId,
+      type: "task_created",
+      actorType: "agent",
+      actorId: args.agentId,
+      actorName: agent.name,
+      targetType: "task",
+      targetId: taskId,
+      targetName: args.title,
+    });
+
+    await ensureOrchestratorSubscribed(ctx, accountId, taskId);
+    if (assignedAgentIds.includes(args.agentId)) {
+      await ensureSubscribed(ctx, accountId, taskId, "agent", args.agentId);
+    }
+
+    return taskId;
   },
 });
 

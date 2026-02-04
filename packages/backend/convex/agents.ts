@@ -80,7 +80,7 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     return ctx.db
       .query("agents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
@@ -98,11 +98,11 @@ export const listByStatus = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     return ctx.db
       .query("agents")
-      .withIndex("by_account_status", (q) => 
-        q.eq("accountId", args.accountId).eq("status", args.status)
+      .withIndex("by_account_status", (q) =>
+        q.eq("accountId", args.accountId).eq("status", args.status),
       )
       .collect();
   },
@@ -120,7 +120,7 @@ export const get = query({
     if (!agent) {
       return null;
     }
-    
+
     await requireAccountMember(ctx, agent.accountId);
     return agent;
   },
@@ -136,11 +136,11 @@ export const getBySlug = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     return ctx.db
       .query("agents")
-      .withIndex("by_account_slug", (q) => 
-        q.eq("accountId", args.accountId).eq("slug", args.slug)
+      .withIndex("by_account_slug", (q) =>
+        q.eq("accountId", args.accountId).eq("slug", args.slug),
       )
       .unique();
   },
@@ -159,14 +159,14 @@ export const getBySessionKey = query({
       .query("agents")
       .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
       .unique();
-    
+
     if (!agent) {
       return null;
     }
-    
+
     // Note: This query may be called by service without user auth
     // The session key itself acts as authentication
-    
+
     return agent;
   },
 });
@@ -181,12 +181,12 @@ export const getRoster = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     const agents = await ctx.db
       .query("agents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
-    
+
     // Fetch current task for each agent
     const roster = await Promise.all(
       agents.map(async (agent) => {
@@ -194,31 +194,33 @@ export const getRoster = query({
         if (agent.currentTaskId) {
           currentTask = await ctx.db.get(agent.currentTaskId);
         }
-        
+
         return {
           ...agent,
-          currentTask: currentTask ? {
-            _id: currentTask._id,
-            title: currentTask.title,
-            status: currentTask.status,
-          } : null,
+          currentTask: currentTask
+            ? {
+                _id: currentTask._id,
+                title: currentTask.title,
+                status: currentTask.status,
+              }
+            : null,
         };
-      })
+      }),
     );
-    
+
     // Sort: online first, then by name
     roster.sort((a, b) => {
       const statusOrder = { online: 0, busy: 1, idle: 2, offline: 3, error: 4 };
       const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 5;
       const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 5;
-      
+
       if (aOrder !== bOrder) {
         return aOrder - bOrder;
       }
-      
+
       return a.name.localeCompare(b.name);
     });
-    
+
     return roster;
   },
 });
@@ -240,22 +242,32 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountAdmin(ctx, args.accountId);
-    
+
     // Check slug uniqueness within account
     const existing = await ctx.db
       .query("agents")
-      .withIndex("by_account_slug", (q) => 
-        q.eq("accountId", args.accountId).eq("slug", args.slug)
+      .withIndex("by_account_slug", (q) =>
+        q.eq("accountId", args.accountId).eq("slug", args.slug),
       )
       .unique();
-    
+
     if (existing) {
       throw new Error("Conflict: Agent slug already exists in this account");
     }
-    
-    // Generate session key
+
+    const account = await ctx.db.get(args.accountId);
+    const agentDefaults = (
+      account?.settings as
+        | { agentDefaults?: Record<string, unknown> }
+        | undefined
+    )?.agentDefaults;
+    const openclawConfig = {
+      ...getDefaultOpenclawConfig(),
+      ...agentDefaults,
+    };
+
     const sessionKey = generateSessionKey(args.slug, args.accountId);
-    
+
     const agentId = await ctx.db.insert("agents", {
       accountId: args.accountId,
       name: args.name,
@@ -267,10 +279,10 @@ export const create = mutation({
       heartbeatInterval: args.heartbeatInterval ?? 15, // Default 15 minutes
       avatarUrl: args.avatarUrl,
       soulContent: args.soulContent,
-      openclawConfig: getDefaultOpenclawConfig(),
+      openclawConfig,
       createdAt: Date.now(),
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -284,7 +296,7 @@ export const create = mutation({
       targetName: args.name,
       meta: { action: "created", status: "offline" },
     });
-    
+
     return agentId;
   },
 });
@@ -308,22 +320,26 @@ export const update = mutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
-    const { userId, userName } = await requireAccountAdmin(ctx, agent.accountId);
-    
+
+    const { userId, userName } = await requireAccountAdmin(
+      ctx,
+      agent.accountId,
+    );
+
     const updates: Record<string, unknown> = {};
-    
+
     if (args.name !== undefined) updates.name = args.name;
     if (args.role !== undefined) updates.role = args.role;
     if (args.description !== undefined) updates.description = args.description;
-    if (args.heartbeatInterval !== undefined) updates.heartbeatInterval = args.heartbeatInterval;
+    if (args.heartbeatInterval !== undefined)
+      updates.heartbeatInterval = args.heartbeatInterval;
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
     if (args.soulContent !== undefined) updates.soulContent = args.soulContent;
-    
+
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.agentId, updates);
     }
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -337,7 +353,7 @@ export const update = mutation({
       targetName: args.name ?? agent.name,
       meta: { action: "updated", fields: Object.keys(updates) },
     });
-    
+
     return args.agentId;
   },
 });
@@ -357,19 +373,22 @@ export const updateStatus = mutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     // For now, allow status updates from authenticated users
     // Service calls will use a separate endpoint
-    const { userId, userName } = await requireAccountMember(ctx, agent.accountId);
-    
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      agent.accountId,
+    );
+
     const oldStatus = agent.status;
-    
+
     await ctx.db.patch(args.agentId, {
       status: args.status,
       currentTaskId: args.currentTaskId,
       lastHeartbeat: Date.now(),
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -383,7 +402,7 @@ export const updateStatus = mutation({
       targetName: agent.name,
       meta: { oldStatus, newStatus: args.status },
     });
-    
+
     return args.agentId;
   },
 });
@@ -401,11 +420,13 @@ export const remove = mutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     await requireAccountAdmin(ctx, agent.accountId);
 
     const account = await ctx.db.get(agent.accountId);
-    const settings = account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined;
+    const settings = account?.settings as
+      | { orchestratorAgentId?: Id<"agents"> }
+      | undefined;
     if (settings?.orchestratorAgentId === args.agentId) {
       const currentSettings = account?.settings ?? {};
       await ctx.db.patch(agent.accountId, {
@@ -418,44 +439,47 @@ export const remove = mutation({
       .query("tasks")
       .withIndex("by_account", (q) => q.eq("accountId", agent.accountId))
       .collect();
-    
+
     for (const task of tasks) {
       if (task.assignedAgentIds.includes(args.agentId)) {
         await ctx.db.patch(task._id, {
-          assignedAgentIds: task.assignedAgentIds.filter(id => id !== args.agentId),
+          assignedAgentIds: task.assignedAgentIds.filter(
+            (id) => id !== args.agentId,
+          ),
         });
       }
     }
-    
+
     // Delete notifications for this agent
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_account_recipient", (q) => 
-        q.eq("accountId", agent.accountId)
-         .eq("recipientType", "agent")
-         .eq("recipientId", args.agentId)
+      .withIndex("by_account_recipient", (q) =>
+        q
+          .eq("accountId", agent.accountId)
+          .eq("recipientType", "agent")
+          .eq("recipientId", args.agentId),
       )
       .collect();
-    
+
     for (const notification of notifications) {
       await ctx.db.delete(notification._id);
     }
-    
+
     // Delete subscriptions for this agent
     const subscriptions = await ctx.db
       .query("subscriptions")
-      .withIndex("by_subscriber", (q) => 
-        q.eq("subscriberType", "agent").eq("subscriberId", args.agentId)
+      .withIndex("by_subscriber", (q) =>
+        q.eq("subscriberType", "agent").eq("subscriberId", args.agentId),
       )
       .collect();
-    
+
     for (const subscription of subscriptions) {
       await ctx.db.delete(subscription._id);
     }
-    
+
     // Delete the agent
     await ctx.db.delete(args.agentId);
-    
+
     return true;
   },
 });
@@ -473,13 +497,14 @@ export const getSoul = query({
     if (!agent) {
       return null;
     }
-    
+
     await requireAccountMember(ctx, agent.accountId);
-    
+
     return {
       name: agent.name,
       role: agent.role,
-      soulContent: agent.soulContent ?? generateDefaultSoul(agent.name, agent.role),
+      soulContent:
+        agent.soulContent ?? generateDefaultSoul(agent.name, agent.role),
     };
   },
 });
@@ -497,23 +522,29 @@ export const updateOpenclawConfig = mutation({
       maxTokens: v.optional(v.number()),
       systemPromptPrefix: v.optional(v.string()),
       skillIds: v.array(v.id("skills")),
-      contextConfig: v.optional(v.object({
-        maxHistoryMessages: v.number(),
-        includeTaskContext: v.boolean(),
-        includeTeamContext: v.boolean(),
-        customContextSources: v.optional(v.array(v.string())),
-      })),
-      rateLimits: v.optional(v.object({
-        requestsPerMinute: v.number(),
-        tokensPerDay: v.optional(v.number()),
-      })),
-      behaviorFlags: v.optional(v.object({
-        canCreateTasks: v.boolean(),
-        canModifyTaskStatus: v.boolean(),
-        canCreateDocuments: v.boolean(),
-        canMentionAgents: v.boolean(),
-        requiresApprovalForActions: v.optional(v.array(v.string())),
-      })),
+      contextConfig: v.optional(
+        v.object({
+          maxHistoryMessages: v.number(),
+          includeTaskContext: v.boolean(),
+          includeTeamContext: v.boolean(),
+          customContextSources: v.optional(v.array(v.string())),
+        }),
+      ),
+      rateLimits: v.optional(
+        v.object({
+          requestsPerMinute: v.number(),
+          tokensPerDay: v.optional(v.number()),
+        }),
+      ),
+      behaviorFlags: v.optional(
+        v.object({
+          canCreateTasks: v.boolean(),
+          canModifyTaskStatus: v.boolean(),
+          canCreateDocuments: v.boolean(),
+          canMentionAgents: v.boolean(),
+          requiresApprovalForActions: v.optional(v.array(v.string())),
+        }),
+      ),
     }),
   },
   handler: async (ctx, args) => {
@@ -521,9 +552,12 @@ export const updateOpenclawConfig = mutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
-    const { userId, userName } = await requireAccountAdmin(ctx, agent.accountId);
-    
+
+    const { userId, userName } = await requireAccountAdmin(
+      ctx,
+      agent.accountId,
+    );
+
     // Validate all skillIds exist and belong to same account
     for (const skillId of args.config.skillIds) {
       const skill = await ctx.db.get(skillId);
@@ -534,11 +568,11 @@ export const updateOpenclawConfig = mutation({
         throw new Error(`Skill is disabled: ${skill.name}`);
       }
     }
-    
+
     await ctx.db.patch(args.agentId, {
       openclawConfig: args.config,
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -552,7 +586,7 @@ export const updateOpenclawConfig = mutation({
       targetName: agent.name,
       meta: { action: "config_updated" },
     });
-    
+
     return args.agentId;
   },
 });
@@ -568,18 +602,18 @@ export const getWithSkills = query({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) return null;
-    
+
     await requireAccountMember(ctx, agent.accountId);
-    
+
     // Resolve skill IDs to full skill objects
     let skills: any[] = [];
     if (agent.openclawConfig?.skillIds) {
       skills = await Promise.all(
-        agent.openclawConfig.skillIds.map(id => ctx.db.get(id))
+        agent.openclawConfig.skillIds.map((id) => ctx.db.get(id)),
       );
       skills = skills.filter(Boolean);
     }
-    
+
     return {
       ...agent,
       resolvedSkills: skills,
@@ -601,9 +635,9 @@ export const updateSkills = mutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     await requireAccountAdmin(ctx, agent.accountId);
-    
+
     // Validate all skills
     for (const skillId of args.skillIds) {
       const skill = await ctx.db.get(skillId);
@@ -611,16 +645,16 @@ export const updateSkills = mutation({
         throw new Error(`Invalid skill: ${skillId}`);
       }
     }
-    
+
     const currentConfig = agent.openclawConfig ?? getDefaultOpenclawConfig();
-    
+
     await ctx.db.patch(args.agentId, {
       openclawConfig: {
         ...currentConfig,
         skillIds: args.skillIds,
       },
     });
-    
+
     return args.agentId;
   },
 });

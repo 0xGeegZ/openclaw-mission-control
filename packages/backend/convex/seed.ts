@@ -174,9 +174,11 @@ Post updates using this exact structure:
 
 ## How to update task status (required)
 
-**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until the runtime endpoint is called. That causes repeated notifications and an infinite loop. You **must** call the task-status endpoint below to set status; then post your summary.
+**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until status is updated. That causes repeated notifications and an infinite loop. You **must** update status via the runtime; then post your summary.
 
-Before posting a thread update that changes status, call the runtime tool:
+**Preferred (when the runtime offers the tool):** Use the **task_status** tool. If your notification prompt lists a Task ID and you have the \`task_status\` tool available, call it with \`taskId\`, \`status\` (\`in_progress\` | \`review\` | \`done\` | \`blocked\`), and \`blockedReason\` when status is \`blocked\`. Call the tool **before** posting your thread reply. The runtime executes it and then you can post your message.
+
+**Fallback (manual):** When the tool is not available, call the HTTP endpoint:
 
 - Endpoint: \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status\`
 - Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
@@ -188,7 +190,7 @@ Rules:
 - \`blockedReason\` is required when status is \`blocked\`
 - \`inbox\`/\`assigned\` are handled by assignment changes, not this tool
 
-Example:
+Example (HTTP fallback):
 
 \`\`\`bash
 curl -X POST "http://127.0.0.1:3001/agent/task-status" \
@@ -197,7 +199,7 @@ curl -X POST "http://127.0.0.1:3001/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
-**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, call this endpoint with \`"status": "done"\` **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, use the **task_status** tool with \`"status": "done"\` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ## Communication rules
 
@@ -413,7 +415,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
 - Review tasks in REVIEW promptly; close them (move to DONE) with a clear acceptance note.
-- When closing a task (move to DONE): always call the runtime task-status endpoint with status "done" first (POST .../agent/task-status). Then post your acceptance note. Posting in the thread alone does not update the task status and causes a loop.
+- When closing a task (move to DONE): use the task_status tool with status "done" first (or the runtime task-status endpoint if the tool is not offered). Then post your acceptance note. Posting in the thread alone does not update the task status and causes a loop.
 - Write docs for decisions; link from task threads.
 
 ## Quality checks (must pass)

@@ -72,11 +72,27 @@ Post updates using this exact structure:
 - If you are blocked: move to BLOCKED and explain the missing input
 - If done: move to DONE, post final summary, and ensure doc links exist
 
+## Capabilities and tools
+
+Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act.
+
+- **task_status** — Update the current task's status. Call **before** posting your reply when you change status. Available only when you have a task context and the account allows it.
+- **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
+- **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
+
+If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
+
+### Mention gating
+
+If your capabilities do **not** include "mention other agents", then @mentions of agents (including @all for agents) are ignored by the system: no agent will be notified. User mentions still work. Do not assume agent mentions were delivered; report that you cannot mention agents if asked.
+
 ## How to update task status (required)
 
-**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until the runtime endpoint is called. That causes repeated notifications and an infinite loop. You **must** call the task-status endpoint below to set status; then post your summary.
+**Critical:** Posting "move to DONE" or "Phase X is DONE" in the thread does **not** change the task status. The task stays in REVIEW until status is updated. That causes repeated notifications and an infinite loop. You **must** update status via the runtime; then post your summary.
 
-Before posting a thread update that changes status, call the runtime tool:
+**Preferred (when the runtime offers the tool):** Use the **task_status** tool. If your notification prompt lists a Task ID and you have the `task_status` tool available, call it with `taskId`, `status` (`in_progress` | `review` | `done` | `blocked`), and `blockedReason` when status is `blocked`. Call the tool **before** posting your thread reply. The runtime executes it and then you can post your message.
+
+**Fallback (manual):** When the tool is not available, call the HTTP endpoint:
 
 - Endpoint: `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status`
 - Header: `x-openclaw-session-key: agent:{slug}:{accountId}`
@@ -88,7 +104,7 @@ Rules:
 - `blockedReason` is required when status is `blocked`
 - `inbox`/`assigned` are handled by assignment changes, not this tool
 
-Example:
+Example (HTTP fallback):
 
 ```bash
 curl -X POST "http://127.0.0.1:3001/agent/task-status" \
@@ -97,7 +113,15 @@ curl -X POST "http://127.0.0.1:3001/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
-**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, call this endpoint with `"status": "done"` **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+
+### Optional HTTP fallbacks (manual/CLI)
+
+- **Task status:** `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status` with body `{ "taskId", "status", "blockedReason?" }`.
+- **Task create:** `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-create` with body `{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }`.
+- **Document:** `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/document` with body `{ "title", "content", "type", "documentId?", "taskId?" }`.
+
+All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are local-only.
 
 ## Orchestrator (squad lead)
 

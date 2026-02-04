@@ -51,6 +51,7 @@ import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
 import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
+import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -336,6 +337,29 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 </CardContent>
               </Card>
             </div>
+
+            {isAdmin && (
+              <AgentBehaviorFlagsCard
+                agent={agent}
+                accountDefaults={
+                  (
+                    account?.settings as
+                      | {
+                          agentDefaults?: {
+                            behaviorFlags?: {
+                              canCreateTasks?: boolean;
+                              canModifyTaskStatus?: boolean;
+                              canCreateDocuments?: boolean;
+                              canMentionAgents?: boolean;
+                            };
+                          };
+                        }
+                      | undefined
+                  )?.agentDefaults?.behaviorFlags ?? null
+                }
+              />
+            )}
+
             {/* Assigned Tasks */}
             <Card>
               <CardHeader>

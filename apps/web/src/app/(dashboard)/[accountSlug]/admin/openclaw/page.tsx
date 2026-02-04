@@ -484,7 +484,9 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   <CardHeader>
                     <CardTitle>Behavior Flags</CardTitle>
                     <CardDescription>
-                      Control what actions agents can perform by default
+                      Control what actions agents can perform by default. These
+                      are account-level defaults; individual agents can override
+                      them on their detail page.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">

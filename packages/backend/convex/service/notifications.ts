@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery, internalMutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { resolveBehaviorFlags } from "../lib/behavior_flags";
 
 /**
  * List undelivered agent notifications for an account (service-only).
@@ -271,6 +272,8 @@ export const getForDelivery = internalQuery({
       assignedIdsSet.has(a.id),
     );
 
+    const effectiveBehaviorFlags = resolveBehaviorFlags(agent, account);
+
     return {
       notification,
       agent,
@@ -282,6 +285,7 @@ export const getForDelivery = internalQuery({
       primaryUserMention,
       mentionableAgents,
       assignedAgents,
+      effectiveBehaviorFlags,
       repositoryDoc: repositoryDoc
         ? {
             title:

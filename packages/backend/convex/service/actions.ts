@@ -6,8 +6,14 @@ import {
   generateServiceToken,
   hashServiceTokenSecret,
 } from "../lib/service_auth";
-import { taskStatusValidator } from "../lib/validators";
+import { taskStatusValidator, documentTypeValidator } from "../lib/validators";
 import { Id } from "../_generated/dataModel";
+import {
+  resolveBehaviorFlags,
+  type BehaviorFlags,
+} from "../lib/behavior_flags";
+
+export type { BehaviorFlags };
 
 /**
  * Service actions for runtime service.
@@ -455,8 +461,7 @@ export const updateAgentHeartbeat = action({
 
 /**
  * Update task status on behalf of an agent (service-only).
- * Validates service token and account ownership.
- * Optionally guard against unexpected current status changes.
+ * Validates service token, account ownership, and canModifyTaskStatus behavior flag.
  */
 export const updateTaskStatusFromAgent = action({
   args: {
@@ -497,6 +502,14 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canModifyTaskStatus) {
+      throw new Error("Forbidden: Agent is not allowed to modify task status");
+    }
+
     const task = await ctx.runQuery(internal.service.tasks.getInternal, {
       taskId: args.taskId,
     });
@@ -520,9 +533,135 @@ export const updateTaskStatusFromAgent = action({
 });
 
 /**
+ * Create a task on behalf of an agent (service-only).
+ * Gated by canCreateTasks behavior flag.
+ */
+export const createTaskFromAgent = action({
+  args: {
+    agentId: v.id("agents"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    dueDate: v.optional(v.number()),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ taskId: Id<"tasks"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canCreateTasks) {
+      throw new Error("Forbidden: Agent is not allowed to create tasks");
+    }
+
+    const taskId = await ctx.runMutation(
+      internal.service.tasks.createFromAgent,
+      {
+        agentId: args.agentId,
+        title: args.title,
+        description: args.description,
+        priority: args.priority,
+        labels: args.labels,
+        dueDate: args.dueDate,
+        status: args.status,
+        blockedReason: args.blockedReason,
+      },
+    );
+
+    return { taskId };
+  },
+});
+
+/**
+ * Create or update a document on behalf of an agent (service-only).
+ * Gated by canCreateDocuments behavior flag.
+ */
+export const createDocumentFromAgent = action({
+  args: {
+    agentId: v.id("agents"),
+    documentId: v.optional(v.id("documents")),
+    taskId: v.optional(v.id("tasks")),
+    title: v.string(),
+    content: v.string(),
+    type: documentTypeValidator,
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ documentId: Id<"documents"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canCreateDocuments) {
+      throw new Error("Forbidden: Agent is not allowed to create documents");
+    }
+
+    if (args.taskId) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task || task.accountId !== args.accountId) {
+        throw new Error(
+          "Not found: Task does not exist or belongs to different account",
+        );
+      }
+    }
+
+    const documentId = await ctx.runMutation(
+      internal.service.documents.createOrUpdateFromAgent,
+      {
+        agentId: args.agentId,
+        documentId: args.documentId,
+        taskId: args.taskId,
+        title: args.title,
+        content: args.content,
+        type: args.type,
+      },
+    );
+
+    return { documentId };
+  },
+});
+
+/**
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread (e.g. after OpenClaw response write-back).
  * Optional sourceNotificationId enables idempotent delivery (no duplicate messages on retry).
+ * Gated by canMentionAgents for agent mention resolution.
  */
 export const createMessageFromAgent = action({
   args: {
@@ -579,7 +718,12 @@ export const createMessageFromAgent = action({
       throw new Error("Forbidden: Task belongs to different account");
     }
 
-    // Call internal mutation
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    const allowAgentMentions = flags.canMentionAgents;
+
     const messageId: Id<"messages"> = await ctx.runMutation(
       internal.service.messages.createFromAgent,
       {
@@ -588,6 +732,7 @@ export const createMessageFromAgent = action({
         content: args.content,
         attachments: args.attachments,
         sourceNotificationId: args.sourceNotificationId,
+        allowAgentMentions,
       },
     );
 

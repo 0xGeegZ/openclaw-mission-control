@@ -1,8 +1,12 @@
 import { getConvexClient, api } from "./convex-client";
 import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
-import { sendToOpenClaw } from "./gateway";
+import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
+import {
+  getToolSchemasForCapabilities,
+  executeAgentTool,
+} from "./tooling/agentTools";
 
 const log = createLogger("[Delivery]");
 
@@ -108,13 +112,59 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 msg,
               );
             }
-            const responseText = await sendToOpenClaw(
+            const flags = context.effectiveBehaviorFlags ?? {};
+            const hasTask = !!context?.task;
+            const tools = getToolSchemasForCapabilities({
+              canCreateTasks: flags.canCreateTasks === true,
+              canModifyTaskStatus: flags.canModifyTaskStatus === true,
+              canCreateDocuments: flags.canCreateDocuments === true,
+              hasTaskContext: hasTask,
+            });
+            const sendOptions =
+              tools.length > 0
+                ? { tools, toolChoice: "auto" as const }
+                : undefined;
+
+            const result = await sendToOpenClaw(
               context.agent.sessionKey,
               formatNotificationMessage(context),
+              sendOptions,
             );
+
+            let textToPost: string | null = result.text?.trim() ?? null;
+            if (result.toolCalls.length > 0) {
+              const outputs: { call_id: string; output: string }[] = [];
+              for (const call of result.toolCalls) {
+                const toolResult = await executeAgentTool({
+                  name: call.name,
+                  arguments: call.arguments,
+                  agentId: context.agent._id,
+                  accountId: config.accountId,
+                  serviceToken: config.serviceToken,
+                  taskId: context.notification?.taskId,
+                });
+                outputs.push({
+                  call_id: call.call_id,
+                  output: JSON.stringify(toolResult),
+                });
+              }
+              if (outputs.length > 0) {
+                try {
+                  const finalText = await sendOpenClawToolResults(
+                    context.agent.sessionKey,
+                    outputs,
+                  );
+                  textToPost = finalText?.trim() ?? textToPost;
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  log.warn("Failed to send tool results to OpenClaw", msg);
+                }
+              }
+            }
+
             const taskId = context.notification?.taskId;
-            if (taskId && responseText?.trim()) {
-              const trimmed = responseText.trim();
+            if (taskId && textToPost) {
+              const trimmed = textToPost.trim();
               const finalContent = applyAutoMentionFallback(trimmed, context);
               if (finalContent !== trimmed) {
                 const originalTokens = extractMentionTokens(trimmed);
@@ -533,7 +583,27 @@ function formatNotificationMessage(context: any): string {
     repositoryDoc,
     mentionableAgents = [],
     primaryUserMention = null,
+    effectiveBehaviorFlags = {},
   } = context;
+  const flags = effectiveBehaviorFlags as {
+    canCreateTasks?: boolean;
+    canModifyTaskStatus?: boolean;
+    canCreateDocuments?: boolean;
+    canMentionAgents?: boolean;
+  };
+  const capabilities: string[] = [];
+  if (flags.canCreateTasks)
+    capabilities.push("create tasks (task_create tool)");
+  if (flags.canModifyTaskStatus && task)
+    capabilities.push("change task status (task_status tool)");
+  if (flags.canCreateDocuments)
+    capabilities.push("create/update documents (document_upsert tool)");
+  if (flags.canMentionAgents) capabilities.push("mention other agents");
+  const capabilitiesBlock =
+    capabilities.length > 0
+      ? `Capabilities: ${capabilities.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED.\n\n`
+      : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
+
   const taskDescription = task?.description?.trim()
     ? `Task description:\n${task.description.trim()}`
     : "";
@@ -569,7 +639,7 @@ function formatNotificationMessage(context: any): string {
       ].join("\n");
 
   return `
-## Notification: ${notification.type}
+${capabilitiesBlock}## Notification: ${notification.type}
 
 **${notification.title}**
 
@@ -585,12 +655,8 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
 
-If you need to change task status, call the runtime tool BEFORE posting a thread update:
-- POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status
-- Header: x-openclaw-session-key: agent:{slug}:{accountId}
-- Body: { "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }
-- Note: inbox/assigned are handled by assignment changes, not this tool.
-${task?.status === "review" ? '\nIf you are accepting this task as done, you MUST call the task-status endpoint with status "done" before posting. Posting alone does not change the task status.' : ""}
+If you need to change task status, do it BEFORE posting a thread update. Prefer the **task_status** tool when your Capabilities list it: call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. If the tool is not offered, use the HTTP fallback: POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status with header x-openclaw-session-key and body { "taskId", "status", "blockedReason?" }. Note: inbox/assigned are handled by assignment changes, not this tool.
+${task?.status === "review" ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. Posting alone does not change the task status.' : ""}
 
 Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 

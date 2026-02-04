@@ -6,7 +6,10 @@ import {
   isAttachmentTypeAndSizeAllowed,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
-import { ensureSubscribed, ensureOrchestratorSubscribed } from "../subscriptions";
+import {
+  ensureSubscribed,
+  ensureOrchestratorSubscribed,
+} from "../subscriptions";
 import {
   extractMentionStrings,
   resolveMentions,
@@ -82,6 +85,8 @@ export const createFromAgent = internalMutation({
     content: v.string(),
     attachments: v.optional(v.array(attachmentValidator)),
     sourceNotificationId: v.optional(v.id("notifications")),
+    /** When false, agent mentions are excluded from notifications/subscriptions; message content is unchanged. */
+    allowAgentMentions: v.boolean(),
   },
   handler: async (ctx, args) => {
     // Get agent info
@@ -167,14 +172,18 @@ export const createFromAgent = internalMutation({
         });
       }
     }
-    // Parse and resolve mentions
-    let mentions;
+    // Parse and resolve mentions; filter to users only when agent mentions disallowed
+    let mentions: Array<{ type: "user" | "agent"; id: string; name: string }>;
 
     if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, agent.accountId, args.agentId);
     } else {
       const mentionStrings = extractMentionStrings(args.content);
       mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
+    }
+
+    if (!args.allowAgentMentions) {
+      mentions = mentions.filter((m) => m.type === "user");
     }
 
     // Create message

@@ -17,6 +17,7 @@ import type * as fleet from "../fleet.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_activity from "../lib/activity.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_behavior_flags from "../lib/behavior_flags.js";
 import type * as lib_mentions from "../lib/mentions.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_service_auth from "../lib/service_auth.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   invitations: typeof invitations;
   "lib/activity": typeof lib_activity;
   "lib/auth": typeof lib_auth;
+  "lib/behavior_flags": typeof lib_behavior_flags;
   "lib/mentions": typeof lib_mentions;
   "lib/notifications": typeof lib_notifications;
   "lib/service_auth": typeof lib_service_auth;
