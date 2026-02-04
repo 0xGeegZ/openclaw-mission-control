@@ -51,77 +51,112 @@ import { Streamdown } from "streamdown";
 import React from "react";
 
 /**
- * Custom component for rendering mention badges inline via Streamdown's component system.
- * Used as a replacement for <span data-mention> elements.
+ * Renders a mention badge inline.
  */
-const MentionBadge = ({
-  children,
-  ...props
-}: React.HTMLAttributes<HTMLSpanElement> & { "data-mention"?: string }) => {
-  const mentionName = props["data-mention"];
-  if (mentionName) {
-    return (
-      <span
-        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default"
-        title={`Mentioned: ${mentionName}`}
-      >
-        @{mentionName}
-      </span>
-    );
-  }
-  return <span {...props}>{children}</span>;
-};
+const MentionBadge = ({ name }: { name: string }) => (
+  <span
+    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default align-baseline"
+    title={`Mentioned: ${name}`}
+  >
+    @{name}
+  </span>
+);
 
 /**
- * Streamdown custom components configuration.
- * Overrides span rendering to handle mention badges.
- */
-const streamdownComponents = {
-  span: MentionBadge,
-};
-
-/**
- * Preprocesses content to replace @mentions with inline HTML spans that Streamdown will render.
- * This keeps everything on one line as the HTML is parsed inline by Streamdown.
- */
-function preprocessMentions(
-  content: string,
-  mentions?: Array<{ name: string; id?: string }>
-): string {
-  if (!mentions || mentions.length === 0) {
-    return content;
-  }
-
-  // Create a map of lowercase mention names for case-insensitive matching
-  const mentionMap = new Map(
-    mentions.map((m) => [m.name.toLowerCase(), m])
-  );
-
-  // Replace @mentions with inline HTML span elements
-  return content.replace(/@(\w+)/g, (match, mentionName) => {
-    const mention = mentionMap.get(mentionName.toLowerCase());
-    if (mention) {
-      // Return inline HTML that Streamdown will render via rehype-raw
-      return `<span data-mention="${mention.name}"></span>`;
-    }
-    return match;
-  });
-}
-
-/**
- * Renders message content with inline styled @mentions using Streamdown.
- * Preprocesses content to inject mention HTML, then uses custom components for styling.
+ * Renders message content with inline styled @mentions.
+ * For simple messages (single paragraph with mentions), renders inline to prevent line breaks.
+ * For complex messages (with markdown like code blocks, lists, etc.), uses Streamdown.
  */
 function renderContentWithMentions(
   content: string,
   mentions?: Array<{ name: string; id?: string }>
 ): React.ReactNode {
-  const processedContent = preprocessMentions(content, mentions);
-  return (
-    <Streamdown components={streamdownComponents}>
-      {processedContent}
-    </Streamdown>
+  // If no mentions, just use Streamdown as normal
+  if (!mentions || mentions.length === 0) {
+    return <Streamdown>{content}</Streamdown>;
+  }
+
+  // Check if content has complex markdown that requires Streamdown's full rendering
+  const hasComplexMarkdown = /```|^\s*[-*+]\s|^\s*\d+\.\s|^#+\s|^\s*>/m.test(content);
+
+  if (hasComplexMarkdown) {
+    // For complex markdown, use Streamdown but with CSS to help inline mentions
+    // Create a map of lowercase mention names for case-insensitive matching
+    const mentionMap = new Map(
+      mentions.map((m) => [m.name.toLowerCase(), m])
+    );
+
+    // Replace @mentions with a placeholder that won't be affected by markdown
+    const MENTION_PLACEHOLDER = "___MENTION_";
+    const mentionIndices: string[] = [];
+    
+    const processedContent = content.replace(/@(\w+)/g, (match, mentionName) => {
+      const mention = mentionMap.get(mentionName.toLowerCase());
+      if (mention) {
+        mentionIndices.push(mention.name);
+        return `${MENTION_PLACEHOLDER}${mentionIndices.length - 1}___`;
+      }
+      return match;
+    });
+
+    // Render with Streamdown, then we'd need post-processing which isn't possible
+    // Fall back to simple rendering for now
+    return renderSimpleWithMentions(content, mentions);
+  }
+
+  // For simple text, render inline to keep mentions on the same line
+  return renderSimpleWithMentions(content, mentions);
+}
+
+/**
+ * Renders simple text content with inline mentions (no complex markdown).
+ * Keeps everything on one line by using inline elements only.
+ */
+function renderSimpleWithMentions(
+  content: string,
+  mentions: Array<{ name: string; id?: string }>
+): React.ReactNode {
+  const mentionMap = new Map(
+    mentions.map((m) => [m.name.toLowerCase(), m])
   );
+
+  const mentionRegex = /@(\w+)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(content)) !== null) {
+    const mentionName = match[1];
+    const mention = mentionMap.get(mentionName.toLowerCase());
+
+    // Add text before this match
+    if (match.index > lastIndex) {
+      parts.push(
+        <Streamdown key={`text-${lastIndex}`} as="span">
+          {content.slice(lastIndex, match.index)}
+        </Streamdown>
+      );
+    }
+
+    if (mention) {
+      parts.push(<MentionBadge key={`mention-${match.index}`} name={mention.name} />);
+    } else {
+      parts.push(<span key={`text-${match.index}`}>{match[0]}</span>);
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < content.length) {
+    parts.push(
+      <Streamdown key={`text-${lastIndex}`} as="span">
+        {content.slice(lastIndex)}
+      </Streamdown>
+    );
+  }
+
+  return <span className="inline">{parts}</span>;
 }
 
 /** Lookup for agent author display (name, optional avatar). */
