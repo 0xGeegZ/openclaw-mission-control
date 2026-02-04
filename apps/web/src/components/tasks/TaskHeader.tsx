@@ -72,7 +72,6 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
-  const [_pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null);
 
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
@@ -99,7 +98,6 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const handleStatusChange = async (newStatus: TaskStatus) => {
     // If moving to blocked, show dialog for reason
     if (newStatus === "blocked") {
-      setPendingStatus(newStatus);
       setShowBlockedDialog(true);
       return;
     }
@@ -125,7 +123,6 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         blockedReason: reason,
       });
       toast.success("Task marked as blocked");
-      setPendingStatus(null);
     } catch (error) {
       toast.error("Failed to update status", {
         description: error instanceof Error ? error.message : "Unknown error",

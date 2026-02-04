@@ -152,11 +152,15 @@ export async function executeAgentTool(params: {
   const client = getConvexClient();
 
   if (name === "task_status") {
-    let args: { taskId?: string; status?: string; blockedReason?: string };
+    let args: { taskId?: string; status?: string; blockedReason?: string } = {};
     try {
-      args = JSON.parse(argsStr || "{}") as typeof args;
+      const parsed = JSON.parse(argsStr || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { success: false, error: "Invalid JSON arguments" };
+      }
+      args = parsed as typeof args;
     } catch {
-      args = {};
+      return { success: false, error: "Invalid JSON arguments" };
     }
     const result: TaskStatusToolResult = await executeTaskStatusTool({
       agentId,

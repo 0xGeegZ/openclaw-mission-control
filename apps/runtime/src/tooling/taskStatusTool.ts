@@ -57,6 +57,9 @@ export async function executeTaskStatusTool(params: {
   const { agentId, taskId, status, blockedReason, serviceToken, accountId } =
     params;
 
+  if (!taskId.trim()) {
+    return { success: false, error: "taskId is required" };
+  }
   if (!ALLOWED_STATUSES.has(status)) {
     return {
       success: false,
