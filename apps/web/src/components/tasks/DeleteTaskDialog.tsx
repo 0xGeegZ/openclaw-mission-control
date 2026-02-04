@@ -63,7 +63,9 @@ export function DeleteTaskDialog({
               <AlertTriangle className="h-6 w-6 text-destructive" />
             </div>
             <div>
-              <AlertDialogTitle className="text-lg">Delete Task</AlertDialogTitle>
+              <AlertDialogTitle className="text-lg">
+                Delete Task
+              </AlertDialogTitle>
               <AlertDialogDescription className="mt-1">
                 This action cannot be undone.
               </AlertDialogDescription>
@@ -73,8 +75,11 @@ export function DeleteTaskDialog({
         <div className="py-4 px-1">
           <p className="text-sm text-muted-foreground">
             Are you sure you want to delete{" "}
-            <span className="font-semibold text-foreground">"{taskTitle}"</span>?
-            This will permanently remove the task along with all messages and attachments.
+            <span className="font-semibold text-foreground">
+              &quot;{taskTitle}&quot;
+            </span>
+            ? This will permanently remove the task along with all messages and
+            attachments.
           </p>
         </div>
         <AlertDialogFooter className="gap-2 sm:gap-2">

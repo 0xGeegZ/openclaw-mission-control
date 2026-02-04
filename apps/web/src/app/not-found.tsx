@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@packages/ui/components/button";
-import { Home, Search, ArrowLeft, Compass } from "lucide-react";
+import { Home, ArrowLeft, Compass } from "lucide-react";
 
 /**
  * Custom 404 Not Found page.
@@ -33,13 +33,17 @@ export default function NotFound() {
         Page not found
       </h1>
       <p className="text-lg text-muted-foreground max-w-md leading-relaxed mb-8">
-        The page you are looking for does not exist or has been moved. 
-        Let us help you find your way back.
+        The page you are looking for does not exist or has been moved. Let us
+        help you find your way back.
       </p>
 
       {/* Action buttons */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
-        <Button asChild variant="outline" className="w-full sm:w-auto rounded-xl">
+        <Button
+          asChild
+          variant="outline"
+          className="w-full sm:w-auto rounded-xl"
+        >
           <Link href="javascript:history.back()">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Go Back
@@ -59,22 +63,22 @@ export default function NotFound() {
           Looking for something specific?
         </p>
         <div className="flex flex-wrap justify-center gap-4 text-sm">
-          <Link 
-            href="/dashboard" 
+          <Link
+            href="/dashboard"
             className="text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1.5"
           >
             Dashboard
           </Link>
           <span className="text-border">|</span>
-          <Link 
-            href="/sign-in" 
+          <Link
+            href="/sign-in"
             className="text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1.5"
           >
             Sign In
           </Link>
           <span className="text-border">|</span>
-          <Link 
-            href="/sign-up" 
+          <Link
+            href="/sign-up"
             className="text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1.5"
           >
             Sign Up

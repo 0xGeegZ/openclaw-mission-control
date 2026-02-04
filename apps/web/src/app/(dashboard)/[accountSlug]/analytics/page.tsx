@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { use, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@packages/ui/components/card";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { TASK_STATUS_LABELS } from "@packages/shared";
+import { TASK_STATUS_LABELS, TASK_STATUS_ORDER } from "@packages/shared";
 import type { TaskStatus } from "@packages/shared";
 import {
   ChartContainer,
@@ -41,31 +41,72 @@ import {
   PieChartIcon,
 } from "lucide-react";
 
-// Define colors for task statuses (computed, not CSS vars)
+/** Task status display order: Kanban order plus blocked. */
+const ANALYTICS_STATUS_ORDER: TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+
+/** Hex colors for task statuses in charts (not CSS vars). */
 const STATUS_COLORS: Record<TaskStatus, string> = {
-  inbox: "#6b7280", // gray
-  assigned: "#8b5cf6", // violet
-  in_progress: "#3b82f6", // blue
-  review: "#f59e0b", // amber
-  done: "#22c55e", // green
-  blocked: "#ef4444", // red
+  inbox: "#6b7280",
+  assigned: "#8b5cf6",
+  in_progress: "#3b82f6",
+  review: "#f59e0b",
+  done: "#22c55e",
+  blocked: "#ef4444",
 };
 
-// Define colors for agent statuses
+/** Hex colors for agent statuses in charts. */
 const AGENT_STATUS_COLORS: Record<string, string> = {
-  online: "#22c55e", // green
-  busy: "#f59e0b", // amber
-  idle: "#6b7280", // gray
-  offline: "#9ca3af", // light gray
-  error: "#ef4444", // red
+  online: "#22c55e",
+  busy: "#f59e0b",
+  idle: "#6b7280",
+  offline: "#9ca3af",
+  error: "#ef4444",
 };
+
+const AGENT_STATUS_ORDER = [
+  "online",
+  "busy",
+  "idle",
+  "offline",
+  "error",
+] as const;
+
+interface AnalyticsEmptyStateProps {
+  icon: ReactNode;
+  message: string;
+  actionHref: string;
+  actionLabel: string;
+}
+
+/** Empty state for chart cards when there is no data to display. */
+function AnalyticsEmptyState({
+  icon,
+  message,
+  actionHref,
+  actionLabel,
+}: AnalyticsEmptyStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center h-[250px] text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
+        {icon}
+      </div>
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <Link
+        href={actionHref}
+        className="text-xs text-primary hover:underline mt-1"
+      >
+        {actionLabel}
+      </Link>
+    </div>
+  );
+}
 
 interface AnalyticsPageProps {
   params: Promise<{ accountSlug: string }>;
 }
 
 /**
- * Analytics dashboard with charts for task/agent visualization.
+ * Analytics dashboard: task/agent counts, status charts, and pipeline view.
  */
 export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { accountSlug } = use(params);
@@ -76,54 +117,28 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
     accountId ? { accountId } : "skip",
   );
 
-  const statusOrder: TaskStatus[] = [
-    "inbox",
-    "assigned",
-    "in_progress",
-    "review",
-    "done",
-    "blocked",
-  ];
-  const agentStatusOrder = ["online", "busy", "idle", "offline", "error"];
+  const taskChartData = !summary
+    ? []
+    : ANALYTICS_STATUS_ORDER.map((status) => ({
+        status,
+        label: TASK_STATUS_LABELS[status],
+        count: summary.taskCountByStatus[status] ?? 0,
+        fill: STATUS_COLORS[status],
+      }));
 
-  // Prepare chart data for tasks
-  const taskChartData = useMemo(() => {
-    if (!summary) return [];
-    return statusOrder.map((status) => ({
-      status,
-      label: TASK_STATUS_LABELS[status],
-      count: summary.taskCountByStatus[status] ?? 0,
-      fill: STATUS_COLORS[status],
-    }));
-  }, [summary]);
-
-  // Prepare pie chart data for agents
-  const agentChartData = useMemo(() => {
-    if (!summary) return [];
-    return agentStatusOrder
-      .map((status) => ({
+  const agentChartData = !summary
+    ? []
+    : AGENT_STATUS_ORDER.map((status) => ({
         status,
         label: status.charAt(0).toUpperCase() + status.slice(1),
         count: summary.agentCountByStatus[status] ?? 0,
         fill: AGENT_STATUS_COLORS[status],
-      }))
-      .filter((item) => item.count > 0);
-  }, [summary]);
+      })).filter((item) => item.count > 0);
 
-  // Calculate completion rate
   const completionRate = useMemo(() => {
     if (!summary || summary.totalTasks === 0) return 0;
     const done = summary.taskCountByStatus["done"] ?? 0;
     return Math.round((done / summary.totalTasks) * 100);
-  }, [summary]);
-
-  // Calculate active tasks (in_progress + review)
-  const activeTasks = useMemo(() => {
-    if (!summary) return 0;
-    return (
-      (summary.taskCountByStatus["in_progress"] ?? 0) +
-      (summary.taskCountByStatus["review"] ?? 0)
-    );
   }, [summary]);
 
   const chartConfig: ChartConfig = {
@@ -289,20 +304,14 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                 </CardHeader>
                 <CardContent>
                   {summary.totalTasks === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-[250px] text-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
+                    <AnalyticsEmptyState
+                      icon={
                         <ListTodo className="h-6 w-6 text-muted-foreground/50" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        No tasks yet
-                      </p>
-                      <Link
-                        href={`/${accountSlug}/tasks`}
-                        className="text-xs text-primary hover:underline mt-1"
-                      >
-                        Create your first task
-                      </Link>
-                    </div>
+                      }
+                      message="No tasks yet"
+                      actionHref={`/${accountSlug}/tasks`}
+                      actionLabel="Create your first task"
+                    />
                   ) : (
                     <ChartContainer
                       config={chartConfig}
@@ -360,20 +369,14 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                 </CardHeader>
                 <CardContent>
                   {summary.totalAgents === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-[250px] text-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
+                    <AnalyticsEmptyState
+                      icon={
                         <Bot className="h-6 w-6 text-muted-foreground/50" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        No agents yet
-                      </p>
-                      <Link
-                        href={`/${accountSlug}/agents`}
-                        className="text-xs text-primary hover:underline mt-1"
-                      >
-                        Create your first agent
-                      </Link>
-                    </div>
+                      }
+                      message="No agents yet"
+                      actionHref={`/${accountSlug}/agents`}
+                      actionLabel="Create your first agent"
+                    />
                   ) : (
                     <ChartContainer
                       config={chartConfig}
@@ -434,7 +437,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {statusOrder.map((status) => {
+                  {ANALYTICS_STATUS_ORDER.map((status: TaskStatus) => {
                     const count = summary.taskCountByStatus[status] ?? 0;
                     const percentage =
                       summary.totalTasks > 0
