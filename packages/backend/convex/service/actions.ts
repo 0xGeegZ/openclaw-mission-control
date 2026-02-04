@@ -341,6 +341,40 @@ export const markNotificationDelivered = action({
 });
 
 /**
+ * Mark a notification as read (service-only).
+ * Called by runtime when it starts processing a notification, before sendToOpenClaw.
+ * Verifies notification belongs to account; idempotent.
+ */
+export const markNotificationRead = action({
+  args: {
+    notificationId: v.id("notifications"),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const notificationResult = await ctx.runQuery(
+      internal.service.notifications.getForDelivery,
+      { notificationId: args.notificationId },
+    );
+    const notification = notificationResult?.notification;
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.accountId !== args.accountId) {
+      throw new Error("Forbidden: Notification belongs to different account");
+    }
+    await ctx.runMutation(internal.service.notifications.markRead, {
+      notificationId: args.notificationId,
+    });
+    return { success: true };
+  },
+});
+
+/**
  * List agents for an account.
  * Called by runtime to get all agents for the account.
  */

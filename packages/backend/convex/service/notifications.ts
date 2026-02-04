@@ -32,6 +32,29 @@ export const listUndeliveredForAccount = internalQuery({
 });
 
 /**
+ * Mark a notification as read (service-only).
+ * Called by runtime when it starts processing a notification (before sendToOpenClaw).
+ * Idempotent: if readAt is already set, does nothing.
+ */
+export const markRead = internalMutation({
+  args: {
+    notificationId: v.id("notifications"),
+  },
+  handler: async (ctx, args) => {
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (!notification.readAt) {
+      await ctx.db.patch(args.notificationId, {
+        readAt: Date.now(),
+      });
+    }
+    return true;
+  },
+});
+
+/**
  * Mark a notification as delivered.
  * Called by runtime after successfully delivering to OpenClaw.
  */
@@ -178,7 +201,9 @@ export const getForDelivery = internalQuery({
     );
 
     const account = await ctx.db.get(notification.accountId);
-    const orchestratorAgentId = (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)?.orchestratorAgentId ?? null;
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
 
     return {
       notification,

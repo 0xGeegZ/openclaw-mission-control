@@ -767,7 +767,8 @@ export default defineSchema({
       "deliveredAt",
     ])
     .index("by_account_created", ["accountId", "createdAt"])
-    .index("by_task", ["taskId"]),
+    .index("by_task", ["taskId"])
+    .index("by_task_created", ["taskId", "createdAt"]),
 
   // ==========================================================================
   // SUBSCRIPTIONS

@@ -158,36 +158,36 @@ const name = agentsByAuthorId?.[agentId]?.name ?? "Agent";
 
 1. **Add service-side read marker (Convex service)**
 
-   - Implement `markRead` in `[packages/backend/convex/service/notifications.ts](packages/backend/convex/service/notifications.ts)`.
-   - Add `markNotificationRead` action in `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)` with account ownership validation.
+- Implement `markRead` in `[packages/backend/convex/service/notifications.ts](packages/backend/convex/service/notifications.ts)`.
+- Add `markNotificationRead` action in `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)` with account ownership validation.
 
-2. **Expose agent receipt query (Convex public)**
+1. **Expose agent receipt query (Convex public)**
 
-   - Add `listAgentReceiptsByTask` in `[packages/backend/convex/notifications.ts](packages/backend/convex/notifications.ts)` using `withIndex("by_task")` and `requireAccountMember`.
-   - Ensure returned fields match the exact shape above.
+- Add `listAgentReceiptsByTask` in `[packages/backend/convex/notifications.ts](packages/backend/convex/notifications.ts)` using `withIndex("by_task")` and `requireAccountMember`.
+- Ensure returned fields match the exact shape above.
 
-3. **Runtime integration (mark read before send)**
+1. **Runtime integration (mark read before send)**
 
-   - Update `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` to call `markNotificationRead` immediately before `sendToOpenClaw`.
-   - Wrap in try/catch; log warning and continue on failure.
+- Update `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` to call `markNotificationRead` immediately before `sendToOpenClaw`.
+- Wrap in try/catch; log warning and continue on failure.
 
-4. **UI typing indicator (thread-level)**
+1. **UI typing indicator (thread-level)**
 
-   - Add `useQuery(api.notifications.listAgentReceiptsByTask, { taskId })` to `TaskThread`.
-   - Use `usehooks-ts` `useInterval` to update a `now` state every 1s for typing timeout.
-   - Compute `typingAgents` from receipts using `readAt` + `deliveredAt` + `TYPING_WINDOW_MS`.
-   - Render a single line above input; no per-message typing rows.
+- Add `useQuery(api.notifications.listAgentReceiptsByTask, { taskId })` to `TaskThread`.
+- Use `usehooks-ts` `useInterval` to update a `now` state every 1s for typing timeout.
+- Compute `typingAgents` from receipts using `readAt` + `deliveredAt` + `TYPING_WINDOW_MS`.
+- Render a single line above input; no per-message typing rows.
 
-5. **UI read receipts (latest user message only)**
+1. **UI read receipts (latest user message only)**
 
-   - Add optional prop `readByAgents?: string[]` to `MessageItem`.
-   - In `TaskThread`, find latest user-authored message and pass `readByAgents` only to that message.
-   - Sort agent names alphabetically to keep stable display.
+- Add optional prop `readByAgents?: string[]` to `MessageItem`.
+- In `TaskThread`, find latest user-authored message and pass `readByAgents` only to that message.
+- Sort agent names alphabetically to keep stable display.
 
-6. **Polish + docs**
+1. **Polish + docs**
 
-   - Ensure JSDoc on new exports and keep imports at top (project rule).
-   - Add brief note to `docs/runtime/AGENTS.md` (optional) describing read/typing semantics as runtime signals, not human read receipts.
+- Ensure JSDoc on new exports and keep imports at top (project rule).
+- Add brief note to `docs/runtime/AGENTS.md` (optional) describing read/typing semantics as runtime signals, not human read receipts.
 
 ## 6. Edge cases & risks
 
@@ -217,10 +217,10 @@ const name = agentsByAuthorId?.[agentId]?.name ?? "Agent";
 
 ## 9. TODO checklist
 
-- [ ] **Backend**: add `markRead` internal mutation in `[packages/backend/convex/service/notifications.ts](packages/backend/convex/service/notifications.ts)`.
-- [ ] **Backend**: add `markNotificationRead` action in `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)`.
-- [ ] **Backend**: add `listAgentReceiptsByTask` query in `[packages/backend/convex/notifications.ts](packages/backend/convex/notifications.ts)`.
-- [ ] **Runtime**: call `markNotificationRead` before `sendToOpenClaw` in `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)`.
-- [ ] **Frontend**: compute `typingAgents` + `readByMessageId` in `[apps/web/src/components/tasks/TaskThread.tsx](apps/web/src/components/tasks/TaskThread.tsx)`.
-- [ ] **Frontend**: render typing indicator row and pass `readByAgents` into `[apps/web/src/components/tasks/MessageItem.tsx](apps/web/src/components/tasks/MessageItem.tsx)`.
-- [ ] **Tests/QA**: manual verification of typing/read behavior in task thread.
+- **Backend**: add `markRead` internal mutation in `[packages/backend/convex/service/notifications.ts](packages/backend/convex/service/notifications.ts)`.
+- **Backend**: add `markNotificationRead` action in `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)`.
+- **Backend**: add `listAgentReceiptsByTask` query in `[packages/backend/convex/notifications.ts](packages/backend/convex/notifications.ts)`.
+- **Runtime**: call `markNotificationRead` before `sendToOpenClaw` in `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)`.
+- **Frontend**: compute `typingAgents` + `readByMessageId` in `[apps/web/src/components/tasks/TaskThread.tsx](apps/web/src/components/tasks/TaskThread.tsx)`.
+- **Frontend**: render typing indicator row and pass `readByAgents` into `[apps/web/src/components/tasks/MessageItem.tsx](apps/web/src/components/tasks/MessageItem.tsx)`.
+- **Tests/QA**: manual verification of typing/read behavior in task thread.

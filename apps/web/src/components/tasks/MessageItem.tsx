@@ -49,13 +49,20 @@ interface MessageItemProps {
   message: Doc<"messages">;
   /** Map of agent id -> display info; used to show which agent wrote each message */
   agentsByAuthorId?: AgentsByAuthorId;
+  /** Agent display names that have "read" this message (for user-authored messages). */
+  readByAgents?: string[];
 }
 
 /**
  * Single message item in thread.
  * When authorType is "agent", shows the agent's name (and avatar if provided) so multiple agents are distinguishable.
+ * For user messages, optional readByAgents shows "Seen by …" when agents have started processing the message.
  */
-export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
+export function MessageItem({
+  message,
+  agentsByAuthorId,
+  readByAgents,
+}: MessageItemProps) {
   const { userId } = useAuth();
   const { isAdmin } = useAccount();
   const [isEditing, setIsEditing] = useState(false);
@@ -248,6 +255,14 @@ export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
                 ))}
               </div>
             )}
+
+            {message.authorType === "user" &&
+              readByAgents &&
+              readByAgents.length > 0 && (
+                <p className="mt-2 text-[11px] text-muted-foreground/70">
+                  Seen by {readByAgents.join(", ")}
+                </p>
+              )}
           </>
         )}
       </div>

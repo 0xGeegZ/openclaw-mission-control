@@ -94,6 +94,20 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.debug("Skipped delivery for notification", notification._id);
               continue;
             }
+            try {
+              await client.action(api.service.actions.markNotificationRead, {
+                notificationId: notification._id,
+                serviceToken: config.serviceToken,
+                accountId: config.accountId,
+              });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              log.warn(
+                "Failed to mark notification read",
+                notification._id,
+                msg,
+              );
+            }
             const responseText = await sendToOpenClaw(
               context.agent.sessionKey,
               formatNotificationMessage(context),

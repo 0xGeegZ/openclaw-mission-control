@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -8,6 +8,8 @@ import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, Sparkles } from "lucide-react";
+
+const TYPING_WINDOW_MS = 120_000;
 
 interface TaskThreadProps {
   taskId: Id<"tasks">;
@@ -25,7 +27,23 @@ export function TaskThread({
 }: TaskThreadProps) {
   const messages = useQuery(api.messages.listByTask, { taskId });
   const agents = useQuery(api.agents.list, { accountId });
+  const receipts = useQuery(api.notifications.listAgentReceiptsByTask, {
+    taskId,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const hasReceiptsInTypingWindow =
+    receipts?.some(
+      (r) =>
+        r.readAt != null &&
+        r.deliveredAt == null &&
+        now - r.readAt <= TYPING_WINDOW_MS,
+    ) ?? false;
+  useEffect(() => {
+    if (!hasReceiptsInTypingWindow) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasReceiptsInTypingWindow]);
 
   /** Map agent id -> { name, avatarUrl } for message author display */
   const agentsByAuthorId = useMemo(() => {
@@ -36,6 +54,45 @@ export function TaskThread({
     }
     return map;
   }, [agents]);
+
+  /** Agent names currently "typing" (readAt set, deliveredAt empty, within window). */
+  const typingAgentNames = useMemo(() => {
+    if (!receipts) return [];
+    const names = new Set<string>();
+    for (const r of receipts) {
+      if (
+        r.readAt != null &&
+        r.deliveredAt == null &&
+        now - r.readAt <= TYPING_WINDOW_MS
+      ) {
+        const name = agentsByAuthorId?.[r.recipientId]?.name ?? "Agent";
+        names.add(name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [receipts, agentsByAuthorId, now]);
+
+  /** Latest user-authored message (for read receipt). */
+  const latestUserMessage = useMemo(() => {
+    if (!messages?.length) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].authorType === "user") return messages[i];
+    }
+    return null;
+  }, [messages]);
+
+  /** Agent names that have "read" the latest user message (readAt set for that messageId). */
+  const readByAgentsForLatestUser = useMemo(() => {
+    if (!latestUserMessage || !receipts) return [];
+    const names = new Set<string>();
+    for (const r of receipts) {
+      if (r.messageId === latestUserMessage._id && r.readAt != null) {
+        const name = agentsByAuthorId?.[r.recipientId]?.name ?? "Agent";
+        names.add(name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [latestUserMessage, receipts, agentsByAuthorId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -72,6 +129,11 @@ export function TaskThread({
                   key={message._id}
                   message={message}
                   agentsByAuthorId={agentsByAuthorId}
+                  readByAgents={
+                    latestUserMessage?._id === message._id
+                      ? readByAgentsForLatestUser
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -98,11 +160,23 @@ export function TaskThread({
         </div>
       </div>
 
+      {/* Typing indicator - single row above input */}
+      {typingAgentNames.length > 0 && (
+        <div className="shrink-0 px-4 py-2 max-w-3xl mx-auto w-full">
+          <p className="text-sm text-muted-foreground flex items-center gap-1">
+            <span className="inline-flex animate-pulse">...</span>
+            {typingAgentNames.length === 1
+              ? `${typingAgentNames[0]} is typing`
+              : `${typingAgentNames.length} agents are typing`}
+          </p>
+        </div>
+      )}
+
       {/* Input area - sticky at bottom */}
       <div className="shrink-0 w-full">
         <div className="max-w-3xl mx-auto">
-          <MessageInput 
-            taskId={taskId} 
+          <MessageInput
+            taskId={taskId}
             showSuggestions={messages !== undefined && messages.length === 0}
           />
         </div>
