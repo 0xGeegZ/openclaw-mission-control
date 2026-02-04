@@ -105,6 +105,20 @@ function resolveGatewayAddress(baseUrl: string): GatewayAddress | null {
 }
 
 /**
+ * Resolve the OpenClaw agent id from a session key.
+ * Falls back to "main" when the key is not in agent:<id>:<...> form.
+ */
+function resolveAgentIdFromSessionKey(sessionKey: string): string {
+  const trimmed = sessionKey?.trim();
+  if (!trimmed) return "main";
+  const parts = trimmed.split(":");
+  if (parts.length >= 2 && parts[0] === "agent" && parts[1]) {
+    return parts[1];
+  }
+  return "main";
+}
+
+/**
  * Sleep for the given duration (ms).
  */
 function sleep(ms: number): Promise<void> {
@@ -321,16 +335,18 @@ export async function sendToOpenClaw(
 
   log.debug("Sending to", sessionKey, ":", message.substring(0, 100));
 
+  const agentId = resolveAgentIdFromSessionKey(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-openclaw-session-key": sessionKey,
+    "x-openclaw-agent-id": agentId,
   };
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
   const body = JSON.stringify({
-    model: "openclaw",
+    model: `openclaw:${agentId}`,
     input: message,
     stream: false,
   });

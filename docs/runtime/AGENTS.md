@@ -89,6 +89,10 @@ curl -X POST "http://127.0.0.1:3001/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
+## Orchestrator (squad lead)
+
+The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
+
 ## Communication rules
 
 - Be short and concrete in threads.

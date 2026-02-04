@@ -13,7 +13,7 @@ import {
   createAssignmentNotification,
   createStatusChangeNotification,
 } from "./lib/notifications";
-import { ensureSubscribed } from "./subscriptions";
+import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
 
 /**
  * Internal: list tasks for an account (for standup/cron). No auth.
@@ -203,6 +203,8 @@ export const create = mutation({
       targetId: taskId,
       targetName: args.title,
     });
+
+    await ensureOrchestratorSubscribed(ctx, args.accountId, taskId);
 
     return taskId;
   },
@@ -475,6 +477,8 @@ export const assign = mutation({
         agentId,
       );
     }
+
+    await ensureOrchestratorSubscribed(ctx, task.accountId, args.taskId);
 
     if (
       nextStatus &&

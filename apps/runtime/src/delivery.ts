@@ -214,15 +214,15 @@ function shouldDeliverToAgent(context: any): boolean {
     const recipientId = context?.notification?.recipientId;
     const assignedAgentIds = context?.task?.assignedAgentIds;
     const sourceNotificationType = context?.sourceNotificationType;
+    const orchestratorAgentId = context?.orchestratorAgentId;
     const agentRole = context?.agent?.role;
-    const agentSlug = context?.agent?.slug;
     if (taskStatus === "done") {
       return false;
     }
     if (sourceNotificationType === "thread_update") {
       return false;
     }
-    if (isLeadRole(agentRole, agentSlug)) {
+    if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
       return true;
     }
     if (taskStatus === "review" && isReviewerRole(agentRole)) {
@@ -233,21 +233,6 @@ function shouldDeliverToAgent(context: any): boolean {
   }
 
   return true;
-}
-
-/**
- * Check whether an agent role indicates a squad lead/orchestrator.
- */
-function isLeadRole(
-  role: string | undefined,
-  slug: string | undefined,
-): boolean {
-  if (!role && !slug) return false;
-  const normalized = `${role ?? ""} ${slug ?? ""}`.trim();
-  if (!normalized) return false;
-  return /squad lead|squad-lead|pm|project manager|orchestrator|lead/i.test(
-    normalized,
-  );
 }
 
 /**

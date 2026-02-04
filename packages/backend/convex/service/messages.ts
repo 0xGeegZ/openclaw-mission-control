@@ -1,12 +1,12 @@
 import { v } from "convex/values";
-import { internalMutation, type MutationCtx } from "../_generated/server";
+import { internalMutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import {
   attachmentValidator,
   isAttachmentTypeAndSizeAllowed,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
-import { ensureSubscribed } from "../subscriptions";
+import { ensureSubscribed, ensureOrchestratorSubscribed } from "../subscriptions";
 import {
   extractMentionStrings,
   resolveMentions,
@@ -18,42 +18,6 @@ import {
   createThreadNotifications,
 } from "../lib/notifications";
 
-const LEAD_ROLE_PATTERN = /(squad lead|pm|project manager|orchestrator|lead)/i;
-const LEAD_SLUG_PATTERN = /^(squad-lead|pm|orchestrator|lead)$/i;
-
-interface LeadAgentCandidate {
-  _id: Id<"agents">;
-  role: string;
-  slug: string;
-}
-
-/**
- * Decide whether an agent should be treated as a squad lead/orchestrator.
- */
-function isLeadAgent(agent: LeadAgentCandidate): boolean {
-  return (
-    LEAD_ROLE_PATTERN.test(agent.role) || LEAD_SLUG_PATTERN.test(agent.slug)
-  );
-}
-
-/**
- * Ensure squad lead agents are subscribed to a task thread.
- */
-async function ensureLeadSubscriptions(
-  ctx: MutationCtx,
-  accountId: Id<"accounts">,
-  taskId: Id<"tasks">,
-): Promise<void> {
-  const agents = await ctx.db
-    .query("agents")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
-    .collect();
-
-  for (const agent of agents) {
-    if (!isLeadAgent(agent)) continue;
-    await ensureSubscribed(ctx, accountId, taskId, "agent", agent._id);
-  }
-}
 /**
  * Register a completed upload for a task on behalf of an agent.
  */
@@ -276,7 +240,7 @@ export const createFromAgent = internalMutation({
       );
     }
 
-    await ensureLeadSubscriptions(ctx, agent.accountId, args.taskId);
+    await ensureOrchestratorSubscribed(ctx, agent.accountId, args.taskId);
 
     // Create thread update notifications
     const mentionedIds = new Set(mentions.map((m) => m.id));

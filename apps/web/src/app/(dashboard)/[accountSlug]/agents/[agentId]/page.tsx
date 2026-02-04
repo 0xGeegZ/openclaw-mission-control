@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { env } from "@packages/env/nextjs-client";
@@ -27,6 +27,11 @@ import {
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@packages/ui/components/tooltip";
+import {
   ArrowLeft,
   Bot,
   Activity,
@@ -37,8 +42,11 @@ import {
   Trash2,
   ListTodo,
   ExternalLink,
+  Crown,
+  MinusCircle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
@@ -47,6 +55,9 @@ import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
 }
+
+const ORCHESTRATOR_TOOLTIP =
+  "Orchestrator: auto-subscribed to all task threads; receives agent thread updates for review.";
 
 /**
  * Return the OpenClaw UI URL if configured in client env.
@@ -61,41 +72,83 @@ function getOpenClawUiUrl(): string | undefined {
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { accountSlug, agentId } = use(params);
   const router = useRouter();
-  const { accountId, isAdmin } = useAccount();
+  const { accountId, account, isAdmin } = useAccount();
   const openclawUiUrl = getOpenClawUiUrl();
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
 
+  const orchestratorAgentId = (
+    account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+  )?.orchestratorAgentId;
+  const isOrchestrator = agentId && orchestratorAgentId === agentId;
+
+  const updateAccount = useMutation(api.accounts.update);
+
+  const handleSetOrchestrator = async () => {
+    if (!accountId || !agent) return;
+    try {
+      await updateAccount({
+        accountId,
+        settings: { orchestratorAgentId: agent._id },
+      });
+      toast.success("Orchestrator set");
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to set orchestrator",
+      );
+    }
+  };
+
+  const handleRemoveOrchestrator = async () => {
+    if (!accountId) return;
+    try {
+      await updateAccount({
+        accountId,
+        settings: { orchestratorAgentId: null },
+      });
+      toast.success("Orchestrator removed");
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to remove orchestrator",
+      );
+    }
+  };
+
   const agent = useQuery(
     api.agents.get,
-    agentId ? { agentId: agentId as Id<"agents"> } : "skip"
+    agentId ? { agentId: agentId as Id<"agents"> } : "skip",
   );
   const activities = useQuery(
     api.activities.list,
-    accountId ? { accountId, limit: 30 } : "skip"
+    accountId ? { accountId, limit: 30 } : "skip",
   );
   const agentTasks = useQuery(
     api.tasks.listByAgent,
     accountId && agentId
       ? { accountId, agentId: agentId as Id<"agents"> }
-      : "skip"
+      : "skip",
   );
 
   const agentActivities =
     activities?.filter(
-      (a) => a.actorType === "agent" && a.actorId === agentId
+      (a) => a.actorType === "agent" && a.actorId === agentId,
     ) ?? [];
 
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  const statusConfig: Record<
+    string,
+    { variant: "default" | "secondary" | "destructive" | "outline" }
+  > = {
     online: { variant: "default" },
     busy: { variant: "secondary" },
     idle: { variant: "outline" },
     offline: { variant: "outline" },
     error: { variant: "destructive" },
   };
-  const status = agent ? statusConfig[agent.status] ?? statusConfig.offline : statusConfig.offline;
-  
+  const status = agent
+    ? (statusConfig[agent.status] ?? statusConfig.offline)
+    : statusConfig.offline;
+
   const handleDeleted = () => {
     router.push(`/${accountSlug}/agents`);
   };
@@ -125,16 +178,36 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
             <Skeleton className="h-8 w-48" />
           ) : (
             <>
-              <h1 className="text-2xl font-bold tracking-tight truncate">
-                {agent?.name ?? "Agent"}
-              </h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-bold tracking-tight truncate">
+                  {agent?.name ?? "Agent"}
+                </h1>
+                {agent && isOrchestrator && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="shrink-0 text-amber-500 flex items-center gap-1.5"
+                        aria-label="Orchestrator"
+                      >
+                        <Crown className="h-5 w-5" />
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Orchestrator
+                        </span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {ORCHESTRATOR_TOOLTIP}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
                 {agent?.role ?? "—"}
               </p>
             </>
           )}
         </div>
-        
+
         {/* Actions dropdown - admin only */}
         {agent && isAdmin && (
           <div className="flex items-center gap-2">
@@ -162,6 +235,17 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   <CircleDot className="mr-2 h-4 w-4" />
                   Change Status
                 </DropdownMenuItem>
+                {isOrchestrator ? (
+                  <DropdownMenuItem onClick={handleRemoveOrchestrator}>
+                    <MinusCircle className="mr-2 h-4 w-4" />
+                    Remove Orchestrator
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={handleSetOrchestrator}>
+                    <Crown className="mr-2 h-4 w-4" />
+                    Set as Orchestrator
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -209,7 +293,10 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   {agent.lastHeartbeat && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Clock className="h-4 w-4" />
-                      Last seen {formatDistanceToNow(agent.lastHeartbeat, { addSuffix: true })}
+                      Last seen{" "}
+                      {formatDistanceToNow(agent.lastHeartbeat, {
+                        addSuffix: true,
+                      })}
                     </div>
                   )}
                   {agent.sessionKey && (
@@ -231,12 +318,17 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 </CardHeader>
                 <CardContent>
                   {agentActivities.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No activity yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      No activity yet
+                    </p>
                   ) : (
                     <ul className="space-y-2 max-h-48 overflow-auto">
                       {agentActivities.slice(0, 10).map((a) => (
                         <li key={a._id}>
-                          <ActivityItem activity={a} accountSlug={accountSlug} />
+                          <ActivityItem
+                            activity={a}
+                            accountSlug={accountSlug}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -259,7 +351,9 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 {agentTasks === undefined ? (
                   <Skeleton className="h-20 w-full" />
                 ) : agentTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tasks assigned</p>
+                  <p className="text-sm text-muted-foreground">
+                    No tasks assigned
+                  </p>
                 ) : (
                   <ul className="space-y-2">
                     {agentTasks.map((task) => (
@@ -268,8 +362,13 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                           href={`/${accountSlug}/tasks/${task._id}`}
                           className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors"
                         >
-                          <span className="text-sm font-medium truncate">{task.title}</span>
-                          <Badge variant="outline" className="text-xs capitalize">
+                          <span className="text-sm font-medium truncate">
+                            {task.title}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="text-xs capitalize"
+                          >
                             {task.status.replace("_", " ")}
                           </Badge>
                         </Link>
@@ -279,7 +378,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 )}
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Activity feed</CardTitle>
@@ -289,7 +388,9 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               </CardHeader>
               <CardContent>
                 {agentActivities.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No activity yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    No activity yet
+                  </p>
                 ) : (
                   <ul className="space-y-3 divide-y divide-border">
                     {agentActivities.map((a) => (
@@ -304,7 +405,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
           </div>
         ) : null}
       </div>
-      
+
       {/* Dialogs */}
       {agent && (
         <>

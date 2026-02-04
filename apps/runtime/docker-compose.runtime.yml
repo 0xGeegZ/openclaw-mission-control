@@ -5,6 +5,8 @@
 #   docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build
 # See docs/runtime/runtime-docker-compose.md
 
+name: runtime
+
 services:
   runtime:
     image: openclaw-mission-control-runtime

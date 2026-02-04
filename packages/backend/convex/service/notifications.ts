@@ -177,6 +177,9 @@ export const getForDelivery = internalQuery({
         doc.name === "Repository — Primary",
     );
 
+    const account = await ctx.db.get(notification.accountId);
+    const orchestratorAgentId = (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)?.orchestratorAgentId ?? null;
+
     return {
       notification,
       agent,
@@ -184,6 +187,7 @@ export const getForDelivery = internalQuery({
       message,
       thread,
       sourceNotificationType,
+      orchestratorAgentId,
       repositoryDoc: repositoryDoc
         ? {
             title:

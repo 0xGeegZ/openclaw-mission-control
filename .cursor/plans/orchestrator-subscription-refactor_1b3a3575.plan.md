@@ -4,13 +4,13 @@ overview: Make the orchestrator/PM explicit per account (no regex), with UI sele
 todos:
   - id: schema-settings
     content: Add orchestratorAgentId to account settings + validator
-    status: pending
+    status: completed
   - id: subscriptions-helper
     content: Add ensureOrchestratorSubscribed helper + wire in tasks/messages
-    status: pending
+    status: completed
   - id: runtime-filter
     content: Use explicit orchestratorAgentId in delivery filter
-    status: pending
+    status: completed
   - id: ui-orchestrator
     content: Add Agents UI to set/clear orchestrator
     status: pending

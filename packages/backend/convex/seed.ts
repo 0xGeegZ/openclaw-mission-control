@@ -738,6 +738,20 @@ async function runSeedWithOwner(
     agentsCreated += 1;
   }
 
+  const squadLeadAgent = await ctx.db
+    .query("agents")
+    .withIndex("by_account_slug", (q) =>
+      q.eq("accountId", accountId).eq("slug", "squad-lead"),
+    )
+    .unique();
+  if (squadLeadAgent) {
+    const currentAccount = await ctx.db.get(accountId);
+    const currentSettings = (currentAccount?.settings ?? {}) as Record<string, unknown>;
+    await ctx.db.patch(accountId, {
+      settings: { ...currentSettings, orchestratorAgentId: squadLeadAgent._id },
+    });
+  }
+
   return {
     accountId,
     slug: account.slug,
