@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -30,6 +30,8 @@ const STATUS_FILTER_CONFIG: { value: StatusFilter; label: string }[] = [
   { value: "blocked", label: "Waiting" },
 ];
 
+const AGENTS_SIDEBAR_STORAGE_KEY = "agents-sidebar-collapsed";
+
 /**
  * Tasks page content with agents sidebar, kanban board, and header.
  * Main layout component for the tasks view.
@@ -37,7 +39,16 @@ const STATUS_FILTER_CONFIG: { value: StatusFilter; label: string }[] = [
 export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
   const { accountId } = useAccount();
   const [selectedAgentId, setSelectedAgentId] = useState<Id<"agents"> | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    // Initialize from localStorage on client side
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(AGENTS_SIDEBAR_STORAGE_KEY);
+      if (stored !== null) {
+        return stored === "true";
+      }
+    }
+    return false;
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   
   // Get task counts for filter badges
@@ -103,7 +114,13 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
             "absolute top-4 z-20 h-6 w-6 rounded-full border bg-background shadow-sm hover:bg-accent transition-all duration-300",
             sidebarCollapsed ? "left-2" : "left-[15rem]"
           )}
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onClick={() => {
+            const newValue = !sidebarCollapsed;
+            setSidebarCollapsed(newValue);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(AGENTS_SIDEBAR_STORAGE_KEY, String(newValue));
+            }
+          }}
         >
           {sidebarCollapsed ? (
             <PanelLeft className="h-3.5 w-3.5" />
