@@ -9,7 +9,7 @@ import { Button } from "@packages/ui/components/button";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { cn } from "@packages/ui/lib/utils";
-import { Users } from "lucide-react";
+import { Users, Crown } from "lucide-react";
 
 interface AgentsSidebarProps {
   accountId: Id<"accounts"> | null;
@@ -18,24 +18,9 @@ interface AgentsSidebarProps {
   className?: string;
 }
 
-const ROLE_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
-  lead: { label: "LEAD", variant: "default" },
-  specialist: { label: "SPC", variant: "secondary" },
-  intern: { label: "INT", variant: "outline" },
-};
-
-function getRoleBadge(role: string): { label: string; variant: "default" | "secondary" | "outline" } {
+function isLeadRole(role: string): boolean {
   const lowerRole = role.toLowerCase();
-  if (lowerRole.includes("lead") || lowerRole.includes("founder") || lowerRole.includes("director")) {
-    return ROLE_BADGES.lead;
-  }
-  if (lowerRole.includes("specialist") || lowerRole.includes("senior") || lowerRole.includes("expert")) {
-    return ROLE_BADGES.specialist;
-  }
-  if (lowerRole.includes("intern") || lowerRole.includes("junior") || lowerRole.includes("assistant")) {
-    return ROLE_BADGES.intern;
-  }
-  return ROLE_BADGES.specialist;
+  return lowerRole.includes("lead") || lowerRole.includes("founder") || lowerRole.includes("director");
 }
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -157,7 +142,7 @@ interface AgentItemProps {
 
 function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
   const statusConfig = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline;
-  const roleBadge = getRoleBadge(agent.role);
+  const isLead = isLeadRole(agent.role);
 
   return (
     <Button
@@ -175,11 +160,11 @@ function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
       </Avatar>
       
       <div className="flex-1 text-left min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="font-medium truncate">{agent.name}</span>
-          <Badge variant={roleBadge.variant} className="text-[10px] px-1.5 py-0 h-4 shrink-0">
-            {roleBadge.label}
-          </Badge>
+          {isLead && (
+            <Crown className="h-4 w-4 text-amber-500 shrink-0" aria-label="Lead" />
+          )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusConfig.color)} />
