@@ -116,6 +116,10 @@ export const getForDelivery = internalQuery({
       sourceNotificationType = sourceNotification?.type ?? null;
     }
 
+    let primaryUserId: string | null = null;
+    const userNames = new Map<string, string>();
+    const userEmails = new Map<string, string>();
+
     let thread: {
       messageId: Id<"messages">;
       authorType: "user" | "agent";
@@ -132,6 +136,13 @@ export const getForDelivery = internalQuery({
         .order("asc")
         .collect();
 
+      for (let i = threadMessages.length - 1; i >= 0; i--) {
+        if (threadMessages[i].authorType === "user") {
+          primaryUserId = threadMessages[i].authorId;
+          break;
+        }
+      }
+
       const userIds = new Set<string>();
       const agentIds = new Set<string>();
       for (const msg of threadMessages) {
@@ -142,7 +153,6 @@ export const getForDelivery = internalQuery({
         }
       }
 
-      const userNames = new Map<string, string>();
       if (userIds.size > 0) {
         const memberships = await ctx.db
           .query("memberships")
@@ -153,6 +163,7 @@ export const getForDelivery = internalQuery({
         for (const membership of memberships) {
           if (userIds.has(membership.userId)) {
             userNames.set(membership.userId, membership.userName);
+            userEmails.set(membership.userId, membership.userEmail);
           }
         }
       }
@@ -205,6 +216,61 @@ export const getForDelivery = internalQuery({
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
 
+    if (!primaryUserId && task?.createdBy) {
+      primaryUserId = task.createdBy;
+    }
+
+    let primaryUserMention: {
+      id: string;
+      name: string;
+      email: string | null;
+    } | null = null;
+    if (primaryUserId) {
+      let name = userNames.get(primaryUserId) ?? null;
+      let email = userEmails.get(primaryUserId) ?? null;
+      if (!name) {
+        const membership = await ctx.db
+          .query("memberships")
+          .withIndex("by_account_user", (q) =>
+            q
+              .eq("accountId", notification.accountId)
+              .eq("userId", primaryUserId),
+          )
+          .unique();
+        if (membership) {
+          name = membership.userName;
+          email = membership.userEmail;
+        }
+      }
+      if (name) {
+        primaryUserMention = { id: primaryUserId, name, email };
+      }
+    }
+
+    const accountAgents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", notification.accountId))
+      .collect();
+
+    const mentionableAgents = accountAgents
+      .map((a) => ({
+        id: a._id,
+        slug: a.slug ?? "",
+        name: a.name,
+        role: a.role ?? "Unknown",
+      }))
+      .sort((a, b) =>
+        (a.slug || a.name).localeCompare(b.slug || b.name, undefined, {
+          sensitivity: "base",
+        }),
+      );
+
+    const assignedAgentIds = task?.assignedAgentIds ?? [];
+    const assignedIdsSet = new Set(assignedAgentIds);
+    const assignedAgents = mentionableAgents.filter((a) =>
+      assignedIdsSet.has(a.id),
+    );
+
     return {
       notification,
       agent,
@@ -213,6 +279,9 @@ export const getForDelivery = internalQuery({
       thread,
       sourceNotificationType,
       orchestratorAgentId,
+      primaryUserMention,
+      mentionableAgents,
+      assignedAgents,
       repositoryDoc: repositoryDoc
         ? {
             title:

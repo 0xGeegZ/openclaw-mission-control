@@ -1,4 +1,4 @@
-# AGENTS.md — OpenClaw Mission Control Operating Manual
+# AGENTS.md - OpenClaw Mission Control Operating Manual
 
 ## What you are
 
@@ -101,6 +101,24 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
   - the doc library
   - the activity feed
   - your WORKING.md and recent daily notes
+
+### Mentions (Orchestrator)
+
+When you are the orchestrator (squad lead), use @mentions to request follow-ups from specific agents:
+
+- Use @mentions to request follow-ups from specific agents.
+- Choose agents from the roster list shown in your notification prompt (by slug, e.g. `@researcher`).
+- Mention only agents who can add value to the discussion; avoid @all unless necessary.
+- If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+
+Example: to ask the researcher to dig deeper and the writer to draft a summary, you might post:
+
+```
+**Summary** - Reviewing latest findings; requesting follow-up from research and writer.
+
+@researcher Please add 2-3 concrete sources for the claim in the last message.
+@writer Once that’s in, draft a one-paragraph summary for the doc.
+```
 
 ## Document rules
 
