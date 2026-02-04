@@ -548,7 +548,7 @@ function formatNotificationMessage(context: any): string {
     : "";
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
-    "Local checkout (preferred): /root/clawd/openclaw-mission-control";
+    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull --ff-only`.";
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
@@ -556,16 +556,16 @@ function formatNotificationMessage(context: any): string {
         localRepoHint,
         "",
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
-        "Prefer the local checkout instead of GitHub/web_fetch when available.",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/openclaw-mission-control`) and only use read on files.",
-        "The repository mount is read-only; write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n")
     : [
         "Repository context: not found.",
         localRepoHint,
-        "Prefer the local checkout instead of GitHub/web_fetch when available.",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/openclaw-mission-control`) and only use read on files.",
-        "The repository mount is read-only; write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
 
   return `
