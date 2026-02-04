@@ -87,6 +87,11 @@ export const getForDelivery = internalQuery({
     if (notification.messageId) {
       message = await ctx.db.get(notification.messageId);
     }
+    let sourceNotificationType: string | null = null;
+    if (message?.sourceNotificationId) {
+      const sourceNotification = await ctx.db.get(message.sourceNotificationId);
+      sourceNotificationType = sourceNotification?.type ?? null;
+    }
 
     let thread: {
       messageId: Id<"messages">;
@@ -160,12 +165,34 @@ export const getForDelivery = internalQuery({
       });
     }
 
+    const referenceDocs = await ctx.db
+      .query("documents")
+      .withIndex("by_account_type", (q) =>
+        q.eq("accountId", notification.accountId).eq("type", "reference"),
+      )
+      .collect();
+    const repositoryDoc = referenceDocs.find(
+      (doc) =>
+        doc.title === "Repository — Primary" ||
+        doc.name === "Repository — Primary",
+    );
+
     return {
       notification,
       agent,
       task,
       message,
       thread,
+      sourceNotificationType,
+      repositoryDoc: repositoryDoc
+        ? {
+            title:
+              repositoryDoc.title ??
+              repositoryDoc.name ??
+              "Repository — Primary",
+            content: repositoryDoc.content ?? "",
+          }
+        : null,
     };
   },
 });

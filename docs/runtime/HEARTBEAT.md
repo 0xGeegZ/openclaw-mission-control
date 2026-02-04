@@ -30,16 +30,17 @@ Pick one action that can be completed quickly:
 
 ## 4) Report + persist memory (always)
 
-- Post a thread update using the required format
-- Update WORKING.md:
-  - Current task
-  - Status
-  - Next step (single)
-- Append a short entry to today's log with timestamp
+- If you took a concrete action on a task:
+  - Post a thread update using the required format
+  - Update WORKING.md (current task, status, next step)
+  - Append a short entry to today's log with timestamp
+- If you did not take a concrete action:
+  - Reply with `HEARTBEAT_OK` only
+  - Do not post a thread update
 
 ## 5) Stand down rules
 
 If you did not act:
 
-- Post `HEARTBEAT_OK` only if your team wants that signal
+- Post `HEARTBEAT_OK` only
 - Otherwise stay silent to avoid noise
