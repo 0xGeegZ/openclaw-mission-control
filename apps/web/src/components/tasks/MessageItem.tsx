@@ -51,16 +51,45 @@ import { Streamdown } from "streamdown";
 import React from "react";
 
 /**
- * Renders message content with inline styled @mentions.
- * Replaces @name patterns with styled span elements.
- * Uses inline spans for text fragments to keep mentions on the same line.
+ * Custom component for rendering mention badges inline via Streamdown's component system.
+ * Used as a replacement for <span data-mention> elements.
  */
-function renderContentWithMentions(
+const MentionBadge = ({
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & { "data-mention"?: string }) => {
+  const mentionName = props["data-mention"];
+  if (mentionName) {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default"
+        title={`Mentioned: ${mentionName}`}
+      >
+        @{mentionName}
+      </span>
+    );
+  }
+  return <span {...props}>{children}</span>;
+};
+
+/**
+ * Streamdown custom components configuration.
+ * Overrides span rendering to handle mention badges.
+ */
+const streamdownComponents = {
+  span: MentionBadge,
+};
+
+/**
+ * Preprocesses content to replace @mentions with inline HTML spans that Streamdown will render.
+ * This keeps everything on one line as the HTML is parsed inline by Streamdown.
+ */
+function preprocessMentions(
   content: string,
   mentions?: Array<{ name: string; id?: string }>
-): React.ReactNode {
+): string {
   if (!mentions || mentions.length === 0) {
-    return <Streamdown>{content}</Streamdown>;
+    return content;
   }
 
   // Create a map of lowercase mention names for case-insensitive matching
@@ -68,53 +97,31 @@ function renderContentWithMentions(
     mentions.map((m) => [m.name.toLowerCase(), m])
   );
 
-  // Regex to find @mentions (word characters after @)
-  const mentionRegex = /@(\w+)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = mentionRegex.exec(content)) !== null) {
-    const mentionName = match[1];
+  // Replace @mentions with inline HTML span elements
+  return content.replace(/@(\w+)/g, (match, mentionName) => {
     const mention = mentionMap.get(mentionName.toLowerCase());
-
-    // Add text before this match as inline span
-    if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index);
-      parts.push(
-        <span key={`text-${lastIndex}`}>{textBefore}</span>
-      );
-    }
-
     if (mention) {
-      // Render styled mention badge inline
-      parts.push(
-        <span
-          key={`mention-${match.index}`}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default align-middle"
-          title={`Mentioned: ${mention.name}`}
-        >
-          @{mention.name}
-        </span>
-      );
-    } else {
-      // Not a valid mention, render as plain inline text
-      parts.push(
-        <span key={`text-${match.index}`}>{match[0]}</span>
-      );
+      // Return inline HTML that Streamdown will render via rehype-raw
+      return `<span data-mention="${mention.name}"></span>`;
     }
+    return match;
+  });
+}
 
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Add remaining text after last match as inline span
-  if (lastIndex < content.length) {
-    const textAfter = content.slice(lastIndex);
-    parts.push(<span key={`text-${lastIndex}`}>{textAfter}</span>);
-  }
-
-  // Wrap in a span to ensure inline flow
-  return parts.length > 0 ? <span>{parts}</span> : <Streamdown>{content}</Streamdown>;
+/**
+ * Renders message content with inline styled @mentions using Streamdown.
+ * Preprocesses content to inject mention HTML, then uses custom components for styling.
+ */
+function renderContentWithMentions(
+  content: string,
+  mentions?: Array<{ name: string; id?: string }>
+): React.ReactNode {
+  const processedContent = preprocessMentions(content, mentions);
+  return (
+    <Streamdown components={streamdownComponents}>
+      {processedContent}
+    </Streamdown>
+  );
 }
 
 /** Lookup for agent author display (name, optional avatar). */
