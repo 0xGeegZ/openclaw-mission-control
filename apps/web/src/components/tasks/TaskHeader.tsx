@@ -34,6 +34,7 @@ import { TaskEditDialog } from "./TaskEditDialog";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { BlockedReasonDialog } from "./BlockedReasonDialog";
 import { TaskSubscription } from "./TaskSubscription";
+import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskHeaderProps {
   task: Doc<"tasks">;
@@ -243,16 +244,20 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         </div>
         
         {task.description && (
-          <p className="text-muted-foreground leading-relaxed">{task.description}</p>
+          <div className="text-muted-foreground">
+            <MarkdownRenderer content={task.description} compact />
+          </div>
         )}
         
         {/* Blocked reason banner */}
         {task.status === "blocked" && task.blockedReason && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
             <Flag className="h-4 w-4 mt-0.5 shrink-0" />
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">Blocked</p>
-              <p className="text-sm opacity-90">{task.blockedReason}</p>
+              <div className="text-sm opacity-90">
+                <MarkdownRenderer content={task.blockedReason} compact className="prose-p:my-1" />
+              </div>
             </div>
           </div>
         )}

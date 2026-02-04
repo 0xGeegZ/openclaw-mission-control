@@ -30,6 +30,7 @@ import Link from "next/link";
 import { TASK_STATUS_LABELS } from "@packages/shared";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
+import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskDetailSheetProps {
   taskId: Id<"tasks"> | null;
@@ -134,18 +135,20 @@ export function TaskDetailSheet({
               
               {/* Description */}
               {task.description && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {task.description}
-                </p>
+                <div className="text-sm leading-relaxed">
+                  <MarkdownRenderer content={task.description} compact />
+                </div>
               )}
               
               {/* Blocked reason */}
               {task.status === "blocked" && task.blockedReason && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
                   <Flag className="h-4 w-4 mt-0.5 shrink-0" />
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Blocked Reason</p>
-                    <p className="text-sm opacity-90">{task.blockedReason}</p>
+                    <div className="text-sm opacity-90">
+                      <MarkdownRenderer content={task.blockedReason} compact className="prose-p:my-1" />
+                    </div>
                   </div>
                 </div>
               )}
