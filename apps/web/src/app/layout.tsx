@@ -7,14 +7,13 @@ import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { Toaster } from "sonner";
 import { SkipLink } from "@/components/ui/SkipLink";
-import { LiveAnnouncerProvider } from "@/components/ui/LiveAnnouncer";
 
-const geistSans = Geist({ 
+const geistSans = Geist({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-const geistMono = Geist_Mono({ 
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 });
@@ -24,6 +23,9 @@ export const metadata: Metadata = {
   description: "Multi-agent coordination dashboard",
 };
 
+/**
+ * Root layout: fonts, Clerk + Convex + theme providers, skip link, toaster, and main content wrapper.
+ */
 export default function RootLayout({
   children,
 }: {
@@ -32,25 +34,27 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={cn(geistSans.variable, geistMono.variable, "font-sans antialiased")}
+        className={cn(
+          geistSans.variable,
+          geistMono.variable,
+          "font-sans antialiased",
+        )}
         suppressHydrationWarning
       >
         <ClerkProvider>
           <ThemeProvider>
             <ConvexClientProvider>
-              <LiveAnnouncerProvider>
-                <SkipLink />
-                <div id="main-content">{children}</div>
-                <Toaster 
-                  position="bottom-right"
-                  toastOptions={{
-                    className: "font-sans",
-                    style: {
-                      borderRadius: "0.625rem",
-                    },
-                  }}
-                />
-              </LiveAnnouncerProvider>
+              <SkipLink />
+              <div id="main-content">{children}</div>
+              <Toaster
+                position="bottom-right"
+                toastOptions={{
+                  className: "font-sans",
+                  style: {
+                    borderRadius: "0.625rem",
+                  },
+                }}
+              />
             </ConvexClientProvider>
           </ThemeProvider>
         </ClerkProvider>

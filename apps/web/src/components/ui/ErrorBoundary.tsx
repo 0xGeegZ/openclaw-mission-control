@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, ReactNode } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   RefreshCw,
@@ -48,10 +49,6 @@ export class ErrorBoundary extends Component<
   handleReset = () => {
     this.setState({ hasError: false, error: null, showDetails: false });
     this.props.onReset?.();
-  };
-
-  handleGoHome = () => {
-    window.location.href = "/dashboard";
   };
 
   toggleDetails = () => {
@@ -135,9 +132,11 @@ export class ErrorBoundary extends Component<
           </p>
 
           <div className="flex items-center gap-3 mt-6">
-            <Button variant="outline" onClick={this.handleGoHome}>
-              <Home className="h-4 w-4 mr-2" />
-              Go to Dashboard
+            <Button variant="outline" asChild>
+              <Link href="/dashboard">
+                <Home className="h-4 w-4 mr-2" />
+                Go to Dashboard
+              </Link>
             </Button>
             <Button onClick={this.handleReset}>
               <RefreshCw className="h-4 w-4 mr-2" />
@@ -149,8 +148,12 @@ export class ErrorBoundary extends Component<
           {error && (
             <div className="mt-8 w-full max-w-lg">
               <button
+                type="button"
                 onClick={this.toggleDetails}
                 className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors mx-auto"
+                aria-expanded={showDetails}
+                aria-controls="error-details"
+                id="error-details-toggle"
               >
                 {showDetails ? (
                   <ChevronUp className="h-3.5 w-3.5" />
@@ -161,7 +164,12 @@ export class ErrorBoundary extends Component<
               </button>
 
               {showDetails && (
-                <div className="mt-3 p-4 rounded-xl bg-muted/50 border border-border/50 text-left">
+                <div
+                  id="error-details"
+                  role="region"
+                  aria-labelledby="error-details-toggle"
+                  className="mt-3 p-4 rounded-xl bg-muted/50 border border-border/50 text-left"
+                >
                   <p className="text-xs font-medium text-destructive mb-1">
                     {error.name}
                   </p>
@@ -238,12 +246,11 @@ export function ErrorFallback({
       </p>
 
       <div className="flex items-center gap-3 mt-6">
-        <Button
-          variant="outline"
-          onClick={() => (window.location.href = "/dashboard")}
-        >
-          <Home className="h-4 w-4 mr-2" />
-          Go to Dashboard
+        <Button variant="outline" asChild>
+          <Link href="/dashboard">
+            <Home className="h-4 w-4 mr-2" />
+            Go to Dashboard
+          </Link>
         </Button>
         <Button onClick={reset}>
           <RefreshCw className="h-4 w-4 mr-2" />

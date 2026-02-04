@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@packages/ui/components/button";
-import { Home, ArrowLeft, Compass } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
+import { Home, Compass } from "lucide-react";
 
 /**
  * Custom 404 Not Found page.
@@ -39,16 +40,7 @@ export default function NotFound() {
 
       {/* Action buttons */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
-        <Button
-          asChild
-          variant="outline"
-          className="w-full sm:w-auto rounded-xl"
-        >
-          <Link href="javascript:history.back()">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Go Back
-          </Link>
-        </Button>
+        <BackButton className="w-full sm:w-auto rounded-xl" />
         <Button asChild className="w-full sm:w-auto rounded-xl shadow-sm">
           <Link href="/">
             <Home className="h-4 w-4 mr-2" />

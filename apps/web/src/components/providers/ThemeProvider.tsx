@@ -7,6 +7,9 @@ interface ThemeProviderProps {
   children: ReactNode;
 }
 
+/**
+ * Wraps the app with next-themes for system/default theme and class-based dark mode.
+ */
 export function ThemeProvider({ children }: ThemeProviderProps) {
   return (
     <NextThemesProvider

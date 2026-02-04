@@ -37,23 +37,24 @@ export function useAccount(): AccountContextValue {
 }
 
 /**
- * Hook to require account (throws if not loaded).
+ * Hook to require current account; throws if not loaded or no account.
+ * Use in components that must run only when account context is ready.
  */
-export function useRequireAccount(): { 
-  account: Doc<"accounts">; 
+export function useRequireAccount(): {
+  account: Doc<"accounts">;
   accountId: Id<"accounts">;
   isAdmin: boolean;
   isOwner: boolean;
 } {
   const { account, accountId, isLoading, isAdmin, isOwner } = useAccount();
-  
+
   if (isLoading) {
-    throw new Error("Account is still loading");
+    throw new Error("useRequireAccount: account is still loading");
   }
-  
+
   if (!account || !accountId) {
-    throw new Error("No account selected");
+    throw new Error("useRequireAccount: no account selected or access denied");
   }
-  
+
   return { account, accountId, isAdmin, isOwner };
 }
