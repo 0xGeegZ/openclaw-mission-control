@@ -47,73 +47,7 @@ import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
-import { Streamdown } from "streamdown";
-import React from "react";
-
-/**
- * Renders message content with inline styled @mentions.
- * Replaces @name patterns with styled span elements.
- */
-function renderContentWithMentions(
-  content: string,
-  mentions?: Array<{ name: string; id?: string }>
-): React.ReactNode {
-  if (!mentions || mentions.length === 0) {
-    return <Streamdown>{content}</Streamdown>;
-  }
-
-  // Create a map of lowercase mention names for case-insensitive matching
-  const mentionMap = new Map(
-    mentions.map((m) => [m.name.toLowerCase(), m])
-  );
-
-  // Regex to find @mentions (word characters after @)
-  const mentionRegex = /@(\w+)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = mentionRegex.exec(content)) !== null) {
-    const mentionName = match[1];
-    const mention = mentionMap.get(mentionName.toLowerCase());
-
-    // Add text before this match
-    if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index);
-      parts.push(
-        <Streamdown key={`text-${lastIndex}`}>{textBefore}</Streamdown>
-      );
-    }
-
-    if (mention) {
-      // Render styled mention
-      parts.push(
-        <span
-          key={`mention-${match.index}`}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 text-primary font-medium text-sm hover:bg-primary/15 transition-colors cursor-default"
-          title={`Mentioned: ${mention.name}`}
-        >
-          @{mention.name}
-        </span>
-      );
-    } else {
-      // Not a valid mention, render as plain text
-      parts.push(
-        <Streamdown key={`text-${match.index}`}>{match[0]}</Streamdown>
-      );
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Add remaining text after last match
-  if (lastIndex < content.length) {
-    const textAfter = content.slice(lastIndex);
-    parts.push(<Streamdown key={`text-${lastIndex}`}>{textAfter}</Streamdown>);
-  }
-
-  return parts.length > 0 ? <>{parts}</> : <Streamdown>{content}</Streamdown>;
-}
+import { MessageContent } from "./MessageContent";
 
 /** Lookup for agent author display (name, optional avatar). */
 export type AgentsByAuthorId = Record<
@@ -330,7 +264,7 @@ export function MessageItem({
         ) : (
           <>
             <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
-              {renderContentWithMentions(message.content, message.mentions)}
+              <MessageContent content={message.content} mentions={message.mentions} />
             </div>
 
             {message.authorType === "user" &&
