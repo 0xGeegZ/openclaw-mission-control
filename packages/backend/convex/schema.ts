@@ -203,6 +203,8 @@ export default defineSchema({
             ),
           }),
         ),
+        /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
+        orchestratorAgentId: v.optional(v.id("agents")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
@@ -765,7 +767,8 @@ export default defineSchema({
       "deliveredAt",
     ])
     .index("by_account_created", ["accountId", "createdAt"])
-    .index("by_task", ["taskId"]),
+    .index("by_task", ["taskId"])
+    .index("by_task_created", ["taskId", "createdAt"]),
 
   // ==========================================================================
   // SUBSCRIPTIONS

@@ -51,7 +51,7 @@ function normalizeEnvValue(value: string | undefined): string | undefined {
   if (!value) return value;
   const trimmed = value.trim();
   if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
     return trimmed.slice(1, -1);
@@ -91,13 +91,18 @@ async function detectOpenClawVersion(): Promise<string> {
  * Get runtime service version from package.json or env.
  */
 function getRuntimeServiceVersion(): string {
-  return process.env.RUNTIME_VERSION || process.env.npm_package_version || "0.1.0";
+  return (
+    process.env.RUNTIME_VERSION || process.env.npm_package_version || "0.1.0"
+  );
 }
 
 /**
  * Parse an integer from env with a fallback when invalid.
  */
-function parseIntOrDefault(value: string | undefined, fallback: number): number {
+function parseIntOrDefault(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = parseInt(value || "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
 }
@@ -109,38 +114,47 @@ export async function loadConfig(): Promise<RuntimeConfig> {
   const accountId = normalizeEnvValue(process.env.ACCOUNT_ID);
   const convexUrl = normalizeEnvValue(process.env.CONVEX_URL);
   const serviceToken = normalizeEnvValue(process.env.SERVICE_TOKEN);
-  
+
   if (!accountId || !convexUrl || !serviceToken) {
-    throw new Error("Missing required environment variables: ACCOUNT_ID, CONVEX_URL, SERVICE_TOKEN");
+    throw new Error(
+      "Missing required environment variables: ACCOUNT_ID, CONVEX_URL, SERVICE_TOKEN",
+    );
   }
 
   if (!serviceToken.startsWith("mc_service_")) {
-    throw new Error("Invalid SERVICE_TOKEN format. Expected a token starting with mc_service_.");
+    throw new Error(
+      "Invalid SERVICE_TOKEN format. Expected a token starting with mc_service_.",
+    );
   }
 
   const tokenParts = serviceToken.split("_");
   if (tokenParts.length < 4) {
-    throw new Error("Invalid SERVICE_TOKEN structure. Expected mc_service_{accountId}_{secret}.");
+    throw new Error(
+      "Invalid SERVICE_TOKEN structure. Expected mc_service_{accountId}_{secret}.",
+    );
   }
 
   const tokenAccountId = tokenParts[2];
   if (tokenAccountId !== accountId) {
     throw new Error(
-      `SERVICE_TOKEN account mismatch. Token is for ${tokenAccountId}, but ACCOUNT_ID is ${accountId}.`
+      `SERVICE_TOKEN account mismatch. Token is for ${tokenAccountId}, but ACCOUNT_ID is ${accountId}.`,
     );
   }
-  
+
   const openclawVersion = await detectOpenClawVersion();
   const logLevelRaw = (process.env.LOG_LEVEL || "info").toLowerCase();
   const logLevel: LogLevel =
-    logLevelRaw === "debug" || logLevelRaw === "info" || logLevelRaw === "warn" || logLevelRaw === "error"
+    logLevelRaw === "debug" ||
+    logLevelRaw === "info" ||
+    logLevelRaw === "warn" ||
+    logLevelRaw === "error"
       ? logLevelRaw
       : "info";
 
   const openclawGatewayUrl = parseOpenClawGatewayUrl();
   const openclawGatewayToken = resolveOpenClawGatewayToken(
     openclawGatewayUrl,
-    parseOpenClawGatewayToken()
+    parseOpenClawGatewayToken(),
   );
 
   return {
@@ -150,11 +164,23 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     healthPort: parseIntOrDefault(process.env.HEALTH_PORT, 3001),
     healthHost: process.env.HEALTH_HOST || "127.0.0.1",
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
-    healthCheckInterval: parseIntOrDefault(process.env.HEALTH_CHECK_INTERVAL, 60000),
-    agentSyncInterval: parseIntOrDefault(process.env.AGENT_SYNC_INTERVAL, 60000),
+    healthCheckInterval: parseIntOrDefault(
+      process.env.HEALTH_CHECK_INTERVAL,
+      60000,
+    ),
+    agentSyncInterval: parseIntOrDefault(
+      process.env.AGENT_SYNC_INTERVAL,
+      60000,
+    ),
     logLevel,
-    deliveryBackoffBaseMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_BASE_MS, 5000),
-    deliveryBackoffMaxMs: parseIntOrDefault(process.env.DELIVERY_BACKOFF_MAX_MS, 300000),
+    deliveryBackoffBaseMs: parseIntOrDefault(
+      process.env.DELIVERY_BACKOFF_BASE_MS,
+      5000,
+    ),
+    deliveryBackoffMaxMs: parseIntOrDefault(
+      process.env.DELIVERY_BACKOFF_MAX_MS,
+      300000,
+    ),
     runtimeServiceVersion: getRuntimeServiceVersion(),
     openclawVersion,
     dropletId: process.env.DROPLET_ID || "unknown",
@@ -162,7 +188,10 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     dropletRegion: process.env.DROPLET_REGION || "unknown",
     openclawGatewayUrl,
     openclawGatewayToken,
-    openclawRequestTimeoutMs: parseIntOrDefault(process.env.OPENCLAW_REQUEST_TIMEOUT_MS, 60000),
+    openclawRequestTimeoutMs: parseIntOrDefault(
+      process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
+      180000,
+    ),
   };
 }
 
@@ -179,7 +208,7 @@ function parseOpenClawGatewayUrl(): string {
     new URL(trimmed);
   } catch {
     throw new Error(
-      "Invalid OPENCLAW_GATEWAY_URL. Expected a valid URL like http://127.0.0.1:18789."
+      "Invalid OPENCLAW_GATEWAY_URL. Expected a valid URL like http://127.0.0.1:18789.",
     );
   }
   return trimmed;
@@ -203,14 +232,16 @@ function parseOpenClawGatewayToken(): string | undefined {
  */
 function resolveOpenClawGatewayToken(
   gatewayUrl: string,
-  token: string | undefined
+  token: string | undefined,
 ): string | undefined {
   if (token !== undefined) return token;
   if (!gatewayUrl) return undefined;
   const host = getGatewayHost(gatewayUrl);
   if (!host) return undefined;
   if (isLocalGatewayHost(host)) return "local";
-  throw new Error("OPENCLAW_GATEWAY_TOKEN is required for non-local OPENCLAW_GATEWAY_URL.");
+  throw new Error(
+    "OPENCLAW_GATEWAY_TOKEN is required for non-local OPENCLAW_GATEWAY_URL.",
+  );
 }
 
 /**
@@ -229,6 +260,12 @@ function getGatewayHost(gatewayUrl: string): string | null {
  * Determine if the gateway host is local for safe default token usage.
  */
 function isLocalGatewayHost(host: string): boolean {
-  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", "openclaw-gateway"]);
+  const localHosts = new Set([
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "0.0.0.0",
+    "openclaw-gateway",
+  ]);
   return localHosts.has(host);
 }

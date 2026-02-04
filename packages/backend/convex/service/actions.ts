@@ -6,6 +6,7 @@ import {
   generateServiceToken,
   hashServiceTokenSecret,
 } from "../lib/service_auth";
+import { taskStatusValidator } from "../lib/validators";
 import { Id } from "../_generated/dataModel";
 
 /**
@@ -340,6 +341,40 @@ export const markNotificationDelivered = action({
 });
 
 /**
+ * Mark a notification as read (service-only).
+ * Called by runtime when it starts processing a notification, before sendToOpenClaw.
+ * Verifies notification belongs to account; idempotent.
+ */
+export const markNotificationRead = action({
+  args: {
+    notificationId: v.id("notifications"),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const notificationResult = await ctx.runQuery(
+      internal.service.notifications.getForDelivery,
+      { notificationId: args.notificationId },
+    );
+    const notification = notificationResult?.notification;
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.accountId !== args.accountId) {
+      throw new Error("Forbidden: Notification belongs to different account");
+    }
+    await ctx.runMutation(internal.service.notifications.markRead, {
+      notificationId: args.notificationId,
+    });
+    return { success: true };
+  },
+});
+
+/**
  * List agents for an account.
  * Called by runtime to get all agents for the account.
  */
@@ -415,6 +450,72 @@ export const updateAgentHeartbeat = action({
       });
 
     return result;
+  },
+});
+
+/**
+ * Update task status on behalf of an agent (service-only).
+ * Validates service token and account ownership.
+ * Optionally guard against unexpected current status changes.
+ */
+export const updateTaskStatusFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    status: taskStatusValidator,
+    blockedReason: v.optional(v.string()),
+    expectedStatus: v.optional(taskStatusValidator),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const allowedStatuses = new Set([
+      "in_progress",
+      "review",
+      "done",
+      "blocked",
+    ]);
+    if (!allowedStatuses.has(args.status)) {
+      throw new Error(
+        "Invalid status: must be in_progress, review, done, or blocked",
+      );
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+      taskId: args.taskId,
+      agentId: args.agentId,
+      status: args.status,
+      blockedReason: args.blockedReason,
+      expectedStatus: args.expectedStatus,
+    });
+
+    return { success: true };
   },
 });
 

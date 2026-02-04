@@ -20,8 +20,10 @@ interface AgentsPageProps {
  */
 export default function AgentsPage({ params }: AgentsPageProps) {
   const { accountSlug } = use(params);
-  const { accountId, isLoading: isAccountLoading } = useAccount();
+  const { accountId, account, isLoading: isAccountLoading } = useAccount();
   const [showCreate, setShowCreate] = useState(false);
+
+  const orchestratorAgentId = (account?.settings as { orchestratorAgentId?: string } | undefined)?.orchestratorAgentId;
   
   const roster = useQuery(
     api.agents.getRoster,
@@ -77,7 +79,12 @@ export default function AgentsPage({ params }: AgentsPageProps) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {roster?.map((agent) => (
-              <AgentCard key={agent._id} agent={agent} accountSlug={accountSlug} />
+              <AgentCard
+                key={agent._id}
+                agent={agent}
+                accountSlug={accountSlug}
+                isOrchestrator={orchestratorAgentId === agent._id}
+              />
             ))}
           </div>
         )}

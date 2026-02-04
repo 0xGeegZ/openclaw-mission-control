@@ -2,13 +2,18 @@ import { loadConfig, RuntimeConfig } from "./config";
 import { startAgentSync, stopAgentSync } from "./agent-sync";
 import { initConvexClient, getConvexClient, api } from "./convex-client";
 import { startDeliveryLoop, stopDeliveryLoop } from "./delivery";
-import { initGateway, shutdownGateway } from "./gateway";
+import {
+  initGateway,
+  shutdownGateway,
+  waitForOpenClawGatewayReady,
+} from "./gateway";
 import { startHealthServer, stopHealthServer } from "./health";
 import { startHeartbeats, stopHeartbeats } from "./heartbeat";
 import { createLogger, setLogLevel } from "./logger";
 
 const log = createLogger("[Runtime]");
 let globalConfig: RuntimeConfig;
+let agentWorkStarted = false;
 
 /**
  * Extract a readable error message.
@@ -40,23 +45,57 @@ async function main() {
   log.info("=== OpenClaw Mission Control Runtime Service ===");
   log.info("Account ID:", config.accountId);
   log.info("Convex URL:", config.convexUrl);
-  log.info("Runtime Service v" + config.runtimeServiceVersion, "OpenClaw v" + config.openclawVersion);
+  log.info(
+    "Runtime Service v" + config.runtimeServiceVersion,
+    "OpenClaw v" + config.openclawVersion,
+  );
 
   initConvexClient(config);
   log.info("Convex client initialized");
 
   try {
     await initGateway(config);
-    startDeliveryLoop(config);
-    await startHeartbeats(config);
-    startAgentSync(config);
     startHealthServer(config);
+
+    /**
+     * Start delivery, heartbeats, and agent sync once.
+     */
+    const startAgentWork = async () => {
+      if (agentWorkStarted) return;
+      agentWorkStarted = true;
+      startDeliveryLoop(config);
+      await startHeartbeats(config);
+      startAgentSync(config);
+    };
+
+    const gatewayReady = await waitForOpenClawGatewayReady();
+    if (gatewayReady) {
+      await startAgentWork();
+    } else {
+      log.warn(
+        "OpenClaw gateway not reachable yet; delaying delivery and heartbeats until it starts.",
+      );
+      const retry = async () => {
+        const ready = await waitForOpenClawGatewayReady({ timeoutMs: 60000 });
+        if (ready) {
+          await startAgentWork();
+          return;
+        }
+        setTimeout(retry, 5000);
+      };
+      void retry();
+    }
   } catch (error) {
     const message = getErrorMessage(error);
     if (isServiceTokenError(message)) {
       log.error("Service token rejected by Convex.");
-      log.error("Ensure SERVICE_TOKEN was generated in this deployment:", config.convexUrl);
-      log.error("If you have multiple deployments, regenerate in the one matching CONVEX_URL.");
+      log.error(
+        "Ensure SERVICE_TOKEN was generated in this deployment:",
+        config.convexUrl,
+      );
+      log.error(
+        "If you have multiple deployments, regenerate in the one matching CONVEX_URL.",
+      );
     }
     throw error;
   }

@@ -1,6 +1,16 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
-import { requireAuth, requireAccountMember, requireAccountAdmin, requireAccountOwner } from "./lib/auth";
+import {
+  mutation,
+  query,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import {
+  requireAuth,
+  requireAccountMember,
+  requireAccountAdmin,
+  requireAccountOwner,
+} from "./lib/auth";
 
 /**
  * Create a new account.
@@ -13,17 +23,17 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const authContext = await requireAuth(ctx);
-    
+
     // Check slug uniqueness
     const existing = await ctx.db
       .query("accounts")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
-    
+
     if (existing) {
       throw new Error("Conflict: Account slug already exists");
     }
-    
+
     // Create account
     const accountId = await ctx.db.insert("accounts", {
       name: args.name,
@@ -32,7 +42,7 @@ export const create = mutation({
       runtimeStatus: "offline",
       createdAt: Date.now(),
     });
-    
+
     // Create owner membership
     await ctx.db.insert("memberships", {
       accountId,
@@ -43,9 +53,9 @@ export const create = mutation({
       role: "owner",
       joinedAt: Date.now(),
     });
-    
+
     // TODO: Log activity (implemented in Module 08)
-    
+
     return accountId;
   },
 });
@@ -87,28 +97,28 @@ export const getBySlug = query({
   },
   handler: async (ctx, args) => {
     const authContext = await requireAuth(ctx);
-    
+
     const account = await ctx.db
       .query("accounts")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
-    
+
     if (!account) {
       return null;
     }
-    
+
     // Check membership
     const membership = await ctx.db
       .query("memberships")
-      .withIndex("by_account_user", (q) => 
-        q.eq("accountId", account._id).eq("userId", authContext.userId)
+      .withIndex("by_account_user", (q) =>
+        q.eq("accountId", account._id).eq("userId", authContext.userId),
       )
       .unique();
-    
+
     if (!membership) {
       return null;
     }
-    
+
     return account;
   },
 });
@@ -120,19 +130,19 @@ export const listMyAccounts = query({
   args: {},
   handler: async (ctx) => {
     const authContext = await requireAuth(ctx);
-    
+
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("by_user", (q) => q.eq("userId", authContext.userId))
       .collect();
-    
+
     const accounts = await Promise.all(
       memberships.map(async (m) => {
         const account = await ctx.db.get(m.accountId);
         return account ? { ...account, role: m.role } : null;
-      })
+      }),
     );
-    
+
     return accounts.filter(Boolean);
   },
 });
@@ -142,27 +152,35 @@ const agentDefaultsValidator = v.object({
   temperature: v.optional(v.number()),
   maxTokens: v.optional(v.number()),
   maxHistoryMessages: v.optional(v.number()),
-  behaviorFlags: v.optional(v.object({
-    canCreateTasks: v.boolean(),
-    canModifyTaskStatus: v.boolean(),
-    canCreateDocuments: v.boolean(),
-    canMentionAgents: v.boolean(),
-  })),
-  rateLimits: v.optional(v.object({
-    requestsPerMinute: v.optional(v.number()),
-    tokensPerDay: v.optional(v.number()),
-  })),
+  behaviorFlags: v.optional(
+    v.object({
+      canCreateTasks: v.boolean(),
+      canModifyTaskStatus: v.boolean(),
+      canCreateDocuments: v.boolean(),
+      canMentionAgents: v.boolean(),
+    }),
+  ),
+  rateLimits: v.optional(
+    v.object({
+      requestsPerMinute: v.optional(v.number()),
+      tokensPerDay: v.optional(v.number()),
+    }),
+  ),
 });
 
 const accountSettingsValidator = v.object({
   theme: v.optional(v.string()),
-  notificationPreferences: v.optional(v.object({
-    taskUpdates: v.boolean(),
-    agentActivity: v.boolean(),
-    emailDigest: v.boolean(),
-    memberUpdates: v.boolean(),
-  })),
+  notificationPreferences: v.optional(
+    v.object({
+      taskUpdates: v.boolean(),
+      agentActivity: v.boolean(),
+      emailDigest: v.boolean(),
+      memberUpdates: v.boolean(),
+    }),
+  ),
   agentDefaults: v.optional(agentDefaultsValidator),
+  /** Pass null to clear the orchestrator. */
+  orchestratorAgentId: v.optional(v.union(v.id("agents"), v.null())),
 });
 
 /**
@@ -200,17 +218,53 @@ export const update = mutation({
       }
     }
     if (args.settings !== undefined) {
-      const current = (account as { settings?: { theme?: string; notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean; memberUpdates?: boolean }; agentDefaults?: Record<string, unknown> } }).settings ?? {};
+      if (
+        "orchestratorAgentId" in args.settings &&
+        args.settings.orchestratorAgentId != null
+      ) {
+        const agent = await ctx.db.get(args.settings.orchestratorAgentId);
+        if (!agent || agent.accountId !== args.accountId) {
+          throw new Error(
+            "Orchestrator agent not found or does not belong to this account",
+          );
+        }
+      }
+      const current =
+        (
+          account as {
+            settings?: {
+              theme?: string;
+              notificationPreferences?: {
+                taskUpdates?: boolean;
+                agentActivity?: boolean;
+                emailDigest?: boolean;
+                memberUpdates?: boolean;
+              };
+              agentDefaults?: Record<string, unknown>;
+              orchestratorAgentId?: string;
+            };
+          }
+        ).settings ?? {};
       updates.settings = {
         ...current,
-        ...(args.settings.theme !== undefined && { theme: args.settings.theme }),
+        ...(args.settings.theme !== undefined && {
+          theme: args.settings.theme,
+        }),
         ...(args.settings.notificationPreferences !== undefined && {
           notificationPreferences: {
             ...(current.notificationPreferences ?? {}),
             ...args.settings.notificationPreferences,
           },
         }),
-        ...(args.settings.agentDefaults !== undefined && { agentDefaults: args.settings.agentDefaults }),
+        ...(args.settings.agentDefaults !== undefined && {
+          agentDefaults: args.settings.agentDefaults,
+        }),
+        ...("orchestratorAgentId" in args.settings && {
+          orchestratorAgentId:
+            args.settings.orchestratorAgentId === null
+              ? undefined
+              : args.settings.orchestratorAgentId,
+        }),
       };
     }
 
@@ -255,7 +309,7 @@ export const clearRestartRequestedInternal = internalMutation({
 /**
  * Update account runtime status (internal mutation).
  * Called by service actions with validated service tokens.
- * 
+ *
  * Includes version tracking for OpenClaw and runtime service.
  */
 export const updateRuntimeStatusInternal = internalMutation({
@@ -266,33 +320,37 @@ export const updateRuntimeStatusInternal = internalMutation({
       v.literal("online"),
       v.literal("degraded"),
       v.literal("offline"),
-      v.literal("error")
+      v.literal("error"),
     ),
-    config: v.optional(v.object({
-      dropletId: v.string(),
-      ipAddress: v.string(),
-      region: v.optional(v.string()),
-      lastHealthCheck: v.optional(v.number()),
-      // Version tracking (v1)
-      openclawVersion: v.optional(v.string()),
-      runtimeServiceVersion: v.optional(v.string()),
-      lastUpgradeAt: v.optional(v.number()),
-      lastUpgradeStatus: v.optional(v.union(
-        v.literal("success"),
-        v.literal("failed"),
-        v.literal("rolled_back")
-      )),
-    })),
+    config: v.optional(
+      v.object({
+        dropletId: v.string(),
+        ipAddress: v.string(),
+        region: v.optional(v.string()),
+        lastHealthCheck: v.optional(v.number()),
+        // Version tracking (v1)
+        openclawVersion: v.optional(v.string()),
+        runtimeServiceVersion: v.optional(v.string()),
+        lastUpgradeAt: v.optional(v.number()),
+        lastUpgradeStatus: v.optional(
+          v.union(
+            v.literal("success"),
+            v.literal("failed"),
+            v.literal("rolled_back"),
+          ),
+        ),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const updates: Record<string, unknown> = {
       runtimeStatus: args.status,
     };
-    
+
     if (args.config) {
       updates.runtimeConfig = args.config;
     }
-    
+
     await ctx.db.patch(args.accountId, updates);
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
@@ -322,35 +380,50 @@ export const updateRuntimeStatusInternal = internalMutation({
       const targetMatches =
         runtime.pendingUpgrade != null &&
         cfg?.openclawVersion === runtime.pendingUpgrade.targetOpenclawVersion &&
-        cfg?.runtimeServiceVersion === runtime.pendingUpgrade.targetRuntimeVersion;
-      const pendingAgeMs = runtime.pendingUpgrade ? now - runtime.pendingUpgrade.initiatedAt : 0;
+        cfg?.runtimeServiceVersion ===
+          runtime.pendingUpgrade.targetRuntimeVersion;
+      const pendingAgeMs = runtime.pendingUpgrade
+        ? now - runtime.pendingUpgrade.initiatedAt
+        : 0;
       const isStale =
         runtime.pendingUpgrade != null &&
         !targetMatches &&
         pendingAgeMs > UPGRADE_TIMEOUT_MS;
       const nextHistory = targetMatches
-        ? [...(runtime.upgradeHistory ?? []), {
-            fromOpenclawVersion: runtime.openclawVersion,
-            toOpenclawVersion: cfg?.openclawVersion ?? runtime.openclawVersion,
-            fromRuntimeVersion: runtime.runtimeServiceVersion,
-            toRuntimeVersion: cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
-            status: "success" as const,
-            startedAt: runtime.pendingUpgrade?.initiatedAt ?? now,
-            completedAt: now,
-            initiatedBy: runtime.pendingUpgrade?.initiatedBy ?? "runtime",
-          }].slice(-10)
-        : isStale
-          ? [...(runtime.upgradeHistory ?? []), {
+        ? [
+            ...(runtime.upgradeHistory ?? []),
+            {
               fromOpenclawVersion: runtime.openclawVersion,
-              toOpenclawVersion: runtime.pendingUpgrade?.targetOpenclawVersion ?? runtime.openclawVersion,
+              toOpenclawVersion:
+                cfg?.openclawVersion ?? runtime.openclawVersion,
               fromRuntimeVersion: runtime.runtimeServiceVersion,
-              toRuntimeVersion: runtime.pendingUpgrade?.targetRuntimeVersion ?? runtime.runtimeServiceVersion,
-              status: "failed" as const,
+              toRuntimeVersion:
+                cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
+              status: "success" as const,
               startedAt: runtime.pendingUpgrade?.initiatedAt ?? now,
               completedAt: now,
-              error: "Upgrade timed out",
               initiatedBy: runtime.pendingUpgrade?.initiatedBy ?? "runtime",
-            }].slice(-10)
+            },
+          ].slice(-10)
+        : isStale
+          ? [
+              ...(runtime.upgradeHistory ?? []),
+              {
+                fromOpenclawVersion: runtime.openclawVersion,
+                toOpenclawVersion:
+                  runtime.pendingUpgrade?.targetOpenclawVersion ??
+                  runtime.openclawVersion,
+                fromRuntimeVersion: runtime.runtimeServiceVersion,
+                toRuntimeVersion:
+                  runtime.pendingUpgrade?.targetRuntimeVersion ??
+                  runtime.runtimeServiceVersion,
+                status: "failed" as const,
+                startedAt: runtime.pendingUpgrade?.initiatedAt ?? now,
+                completedAt: now,
+                error: "Upgrade timed out",
+                initiatedBy: runtime.pendingUpgrade?.initiatedBy ?? "runtime",
+              },
+            ].slice(-10)
           : runtime.upgradeHistory;
       await ctx.db.patch(runtime._id, {
         status: args.status,
@@ -359,14 +432,16 @@ export const updateRuntimeStatusInternal = internalMutation({
         region: cfg?.region ?? runtime.region,
         providerId: cfg?.dropletId ?? runtime.providerId,
         openclawVersion: cfg?.openclawVersion ?? runtime.openclawVersion,
-        runtimeServiceVersion: cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
+        runtimeServiceVersion:
+          cfg?.runtimeServiceVersion ?? runtime.runtimeServiceVersion,
         dockerImageTag: cfg?.runtimeServiceVersion ?? runtime.dockerImageTag,
-        pendingUpgrade: targetMatches || isStale ? undefined : runtime.pendingUpgrade,
+        pendingUpgrade:
+          targetMatches || isStale ? undefined : runtime.pendingUpgrade,
         upgradeHistory: nextHistory,
         updatedAt: now,
       });
     }
-    
+
     return args.accountId;
   },
 });
@@ -384,7 +459,7 @@ export const updateServiceTokenHash = internalMutation({
     await ctx.db.patch(args.accountId, {
       serviceTokenHash: args.serviceTokenHash,
     });
-    
+
     return args.accountId;
   },
 });
@@ -400,10 +475,10 @@ export const remove = mutation({
   },
   handler: async (ctx, args) => {
     await requireAccountOwner(ctx, args.accountId);
-    
+
     // Delete all related data
     // Order matters for foreign key-like relationships
-    
+
     // 1. Delete notifications
     const notifications = await ctx.db
       .query("notifications")
@@ -436,7 +511,7 @@ export const remove = mutation({
     for (const a of activities) {
       await ctx.db.delete(a._id);
     }
-    
+
     // 4. Delete messages
     const messages = await ctx.db
       .query("messages")
@@ -445,7 +520,7 @@ export const remove = mutation({
     for (const m of messages) {
       await ctx.db.delete(m._id);
     }
-    
+
     // 5. Delete documents
     const documents = await ctx.db
       .query("documents")
@@ -459,7 +534,7 @@ export const remove = mutation({
     for (const t of tasks) {
       await ctx.db.delete(t._id);
     }
-    
+
     // 7. Delete agents
     const agents = await ctx.db
       .query("agents")
@@ -468,7 +543,7 @@ export const remove = mutation({
     for (const a of agents) {
       await ctx.db.delete(a._id);
     }
-    
+
     // 8. Delete memberships
     const memberships = await ctx.db
       .query("memberships")
@@ -477,10 +552,10 @@ export const remove = mutation({
     for (const m of memberships) {
       await ctx.db.delete(m._id);
     }
-    
+
     // 9. Delete account
     await ctx.db.delete(args.accountId);
-    
+
     return true;
   },
 });

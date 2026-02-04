@@ -13,6 +13,7 @@ import {
   createAssignmentNotification,
   createStatusChangeNotification,
 } from "./lib/notifications";
+import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
 
 /**
  * Internal: list tasks for an account (for standup/cron). No auth.
@@ -203,6 +204,8 @@ export const create = mutation({
       targetName: args.title,
     });
 
+    await ensureOrchestratorSubscribed(ctx, args.accountId, taskId);
+
     return taskId;
   },
 });
@@ -369,6 +372,8 @@ export const updateStatus = mutation({
 
 /**
  * Assign users and/or agents to a task.
+ * Newly assigned entities are auto-subscribed to the thread.
+ * Auto-transitions between inbox and assigned based on assignees.
  */
 export const assign = mutation({
   args: {
@@ -391,19 +396,42 @@ export const assign = mutation({
       updatedAt: Date.now(),
     };
 
+    const nextAssignedUserIds =
+      args.assignedUserIds !== undefined
+        ? args.assignedUserIds
+        : task.assignedUserIds;
+    const nextAssignedAgentIds =
+      args.assignedAgentIds !== undefined
+        ? args.assignedAgentIds
+        : task.assignedAgentIds;
+
     if (args.assignedUserIds !== undefined) {
-      updates.assignedUserIds = args.assignedUserIds;
+      updates.assignedUserIds = nextAssignedUserIds;
     }
 
     if (args.assignedAgentIds !== undefined) {
       // Validate agents exist and belong to account
-      for (const agentId of args.assignedAgentIds) {
+      for (const agentId of nextAssignedAgentIds) {
         const agent = await ctx.db.get(agentId);
         if (!agent || agent.accountId !== task.accountId) {
           throw new Error(`Invalid agent: ${agentId}`);
         }
       }
-      updates.assignedAgentIds = args.assignedAgentIds;
+      updates.assignedAgentIds = nextAssignedAgentIds;
+    }
+
+    const hasAssignees =
+      nextAssignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
+    const shouldAssign = task.status === "inbox" && hasAssignees;
+    const shouldUnassign = task.status === "assigned" && !hasAssignees;
+    const nextStatus: TaskStatus | null = shouldAssign
+      ? "assigned"
+      : shouldUnassign
+        ? "inbox"
+        : null;
+
+    if (nextStatus && nextStatus !== task.status) {
+      updates.status = nextStatus;
     }
 
     await ctx.db.patch(args.taskId, updates);
@@ -412,11 +440,11 @@ export const assign = mutation({
     const previousAgentIds = new Set(task.assignedAgentIds);
     const newUserIds =
       args.assignedUserIds !== undefined
-        ? args.assignedUserIds.filter((uid) => !previousUserIds.has(uid))
+        ? nextAssignedUserIds.filter((uid) => !previousUserIds.has(uid))
         : [];
     const newAgentIds =
       args.assignedAgentIds !== undefined
-        ? args.assignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
+        ? nextAssignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
         : [];
 
     for (const uid of newUserIds) {
@@ -429,6 +457,7 @@ export const assign = mutation({
         userName,
         task.title,
       );
+      await ensureSubscribed(ctx, task.accountId, args.taskId, "user", uid);
     }
     for (const agentId of newAgentIds) {
       await createAssignmentNotification(
@@ -440,6 +469,50 @@ export const assign = mutation({
         userName,
         task.title,
       );
+      await ensureSubscribed(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "agent",
+        agentId,
+      );
+    }
+
+    await ensureOrchestratorSubscribed(ctx, task.accountId, args.taskId);
+
+    if (
+      nextStatus &&
+      nextStatus !== task.status &&
+      hasAssignees &&
+      !shouldAssign
+    ) {
+      for (const uid of nextAssignedUserIds) {
+        await createStatusChangeNotification(
+          ctx,
+          task.accountId,
+          args.taskId,
+          "user",
+          uid,
+          userName,
+          task.title,
+          nextStatus,
+        );
+      }
+      for (const agentId of nextAssignedAgentIds) {
+        const agent = await ctx.db.get(agentId);
+        if (agent) {
+          await createStatusChangeNotification(
+            ctx,
+            task.accountId,
+            args.taskId,
+            "agent",
+            agentId,
+            userName,
+            task.title,
+            nextStatus,
+          );
+        }
+      }
     }
 
     await logActivity({
@@ -457,6 +530,25 @@ export const assign = mutation({
         assignedAgentIds: args.assignedAgentIds,
       },
     });
+
+    if (nextStatus && nextStatus !== task.status) {
+      await logActivity({
+        ctx,
+        accountId: task.accountId,
+        type: "task_status_changed",
+        actorType: "user",
+        actorId: userId,
+        actorName: userName,
+        targetType: "task",
+        targetId: args.taskId,
+        targetName: task.title,
+        meta: {
+          oldStatus: task.status,
+          newStatus: nextStatus,
+          reason: "auto_assignment",
+        },
+      });
+    }
 
     return args.taskId;
   },

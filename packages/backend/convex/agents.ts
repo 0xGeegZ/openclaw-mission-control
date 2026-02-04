@@ -403,7 +403,16 @@ export const remove = mutation({
     }
     
     await requireAccountAdmin(ctx, agent.accountId);
-    
+
+    const account = await ctx.db.get(agent.accountId);
+    const settings = account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined;
+    if (settings?.orchestratorAgentId === args.agentId) {
+      const currentSettings = account?.settings ?? {};
+      await ctx.db.patch(agent.accountId, {
+        settings: { ...currentSettings, orchestratorAgentId: undefined },
+      });
+    }
+
     // Remove agent from any task assignments
     const tasks = await ctx.db
       .query("tasks")

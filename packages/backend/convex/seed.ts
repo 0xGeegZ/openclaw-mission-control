@@ -106,7 +106,9 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ## Primary repository
 
-- https://github.com/0xGeegZ/openclaw-mission-control
+- Local checkout (preferred): /root/clawd/openclaw-mission-control
+- GitHub: https://github.com/0xGeegZ/openclaw-mission-control
+- If local checkout is available, use it instead of GitHub/web_fetch.
 - If access fails, mark the task BLOCKED and request credentials.
 - If GH_TOKEN is set, do not run \`gh auth login\`; use \`gh\` commands directly.
 
@@ -260,8 +262,10 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 const DOC_REPOSITORY_CONTENT = `# Repository — Primary
 
 - **Name:** OpenClaw Mission Control
-- **URL:** https://github.com/0xGeegZ/openclaw-mission-control
+- **Local checkout (preferred):** /root/clawd/openclaw-mission-control
+- **GitHub:** https://github.com/0xGeegZ/openclaw-mission-control
 - **Default branch:** master
+- **Usage:** Prefer the local checkout; avoid web_fetch for GitHub API unless necessary.
 - **Access note:** If you see a 404, authentication is missing; request GH_TOKEN.
 - **CLI note:** When GH_TOKEN is set, \`gh auth login\` will error; use \`gh\` commands directly.
 `;
@@ -732,6 +736,20 @@ async function runSeedWithOwner(
       createdAt: now,
     });
     agentsCreated += 1;
+  }
+
+  const squadLeadAgent = await ctx.db
+    .query("agents")
+    .withIndex("by_account_slug", (q) =>
+      q.eq("accountId", accountId).eq("slug", "squad-lead"),
+    )
+    .unique();
+  if (squadLeadAgent) {
+    const currentAccount = await ctx.db.get(accountId);
+    const currentSettings = (currentAccount?.settings ?? {}) as Record<string, unknown>;
+    await ctx.db.patch(accountId, {
+      settings: { ...currentSettings, orchestratorAgentId: squadLeadAgent._id },
+    });
   }
 
   return {

@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TaskHeader } from "@/components/tasks/TaskHeader";
@@ -27,8 +27,12 @@ interface TaskDetailPageProps {
  */
 export default function TaskDetailPage({ params }: TaskDetailPageProps) {
   const { accountSlug, taskId } = use(params);
+  const { isAuthenticated } = useConvexAuth();
 
-  const task = useQuery(api.tasks.get, { taskId: taskId as Id<"tasks"> });
+  const task = useQuery(
+    api.tasks.get,
+    isAuthenticated ? { taskId: taskId as Id<"tasks"> } : "skip",
+  );
 
   if (task === undefined) {
     return <TaskDetailSkeleton />;

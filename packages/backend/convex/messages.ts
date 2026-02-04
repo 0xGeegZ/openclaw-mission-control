@@ -13,7 +13,7 @@ import {
   hasAllMention,
   getAllMentions,
 } from "./lib/mentions";
-import { ensureSubscribed } from "./subscriptions";
+import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
 import {
   createMentionNotifications,
   createThreadNotifications,
@@ -305,6 +305,8 @@ export const create = mutation({
         task.title,
       );
     }
+
+    await ensureOrchestratorSubscribed(ctx, accountId, args.taskId);
 
     // Create thread update notifications
     const mentionedIds = new Set(mentions.map((m) => m.id));

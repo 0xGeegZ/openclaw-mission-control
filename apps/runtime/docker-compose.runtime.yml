@@ -5,6 +5,8 @@
 #   docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build
 # See docs/runtime/runtime-docker-compose.md
 
+name: runtime
+
 services:
   runtime:
     image: openclaw-mission-control-runtime
@@ -16,6 +18,7 @@ services:
       - ./.env
     environment:
       - HEALTH_HOST=0.0.0.0
+      - OPENCLAW_REQUEST_TIMEOUT_MS=180000
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
@@ -44,5 +47,6 @@ services:
     volumes:
       - ../../.runtime/openclaw-data:/root/.clawdbot
       - ../../.runtime/openclaw-workspace:/root/clawd
+      - ../..:/root/clawd/openclaw-mission-control:ro
     ports:
       - "127.0.0.1:18789:18789"

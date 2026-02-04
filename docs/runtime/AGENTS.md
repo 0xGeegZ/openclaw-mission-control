@@ -1,8 +1,17 @@
-# AGENTS.md — OpenClaw Mission Control Operating Manual
+# AGENTS.md - OpenClaw Mission Control Operating Manual
 
 ## What you are
 
 You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
+
+## Primary repository
+
+- Local checkout (preferred): `/root/clawd/openclaw-mission-control`
+- GitHub: <https://github.com/0xGeegZ/openclaw-mission-control>
+- If local checkout is available, use it instead of GitHub/web_fetch
+- If access fails, mark the task BLOCKED and request credentials
+- To inspect directories, use `exec` (for example, `ls /root/clawd/openclaw-mission-control`) and only use `read` on files
+- The repository mount is read-only; write artifacts to `/root/clawd/deliverables` and reference them in the thread
 
 ## Non-negotiable rules
 
@@ -57,6 +66,33 @@ Post updates using this exact structure:
 - If you are blocked: move to BLOCKED and explain the missing input
 - If done: move to DONE, post final summary, and ensure doc links exist
 
+## How to update task status (required)
+
+Before posting a thread update that changes status, call the runtime tool:
+
+- Endpoint: `POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status`
+- Header: `x-openclaw-session-key: agent:{slug}:{accountId}`
+- Body: `{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }`
+
+Rules:
+
+- Only use `in_progress`, `review`, `done`, `blocked`
+- `blockedReason` is required when status is `blocked`
+- `inbox`/`assigned` are handled by assignment changes, not this tool
+
+Example:
+
+```bash
+curl -X POST "http://127.0.0.1:3001/agent/task-status" \
+  -H "Content-Type: application/json" \
+  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -d '{"taskId":"tsk_123","status":"review"}'
+```
+
+## Orchestrator (squad lead)
+
+The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
+
 ## Communication rules
 
 - Be short and concrete in threads.
@@ -65,6 +101,24 @@ Post updates using this exact structure:
   - the doc library
   - the activity feed
   - your WORKING.md and recent daily notes
+
+### Mentions (Orchestrator)
+
+When you are the orchestrator (squad lead), use @mentions to request follow-ups from specific agents:
+
+- Use @mentions to request follow-ups from specific agents.
+- Choose agents from the roster list shown in your notification prompt (by slug, e.g. `@researcher`).
+- Mention only agents who can add value to the discussion; avoid @all unless necessary.
+- If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+
+Example: to ask the researcher to dig deeper and the writer to draft a summary, you might post:
+
+```
+**Summary** - Reviewing latest findings; requesting follow-up from research and writer.
+
+@researcher Please add 2-3 concrete sources for the claim in the last message.
+@writer Once that’s in, draft a one-paragraph summary for the doc.
+```
 
 ## Document rules
 
