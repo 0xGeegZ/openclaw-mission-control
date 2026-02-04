@@ -362,22 +362,19 @@ export function Sidebar({ accountSlug }: SidebarProps) {
               isCollapsed ? "flex-col gap-3" : "justify-between",
             )}
           >
-            <div
-              className={cn(
-                "flex items-center",
-                isCollapsed ? "flex-col gap-2" : "gap-2",
-              )}
-            >
-              <SidebarUserButton />
-              {!isCollapsed && (
+            {/* When expanded: user first, then theme/notifications */}
+            {/* When collapsed: theme/notifications first, then user at bottom */}
+            {!isCollapsed && (
+              <div className="flex items-center gap-2">
+                <SidebarUserButton />
                 <Link
                   href={`/${accountSlug}/profile`}
                   className="text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   Profile
                 </Link>
-              )}
-            </div>
+              </div>
+            )}
             <div
               className={cn(
                 "flex items-center",
@@ -387,6 +384,7 @@ export function Sidebar({ accountSlug }: SidebarProps) {
               <ThemeSwitcher isCollapsed={isCollapsed} />
               <NotificationBell accountSlug={accountSlug} />
             </div>
+            {isCollapsed && <SidebarUserButton />}
           </div>
         </div>
       </aside>

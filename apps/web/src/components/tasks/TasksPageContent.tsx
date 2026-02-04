@@ -94,7 +94,27 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
         })}
       </div>
       
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Sidebar toggle - positioned at left edge when collapsed, at sidebar edge when expanded */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "absolute top-4 z-20 h-6 w-6 rounded-full border bg-background shadow-sm hover:bg-accent transition-all duration-300",
+            sidebarCollapsed ? "left-2" : "left-[15rem]"
+          )}
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeft className="h-3.5 w-3.5" />
+          ) : (
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          )}
+          <span className="sr-only">
+            {sidebarCollapsed ? "Show agents" : "Hide agents"}
+          </span>
+        </Button>
+        
         {/* Agents sidebar */}
         <div className={cn(
           "relative transition-all duration-300 ease-in-out shrink-0",
@@ -111,25 +131,6 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
               className="w-64"
             />
           </div>
-        </div>
-        
-        {/* Sidebar toggle */}
-        <div className="relative shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute -left-3 top-4 z-10 h-6 w-6 rounded-full border bg-background shadow-sm"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          >
-            {sidebarCollapsed ? (
-              <PanelLeft className="h-3.5 w-3.5" />
-            ) : (
-              <PanelLeftClose className="h-3.5 w-3.5" />
-            )}
-            <span className="sr-only">
-              {sidebarCollapsed ? "Show agents" : "Hide agents"}
-            </span>
-          </Button>
         </div>
         
         {/* Kanban board */}
