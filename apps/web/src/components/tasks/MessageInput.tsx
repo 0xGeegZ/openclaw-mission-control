@@ -380,11 +380,13 @@ export function MessageInput({
                     </p>
                   </div>
                 ) : filteredAgents.length > 0 ? (
-                  <div className="max-h-64 overflow-y-auto p-1">
+                  <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label="Agent suggestions">
                     {filteredAgents.map((option, index) => (
                       <button
                         key={option.type === "all" ? "all" : option.agent._id}
                         type="button"
+                        role="option"
+                        aria-selected={index === selectedMentionIndex}
                         data-index={index}
                         onClick={() => handleMentionSelect(option)}
                         className={cn(
@@ -555,6 +557,11 @@ export function MessageInput({
                 onKeyDown={handleKeyDown}
                 placeholder="Send a message..."
                 rows={1}
+                aria-label="Message input"
+                aria-describedby="message-input-hints"
+                aria-expanded={showMentionDropdown}
+                aria-haspopup="listbox"
+                aria-autocomplete="list"
                 className={cn(
                   "resize-none min-h-[56px] py-4 px-4 border-0 bg-transparent",
                   "focus-visible:ring-0 focus-visible:ring-offset-0",
@@ -624,7 +631,7 @@ export function MessageInput({
             </div>
 
             {/* Keyboard hints */}
-            <div className="flex items-center gap-3 mt-2 px-1 opacity-60 hover:opacity-100 transition-opacity">
+            <div id="message-input-hints" className="flex items-center gap-3 mt-2 px-1 opacity-60 hover:opacity-100 transition-opacity">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
                   Enter

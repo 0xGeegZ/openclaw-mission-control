@@ -58,24 +58,43 @@ export default function SearchPage({ params }: SearchPageProps) {
 
       <div className="flex-1 overflow-auto p-6">
         {!hasQuery ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-              <Search className="h-7 w-7 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="relative mb-5">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50 shadow-sm">
+                <Search className="h-8 w-8 text-muted-foreground/50" />
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Enter at least 2 characters to search
+            <h3 className="text-lg font-semibold text-foreground">Search your workspace</h3>
+            <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
+              Find tasks, documents, and agents by entering at least 2 characters.
             </p>
           </div>
         ) : result === undefined ? (
-          <div className="space-y-4 max-w-2xl">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <div className="space-y-4 max-w-2xl animate-in fade-in duration-300">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} style={{ animationDelay: `${i * 60}ms` }}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-48 rounded-md" />
+                      <Skeleton className="h-3 w-24 rounded-md opacity-60" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : !hasResults ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No results for &quot;{query.trim()}&quot;
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="relative mb-5">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 shadow-sm">
+                <Search className="h-8 w-8 text-amber-500/60" />
+              </div>
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">No results found</h3>
+            <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm leading-relaxed">
+              No matches for "<span className="font-medium text-foreground">{query.trim()}</span>". Try different keywords or check your spelling.
             </p>
           </div>
         ) : (
