@@ -525,12 +525,15 @@ export default defineSchema({
       }),
     ),
 
-    /** Attached file URLs (optional) */
+    /** Attached files (optional). storageId for Convex uploads; url optional for legacy or resolved at write. */
     attachments: v.optional(
       v.array(
         v.object({
+          /** Convex storage ID (present for uploads via generateUploadUrl). */
+          storageId: v.optional(v.id("_storage")),
+          /** Resolved or legacy URL. */
+          url: v.optional(v.string()),
           name: v.string(),
-          url: v.string(),
           type: v.string(),
           size: v.number(),
         }),
@@ -551,6 +554,33 @@ export default defineSchema({
     .index("by_account", ["accountId"])
     .index("by_author", ["authorType", "authorId"])
     .index("by_source_notification", ["sourceNotificationId"]),
+
+  // ==========================================================================
+  // MESSAGE UPLOADS
+  // Tracks uploaded files tied to a task/account for attachment scoping.
+  // ==========================================================================
+  messageUploads: defineTable({
+    /** Account (for tenant filtering) */
+    accountId: v.id("accounts"),
+
+    /** Task this upload is associated with */
+    taskId: v.id("tasks"),
+
+    /** Storage ID for the uploaded file */
+    storageId: v.id("_storage"),
+
+    /** Who registered the upload */
+    createdByType: v.union(v.literal("user"), v.literal("agent")),
+
+    /** User ID or agent ID depending on createdByType */
+    createdBy: v.string(),
+
+    /** Timestamp of creation */
+    createdAt: v.number(),
+  })
+    .index("by_account_task_storage", ["accountId", "taskId", "storageId"])
+    .index("by_storage", ["storageId"])
+    .index("by_account_created", ["accountId", "createdAt"]),
 
   // ==========================================================================
   // DOCUMENTS

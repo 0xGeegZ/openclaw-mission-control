@@ -101,7 +101,10 @@ export function TaskThread({
       {/* Input area - sticky at bottom */}
       <div className="shrink-0 w-full">
         <div className="max-w-3xl mx-auto">
-          <MessageInput taskId={taskId} />
+          <MessageInput 
+            taskId={taskId} 
+            showSuggestions={messages !== undefined && messages.length === 0}
+          />
         </div>
       </div>
     </div>

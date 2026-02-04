@@ -11,6 +11,7 @@ import { Badge } from "@packages/ui/components/badge";
 import { Textarea } from "@packages/ui/components/textarea";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@clerk/nextjs";
+import { useAccount } from "@/lib/hooks/useAccount";
 import {
   MoreVertical,
   Trash2,
@@ -21,6 +22,8 @@ import {
   X,
   Loader2,
   Sparkles,
+  Copy,
+  CheckCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -54,15 +57,17 @@ interface MessageItemProps {
  */
 export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
   const { userId } = useAuth();
+  const { isAdmin } = useAccount();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isUpdating, setIsUpdating] = useState(false);
-
+  const [copied, setCopied] = useState(false);
   const deleteMessage = useMutation(api.messages.remove);
   const updateMessage = useMutation(api.messages.update);
 
   const isAuthor = message.authorType === "user" && message.authorId === userId;
   const isAgent = message.authorType === "agent";
+  const canDelete = isAuthor || isAdmin;
   const agentAuthor =
     isAgent && agentsByAuthorId
       ? agentsByAuthorId[message.authorId]
@@ -73,7 +78,6 @@ export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
       : agentAuthor
         ? agentAuthor.name
         : "Agent";
-
   const handleDelete = async () => {
     try {
       await deleteMessage({ messageId: message._id });
@@ -82,7 +86,16 @@ export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
       toast.error("Failed to delete message");
     }
   };
-
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy message");
+    }
+  };
   const handleEdit = () => {
     setEditContent(message.content);
     setIsEditing(true);
@@ -239,7 +252,7 @@ export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
         )}
       </div>
 
-      {isAuthor && !isEditing && (
+      {!isEditing && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -252,18 +265,32 @@ export function MessageItem({ message, agentsByAuthorId }: MessageItemProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onClick={handleEdit} className="gap-2">
-              <Edit2 className="h-4 w-4" />
-              Edit
+            <DropdownMenuItem onClick={handleCopy} className="gap-2">
+              {copied ? (
+                <CheckCheck className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied ? "Copied!" : "Copy"}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleDelete}
-              className="text-destructive focus:text-destructive gap-2"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
+            {isAuthor && (
+              <DropdownMenuItem onClick={handleEdit} className="gap-2">
+                <Edit2 className="h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {canDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleDelete}
+                  className="text-destructive focus:text-destructive gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
