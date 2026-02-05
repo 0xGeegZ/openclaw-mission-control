@@ -1,6 +1,10 @@
 import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
-import { getGatewayState, registerAgentSession, removeAgentSession } from "./gateway";
+import {
+  getGatewayState,
+  registerAgentSession,
+  removeAgentSession,
+} from "./gateway";
 import {
   ensureHeartbeatScheduled,
   getScheduledAgentIds,
@@ -60,7 +64,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
 
     const gateway = getGatewayState();
     const sessionAgentIds = new Set(
-      Array.from(gateway.sessions.values()).map((s) => s.agentId)
+      Array.from(gateway.sessions.values()).map((s) => s.agentId),
     );
     const scheduledAgentIds = new Set(getScheduledAgentIds());
     const currentAgentIds = new Set([...sessionAgentIds, ...scheduledAgentIds]);
@@ -95,11 +99,17 @@ async function runSync(config: RuntimeConfig): Promise<void> {
         },
       )) as AgentForProfile[];
 
-      syncOpenClawProfiles(profileAgents, {
+      const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
         configPath: config.openclawConfigPath,
         agentsMdPath: config.openclawAgentsMdPath,
       });
+      // Reload is handled by the gateway when OPENCLAW_CONFIG_RELOAD=1 (file watch + restart).
+      if (configChanged) {
+        log.debug(
+          "OpenClaw config file changed; gateway will reload if OPENCLAW_CONFIG_RELOAD=1",
+        );
+      }
     }
 
     state.lastSyncAt = Date.now();

@@ -157,7 +157,8 @@ export const listForRuntime = internalQuery({
           description: string | undefined;
         }> = [];
         for (const skillId of skillIds) {
-          const skill = await ctx.db.get(skillId);
+          if (typeof skillId !== "string" || !skillId.trim()) continue;
+          const skill = await ctx.db.get(skillId as Id<"skills">);
           if (skill && skill.accountId === args.accountId && skill.isEnabled) {
             resolvedSkills.push({
               _id: skill._id,
