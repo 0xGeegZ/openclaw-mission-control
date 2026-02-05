@@ -3,13 +3,13 @@ name: production-ready-gaps
 overview: Plan to close production-readiness gaps and implement all missing product features across the web app, Convex backend, and runtime service.
 todos:
   - id: backend-gaps
-    content: Close backend auth/logging gaps and add uploads/billing support.
+    content: Close backend auth/validator gaps and add billing + doc uploads/shares.
     status: pending
   - id: frontend-missing
-    content: Implement missing UI features (markdown, uploads, filters, analytics, billing).
+    content: Implement missing UI (message attachment wiring, Activity tab, upload docs, billing, command palette).
     status: pending
   - id: runtime-hardening
-    content: Finish OpenClaw integration and add retries/idempotency/metrics.
+    content: Add /live and /ready, metrics stub, correlation IDs (OpenClaw + delivery done).
     status: pending
   - id: tests-qa
     content: Add tests and QA coverage for new features.
@@ -18,6 +18,14 @@ isProject: false
 ---
 
 # Production-Ready Refactor & Missing Features Plan
+
+## Audit summary (2025-02-05)
+
+**Already implemented (removed or shortened below):**
+
+- **Backend:** `activities.listByTarget`; `lib/notifications.shouldCreateUserNotification` and preference checks; schema `notificationTypeValidator` includes `member_added`, `member_removed`, `role_changed` (schema only — `lib/validators.ts` still missing these); `messages.generateUploadUrl`, `registerUpload`, `create` with attachments, `listByTask` URL resolution; `documents.listByTask` validates task + membership. OpenClaw runtime: `gateway.sendToOpenClaw`, delivery loop with `markNotificationDelivered`, heartbeat, backoff/retries, idempotent session/heartbeat; health server `/health` and `/version`; config has OpenClaw env (gateway URL, token, timeout).
+- **Frontend:** Markdown rendering (`MarkdownRenderer`, `MessageContent` with Streamdown) in task header, detail, docs, messages; @mention autocomplete in `MessageInput` (agents + @all); Kanban agent and status filters and column counts; analytics page with Recharts (Bar/Pie) and `analytics.getSummary`; settings notification preferences; global and dashboard error boundaries (`global-error.tsx`, `[accountSlug]/error.tsx` with `ErrorFallback`); docs page has New Document/Folder and search (Upload File still disabled).
+- **Not done / partial:** Auth in `messages.getCount` and `subscriptions.isSubscribed`; `documents.list` taskId ownership check; `lib/validators.ts` notification types; `accounts.create` activity log; separate `files` table and doc upload flow; document versions/shares; `mentions.listCandidates` (members + agents); bulk task mutations; analytics time-series and search filters/cursor; Stripe billing; wire MessageInput attachments (generateUploadUrl → registerUpload → create); render attachments in MessageItem; Task Activity tab; Kanban bulk actions; agent templates; command palette; /live and /ready, metrics, correlation IDs; Stripe in env; extra tests.
 
 ## 0. Assumptions & scope
 
@@ -52,28 +60,28 @@ Bring the current codebase to production-ready quality while implementing all mi
 - Invitations flow exists in [packages/backend/convex/invitations.ts](packages/backend/convex/invitations.ts) and is wired to the invite page.
 - Activity logging helper `logActivity` and notifications helpers (`createMentionNotifications`, `createThreadNotifications`).
 - Attachments are already modeled in `messages` schema; document version incrementing exists but no history storage.
-- Runtime has logging/backoff utilities and delivery/heartbeat loops, but OpenClaw send/shutdown is stubbed.
+- Runtime has logging/backoff, delivery/heartbeat, and OpenClaw send implemented; health server has `/health` and `/version`.
 
-**Confirmed gaps**
+**Confirmed gaps (after audit)**
 
-- Missing auth/account validation in `messages.getCount`, `subscriptions.isSubscribed`, and `documents.list` when `taskId` is provided.
-- Account creation does not log activity.
-- `notificationTypeValidator` in [packages/backend/convex/lib/validators.ts](packages/backend/convex/lib/validators.ts) is missing `member_*`/`role_changed` types while schema and UI expect them.
-- Message input lacks mention autocomplete and attachments; message rendering is plain text (no Markdown).
-- Docs page has “Upload File” disabled; no file upload flow exists.
-- Runtime OpenClaw integration is not implemented in `gateway.ts`.
-- No test harness for backend/runtime; only `packages/shared` has tests.
+- Missing auth in `messages.getCount` (no requireAccountMember; load task first) and `subscriptions.isSubscribed` (no task load + membership check). `documents.list` when `taskId` is provided does not validate that the task belongs to `accountId`.
+- Account creation does not log `account_created` activity (TODO in code).
+- `notificationTypeValidator` in lib/validators.ts is missing `member_added`, `member_removed`, `role_changed` (schema already has them).
+- Message input: mention autocomplete (agents + @all) done; attachments UI exists but submit does not wire generateUploadUrl/registerUpload or pass attachments to create. Message rendering uses Markdown (Streamdown) and mentions.
+- Docs page has “Upload File” disabled; no file upload flow; no document version history or share links.
+- Runtime: OpenClaw send, delivery, heartbeat, health endpoint done; still missing /live and /ready, metrics stub, correlation IDs.
+- Backend has Vitest and one test file; no runtime tests; limited coverage for mentions, notifications, workflow, uploads, billing.
 
 ## 3. High-level design
 
 We will extend the existing Convex-centric architecture rather than introducing new services:
 
 - **Uploads:** Web app requests a Convex upload URL → uploads file to Convex storage → calls a finalize mutation to create a `files` record → messages/documents reference `fileId` and resolve URLs for display.
-- **Markdown:** Shared Markdown editor + preview component; store Markdown strings in existing `content`/`description` fields; sanitize rendering.
-- **Mentions:** Add a lightweight query for mention candidates; UI uses a command popover to insert mention tokens.
-- **Analytics & search:** Extend Convex queries with time-series and filters; UI adds charts and filter panels with `nuqs` URL state.
-- **Billing:** Stripe actions in Convex; webhook updates a billing table; settings page triggers checkout/portal flows.
-- **Runtime:** Implement OpenClaw client, retries/idempotency, readiness/liveness endpoints, metrics, and correlation IDs.
+- **Markdown:** Done (MarkdownRenderer, MessageContent with Streamdown). Optional: shared Markdown editor component for editing.
+- **Mentions:** UI has @mention autocomplete (agents + @all). Optional: `mentions.listCandidates` for members + agents.
+- **Analytics & search:** getSummary and analytics charts done. Add time-series query, search filters/cursor, date range, export.
+- **Billing:** Stripe actions in Convex; webhook updates a billing table; settings page has placeholder, wire real checkout/portal.
+- **Runtime:** OpenClaw send, delivery, heartbeat, health done. Add /live, /ready, metrics stub, correlation IDs.
 
 ### 3.1 Data model additions (Convex)
 
@@ -141,27 +149,22 @@ Runtime -->|"service_actions"| Convex
 ### Backend (existing files)
 
 - [packages/backend/convex/messages.ts](packages/backend/convex/messages.ts)
-  - Add `requireAccountMember` to `getCount` by loading the task first.
-  - Update message attachment shape to store `fileId` (and resolve `fileUrl` on read).
-  - Ensure Markdown content is rendered safely on the UI side (no HTML).
+  - Add `requireAccountMember` to `getCount` by loading the task first. (Attachment shape and URL resolution already exist; Markdown rendering done in UI.)
 - [packages/backend/convex/subscriptions.ts](packages/backend/convex/subscriptions.ts)
   - Validate task and enforce membership in `isSubscribed`.
 - [packages/backend/convex/documents.ts](packages/backend/convex/documents.ts)
-  - Validate `taskId` account in `list` when filtering by task.
-  - Support file-backed documents (`fileId`, `mimeType`, `size`) and markdown docs.
-  - Persist document version history when content changes.
+  - Validate `taskId` belongs to `accountId` in `list` when filtering by task.
+  - Support file-backed documents (`fileId`, `mimeType`, `size`) and markdown docs; persist document version history.
 - [packages/backend/convex/accounts.ts](packages/backend/convex/accounts.ts)
   - Log `account_created` activity after account creation.
 - [packages/backend/convex/analytics.ts](packages/backend/convex/analytics.ts)
-  - Add time-series queries for tasks/activities within date ranges.
+  - Add time-series queries for tasks/activities within date ranges (getSummary done).
 - [packages/backend/convex/search.ts](packages/backend/convex/search.ts)
   - Add filters (status, type, date range, assignee) and pagination cursor.
 - [packages/backend/convex/lib/validators.ts](packages/backend/convex/lib/validators.ts)
-  - Extend `attachmentValidator` to include `fileId`.
-  - Align `notificationTypeValidator` with schema (add `member_added`, `member_removed`, `role_changed`).
+  - Align `notificationTypeValidator` with schema (add `member_added`, `member_removed`, `role_changed`). Optionally extend `attachmentValidator` for `fileId` if using `files` table.
 - [packages/backend/convex/lib/notifications.ts](packages/backend/convex/lib/notifications.ts)
-  - Respect `accounts.settings.notificationPreferences` when creating notifications.
-  - Add a pure helper (`shouldCreateUserNotification`) for unit tests.
+  - Done: preferences and `shouldCreateUserNotification`.
 - [packages/backend/convex/tasks.ts](packages/backend/convex/tasks.ts)
   - Add bulk mutations for status changes and assignee updates (for Kanban bulk actions).
 - [packages/backend/convex/schema.ts](packages/backend/convex/schema.ts)
@@ -188,72 +191,68 @@ Runtime -->|"service_actions"| Convex
 ### Web app (existing files)
 
 - [apps/web/src/components/tasks/MessageInput.tsx](apps/web/src/components/tasks/MessageInput.tsx)
-  - Mention autocomplete UI and file attachment upload.
+  - Done: mention autocomplete (agents + @all). Remaining: wire file attachment upload (generateUploadUrl → registerUpload → create with attachments).
 - [apps/web/src/components/tasks/MessageItem.tsx](apps/web/src/components/tasks/MessageItem.tsx)
-  - Markdown rendering and attachments list/preview.
+  - Done: Markdown via MessageContent. Remaining: render attachments list/preview.
 - [apps/web/src/components/tasks/TaskEditDialog.tsx](apps/web/src/components/tasks/TaskEditDialog.tsx)
-  - Replace textarea with shared Markdown editor.
+  - Optional: shared Markdown editor (description already supports Markdown).
 - [apps/web/src/components/tasks/TaskHeader.tsx](apps/web/src/components/tasks/TaskHeader.tsx)
-  - Render Markdown preview for description.
+  - Done: Markdown preview for description.
 - [apps/web/src/components/tasks/KanbanBoard.tsx](apps/web/src/components/tasks/KanbanBoard.tsx)
-  - Filters/search, column counts, bulk actions.
+  - Done: filters (agent, status), column counts. Remaining: bulk actions.
 - [apps/web/src/components/tasks/KanbanColumn.tsx](apps/web/src/components/tasks/KanbanColumn.tsx)
-  - Count badges and column-level actions.
+  - Done: count badges and column-level actions.
 - [apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx)
-  - Add “Activity” tab.
+  - Add Activity tab (TaskActivityTimeline + activities.listByTarget).
 - [apps/web/src/app/(dashboard)/[accountSlug]/docs/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/docs/page.tsx)
-  - Enable upload, preview, sharing, and version history UI.
+  - Enable upload, preview for file docs, sharing UI, version history UI.
 - [apps/web/src/app/(dashboard)/[accountSlug]/agents/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/agents/page.tsx)
-  - Search, filters, bulk actions, and templates selector.
+  - Search, filters, bulk actions, templates selector (as needed).
 - [apps/web/src/app/(dashboard)/[accountSlug]/analytics/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/analytics/page.tsx)
-  - Charts, date range selector, export.
+  - Done: charts (getSummary). Remaining: date range selector, export.
 - [apps/web/src/app/(dashboard)/[accountSlug]/search/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/search/page.tsx)
-  - Advanced filters + search history.
+  - Advanced filters, pagination cursor, optional search history.
 - [apps/web/src/app/(dashboard)/[accountSlug]/settings/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/settings/page.tsx)
-  - Billing section + notification preferences.
+  - Done: notification preferences. Remaining: real Billing section (Stripe checkout/portal).
 - [apps/web/src/app/(dashboard)/[accountSlug]/notifications/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/notifications/page.tsx)
   - Add type filter and bulk mark-as-read actions.
 
 ### Web app (new files)
 
-- [apps/web/src/components/editor/MarkdownEditor.tsx](apps/web/src/components/editor/MarkdownEditor.tsx)
-  - Shared Markdown editor with preview toggle.
-- [apps/web/src/components/editor/MarkdownPreview.tsx](apps/web/src/components/editor/MarkdownPreview.tsx)
-  - Sanitized Markdown renderer.
+- [apps/web/src/components/editor/MarkdownEditor.tsx](apps/web/src/components/editor/MarkdownEditor.tsx) — optional
+  - Shared Markdown editor with preview toggle (MarkdownRenderer already used for display).
 - [apps/web/src/components/files/FileUploader.tsx](apps/web/src/components/files/FileUploader.tsx)
-  - Upload workflow with progress and validation.
-- [apps/web/src/components/mentions/MentionCombobox.tsx](apps/web/src/components/mentions/MentionCombobox.tsx)
-  - @mention suggestions UI (agents + members).
+  - Reusable upload workflow (or wire existing MessageInput attachment UI to messages.generateUploadUrl/registerUpload).
+- [apps/web/src/components/mentions/MentionCombobox.tsx](apps/web/src/components/mentions/MentionCombobox.tsx) — optional
+  - Dedicated @mention component (MessageInput already has inline mention dropdown for agents + @all).
 - [apps/web/src/components/tasks/TaskActivityTimeline.tsx](apps/web/src/components/tasks/TaskActivityTimeline.tsx)
-  - Renders `activities.listByTarget` results.
-- [apps/web/src/components/analytics/Charts.tsx](apps/web/src/components/analytics/Charts.tsx)
-  - Recharts-based time series and breakdowns.
+  - Renders `activities.listByTarget` results for Activity tab.
+- [apps/web/src/components/analytics/Charts.tsx](apps/web/src/components/analytics/Charts.tsx) — optional
+  - Extract or extend (analytics page already has Recharts).
 - [apps/web/src/components/command/CommandPalette.tsx](apps/web/src/components/command/CommandPalette.tsx)
   - Cmd+K palette and shortcut help.
 - [apps/web/src/components/settings/BillingSection.tsx](apps/web/src/components/settings/BillingSection.tsx)
-- [apps/web/src/components/settings/NotificationPreferences.tsx](apps/web/src/components/settings/NotificationPreferences.tsx)
+  - Real Stripe checkout/portal (settings has placeholder).
 - [apps/web/src/app/(dashboard)/error.tsx](apps/web/src/app/(dashboard)/error.tsx)
-  - Dashboard error boundary with retry and support contact link.
+  - Done: dashboard error boundary (ErrorFallback with retry).
 - [apps/web/src/app/share/[token]/page.tsx](apps/web/src/app/share/[token]/page.tsx)
   - Public, read-only document share view.
 
 ### Runtime
 
 - [apps/runtime/src/gateway.ts](apps/runtime/src/gateway.ts)
-  - Implement OpenClaw send + shutdown.
+  - Done: OpenClaw send (and session lifecycle). Shutdown already integrated.
 - [apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)
-  - Add per-notification retries + idempotency.
+  - Done: backoff/retries, markNotificationDelivered. Optional: explicit idempotency cache.
 - [apps/runtime/src/heartbeat.ts](apps/runtime/src/heartbeat.ts)
-  - Add retry handling and dedupe.
-- [apps/runtime/src/convex-client.ts](apps/runtime/src/convex-client.ts)
-  - Retry/backoff + circuit breaker + correlation IDs.
+  - Done: retry and idempotent scheduling.
 - [apps/runtime/src/health.ts](apps/runtime/src/health.ts)
-  - `/live` + `/ready`, dependency checks.
+  - Done: `/health`, `/version`. Remaining: `/live` and `/ready` (or document /health as readiness).
 - [apps/runtime/src/logger.ts](apps/runtime/src/logger.ts)
-  - Structured fields and request IDs.
+  - Done: structured levels and secret redaction. Remaining: correlation/request IDs.
 - [apps/runtime/src/config.ts](apps/runtime/src/config.ts)
-  - Zod validation, new envs (OpenClaw endpoint/token).
-- New helpers: [apps/runtime/src/openclaw-client.ts](apps/runtime/src/openclaw-client.ts), [apps/runtime/src/idempotency.ts](apps/runtime/src/idempotency.ts), [apps/runtime/src/metrics.ts](apps/runtime/src/metrics.ts).
+  - Done: OpenClaw gateway URL, token, timeout. Optional: Zod validation, metrics env.
+- New helpers (optional): [apps/runtime/src/idempotency.ts](apps/runtime/src/idempotency.ts), [apps/runtime/src/metrics.ts](apps/runtime/src/metrics.ts).
 
 ### Shared/UI packages
 
@@ -291,10 +290,8 @@ Runtime -->|"service_actions"| Convex
    - Add `files`, `documentVersions`, `documentShares`, `agentTemplates`, `billingSubscriptions`.
    - Add `fileId`, `mimeType`, `size` to `documents` for file-backed docs.
 4. **File upload backend**
-   - `files.generateUploadUrl` (mutation) and `files.createFromUpload` (mutation).
-   - `files.listByIds` (query) resolves URLs with `ctx.storage.getUrl`.
-   - `messages.create` accepts `attachments: [{ fileId, name, type, size }]`.
-   - `messages.listByTask` resolves `fileUrl` on read.
+   - Done for messages: `messages.generateUploadUrl`, `registerUpload`, `create` with attachments (storageId), `listByTask` resolves URL. Frontend not wired.
+   - For docs: add `files` table and `files.generateUploadUrl`, `files.createFromUpload`, `files.listByIds`; or reuse messageUploads pattern for doc uploads.
 5. **Document version history + sharing**
    - Insert prior content into `documentVersions` before updates.
    - `document_versions.listByDocument` + `document_versions.restore`.
@@ -302,21 +299,21 @@ Runtime -->|"service_actions"| Convex
 6. **Mentions autocomplete API**
    - `mentions.listCandidates` query with `{ accountId, query? }`.
    - Return both members and agents with `id`, `displayName`, `handle`.
-7. **Markdown editor + preview UI**
-   - Build `MarkdownEditor` (Textarea + preview toggle) and `MarkdownPreview`.
-   - Replace description fields and message rendering to use Markdown preview.
+7. **Markdown editor + preview UI** — mostly done
+   - Done: MarkdownRenderer, MessageContent (Streamdown) for description and message rendering.
+   - Optional: shared MarkdownEditor (Textarea + preview) for editing.
 8. **Message input upgrades**
-   - Add `MentionCombobox` (Command) driven by `mentions.listCandidates`.
-   - Add `FileUploader` for attachments; show upload progress and chip list.
+   - Done: mention autocomplete (agents + @all) inline in MessageInput.
+   - Remaining: wire attachments (generateUploadUrl → registerUpload → create); show upload progress and chip list; render attachments in MessageItem.
 9. **Documents UI upgrades**
    - Enable Upload File button and integrate `FileUploader`.
    - Add read-only preview for uploaded files and Markdown docs.
    - Add version history panel and restore action.
    - Add share link UI with copy-to-clipboard and public `/share/[token]` page.
 10. **Task detail + Kanban improvements**
-    - Add Activity tab using `TaskActivityTimeline` and `activities.listByTarget`.
-    - Add Kanban filters/search using `nuqs` + `useDebounce`.
-    - Add bulk actions UI and hook to `tasks.bulkUpdate*` mutations.
+    - Remaining: Add Activity tab using `TaskActivityTimeline` and `activities.listByTarget`.
+    - Done: Kanban filters (agent, status) and column counts.
+    - Remaining: bulk actions UI and hook to `tasks.bulkUpdate*` mutations.
 11. **Agents roster improvements**
     - Add search and status filters using `nuqs`.
     - Add bulk status updates.
@@ -325,9 +322,8 @@ Runtime -->|"service_actions"| Convex
     - Add filtered search with pagination cursor.
     - Add analytics time-series query and charts with date range selector.
 13. **Notifications + preferences**
-    - Add `NotificationPreferences` component bound to `accounts.update`.
-    - Update `lib/notifications` to honor preferences and add unit tests.
-    - Add notification type filter and bulk mark as read in UI.
+    - Done: notification preferences in settings; `lib/notifications` honors preferences and `shouldCreateUserNotification` exists.
+    - Remaining: unit tests for preference logic; notification type filter and bulk mark as read in UI.
 14. **Billing (Stripe)**
     - Implement `billing.createCheckoutSession` / `billing.createPortalSession`.
     - Implement webhook in `http.ts` and upsert `billingSubscriptions`.
@@ -336,10 +332,8 @@ Runtime -->|"service_actions"| Convex
     - Add `CommandPalette` with Cmd+K, using `search.globalSearch`.
     - Add shortcuts modal/help (e.g., Cmd+K, / to focus search).
 16. **Runtime hardening**
-    - Implement OpenClaw send/shutdown (CLI or HTTP) with timeouts (use `clawdbot session send --key` as default).
-    - Add per-notification retries and in-memory idempotency cache.
-    - Add `/live` and `/ready` endpoints and basic metrics stub.
-    - Add correlation IDs to logs and propagate through delivery/heartbeat.
+    - Done: OpenClaw send, delivery loop with retries/backoff, markNotificationDelivered, heartbeat, health server (/health, /version).
+    - Remaining: `/live` and `/ready` (or document /health as readiness), basic metrics stub, correlation IDs in logs.
 17. **Tests + QA**
     - Add Vitest configs for backend/runtime and write unit tests.
     - Add integration tests for upload flow, billing webhook, runtime delivery.
@@ -385,50 +379,47 @@ Runtime -->|"service_actions"| Convex
 - **Feature flags:** gate billing and share links behind flags in `systemConfig` until verified.
 - **Observability:** add runtime metrics and logging fields for delivery attempts, failures, and webhook processing.
 
-## 9. TODO checklist
+## 9. TODO checklist (remaining after audit)
 
 **Backend**
 
-- [ ] Fix auth/validation gaps (`messages.getCount`, `subscriptions.isSubscribed`, `documents.list`, notification validator).
-- [ ] Add schema tables (`files`, `documentVersions`, `documentShares`, `agentTemplates`, `billingSubscriptions`).
-- [ ] Implement `files.generateUploadUrl` + `files.createFromUpload` + `files.listByIds`.
-- [ ] Update `messages` + `documents` to use file-backed attachments/docs.
-- [ ] Implement document version history and share links.
-- [ ] Add `mentions.listCandidates` query and reuse mention parsing.
-- [ ] Add bulk task mutations for Kanban actions.
-- [ ] Add analytics time-series and search filters + cursor.
-- [ ] Implement Stripe billing actions and webhook handler.
+- [ ] Fix auth/validation: `messages.getCount` (load task + requireAccountMember), `subscriptions.isSubscribed` (load task + requireAccountMember), `documents.list` (validate task belongs to accountId when taskId provided), `lib/validators.ts` (add member_added, member_removed, role_changed to notificationTypeValidator).
+- [ ] Log `account_created` in `accounts.create`.
+- [ ] Add schema tables: `files`, `documentVersions`, `documentShares`, `agentTemplates`, `billingSubscriptions`; add `fileId`, `mimeType`, `size` to documents.
+- [ ] Implement `files.generateUploadUrl`, `files.createFromUpload`, `files.listByIds` (or keep messageUploads flow and add doc upload path).
+- [ ] Document version history and share links (document_versions, document_shares).
+- [ ] Optional: `mentions.listCandidates` (members + agents) for richer autocomplete.
+- [ ] Bulk task mutations (bulkUpdateStatus, bulkUpdateAssignees) for Kanban.
+- [ ] Analytics time-series query; search filters + pagination cursor.
+- [ ] Stripe billing: actions (createCheckoutSession, createPortalSession), webhook in http.ts, getByAccount query.
 
 **Frontend**
 
-- [ ] Build `MarkdownEditor` + `MarkdownPreview` and swap in task/doc/message views.
-- [ ] Add `MentionCombobox` + `FileUploader` to message composer.
-- [ ] Render attachments with previews/downloads in thread and docs.
-- [ ] Add Task Activity tab/timeline.
-- [ ] Add Kanban filters, search, counts, and bulk actions.
-- [ ] Add agents search/filters + templates workflow.
-- [ ] Add advanced search filters, pagination, and history.
-- [ ] Add analytics charts, date range selector, and CSV export.
-- [ ] Add notification preferences and billing section in settings.
-- [ ] Add command palette + shortcuts modal.
-- [ ] Add dashboard error boundary.
+- [ ] Wire MessageInput attachments: call generateUploadUrl → upload → registerUpload → create with attachments; render attachments in MessageItem.
+- [ ] Add Task Activity tab (TaskActivityTimeline + activities.listByTarget) on task detail page.
+- [ ] Kanban bulk actions UI (hook to bulk mutations).
+- [ ] Agents: search/filters, templates workflow (if agent_templates added).
+- [ ] Advanced search: filters, pagination cursor, optional history.
+- [ ] Analytics: date range selector, CSV export.
+- [ ] Billing section in settings (real Stripe checkout/portal; placeholder exists).
+- [ ] Command palette (Cmd+K) + shortcuts modal.
+- [ ] Notifications page: type filter, bulk mark as read.
+- [ ] Docs: enable Upload File, version history UI, share link UI, public `/share/[token]` page.
 
 **Runtime**
 
-- [ ] Implement OpenClaw send/shutdown client with timeouts.
-- [ ] Add retries + idempotency cache for delivery.
-- [ ] Add `/live` and `/ready` endpoints + metrics stub.
-- [ ] Add correlation IDs to logs and runtime actions.
+- [ ] Add `/live` and `/ready` endpoints (or document /health as readiness).
+- [ ] Metrics stub and correlation IDs in logger/delivery/heartbeat.
 
 **Tests & QA**
 
-- [ ] Add Vitest configs for backend/runtime.
-- [ ] Unit tests for mentions, preferences, workflow, uploads, billing.
-- [ ] Integration tests for upload flow, billing webhook, runtime delivery.
+- [ ] Vitest config for runtime (backend already has one).
+- [ ] Unit tests: mentions parsing, notification preferences, task workflow, upload flow, billing helpers.
+- [ ] Integration tests: upload flow, billing webhook, runtime delivery.
 - [ ] Run manual QA checklist for new flows.
 
 **Infra / Docs**
 
-- [ ] Update `.env.example` and `@packages/env` with Stripe + runtime settings.
-- [ ] Document billing setup, upload flow, runtime health/metrics, and test commands.
+- [ ] Add Stripe vars to `packages/env` and `apps/web/.env.example`.
+- [ ] Document billing setup, upload flow, runtime health/metrics, test commands.
 

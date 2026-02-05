@@ -24,6 +24,7 @@ export interface AgentForProfile {
     name: string;
     slug: string;
     description?: string;
+    contentMarkdown?: string;
   }>;
 }
 
@@ -84,14 +85,15 @@ export function mapModelToOpenClaw(
 }
 
 /**
- * Build TOOLS.md content from resolved skills (prompt-only list).
+ * Build TOOLS.md content from resolved skills.
+ * Lists assigned skills; some may have real SKILL.md files in this workspace.
  * Empty or disabled skills produce "No assigned skills" for stable prompt.
  */
 export function buildToolsMd(
   resolvedSkills: AgentForProfile["resolvedSkills"],
 ): string {
   const header =
-    "# Assigned skills\n\nUse these capabilities when relevant. Prompt-only; no SKILL.md files.\n\n";
+    "# Assigned skills\n\nUse these capabilities when relevant. Some skills have real SKILL.md files in this workspace.\n\n";
   if (!resolvedSkills || resolvedSkills.length === 0) {
     return header + "- No assigned skills\n";
   }
@@ -144,11 +146,11 @@ function getAgentsMdContent(agentsMdPath: string | undefined): string {
 }
 
 /**
- * Sanitize agent slug for use in paths: allow only alphanumeric, hyphen, underscore.
- * Prevents path traversal (e.g. "..") and subpaths. Returns null if invalid.
- * Exported for tests.
+ * Sanitize a slug for use in filesystem paths: alphanumeric, hyphen, underscore only.
+ * Prevents path traversal (e.g. "..") and path separators. Single implementation for agent/skill slugs.
+ * @internal
  */
-export function safeAgentSlug(slug: string): string | null {
+function safeSlugForPath(slug: string): string | null {
   if (typeof slug !== "string" || !slug.trim()) return null;
   const trimmed = slug.trim();
   const sanitized = trimmed.replace(/^\/+|\/+$/g, "");
@@ -157,6 +159,22 @@ export function safeAgentSlug(slug: string): string | null {
   }
   if (/[^a-zA-Z0-9_-]/.test(sanitized)) return null;
   return sanitized;
+}
+
+/**
+ * Sanitize agent slug for use in paths. Same rules as safeSlugForPath.
+ * Exported for tests.
+ */
+export function safeAgentSlug(slug: string): string | null {
+  return safeSlugForPath(slug);
+}
+
+/**
+ * Sanitize skill slug for use in paths. Same rules as safeSlugForPath.
+ * Exported for tests.
+ */
+export function safeSkillSlug(slug: string): string | null {
+  return safeSlugForPath(slug);
 }
 
 /**
@@ -198,7 +216,10 @@ function writeIfChanged(filePath: string, content: string): boolean {
 
 /**
  * Sync per-agent workspace files and generate openclaw.json.
- * Returns true if the generated config file changed (caller may trigger gateway reload).
+ * Writes SOUL.md, AGENTS.md, TOOLS.md and, for skills with contentMarkdown, skills/<slug>/SKILL.md.
+ * Generates openclaw.json with agents.list, load.extraDirs, and skills.entries for materialized skills.
+ *
+ * @returns { configChanged: boolean } — true when the generated config file was written (caller may trigger gateway reload when OPENCLAW_CONFIG_RELOAD=1).
  */
 export function syncOpenClawProfiles(
   agents: AgentForProfile[],
@@ -211,6 +232,8 @@ export function syncOpenClawProfiles(
 
   const rootResolved = path.resolve(workspaceRoot);
   const validAgents: Array<{ agent: AgentForProfile; agentDir: string }> = [];
+  const extraDirsSet = new Set<string>();
+  const materializedSlugsSet = new Set<string>();
 
   for (const agent of agents) {
     const agentDir = resolveAgentDir(workspaceRoot, agent.slug);
@@ -230,6 +253,36 @@ export function syncOpenClawProfiles(
       path.join(agentDir, "TOOLS.md"),
       buildToolsMd(agent.resolvedSkills),
     );
+
+    const skillsDir = path.join(agentDir, "skills");
+    for (const skill of agent.resolvedSkills) {
+      // Normalize: we trim before write so stored content is consistent and trailing newlines don't churn writeIfChanged.
+      const content = skill.contentMarkdown?.trim();
+      if (!content) continue;
+      const safeSlug = safeSkillSlug(skill.slug);
+      if (!safeSlug) {
+        log.warn("Skipping skill with unsafe slug", {
+          skillId: skill._id,
+          slug: skill.slug,
+        });
+        continue;
+      }
+      const skillDir = path.join(skillsDir, safeSlug);
+      const skillMdPath = path.join(skillDir, "SKILL.md");
+      try {
+        ensureDir(skillDir);
+        writeIfChanged(skillMdPath, content);
+        extraDirsSet.add(skillsDir);
+        materializedSlugsSet.add(safeSlug);
+      } catch (err) {
+        log.error("Failed to write SKILL.md; skipping skill", {
+          skillId: skill._id,
+          slug: safeSlug,
+          path: skillMdPath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     const memoryDir = path.join(agentDir, "memory");
     const deliverablesDir = path.join(agentDir, "deliverables");
@@ -260,6 +313,8 @@ export function syncOpenClawProfiles(
       _workspacePath: agentDir,
     })),
     rootResolved,
+    Array.from(extraDirsSet),
+    Array.from(materializedSlugsSet),
   );
   const configJson = JSON.stringify(openclawConfig, null, 2);
   const configDir = path.dirname(configPath);
@@ -278,7 +333,15 @@ export function syncOpenClawProfiles(
   ) {
     return { configChanged: false };
   }
-  fs.writeFileSync(configPath, configJson, "utf-8");
+  try {
+    fs.writeFileSync(configPath, configJson, "utf-8");
+  } catch (err) {
+    log.error("Failed to write OpenClaw config; sync partial", {
+      path: configPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { configChanged: false };
+  }
   configChanged = true;
   log.info("OpenClaw config written", {
     path: configPath,
@@ -294,13 +357,15 @@ interface AgentWithWorkspacePath extends AgentForProfile {
 }
 
 /**
- * Build openclaw.json structure: agents.list[] with id=slug, workspace path, identity name.
+ * Build openclaw.json structure: agents.list[], load.extraDirs, skills.entries.
  * agents.defaults.skipBootstrap: true; per-agent model from mapModelToOpenClaw when mapped.
  * Caller must pass only agents that passed resolveAgentDir (use _workspacePath).
  */
 function buildOpenClawConfig(
   agents: AgentWithWorkspacePath[],
   _workspaceRoot: string,
+  extraDirs: string[],
+  materializedSlugs: string[],
 ): Record<string, unknown> {
   const list = agents.map((agent) => {
     const entry: Record<string, unknown> = {
@@ -315,7 +380,7 @@ function buildOpenClawConfig(
     return entry;
   });
 
-  return {
+  const result: Record<string, unknown> = {
     agents: {
       defaults: {
         skipBootstrap: true,
@@ -323,4 +388,17 @@ function buildOpenClawConfig(
       list,
     },
   };
+
+  if (extraDirs.length > 0) {
+    result.load = { extraDirs };
+  }
+  if (materializedSlugs.length > 0) {
+    const entries: Record<string, { enabled: boolean }> = {};
+    for (const slug of materializedSlugs) {
+      entries[slug] = { enabled: true };
+    }
+    result.skills = { entries };
+  }
+
+  return result;
 }

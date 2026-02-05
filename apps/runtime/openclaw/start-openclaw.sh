@@ -293,14 +293,24 @@ function pruneSessionsIfConfigured() {
   }
 }
 
-// Merge runtime-generated agents config if present (profile sync from mission-control runtime)
+// Merge runtime-generated config if present (profile sync from mission-control runtime)
 const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
 try {
   if (require('fs').existsSync(openclawConfigPath)) {
     const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));
-    if (generated && generated.agents) {
-      config.agents = generated.agents;
-      console.log('Merged agents from', openclawConfigPath);
+    if (generated) {
+      if (generated.agents) {
+        config.agents = generated.agents;
+        console.log('Merged agents from', openclawConfigPath);
+      }
+      if (generated.load) {
+        config.load = Object.assign({}, config.load || {}, generated.load);
+        console.log('Merged load (extraDirs) from', openclawConfigPath);
+      }
+      if (generated.skills && generated.skills.entries && typeof generated.skills.entries === 'object') {
+        config.skills.entries = Object.assign(config.skills.entries || {}, generated.skills.entries);
+        console.log('Merged skills.entries from', openclawConfigPath);
+      }
     }
   }
 } catch (e) {
@@ -446,5 +456,5 @@ fi
 wait $GATEWAY_PID
 EXIT_CODE=$?
 kill $CHROMIUM_PID 2>/dev/null
-[ -n "${WATCHER_PID:-}" ] && kill $WATCHER_PID 2>/dev/null
+[ -n "${WATCHER_PID:-}" ] && kill "$WATCHER_PID" 2>/dev/null
 exit $EXIT_CODE

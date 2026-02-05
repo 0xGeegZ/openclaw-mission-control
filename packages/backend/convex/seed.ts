@@ -1,22 +1,36 @@
 import { mutation, internalMutation } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { validateContentMarkdown } from "./lib/skills_validation";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
 const DEMO_SLUG = "demo";
 const DEMO_NAME = "Demo";
 
-/** Seed skills: custom category, empty config, enabled. */
-const seedSkills = [
+/** Seed skills: custom category, empty config, enabled. Optional contentMarkdown = full SKILL.md body materialized by runtime. */
+const seedSkills: Array<{
+  name: string;
+  slug: string;
+  description?: string;
+  contentMarkdown?: string;
+}> = [
   {
     name: "GitHub issue triage",
     slug: "github-issue-triage",
     description: "Issue triage and backlog hygiene.",
+    contentMarkdown: `# GitHub issue triage
+
+Use this skill when triaging GitHub issues: label, prioritize, assign. Check repo CONTRIBUTING and issue templates.
+`,
   },
   {
     name: "Sprint planning",
     slug: "sprint-planning",
     description: "Sprint planning, milestones, and priority setting.",
+    contentMarkdown: `# Sprint planning
+
+Use this skill for sprint planning: milestones, capacity, priorities. Align with squad lead and existing backlog.
+`,
   },
   {
     name: "Release management",
@@ -53,7 +67,7 @@ const seedSkills = [
     slug: "test-automation",
     description: "Implement unit/integration/e2e tests.",
   },
-] as const;
+];
 
 /** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
 const seedAgents = [
@@ -617,6 +631,7 @@ async function ensureSkills(
         disabledSkipped += 1;
       }
     } else {
+      validateContentMarkdown(s.contentMarkdown);
       const now = Date.now();
       const id = await ctx.db.insert("skills", {
         accountId,
@@ -624,6 +639,7 @@ async function ensureSkills(
         slug: s.slug,
         category: "custom",
         description: s.description,
+        contentMarkdown: s.contentMarkdown ?? undefined,
         config: {},
         isEnabled: true,
         createdAt: now,

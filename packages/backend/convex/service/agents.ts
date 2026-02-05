@@ -155,6 +155,7 @@ export const listForRuntime = internalQuery({
           name: string;
           slug: string;
           description: string | undefined;
+          contentMarkdown: string | undefined;
         }> = [];
         for (const skillId of skillIds) {
           if (typeof skillId !== "string" || !skillId.trim()) continue;
@@ -165,6 +166,7 @@ export const listForRuntime = internalQuery({
               name: skill.name,
               slug: skill.slug,
               description: skill.description,
+              contentMarkdown: skill.contentMarkdown ?? undefined,
             });
           }
         }

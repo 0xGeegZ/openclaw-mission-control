@@ -22,6 +22,7 @@ import type * as lib_behavior_flags from "../lib/behavior_flags.js";
 import type * as lib_mentions from "../lib/mentions.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_service_auth from "../lib/service_auth.js";
+import type * as lib_skills_validation from "../lib/skills_validation.js";
 import type * as lib_task_workflow from "../lib/task_workflow.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as memberships from "../memberships.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mentions": typeof lib_mentions;
   "lib/notifications": typeof lib_notifications;
   "lib/service_auth": typeof lib_service_auth;
+  "lib/skills_validation": typeof lib_skills_validation;
   "lib/task_workflow": typeof lib_task_workflow;
   "lib/validators": typeof lib_validators;
   memberships: typeof memberships;

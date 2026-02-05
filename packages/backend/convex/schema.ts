@@ -270,6 +270,9 @@ export default defineSchema({
     /** Icon for UI display */
     icon: v.optional(v.string()),
 
+    /** Full SKILL.md body for custom/inline skills; when set, runtime materializes as agentDir/skills/<slug>/SKILL.md. Max length enforced in create/update: 512 KB (CONTENT_MARKDOWN_MAX_BYTES in lib/skills_validation). */
+    contentMarkdown: v.optional(v.string()),
+
     /**
      * Skill configuration (varies by category).
      * For MCP: server URL, auth config
