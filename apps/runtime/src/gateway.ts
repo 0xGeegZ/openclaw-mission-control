@@ -357,6 +357,13 @@ export interface SendToOpenClawOptions {
  * POST {openclawGatewayUrl}/v1/responses with x-openclaw-session-key and optional Bearer token.
  * Uses stream: false so the response body contains the full agent reply and any tool calls.
  * Throws on non-2xx or when gateway URL is disabled so delivery loop keeps notification undelivered.
+ *
+ * Session key and tools: The gateway must run this request in the session identified by
+ * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
+ * task_create, document_upsert) are applied to that run. If the gateway runs the request under a
+ * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
+ * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
+ *
  * @returns Structured result with extracted text and any function_call items.
  */
 export async function sendToOpenClaw(
@@ -393,6 +400,10 @@ export async function sendToOpenClaw(
     model: `openclaw:${agentId}`,
     input: message,
     stream: false,
+    // OpenResponses session routing: "user" lets the gateway derive a stable session key
+    // so the run uses this session (and receives per-request tools). Without it, the
+    // endpoint is stateless per request and generates a new session (e.g. openresponses:uuid).
+    user: sessionKey,
   };
   if (
     options?.tools &&
@@ -477,6 +488,7 @@ export async function sendOpenClawToolResults(
   const body = JSON.stringify({
     model: `openclaw:${agentId}`,
     stream: false,
+    user: sessionKey,
     function_call_output: outputs,
   });
 

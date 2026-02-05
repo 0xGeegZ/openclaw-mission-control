@@ -3,11 +3,13 @@ import { Id } from "../_generated/dataModel";
 
 /**
  * Parsed mention with resolved entity.
+ * slug is set for agents so the UI can match @slug in content (e.g. @squad-lead).
  */
 export interface ParsedMention {
   type: "user" | "agent";
   id: string;
   name: string;
+  slug?: string;
 }
 
 /**
@@ -117,6 +119,7 @@ export async function resolveMentions(
         type: "agent",
         id: matchedAgent._id,
         name: matchedAgent.name,
+        slug: matchedAgent.slug,
       });
       resolved.add(mentionStr);
     }
@@ -165,6 +168,7 @@ export async function getAllMentions(
         type: "agent",
         id: a._id,
         name: a.name,
+        slug: a.slug,
       });
     }
   }

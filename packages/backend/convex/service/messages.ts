@@ -172,7 +172,7 @@ export const createFromAgent = internalMutation({
         });
       }
     }
-    // Parse and resolve mentions; filter to users only when agent mentions disallowed
+    // Parse and resolve mentions. Store full list for display; use filtered list for notifications when agent mentions disallowed.
     let mentions: Array<{ type: "user" | "agent"; id: string; name: string }>;
 
     if (hasAllMention(args.content)) {
@@ -182,11 +182,11 @@ export const createFromAgent = internalMutation({
       mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
     }
 
-    if (!args.allowAgentMentions) {
-      mentions = mentions.filter((m) => m.type === "user");
-    }
+    const mentionsForNotifications = args.allowAgentMentions
+      ? mentions
+      : mentions.filter((m) => m.type === "user");
 
-    // Create message
+    // Create message (store full mentions so UI can render @squad-lead etc. as badges)
     const messageId = await ctx.db.insert("messages", {
       accountId: agent.accountId,
       taskId: args.taskId,
@@ -208,8 +208,8 @@ export const createFromAgent = internalMutation({
       args.agentId,
     );
 
-    // Auto-subscribe mentioned entities
-    for (const mention of mentions) {
+    // Auto-subscribe mentioned entities (only those we actually notify)
+    for (const mention of mentionsForNotifications) {
       await ensureSubscribed(
         ctx,
         agent.accountId,
@@ -236,14 +236,14 @@ export const createFromAgent = internalMutation({
       },
     });
 
-    // Create mention notifications
-    if (mentions.length > 0) {
+    // Create mention notifications (only for entities we allow to be mentioned by agents)
+    if (mentionsForNotifications.length > 0) {
       await createMentionNotifications(
         ctx,
         agent.accountId,
         args.taskId,
         messageId,
-        mentions,
+        mentionsForNotifications,
         agent.name,
         task.title,
       );
@@ -252,8 +252,8 @@ export const createFromAgent = internalMutation({
     await ensureOrchestratorSubscribed(ctx, agent.accountId, args.taskId);
 
     // Create thread update notifications
-    const mentionedIds = new Set(mentions.map((m) => m.id));
-    const hasAgentMentions = mentions.some(
+    const mentionedIds = new Set(mentionsForNotifications.map((m) => m.id));
+    const hasAgentMentions = mentionsForNotifications.some(
       (mention) => mention.type === "agent",
     );
     await createThreadNotifications(

@@ -4,8 +4,9 @@ import { RuntimeConfig } from "./config";
 import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import {
-  getToolSchemasForCapabilities,
+  getToolCapabilitiesAndSchemas,
   executeAgentTool,
+  type ToolCapabilitiesAndSchemas,
 } from "./tooling/agentTools";
 
 const log = createLogger("[Delivery]");
@@ -21,6 +22,7 @@ export interface DeliveryContext {
     title: string;
     body: string;
     recipientId?: string;
+    recipientType?: "user" | "agent";
     taskId?: string;
     messageId?: string;
     accountId: string;
@@ -29,6 +31,7 @@ export interface DeliveryContext {
     _id: string;
     sessionKey?: string;
     role?: string;
+    name?: string;
   } | null;
   task: {
     _id: string;
@@ -203,15 +206,18 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
-            const tools = getToolSchemasForCapabilities({
+            const toolCapabilities = getToolCapabilitiesAndSchemas({
               canCreateTasks: flags.canCreateTasks === true,
               canModifyTaskStatus,
               canCreateDocuments: flags.canCreateDocuments === true,
               hasTaskContext: hasTask,
             });
             const sendOptions =
-              tools.length > 0
-                ? { tools, toolChoice: "auto" as const }
+              toolCapabilities.schemas.length > 0
+                ? {
+                    tools: toolCapabilities.schemas,
+                    toolChoice: "auto" as const,
+                  }
                 : undefined;
             if (sendOptions) {
               log.debug("Sending with tools", sendOptions.tools.length);
@@ -222,6 +228,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               formatNotificationMessage(
                 context as DeliveryContext,
                 config.taskStatusBaseUrl,
+                toolCapabilities,
               ),
               sendOptions,
             );
@@ -393,17 +400,34 @@ export function getDeliveryState(): DeliveryState {
   return { ...state };
 }
 
+/** Task statuses for which we skip delivering status_change to agents to avoid ack storms. */
+const TASK_STATUSES_SKIP_STATUS_CHANGE = new Set(["done", "blocked"]);
+
 /**
  * Decide whether a notification should be delivered to an agent.
  * Mention notifications are always delivered (including when task is DONE) so the
  * mentioned agent can reply once to a direct request (e.g. push PR).
+ * Skips status_change notifications to agents when task is DONE or BLOCKED to avoid
+ * acknowledgment storms (each agent replying to "task status changed to done").
  * Skips agent-authored thread_update unless the recipient is assigned, or in review
  * as a reviewer; skips thread_update when task is DONE or BLOCKED to avoid reply loops.
+ *
+ * @param context - Delivery context from getNotificationForDelivery (notification, task, message, thread, flags).
+ * @returns true if the notification should be sent to the agent, false to skip (and mark delivered).
  */
 export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const notificationType = context.notification?.type;
   const messageAuthorType = context.message?.authorType;
   const taskStatus = context.task?.status;
+
+  if (
+    notificationType === "status_change" &&
+    context.notification?.recipientType === "agent" &&
+    taskStatus != null &&
+    TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+  ) {
+    return false;
+  }
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
     const recipientId = context.notification?.recipientId;
@@ -411,7 +435,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     const sourceNotificationType = context.sourceNotificationType;
     const orchestratorAgentId = context.orchestratorAgentId;
     const agentRole = context.agent?.role;
-    if (taskStatus === "done" || taskStatus === "blocked") {
+    if (taskStatus != null && TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)) {
       return false;
     }
     if (sourceNotificationType === "thread_update") {
@@ -691,16 +715,20 @@ function formatThreadContext(
   return lines.join("\n");
 }
 
-/**
- * Format notification message for OpenClaw.
- * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
- * @param taskStatusBaseUrl - Base URL the agent can use for task-status HTTP fallback (e.g. http://runtime:3000 in Docker).
- */
 const MENTIONABLE_AGENTS_CAP = 25;
 
-function formatNotificationMessage(
+/**
+ * Format notification message for OpenClaw (identity line, capabilities, task context, status instructions).
+ * Exported for unit tests.
+ *
+ * @param context - Delivery context (notification, task, message, thread, repositoryDoc, agents, behavior flags).
+ * @param taskStatusBaseUrl - Base URL the agent can use for task-status HTTP fallback (e.g. http://runtime:3000 in Docker).
+ * @param toolCapabilities - Capability labels and hasTaskStatus for prompt; must match tools sent to OpenClaw.
+ */
+export function formatNotificationMessage(
   context: DeliveryContext,
   taskStatusBaseUrl: string,
+  toolCapabilities: ToolCapabilitiesAndSchemas,
 ): string {
   const {
     notification,
@@ -716,18 +744,17 @@ function formatNotificationMessage(
   const flags = context.effectiveBehaviorFlags ?? {};
   const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
   const canMentionAgents = flags.canMentionAgents === true;
-  const capabilities: string[] = [];
-  if (flags.canCreateTasks === true)
-    capabilities.push("create tasks (task_create tool)");
-  if (task && canModifyTaskStatus)
-    capabilities.push("change task status (task_status tool)");
-  if (flags.canCreateDocuments === true)
-    capabilities.push("create/update documents (document_upsert tool)");
-  if (canMentionAgents) capabilities.push("mention other agents");
+
+  const capabilityLabels = [...toolCapabilities.capabilityLabels];
+  if (canMentionAgents) capabilityLabels.push("mention other agents");
   const capabilitiesBlock =
-    capabilities.length > 0
-      ? `Capabilities: ${capabilities.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED, include the error message, and do not claim you changed status.\n\n`
+    capabilityLabels.length > 0
+      ? `Capabilities: ${capabilityLabels.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED, include the error message, and do not claim you changed status.\n\n`
       : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
+
+  const agentName = context.agent?.name?.trim() || "Agent";
+  const agentRole = context.agent?.role?.trim() || "Unknown role";
+  const identityLine = `You are replying as: **${agentName}** (${agentRole}). Reply only as this agent; do not speak as or ask whether you are another role.\n\n`;
 
   const taskDescription = task?.description?.trim()
     ? `Task description:\n${task.description.trim()}`
@@ -764,7 +791,7 @@ function formatNotificationMessage(
       ].join("\n");
 
   const statusInstructions = task
-    ? canModifyTaskStatus
+    ? toolCapabilities.hasTaskStatus
       ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
@@ -802,7 +829,7 @@ function formatNotificationMessage(
 
   // Status-specific instructions: done (brief reply once), blocked (reply-loop fix — do not continue substantive work until unblocked).
   return `
-${capabilitiesBlock}## Notification: ${notification.type}
+${identityLine}${capabilitiesBlock}## Notification: ${notification.type}
 
 **${notification.title}**
 
@@ -819,7 +846,7 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 Use the thread history above before asking for missing info. Do not request items already present there.
 
 ${statusInstructions}
-${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${task?.status === "review" && toolCapabilities.hasTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 ${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
 ${assignmentAckBlock}

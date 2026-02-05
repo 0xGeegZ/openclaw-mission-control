@@ -103,9 +103,55 @@ export type ToolResult = {
   documentId?: string;
 };
 
+/** Result of getToolCapabilitiesAndSchemas: capability labels for the prompt and schemas for OpenClaw. */
+export interface ToolCapabilitiesAndSchemas {
+  /** Human-readable capability labels (e.g. "change task status (task_status tool)") for the prompt. */
+  capabilityLabels: string[];
+  /** OpenResponses tool schemas to send in the request. */
+  schemas: unknown[];
+  /** True when task_status is in the allowed set (for status instructions in prompt). */
+  hasTaskStatus: boolean;
+}
+
+/**
+ * Single source of truth for allowed tools: returns both capability labels (for prompt) and tool schemas (for OpenClaw).
+ * Use this so the prompt never advertises a capability we don't send as a tool.
+ *
+ * @param options - Capability flags and task context from delivery.
+ * @returns Capability labels, tool schemas, and hasTaskStatus for prompt building.
+ */
+export function getToolCapabilitiesAndSchemas(options: {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  hasTaskContext: boolean;
+}): ToolCapabilitiesAndSchemas {
+  const capabilityLabels: string[] = [];
+  const schemas: unknown[] = [];
+
+  if (options.hasTaskContext && options.canModifyTaskStatus) {
+    capabilityLabels.push("change task status (task_status tool)");
+    schemas.push(TASK_STATUS_TOOL_SCHEMA);
+  }
+  if (options.canCreateTasks) {
+    capabilityLabels.push("create tasks (task_create tool)");
+    schemas.push(TASK_CREATE_TOOL_SCHEMA);
+  }
+  if (options.canCreateDocuments) {
+    capabilityLabels.push("create/update documents (document_upsert tool)");
+    schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
+  }
+
+  return {
+    capabilityLabels,
+    schemas,
+    hasTaskStatus: options.hasTaskContext && options.canModifyTaskStatus,
+  };
+}
+
 /**
  * Build the list of tool schemas to send to OpenClaw based on effective behavior flags and task context.
- * task_status is offered only when a task exists and the agent can modify status.
+ * Prefer getToolCapabilitiesAndSchemas when building both prompt and payload so they stay in sync.
  *
  * @param options - Capability flags and task context from delivery.
  * @returns Array of OpenResponses tool schemas (task_status, task_create, document_upsert as allowed).
@@ -116,17 +162,7 @@ export function getToolSchemasForCapabilities(options: {
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
 }): unknown[] {
-  const tools: unknown[] = [];
-  if (options.hasTaskContext && options.canModifyTaskStatus) {
-    tools.push(TASK_STATUS_TOOL_SCHEMA);
-  }
-  if (options.canCreateTasks) {
-    tools.push(TASK_CREATE_TOOL_SCHEMA);
-  }
-  if (options.canCreateDocuments) {
-    tools.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
-  }
-  return tools;
+  return getToolCapabilitiesAndSchemas(options).schemas;
 }
 
 /**
