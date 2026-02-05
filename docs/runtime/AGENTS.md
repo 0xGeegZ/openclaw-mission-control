@@ -77,6 +77,10 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 - If done: move to DONE, post final summary, and ensure doc links exist
 - Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW.
 
+### Assignment acknowledgment
+
+When you receive a new **assignment** notification, reply first with a short acknowledgment (1–2 sentences). Ask any clarifying questions now; if you need input from the orchestrator or the person who assigned the task, @mention them. Do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.
+
 ## Capabilities and tools
 
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.

@@ -631,6 +631,7 @@ function formatNotificationMessage(
     mentionableAgents = [],
     primaryUserMention = null,
     effectiveBehaviorFlags = {},
+    orchestratorAgentId = null,
   } = context;
   const flags = effectiveBehaviorFlags as {
     canCreateTasks?: boolean;
@@ -697,6 +698,36 @@ function formatNotificationMessage(
     ? formatMentionableAgentsSection(mentionableAgents)
     : "";
 
+  /** For assignment notifications: who to @mention for clarification (orchestrator if allowed, else primary user). */
+  const assignmentClarificationTarget =
+    notification?.type === "assignment"
+      ? canMentionAgents &&
+        orchestratorAgentId &&
+        mentionableAgents.some(
+          (a: { id: string }) => a.id === orchestratorAgentId,
+        )
+        ? (() => {
+            const orch = mentionableAgents.find(
+              (a: { id: string; slug?: string; name: string }) =>
+                a.id === orchestratorAgentId,
+            ) as { slug?: string; name: string } | undefined;
+            if (!orch)
+              return "For clarification questions, @mention the primary user (shown above).";
+            const orchMention = (orch.slug ?? "").trim()
+              ? `@${(orch.slug ?? "").trim()}`
+              : `@"${(orch.name ?? "").replace(/"/g, "").trim()}"`;
+            return `For clarification questions, @mention the orchestrator (${orchMention}).`;
+          })()
+        : primaryUserMention
+          ? "For clarification questions, @mention the primary user (shown above)."
+          : "If you need clarification, ask in the thread."
+      : "";
+
+  const assignmentAckBlock =
+    notification?.type === "assignment"
+      ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
+      : "";
+
   return `
 ${capabilitiesBlock}## Notification: ${notification.type}
 
@@ -717,6 +748,7 @@ Use the thread history above before asking for missing info. Do not request item
 ${statusInstructions}
 ${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
+${assignmentAckBlock}
 
 Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.
 

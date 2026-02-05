@@ -177,6 +177,10 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 - If done: move to DONE, post final summary, and ensure doc links exist
 - Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW.
 
+### Assignment acknowledgment
+
+When you receive a new **assignment** notification, reply first with a short acknowledgment (1–2 sentences). Ask any clarifying questions now; if you need input from the orchestrator or the person who assigned the task, @mention them. Do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.
+
 ## Capabilities and tools
 
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.
@@ -295,6 +299,8 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 3. A task assigned to me and in IN_PROGRESS / ASSIGNED
 4. A thread I'm subscribed to with new messages
 5. Otherwise: scan the activity feed for something I can improve
+
+**New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 
 ## 3) Execute one atomic action
 
@@ -454,6 +460,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 - Prefer short, actionable thread updates.
 - Delegate to Engineer/QA with clear acceptance criteria.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
+- On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 
 ## Domain strengths
 
@@ -499,6 +506,7 @@ Implement fixes and keep tech docs current. Maintain frontend and backend per re
 - Update docs when behavior or APIs change.
 - Run or describe tests when changing behavior.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
+- On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 
 ## Domain strengths
 
@@ -541,6 +549,7 @@ Protect quality and scale readiness. Review PRs and maintain the test suite.
 - Require repro steps for bug reports.
 - Prefer automated checks where possible.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
+- On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 
 ## Domain strengths
 
