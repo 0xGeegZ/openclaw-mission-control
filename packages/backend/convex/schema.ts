@@ -209,7 +209,9 @@ export default defineSchema({
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
     restartRequestedAt: v.optional(v.number()),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_created", ["createdAt"]),
 
   // ==========================================================================
   // MEMBERSHIPS
@@ -554,6 +556,7 @@ export default defineSchema({
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
     .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
     .index("by_source_notification", ["sourceNotificationId"]),
 
@@ -634,6 +637,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
+    .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
     .index("by_account_updated", ["accountId", "updatedAt"]),
@@ -766,6 +770,11 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
+    .index("by_recipient_unread", [
+      "recipientType",
+      "recipientId",
+      "readAt",
+    ])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"]),
@@ -796,7 +805,8 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_subscriber", ["subscriberType", "subscriberId"])
-    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"]),
+    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"])
+    .index("by_account_created", ["accountId", "subscribedAt"]),
 
   // ==========================================================================
   // INVITATIONS
