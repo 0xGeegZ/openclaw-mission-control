@@ -4,7 +4,10 @@
  */
 
 import { getConvexClient, api } from "../convex-client";
+import { createLogger } from "../logger";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+
+const log = createLogger("[TaskStatusTool]");
 
 const ALLOWED_STATUSES = new Set(["in_progress", "review", "done", "blocked"]);
 
@@ -86,6 +89,10 @@ export async function executeTaskStatusTool(params: {
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    log.warn(
+      "Task status update failed (task will not move to done); check Convex connectivity",
+      { taskId, status, error: message },
+    );
     return { success: false, error: message };
   }
 }

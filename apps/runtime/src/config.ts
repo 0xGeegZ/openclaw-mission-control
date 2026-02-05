@@ -40,8 +40,13 @@ export interface RuntimeConfig {
   openclawGatewayUrl: string;
   /** OpenClaw gateway auth token (Bearer); optional for local gateway URLs (empty = no auth) */
   openclawGatewayToken: string | undefined;
-  /** Timeout for OpenClaw /v1/responses requests (ms); default 60000 for long agent runs */
+  /** Timeout for OpenClaw /v1/responses requests (ms); default 180000 for long agent runs */
   openclawRequestTimeoutMs: number;
+  /**
+   * Base URL the agent (OpenClaw) uses to reach the runtime health server for task-status fallback.
+   * In Docker with gateway in another container, set to e.g. http://runtime:3000 so the gateway can reach this service.
+   */
+  taskStatusBaseUrl: string;
 }
 
 /**
@@ -161,7 +166,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     accountId: accountId as Id<"accounts">,
     convexUrl,
     serviceToken,
-    healthPort: parseIntOrDefault(process.env.HEALTH_PORT, 3001),
+    healthPort: parseIntOrDefault(process.env.HEALTH_PORT, 3000),
     healthHost: process.env.HEALTH_HOST || "127.0.0.1",
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
     healthCheckInterval: parseIntOrDefault(
@@ -192,6 +197,9 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
       180000,
     ),
+    taskStatusBaseUrl:
+      normalizeEnvValue(process.env.TASK_STATUS_BASE_URL)?.trim() ||
+      `http://${process.env.HEALTH_HOST || "127.0.0.1"}:${parseIntOrDefault(process.env.HEALTH_PORT, 3000)}`,
   };
 }
 

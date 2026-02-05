@@ -37,7 +37,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `ACCOUNT_ID`                                          | Yes      | Convex `accounts` document ID this runtime serves.                                                                                                                                                                                     |
 | `CONVEX_URL`                                          | Yes      | Convex deployment URL (e.g. `https://xxx.convex.cloud`).                                                                                                                                                                               |
 | `SERVICE_TOKEN`                                       | Yes      | Token for Convex service-only actions (account-scoped).                                                                                                                                                                                |
-| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3001`).                                                                                                                                                                                          |
+| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3000`).                                                                                                                                                                                          |
 | `DELIVERY_INTERVAL`                                   | No       | Notification poll interval in ms (default `5000`).                                                                                                                                                                                     |
 | `HEALTH_CHECK_INTERVAL`                               | No       | Convex status report interval in ms (default `60000`).                                                                                                                                                                                 |
 | `AGENT_SYNC_INTERVAL`                                 | No       | Agent list sync interval in ms; new agents picked up without restart (default `60000`).                                                                                                                                                |
@@ -45,10 +45,11 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `OPENCLAW_VERSION`                                    | No       | Override if `openclaw --version` fails.                                                                                                                                                                                                |
 | `LOG_LEVEL`                                           | No       | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                                                               |
 | `HEALTH_HOST`                                         | No       | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker).                                                                                                                                                         |
+| `TASK_STATUS_BASE_URL`                                | No       | Base URL the OpenClaw gateway can use to reach runtime HTTP fallback endpoints (defaults to `http://{HEALTH_HOST}:{HEALTH_PORT}`).                                                                                                     |
 | `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                           |
 | `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
 | `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                     |
-| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                            |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `180000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                           |
 | `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                            |
 | `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                      |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                            |
@@ -74,7 +75,7 @@ The Dockerfile expects to be built from the **monorepo root** (it copies `apps/r
 
 ```bash
 docker build -f apps/runtime/Dockerfile -t openclaw-mission-control-runtime .
-docker run --env-file apps/runtime/.env -p 3001:3001 openclaw-mission-control-runtime
+docker run --env-file apps/runtime/.env -p 3000:3000 openclaw-mission-control-runtime
 ```
 
 Pass env vars via `--env-file` or `-e`; the app does not read `.env` from disk inside the image unless you mount it.
@@ -112,7 +113,7 @@ Upgrade workflow (pull new images and restart):
 - **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts (including `consecutiveFailures`, `lastErrorAt`, `lastErrorMessage` on errors).
 - **`GET /version`** — Lightweight: runtime version, OpenClaw version, droplet id/region.
 
-Both return JSON. Default port: `3001`.
+Both return JSON. Default port: `3000`.
 
 ## Graceful shutdown
 

@@ -105,6 +105,7 @@ export type ToolResult = {
 
 /**
  * Build the list of tool schemas to send to OpenClaw based on effective behavior flags and task context.
+ * task_status is offered only when a task exists and the agent can modify status.
  */
 export function getToolSchemasForCapabilities(options: {
   canCreateTasks: boolean;
@@ -113,7 +114,7 @@ export function getToolSchemasForCapabilities(options: {
   hasTaskContext: boolean;
 }): unknown[] {
   const tools: unknown[] = [];
-  if (options.canModifyTaskStatus && options.hasTaskContext) {
+  if (options.hasTaskContext && options.canModifyTaskStatus) {
     tools.push(TASK_STATUS_TOOL_SCHEMA);
   }
   if (options.canCreateTasks) {

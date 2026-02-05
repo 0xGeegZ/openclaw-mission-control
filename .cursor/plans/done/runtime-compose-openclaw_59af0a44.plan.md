@@ -139,7 +139,7 @@ flowchart LR
 - Unit tests (if a test harness exists for runtime): add tests for `backoff` calculations and log-level filtering in [apps/runtime/src/backoff.ts](apps/runtime/src/backoff.ts) and [apps/runtime/src/logger.ts](apps/runtime/src/logger.ts).
 - Manual QA:
   - `docker compose -f docker-compose.runtime.yml up` starts runtime and OpenClaw services.
-  - `curl http://127.0.0.1:3001/health` returns healthy JSON with new fields.
+  - `curl http://127.0.0.1:3000/health` returns healthy JSON with new fields.
   - OpenClaw UI reachable at `http://localhost:18789/?token=local` (if gateway profile enabled).
   - Stop OpenClaw container and verify runtime stays up with degraded status.
   - Simulate delivery errors and confirm backoff counters update in `/health`.

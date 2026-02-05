@@ -10,6 +10,27 @@ import {
 
 const log = createLogger("[Delivery]");
 
+/** Posted when tool execution ran but no final reply was received (e.g. follow-up request failed). */
+const FALLBACK_NO_REPLY_AFTER_TOOLS = [
+  "**Summary**",
+  "- Tool(s) were executed; the final reply could not be retrieved.",
+  "",
+  "**Work done**",
+  "- Executed tool calls for this notification.",
+  "",
+  "**Artifacts**",
+  "- None.",
+  "",
+  "**Risks / blockers**",
+  "- If a tool reported an error (success: false), consider the task BLOCKED and do not claim status was changed.",
+  "",
+  "**Next step (one)**",
+  "- Retry once the runtime or gateway is healthy.",
+  "",
+  "**Sources**",
+  "- None.",
+].join("\n");
+
 interface DeliveryState {
   isRunning: boolean;
   lastDelivery: number | null;
@@ -114,9 +135,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
+            const canModifyTaskStatus = flags.canModifyTaskStatus === true;
             const tools = getToolSchemasForCapabilities({
               canCreateTasks: flags.canCreateTasks === true,
-              canModifyTaskStatus: flags.canModifyTaskStatus === true,
+              canModifyTaskStatus,
               canCreateDocuments: flags.canCreateDocuments === true,
               hasTaskContext: hasTask,
             });
@@ -124,10 +146,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               tools.length > 0
                 ? { tools, toolChoice: "auto" as const }
                 : undefined;
+            if (sendOptions) {
+              log.debug("Sending with tools", sendOptions.tools.length);
+            }
 
             const result = await sendToOpenClaw(
               context.agent.sessionKey,
-              formatNotificationMessage(context),
+              formatNotificationMessage(context, config.taskStatusBaseUrl),
               sendOptions,
             );
 
@@ -143,6 +168,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   serviceToken: config.serviceToken,
                   taskId: context.notification?.taskId,
                 });
+                if (!toolResult.success) {
+                  log.warn(
+                    "Tool execution failed",
+                    call.name,
+                    notification._id,
+                    toolResult.error ?? "unknown",
+                  );
+                }
                 outputs.push({
                   call_id: call.call_id,
                   output: JSON.stringify(toolResult),
@@ -163,6 +196,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
 
             const taskId = context.notification?.taskId;
+            if (taskId && !textToPost && result.toolCalls.length > 0) {
+              textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
+              log.warn(
+                "No reply after tool execution; posting fallback message",
+                notification._id,
+              );
+            }
             if (taskId && textToPost) {
               const trimmed = textToPost.trim();
               const finalContent = applyAutoMentionFallback(trimmed, context);
@@ -188,6 +228,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 sourceNotificationId: notification._id,
               });
               if (
+                canModifyTaskStatus &&
                 context.task?.status === "assigned" &&
                 context.notification?.type === "assignment"
               ) {
@@ -287,9 +328,13 @@ export function getDeliveryState(): DeliveryState {
 function shouldDeliverToAgent(context: any): boolean {
   const notificationType = context?.notification?.type;
   const messageAuthorType = context?.message?.authorType;
+  const taskStatus = context?.task?.status;
+
+  if (notificationType === "mention" && taskStatus === "done") {
+    return false;
+  }
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
-    const taskStatus = context?.task?.status;
     const recipientId = context?.notification?.recipientId;
     const assignedAgentIds = context?.task?.assignedAgentIds;
     const sourceNotificationType = context?.sourceNotificationType;
@@ -477,6 +522,8 @@ function applyAutoMentionFallback(content: string, context: any): string {
     context?.mentionableAgents ?? [];
   const primaryUser: PrimaryUserMention | null =
     context?.primaryUserMention ?? null;
+  const canMentionAgents =
+    context?.effectiveBehaviorFlags?.canMentionAgents === true;
   if (type !== "thread_update" || messageAuthorType !== "agent") return content;
   if (orchestratorAgentId == null || recipientId !== orchestratorAgentId)
     return content;
@@ -491,7 +538,7 @@ function applyAutoMentionFallback(content: string, context: any): string {
   const userPrefix =
     primaryUser && needsUserMention ? buildUserMentionPrefix(primaryUser) : "";
   const agentPrefix =
-    !hasAnyMentions && !hasAllMention
+    canMentionAgents && !hasAnyMentions && !hasAllMention
       ? buildAutoMentionPrefix(assignedAgents, orchestratorAgentId)
       : "";
   if (!userPrefix && !agentPrefix) return content;
@@ -571,10 +618,14 @@ function formatThreadContext(thread: any[] | undefined): string {
 /**
  * Format notification message for OpenClaw.
  * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
+ * @param taskStatusBaseUrl - Base URL the agent can use for task-status HTTP fallback (e.g. http://runtime:3000 in Docker).
  */
 const MENTIONABLE_AGENTS_CAP = 25;
 
-function formatNotificationMessage(context: any): string {
+function formatNotificationMessage(
+  context: any,
+  taskStatusBaseUrl: string,
+): string {
   const {
     notification,
     task,
@@ -591,17 +642,19 @@ function formatNotificationMessage(context: any): string {
     canCreateDocuments?: boolean;
     canMentionAgents?: boolean;
   };
+  const canModifyTaskStatus = flags.canModifyTaskStatus === true;
+  const canMentionAgents = flags.canMentionAgents === true;
   const capabilities: string[] = [];
-  if (flags.canCreateTasks)
+  if (flags.canCreateTasks === true)
     capabilities.push("create tasks (task_create tool)");
-  if (flags.canModifyTaskStatus && task)
+  if (task && canModifyTaskStatus)
     capabilities.push("change task status (task_status tool)");
-  if (flags.canCreateDocuments)
+  if (flags.canCreateDocuments === true)
     capabilities.push("create/update documents (document_upsert tool)");
-  if (flags.canMentionAgents) capabilities.push("mention other agents");
+  if (canMentionAgents) capabilities.push("mention other agents");
   const capabilitiesBlock =
     capabilities.length > 0
-      ? `Capabilities: ${capabilities.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED.\n\n`
+      ? `Capabilities: ${capabilities.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED and do not claim you changed status.\n\n`
       : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
 
   const taskDescription = task?.description?.trim()
@@ -638,6 +691,16 @@ function formatNotificationMessage(context: any): string {
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
 
+  const statusInstructions = task
+    ? canModifyTaskStatus
+      ? `If you need to change task status, do it BEFORE posting a thread update. You have the **task_status** tool (in your Capabilities) — call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. If your interface does not show that tool, use the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "done" }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If a tool returns an error, do not claim you changed status; report BLOCKED. If you have no way to update status (both tool and HTTP fail), do not post a completion summary; report BLOCKED and state that you could not update task status.`
+      : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
+    : "";
+
+  const mentionableSection = canMentionAgents
+    ? formatMentionableAgentsSection(mentionableAgents)
+    : "";
+
   return `
 ${capabilitiesBlock}## Notification: ${notification.type}
 
@@ -650,13 +713,14 @@ ${taskDescription}
 ${repositoryDetails}
 ${messageDetails}
 ${threadDetails}
-${formatMentionableAgentsSection(mentionableAgents)}
+${mentionableSection}
 ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
 
-If you need to change task status, do it BEFORE posting a thread update. Prefer the **task_status** tool when your Capabilities list it: call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. If the tool is not offered, use the HTTP fallback: POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status with header x-openclaw-session-key and body { "taskId", "status", "blockedReason?" }. Note: inbox/assigned are handled by assignment changes, not this tool.
-${task?.status === "review" ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. Posting alone does not change the task status.' : ""}
+${statusInstructions}
+${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${task?.status === "done" ? "\nThis task is DONE. If you were mentioned, acknowledge at most once (e.g. 'Acknowledged.' or 'Ready for next task.') and do not reply again to this thread." : ""}
 
 Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
 
