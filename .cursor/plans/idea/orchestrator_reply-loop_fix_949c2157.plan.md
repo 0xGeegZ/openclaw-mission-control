@@ -4,19 +4,19 @@ overview: Prevent infinite ping‑pong between orchestrator and assignees by rem
 todos:
   - id: remove-auto-mention
     content: Remove runtime auto-mention fallback so replies are not modified/injected.
-    status: pending
+    status: completed
   - id: add-response-request-type
     content: Add `response_request` to Convex + shared notification type unions and update web notification type maps.
-    status: pending
+    status: completed
   - id: backend-response-request-action
     content: Implement Convex service action + internal mutation to create deduped response_request notifications by agent slug.
-    status: pending
+    status: completed
   - id: runtime-response-request-tool
     content: Add `response_request` OpenResponses tool schema + executor and wire into delivery tool offering.
-    status: pending
+    status: completed
   - id: docs-align
     content: Update AGENTS docs/seed to prefer response_request tool for follow-ups and document removal of auto-mentions.
-    status: pending
+    status: completed
 isProject: false
 ---
 
