@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -46,12 +46,16 @@ import {
   AlertDialogTitle,
 } from "@packages/ui/components/alert-dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@packages/ui/components/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@packages/ui/components/tooltip";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
+import { Separator } from "@packages/ui/components/separator";
 import {
   Tabs,
   TabsContent,
@@ -62,8 +66,6 @@ import {
   Zap,
   Plus,
   Shield,
-  MoreHorizontal,
-  Pencil,
   Trash2,
   Power,
   PowerOff,
@@ -75,6 +77,12 @@ import {
   AlertTriangle,
   Loader2,
   FileText,
+  Bot,
+  ChevronRight,
+  Globe,
+  Key,
+  Lock,
+  Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
@@ -134,6 +142,13 @@ const CATEGORY_COLORS: Record<SkillCategory, string> = {
   custom: "text-amber-500",
 };
 
+const CATEGORY_BG: Record<SkillCategory, string> = {
+  mcp_server: "bg-blue-500/10",
+  tool: "bg-emerald-500/10",
+  integration: "bg-violet-500/10",
+  custom: "bg-amber-500/10",
+};
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -155,6 +170,10 @@ export default function SkillsPage({ params }: SkillsPageProps) {
 
   // Queries & Mutations
   const skills = useQuery(api.skills.list, accountId ? { accountId } : "skip");
+  const agentsBySkillMap = useQuery(
+    api.skills.agentsBySkill,
+    accountId ? { accountId } : "skip",
+  );
   const createSkill = useMutation(api.skills.create);
   const updateSkill = useMutation(api.skills.update);
   const removeSkill = useMutation(api.skills.remove);
@@ -165,7 +184,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   const [filterCategory, setFilterCategory] = useState<SkillCategory | "all">(
     "all",
   );
-  const [createOpen, setCreateOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Id<"skills"> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: Id<"skills">;
@@ -206,14 +225,14 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   // Form helpers
   // ---------------------------------------------------------------------------
 
-  function resetForm() {
+  const resetForm = useCallback(() => {
     setForm(EMPTY_FORM);
-  }
+  }, []);
 
   function openCreate() {
     resetForm();
     setEditingSkill(null);
-    setCreateOpen(true);
+    setDialogOpen(true);
   }
 
   function openEdit(skillId: Id<"skills">) {
@@ -238,7 +257,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
       isEnabled: skill.isEnabled,
     });
     setEditingSkill(skillId);
-    setCreateOpen(true);
+    setDialogOpen(true);
   }
 
   async function handleSave() {
@@ -278,7 +297,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
         });
         toast.success("Skill created");
       }
-      setCreateOpen(false);
+      setDialogOpen(false);
       resetForm();
       setEditingSkill(null);
     } catch (e) {
@@ -468,12 +487,27 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                   const catColor =
                     CATEGORY_COLORS[skill.category as SkillCategory] ??
                     "text-muted-foreground";
+                  const catBg =
+                    CATEGORY_BG[skill.category as SkillCategory] ??
+                    "bg-muted";
+                  const skillAgents =
+                    agentsBySkillMap?.[skill._id as string] ?? [];
 
                   return (
                     <Card
                       key={skill._id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openEdit(skill._id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openEdit(skill._id);
+                        }
+                      }}
                       className={cn(
-                        "border-border/50 shadow-sm transition-colors hover:border-border",
+                        "border-border/50 shadow-sm transition-all cursor-pointer group",
+                        "hover:border-border hover:shadow-md hover:shadow-primary/5",
                         !skill.isEnabled && "opacity-60",
                       )}
                     >
@@ -482,7 +516,8 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div
                               className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted",
+                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+                                catBg,
                               )}
                             >
                               <CatIcon
@@ -490,7 +525,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                               />
                             </div>
                             <div className="min-w-0">
-                              <CardTitle className="text-base truncate">
+                              <CardTitle className="text-base truncate group-hover:text-primary transition-colors">
                                 {skill.name}
                               </CardTitle>
                               <code className="text-xs text-muted-foreground">
@@ -498,61 +533,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                               </code>
                             </div>
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0 rounded-lg"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Actions</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="rounded-xl"
-                            >
-                              <DropdownMenuItem
-                                className="rounded-lg"
-                                onClick={() => openEdit(skill._id)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="rounded-lg"
-                                onClick={() =>
-                                  handleToggle(skill._id, skill.isEnabled)
-                                }
-                              >
-                                {skill.isEnabled ? (
-                                  <>
-                                    <PowerOff className="h-4 w-4 mr-2" />
-                                    Disable
-                                  </>
-                                ) : (
-                                  <>
-                                    <Power className="h-4 w-4 mr-2" />
-                                    Enable
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="rounded-lg text-destructive focus:text-destructive"
-                                onClick={() =>
-                                  setDeleteTarget({
-                                    id: skill._id,
-                                    name: skill.name,
-                                  })
-                                }
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 shrink-0 mt-1" />
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -561,7 +542,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                             {skill.description}
                           </p>
                         )}
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Badge
                             variant="outline"
                             className="rounded-full text-xs gap-1"
@@ -584,7 +565,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                               variant="outline"
                               className="rounded-full text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700"
                             >
-                              Approval required
+                              Approval
                             </Badge>
                           )}
                           {skill.contentMarkdown && (
@@ -597,10 +578,47 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                             </Badge>
                           )}
                         </div>
-                        {skill.config.serverUrl && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            <span className="font-medium">Server:</span>{" "}
-                            {skill.config.serverUrl}
+
+                        {/* Agent avatars using this skill */}
+                        {skillAgents.length > 0 && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <div className="flex -space-x-2">
+                              {skillAgents.slice(0, 5).map((agent) => (
+                                <Tooltip key={agent._id}>
+                                  <TooltipTrigger asChild>
+                                    <Avatar className="h-6 w-6 ring-2 ring-background">
+                                      {agent.avatarUrl ? (
+                                        <AvatarImage
+                                          src={agent.avatarUrl}
+                                          alt={agent.name}
+                                        />
+                                      ) : null}
+                                      <AvatarFallback className="text-[10px] bg-muted font-medium">
+                                        {agent.name[0].toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" className="text-xs">
+                                    {agent.name}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                              {skillAgents.length > 5 && (
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium text-muted-foreground">
+                                  +{skillAgents.length - 5}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {skillAgents.length} agent
+                              {skillAgents.length !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        )}
+
+                        {skillAgents.length === 0 && (
+                          <p className="text-xs text-muted-foreground/60 italic pt-1">
+                            Not assigned to any agent
                           </p>
                         )}
                       </CardContent>
@@ -613,12 +631,12 @@ export default function SkillsPage({ params }: SkillsPageProps) {
         </Tabs>
       </div>
 
-      {/* Create / Edit Dialog */}
+      {/* Create / Edit Dialog -- improved layout with sections */}
       <Dialog
-        open={createOpen}
+        open={dialogOpen}
         onOpenChange={(open) => {
           if (!open) {
-            setCreateOpen(false);
+            setDialogOpen(false);
             setEditingSkill(null);
             resetForm();
           }
@@ -626,208 +644,269 @@ export default function SkillsPage({ params }: SkillsPageProps) {
       >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingSkill ? "Edit Skill" : "Create Skill"}
+            <DialogTitle className="flex items-center gap-2">
+              {editingSkill ? (
+                <>
+                  <div
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-md",
+                      CATEGORY_BG[form.category],
+                    )}
+                  >
+                    {(() => {
+                      const Icon = CATEGORY_ICONS[form.category];
+                      return (
+                        <Icon
+                          className={cn(
+                            "h-4 w-4",
+                            CATEGORY_COLORS[form.category],
+                          )}
+                        />
+                      );
+                    })()}
+                  </div>
+                  Edit Skill
+                </>
+              ) : (
+                <>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                    <Plus className="h-4 w-4 text-primary" />
+                  </div>
+                  Create Skill
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
               {editingSkill
-                ? "Update the skill configuration."
+                ? "Update the skill configuration below."
                 : "Define a new skill that can be assigned to agents."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-5 py-4">
-            {/* Name & Slug */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="skill-name">Name</Label>
-                <Input
-                  id="skill-name"
-                  placeholder="e.g. Web Search"
-                  value={form.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setForm((f) => ({
-                      ...f,
-                      name,
-                      ...(editingSkill ? {} : { slug: slugify(name) }),
-                    }));
-                  }}
-                  className="rounded-xl"
-                />
+          <div className="space-y-6 py-4">
+            {/* Section: Identity */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Code className="h-4 w-4 text-muted-foreground" />
+                Identity
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="skill-slug">Slug</Label>
-                <Input
-                  id="skill-slug"
-                  placeholder="web-search"
-                  value={form.slug}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, slug: e.target.value }))
-                  }
-                  className="rounded-xl"
-                  disabled={!!editingSkill}
-                />
-                {editingSkill && (
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="skill-name">Name</Label>
+                  <Input
+                    id="skill-name"
+                    placeholder="e.g. Web Search"
+                    value={form.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        name,
+                        ...(editingSkill ? {} : { slug: slugify(name) }),
+                      }));
+                    }}
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="skill-slug">Slug</Label>
+                  <Input
+                    id="skill-slug"
+                    placeholder="web-search"
+                    value={form.slug}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, slug: e.target.value }))
+                    }
+                    className="rounded-xl font-mono text-sm"
+                    disabled={!!editingSkill}
+                  />
+                  {editingSkill && (
+                    <p className="text-xs text-muted-foreground">
+                      Slug cannot be changed after creation.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select
+                    value={form.category}
+                    onValueChange={(v) =>
+                      setForm((f) => ({ ...f, category: v as SkillCategory }))
+                    }
+                    disabled={!!editingSkill}
+                  >
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(
+                        Object.entries(SKILL_CATEGORY_LABELS) as [
+                          SkillCategory,
+                          string,
+                        ][]
+                      ).map(([value, label]) => {
+                        const Icon = CATEGORY_ICONS[value];
+                        return (
+                          <SelectItem key={value} value={value}>
+                            <div className="flex items-center gap-2">
+                              <Icon
+                                className={cn(
+                                  "h-4 w-4",
+                                  CATEGORY_COLORS[value],
+                                )}
+                              />
+                              {label}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {editingSkill && (
+                    <p className="text-xs text-muted-foreground">
+                      Category cannot be changed after creation.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="skill-icon">Icon (optional)</Label>
+                  <Input
+                    id="skill-icon"
+                    placeholder="e.g. search, wrench"
+                    value={form.icon}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, icon: e.target.value }))
+                    }
+                    className="rounded-xl"
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Slug cannot be changed after creation.
+                    Lucide icon name for display
                   </p>
-                )}
+                </div>
               </div>
-            </div>
 
-            {/* Category & Icon */}
-            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={form.category}
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, category: v as SkillCategory }))
-                  }
-                  disabled={!!editingSkill}
-                >
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(
-                      Object.entries(SKILL_CATEGORY_LABELS) as [
-                        SkillCategory,
-                        string,
-                      ][]
-                    ).map(([value, label]) => {
-                      const Icon = CATEGORY_ICONS[value];
-                      return (
-                        <SelectItem key={value} value={value}>
-                          <div className="flex items-center gap-2">
-                            <Icon
-                              className={cn("h-4 w-4", CATEGORY_COLORS[value])}
-                            />
-                            {label}
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                {editingSkill && (
-                  <p className="text-xs text-muted-foreground">
-                    Category cannot be changed after creation.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="skill-icon">Icon (optional)</Label>
-                <Input
-                  id="skill-icon"
-                  placeholder="e.g. search, wrench"
-                  value={form.icon}
+                <Label htmlFor="skill-desc">Description</Label>
+                <Textarea
+                  id="skill-desc"
+                  placeholder="Describe what this skill does..."
+                  value={form.description}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, icon: e.target.value }))
+                    setForm((f) => ({ ...f, description: e.target.value }))
                   }
-                  className="rounded-xl"
+                  className="rounded-xl min-h-[80px] resize-none"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Lucide icon name for display
-                </p>
               </div>
             </div>
 
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="skill-desc">Description</Label>
-              <Textarea
-                id="skill-desc"
-                placeholder="Describe what this skill does..."
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-                className="rounded-xl min-h-[80px]"
-              />
-            </div>
+            <Separator />
 
-            {/* Config: MCP / Tool specifics */}
+            {/* Section: Connection Config (MCP / Integration) */}
             {(form.category === "mcp_server" ||
               form.category === "integration") && (
-              <Card className="border-border/50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">
-                    Connection Configuration
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Settings for connecting to external services.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="server-url">Server URL</Label>
-                    <Input
-                      id="server-url"
-                      placeholder="https://..."
-                      value={form.serverUrl}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          serverUrl: e.target.value,
-                        }))
-                      }
-                      className="rounded-xl"
-                    />
+              <>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    Connection
                   </div>
-                  <div className="space-y-2">
-                    <Label>Auth Type</Label>
-                    <Select
-                      value={form.authType}
-                      onValueChange={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          authType: v as "none" | "api_key" | "oauth",
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="api_key">API Key</SelectItem>
-                        <SelectItem value="oauth">OAuth</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {form.authType !== "none" && (
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="cred-ref">Credential Reference</Label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="server-url">Server URL</Label>
                       <Input
-                        id="cred-ref"
-                        placeholder="ENV_VAR_NAME or secret reference"
-                        value={form.credentialRef}
+                        id="server-url"
+                        placeholder="https://..."
+                        value={form.serverUrl}
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
-                            credentialRef: e.target.value,
+                            serverUrl: e.target.value,
                           }))
                         }
                         className="rounded-xl"
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Reference to the credential stored in environment
-                        variables.
-                      </p>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <div className="space-y-2">
+                      <Label>Auth Type</Label>
+                      <Select
+                        value={form.authType}
+                        onValueChange={(v) =>
+                          setForm((f) => ({
+                            ...f,
+                            authType: v as "none" | "api_key" | "oauth",
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            <div className="flex items-center gap-2">
+                              <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                              None
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="api_key">
+                            <div className="flex items-center gap-2">
+                              <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                              API Key
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="oauth">
+                            <div className="flex items-center gap-2">
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                              OAuth
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {form.authType !== "none" && (
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="cred-ref">Credential Reference</Label>
+                        <Input
+                          id="cred-ref"
+                          placeholder="ENV_VAR_NAME or secret reference"
+                          value={form.credentialRef}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              credentialRef: e.target.value,
+                            }))
+                          }
+                          className="rounded-xl font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Reference to the credential stored in environment
+                          variables.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+              </>
             )}
 
-            {/* Content Markdown (for custom skills) */}
-            <div className="space-y-2">
-              <Label htmlFor="skill-content">SKILL.md Content (optional)</Label>
+            {/* Section: Content Markdown */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                SKILL.md Content
+                <Badge variant="secondary" className="text-[10px] rounded-full">
+                  Optional
+                </Badge>
+              </div>
               <Textarea
                 id="skill-content"
-                placeholder="# Skill Instructions&#10;&#10;Markdown content that gets materialized as SKILL.md in the agent directory..."
+                placeholder={"# Skill Instructions\n\nMarkdown content that gets materialized as SKILL.md in the agent directory..."}
                 value={form.contentMarkdown}
                 onChange={(e) =>
                   setForm((f) => ({
@@ -835,7 +914,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                     contentMarkdown: e.target.value,
                   }))
                 }
-                className="rounded-xl min-h-[120px] font-mono text-sm"
+                className="rounded-xl min-h-[120px] font-mono text-sm resize-y"
               />
               <p className="text-xs text-muted-foreground">
                 Markdown that gets written to{" "}
@@ -846,70 +925,174 @@ export default function SkillsPage({ params }: SkillsPageProps) {
               </p>
             </div>
 
-            {/* Rate limit & Approval */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="skill-rate">
-                  Rate Limit (req/min, optional)
-                </Label>
-                <Input
-                  id="skill-rate"
-                  type="number"
-                  min="0"
-                  placeholder="e.g. 60"
-                  value={form.rateLimit}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, rateLimit: e.target.value }))
-                  }
-                  className="rounded-xl"
-                />
+            <Separator />
+
+            {/* Section: Behavior */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Gauge className="h-4 w-4 text-muted-foreground" />
+                Behavior
               </div>
-              <div className="flex flex-col justify-end gap-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="skill-approval"
-                    checked={form.requiresApproval}
-                    onCheckedChange={(checked) =>
-                      setForm((f) => ({
-                        ...f,
-                        requiresApproval: checked === true,
-                      }))
-                    }
-                  />
-                  <Label
-                    htmlFor="skill-approval"
-                    className="text-sm font-normal cursor-pointer"
-                  >
-                    Requires approval before use
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="skill-rate">
+                    Rate Limit (req/min)
                   </Label>
+                  <Input
+                    id="skill-rate"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 60"
+                    value={form.rateLimit}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, rateLimit: e.target.value }))
+                    }
+                    className="rounded-xl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty for no limit
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="skill-enabled"
-                    checked={form.isEnabled}
-                    onCheckedChange={(checked) =>
-                      setForm((f) => ({
-                        ...f,
-                        isEnabled: checked === true,
-                      }))
-                    }
-                  />
-                  <Label
-                    htmlFor="skill-enabled"
-                    className="text-sm font-normal cursor-pointer"
-                  >
-                    Enabled
-                  </Label>
+                <div className="flex flex-col justify-end gap-3 pb-1">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="skill-approval"
+                      checked={form.requiresApproval}
+                      onCheckedChange={(checked) =>
+                        setForm((f) => ({
+                          ...f,
+                          requiresApproval: checked === true,
+                        }))
+                      }
+                    />
+                    <Label
+                      htmlFor="skill-approval"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Requires approval before use
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="skill-enabled"
+                      checked={form.isEnabled}
+                      onCheckedChange={(checked) =>
+                        setForm((f) => ({
+                          ...f,
+                          isEnabled: checked === true,
+                        }))
+                      }
+                    />
+                    <Label
+                      htmlFor="skill-enabled"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Enabled
+                    </Label>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Agents using this skill (edit mode only) */}
+            {editingSkill && (() => {
+              const skillAgents = agentsBySkillMap?.[editingSkill as string] ?? [];
+              return (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Bot className="h-4 w-4 text-muted-foreground" />
+                      Agents Using This Skill
+                      <Badge variant="secondary" className="text-[10px] rounded-full">
+                        {skillAgents.length}
+                      </Badge>
+                    </div>
+                    {skillAgents.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {skillAgents.map((agent) => (
+                          <div
+                            key={agent._id}
+                            className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5"
+                          >
+                            <Avatar className="h-5 w-5">
+                              {agent.avatarUrl ? (
+                                <AvatarImage
+                                  src={agent.avatarUrl}
+                                  alt={agent.name}
+                                />
+                              ) : null}
+                              <AvatarFallback className="text-[9px] bg-muted font-medium">
+                                {agent.name[0].toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm">{agent.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        This skill is not currently assigned to any agents.
+                      </p>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            {editingSkill && (
+              <div className="flex gap-2 mr-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-lg text-muted-foreground hover:text-foreground gap-1.5"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleToggle(editingSkill, form.isEnabled);
+                    setDialogOpen(false);
+                    resetForm();
+                    setEditingSkill(null);
+                  }}
+                >
+                  {form.isEnabled ? (
+                    <PowerOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Power className="h-3.5 w-3.5" />
+                  )}
+                  {form.isEnabled ? "Disable" : "Enable"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const skill = (skills ?? []).find(
+                      (s) => s._id === editingSkill,
+                    );
+                    if (skill) {
+                      setDeleteTarget({
+                        id: skill._id,
+                        name: skill.name,
+                      });
+                    }
+                    setDialogOpen(false);
+                    resetForm();
+                    setEditingSkill(null);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            )}
             <Button
               variant="outline"
               onClick={() => {
-                setCreateOpen(false);
+                setDialogOpen(false);
                 setEditingSkill(null);
                 resetForm();
               }}

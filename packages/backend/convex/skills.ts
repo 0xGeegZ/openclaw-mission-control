@@ -223,6 +223,45 @@ export const remove = mutation({
 });
 
 /**
+ * List agents using each skill in the account.
+ * Returns a map: skillId -> array of { _id, name, slug, avatarUrl }.
+ */
+export const agentsBySkill = query({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountMember(ctx, args.accountId);
+
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+
+    const map: Record<
+      string,
+      Array<{ _id: string; name: string; slug: string; avatarUrl?: string }>
+    > = {};
+
+    for (const agent of agents) {
+      const skillIds = agent.openclawConfig?.skillIds ?? [];
+      for (const skillId of skillIds) {
+        const key = skillId as string;
+        if (!map[key]) map[key] = [];
+        map[key].push({
+          _id: agent._id,
+          name: agent.name,
+          slug: agent.slug,
+          avatarUrl: agent.avatarUrl,
+        });
+      }
+    }
+
+    return map;
+  },
+});
+
+/**
  * Toggle skill enabled status.
  * Requires admin role.
  */
