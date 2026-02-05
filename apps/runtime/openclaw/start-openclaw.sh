@@ -289,19 +289,55 @@ find "$CONFIG_DIR" -name "SingletonLock" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonSocket" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonCookie" -delete 2>/dev/null || true
 
+# Non-interactive git: never prompt for credentials
+export GIT_TERMINAL_PROMPT=0
+
+# Git auth via GH_TOKEN: prefer gh credential helper, fallback to GIT_ASKPASS
+GITHUB_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+if [ -n "$GITHUB_TOKEN" ]; then
+  if gh auth setup-git --hostname github.com 2>/dev/null; then
+    echo "Git credential helper configured (gh auth setup-git)"
+  else
+    GIT_ASKPASS_SCRIPT="/tmp/git-askpass-$$"
+    echo '#!/bin/sh
+exec echo "${GIT_ASKPASS_TOKEN}"' > "$GIT_ASKPASS_SCRIPT"
+    chmod +x "$GIT_ASKPASS_SCRIPT"
+    export GIT_ASKPASS="$GIT_ASKPASS_SCRIPT"
+    export GIT_ASKPASS_TOKEN="$GITHUB_TOKEN"
+    echo "Git auth using GIT_ASKPASS fallback"
+  fi
+fi
+
+# Default git identity for commits (overridable via env)
+if [ -z "$(git config --global user.name 2>/dev/null)" ]; then
+  git config --global user.name "${GIT_AUTHOR_NAME:-OpenClaw Agent}"
+fi
+if [ -z "$(git config --global user.email 2>/dev/null)" ]; then
+  git config --global user.email "${GIT_AUTHOR_EMAIL:-openclaw-agent@users.noreply.github.com}"
+fi
+
 WORKSPACE_DIR="/root/clawd"
 BOOTSTRAP_FILE="$WORKSPACE_DIR/BOOTSTRAP.md"
-REPO_DIR="$WORKSPACE_DIR/openclaw-mission-control"
+WRITABLE_REPO_DIR="$WORKSPACE_DIR/repos/openclaw-mission-control"
+REPO_URL="https://github.com/0xGeegZ/openclaw-mission-control.git"
 
 if [ -f "$BOOTSTRAP_FILE" ]; then
   echo "Removing BOOTSTRAP.md to avoid bootstrap mode..."
   rm -f "$BOOTSTRAP_FILE"
 fi
 
-mkdir -p "$WORKSPACE_DIR/memory" "$WORKSPACE_DIR/deliverables"
+mkdir -p "$WORKSPACE_DIR/memory" "$WORKSPACE_DIR/deliverables" "$WORKSPACE_DIR/repos"
 touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md"
 DAILY_MEMORY_FILE="$WORKSPACE_DIR/memory/$(date +%F).md"
 touch "$DAILY_MEMORY_FILE"
+
+# Clone writable repo from GitHub only (no host mount)
+if [ ! -d "$WRITABLE_REPO_DIR/.git" ]; then
+  echo "Preparing writable repo at $WRITABLE_REPO_DIR..."
+  if ! git clone "$REPO_URL" "$WRITABLE_REPO_DIR"; then
+    echo "WARNING: Failed to clone repo. PR creation will be blocked. Check GH_TOKEN and network."
+  fi
+fi
 
 sync_doc_if_changed() {
   local src="$1"
@@ -312,8 +348,11 @@ sync_doc_if_changed() {
   fi
 }
 
-sync_doc_if_changed "$REPO_DIR/docs/runtime/HEARTBEAT.md" "$WORKSPACE_DIR/HEARTBEAT.md"
-sync_doc_if_changed "$REPO_DIR/docs/runtime/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
+# Sync runtime docs from writable clone into workspace (for agents)
+if [ -d "$WRITABLE_REPO_DIR/.git" ]; then
+  sync_doc_if_changed "$WRITABLE_REPO_DIR/docs/runtime/HEARTBEAT.md" "$WORKSPACE_DIR/HEARTBEAT.md"
+  sync_doc_if_changed "$WRITABLE_REPO_DIR/docs/runtime/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
+fi
 
 TOKEN="${OPENCLAW_GATEWAY_TOKEN-local}"
 echo ""
@@ -346,7 +385,7 @@ else
   clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind local &
 fi
 GATEWAY_PID=$!
-trap "kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait" SIGTERM SIGINT
+trap 'kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait' SIGTERM SIGINT
 wait $GATEWAY_PID
 EXIT_CODE=$?
 kill $CHROMIUM_PID 2>/dev/null

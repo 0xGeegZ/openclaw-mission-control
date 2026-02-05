@@ -47,6 +47,5 @@ services:
     volumes:
       - ../../.runtime/openclaw-data:/root/.clawdbot
       - ../../.runtime/openclaw-workspace:/root/clawd
-      - ../..:/root/clawd/openclaw-mission-control:ro
     ports:
       - "127.0.0.1:18789:18789"

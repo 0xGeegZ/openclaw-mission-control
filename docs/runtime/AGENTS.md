@@ -6,12 +6,18 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ## Primary repository
 
-- Local checkout (preferred): `/root/clawd/openclaw-mission-control`
+- Writable clone (use for all work): `/root/clawd/repos/openclaw-mission-control`
 - GitHub: <https://github.com/0xGeegZ/openclaw-mission-control>
-- If local checkout is available, use it instead of GitHub/web_fetch
-- If access fails, mark the task BLOCKED and request credentials
-- To inspect directories, use `exec` (for example, `ls /root/clawd/openclaw-mission-control`) and only use `read` on files
-- The repository mount is read-only; write artifacts to `/root/clawd/deliverables` and reference them in the thread
+- Before starting a task, run `git fetch origin` and `git pull --ff-only` in the writable clone.
+- If the writable clone is missing, run `git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control`
+- If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
+- To inspect directories, use `exec` (e.g. `ls /root/clawd/repos/openclaw-mission-control`); use `read` only on files.
+- Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run `gh auth login`; when GH_TOKEN is set, use `gh` and `git` directly.
+- Write artifacts to `/root/clawd/deliverables` and reference them in the thread.
+
+### Creating a PR
+
+Work in `/root/clawd/repos/openclaw-mission-control`: create a branch, commit, push, then open the PR with `gh pr create` (e.g. `gh pr create --title "..." --body "..."`). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
 
 ## Non-negotiable rules
 
