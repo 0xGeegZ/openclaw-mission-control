@@ -14,6 +14,11 @@ import {
   createStatusChangeNotification,
 } from "./lib/notifications";
 import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
+import {
+  cascadeDeleteTask,
+  validateTaskReferences,
+  validateAgentBelongsToAccount,
+} from "./lib/reference_validation";
 
 /**
  * Internal: list tasks for an account (for standup/cron). No auth.
@@ -410,12 +415,9 @@ export const assign = mutation({
     }
 
     if (args.assignedAgentIds !== undefined) {
-      // Validate agents exist and belong to account
+      // Phase 3 Enhancement: Validate agents exist and belong to account
       for (const agentId of nextAssignedAgentIds) {
-        const agent = await ctx.db.get(agentId);
-        if (!agent || agent.accountId !== task.accountId) {
-          throw new Error(`Invalid agent: ${agentId}`);
-        }
+        await validateAgentBelongsToAccount(ctx.db, task.accountId, agentId);
       }
       updates.assignedAgentIds = nextAssignedAgentIds;
     }
@@ -556,7 +558,13 @@ export const assign = mutation({
 
 /**
  * Delete a task.
- * Also deletes associated messages and subscriptions.
+ * Phase 3 Enhancement: Comprehensively deletes task and all associated data:
+ * - Messages (with uploads)
+ * - Subscriptions
+ * - Notifications
+ * - Associated activities
+ *
+ * Uses cascadeDeleteTask helper for maintainable cleanup.
  */
 export const remove = mutation({
   args: {
@@ -573,41 +581,11 @@ export const remove = mutation({
       task.accountId,
     );
 
-    // Delete associated messages
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-      .collect();
+    // Use cascadeDeleteTask helper for comprehensive deletion
+    await cascadeDeleteTask(ctx.db, ctx, args.taskId);
 
-    for (const message of messages) {
-      await ctx.db.delete(message._id);
-    }
-
-    // Delete associated subscriptions
-    const subscriptions = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-      .collect();
-
-    for (const subscription of subscriptions) {
-      await ctx.db.delete(subscription._id);
-    }
-
-    // Delete associated notifications
-    const notifications = await ctx.db
-      .query("notifications")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-      .collect();
-
-    for (const notification of notifications) {
-      await ctx.db.delete(notification._id);
-    }
-
-    // Delete task
-    await ctx.db.delete(args.taskId);
-
-    // Note: Don't log delete activity since task is gone
-    // Could log to a separate audit log if needed
+    // Note: Activities for task deletion are intentionally not logged
+    // since the task itself is deleted. Could implement separate audit log if needed.
 
     return true;
   },
