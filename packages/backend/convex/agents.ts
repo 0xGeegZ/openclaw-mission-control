@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
 import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
+import { generateDefaultSoul } from "./lib/agent_soul";
 import { Id } from "./_generated/dataModel";
 
 /**
@@ -11,41 +12,6 @@ import { Id } from "./_generated/dataModel";
  */
 function generateSessionKey(slug: string, accountId: Id<"accounts">): string {
   return `agent:${slug}:${accountId}`;
-}
-
-/**
- * Generate default SOUL content for an agent.
- */
-function generateDefaultSoul(name: string, role: string): string {
-  return `# SOUL — ${name}
-
-Role: ${role}
-Level: specialist
-
-## Mission
-Execute assigned tasks with precision and provide clear, actionable updates.
-
-## Personality constraints
-- Be concise and focused
-- Provide evidence for claims
-- Ask questions only when blocked
-- Update task status promptly
-
-## Default operating procedure
-- On heartbeat: check for assigned tasks and mentions
-- Post structured updates in task threads
-- Create documents for deliverables
-
-## Quality checks (must pass)
-- Evidence attached when making claims
-- Clear next step identified
-- Task state is correct
-
-## What you never do
-- Invent facts without sources
-- Change decisions without documentation
-- Leave tasks in ambiguous states
-`;
 }
 
 /**
@@ -268,6 +234,9 @@ export const create = mutation({
 
     const sessionKey = generateSessionKey(args.slug, args.accountId);
 
+    const soulContent =
+      args.soulContent ?? generateDefaultSoul(args.name, args.role);
+
     const agentId = await ctx.db.insert("agents", {
       accountId: args.accountId,
       name: args.name,
@@ -278,7 +247,7 @@ export const create = mutation({
       status: "offline",
       heartbeatInterval: args.heartbeatInterval ?? 15, // Default 15 minutes
       avatarUrl: args.avatarUrl,
-      soulContent: args.soulContent,
+      soulContent,
       openclawConfig,
       createdAt: Date.now(),
     });

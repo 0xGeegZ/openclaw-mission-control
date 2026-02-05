@@ -1,6 +1,10 @@
 import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
-import { getGatewayState, registerAgentSession, removeAgentSession } from "./gateway";
+import {
+  getGatewayState,
+  registerAgentSession,
+  removeAgentSession,
+} from "./gateway";
 import {
   ensureHeartbeatScheduled,
   getScheduledAgentIds,
@@ -8,6 +12,10 @@ import {
   type AgentForHeartbeat,
 } from "./heartbeat";
 import { createLogger } from "./logger";
+import {
+  syncOpenClawProfiles,
+  type AgentForProfile,
+} from "./openclaw-profiles";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 
 const log = createLogger("[AgentSync]");
@@ -56,7 +64,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
 
     const gateway = getGatewayState();
     const sessionAgentIds = new Set(
-      Array.from(gateway.sessions.values()).map((s) => s.agentId)
+      Array.from(gateway.sessions.values()).map((s) => s.agentId),
     );
     const scheduledAgentIds = new Set(getScheduledAgentIds());
     const currentAgentIds = new Set([...sessionAgentIds, ...scheduledAgentIds]);
@@ -82,6 +90,28 @@ async function runSync(config: RuntimeConfig): Promise<void> {
       }
     }
 
+    if (config.openclawProfileSyncEnabled) {
+      const profileAgents = (await client.action(
+        api.service.actions.listAgentsForRuntime,
+        {
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
+        },
+      )) as AgentForProfile[];
+
+      const { configChanged } = syncOpenClawProfiles(profileAgents, {
+        workspaceRoot: config.openclawWorkspaceRoot,
+        configPath: config.openclawConfigPath,
+        agentsMdPath: config.openclawAgentsMdPath,
+      });
+      // Reload is handled by the gateway when OPENCLAW_CONFIG_RELOAD=1 (file watch + restart).
+      if (configChanged) {
+        log.debug(
+          "OpenClaw config file changed; gateway will reload if OPENCLAW_CONFIG_RELOAD=1",
+        );
+      }
+    }
+
     state.lastSyncAt = Date.now();
     state.addedCount = added;
     state.removedCount = removed;
@@ -94,6 +124,31 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     log.error("Sync failed:", message);
   } finally {
     state.syncInProgress = false;
+  }
+}
+
+/**
+ * Run profile sync once (fetch listAgentsForRuntime, write workspaces and openclaw.json).
+ * Used at startup before heartbeats so OpenClaw config exists when gateway runs.
+ */
+export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
+  if (!config.openclawProfileSyncEnabled) return;
+  try {
+    const client = getConvexClient();
+    const profileAgents = (await client.action(
+      api.service.actions.listAgentsForRuntime,
+      {
+        accountId: config.accountId,
+        serviceToken: config.serviceToken,
+      },
+    )) as AgentForProfile[];
+    syncOpenClawProfiles(profileAgents, {
+      workspaceRoot: config.openclawWorkspaceRoot,
+      configPath: config.openclawConfigPath,
+      agentsMdPath: config.openclawAgentsMdPath,
+    });
+  } catch (error) {
+    log.warn("Initial profile sync failed:", getErrorMessage(error));
   }
 }
 

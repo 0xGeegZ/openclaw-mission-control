@@ -7,6 +7,7 @@ import {
   validateStatusRequirements,
   TaskStatus,
   TASK_STATUS_ORDER,
+  PAUSE_ALLOWED_STATUSES,
 } from "./lib/task_workflow";
 import { logActivity } from "./lib/activity";
 import {
@@ -370,6 +371,134 @@ export const updateStatus = mutation({
     });
 
     return args.taskId;
+  },
+});
+
+const PAUSED_BLOCKED_REASON = "Paused by user (/stop)";
+
+/**
+ * Pause all agents on the task (emergency stop). Sets task to blocked and assigned agents to idle.
+ * Callable from slash command /stop in the message input.
+ *
+ * @returns { paused: true } on success, or { paused: true, alreadyBlocked: true } when task was already blocked.
+ * @throws When task not found, user not account member, or status not in [assigned, in_progress, review].
+ */
+export const pauseAgentsOnTask = mutation({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      task.accountId,
+    );
+
+    const currentStatus = task.status as TaskStatus;
+
+    if (currentStatus === "blocked") {
+      return { paused: true, alreadyBlocked: true };
+    }
+
+    if (!PAUSE_ALLOWED_STATUSES.includes(currentStatus)) {
+      throw new Error(
+        "Task can only be paused when status is Assigned, In progress, or Review",
+      );
+    }
+
+    const hasAssignees =
+      task.assignedUserIds.length > 0 || task.assignedAgentIds.length > 0;
+    const requirementError = validateStatusRequirements(
+      "blocked",
+      hasAssignees,
+      PAUSED_BLOCKED_REASON,
+    );
+    if (requirementError) {
+      throw new Error(`Invalid status change: ${requirementError}`);
+    }
+
+    await ctx.db.patch(args.taskId, {
+      status: "blocked",
+      blockedReason: PAUSED_BLOCKED_REASON,
+      updatedAt: Date.now(),
+    });
+
+    const now = Date.now();
+    for (const agentId of task.assignedAgentIds) {
+      const agent = await ctx.db.get(agentId);
+      if (!agent) continue;
+
+      const oldStatus = agent.status;
+      await ctx.db.patch(agentId, {
+        status: "idle",
+        currentTaskId: undefined,
+        lastHeartbeat: now,
+      });
+
+      await logActivity({
+        ctx,
+        accountId: task.accountId,
+        type: "agent_status_changed",
+        actorType: "user",
+        actorId: userId,
+        actorName: userName,
+        targetType: "agent",
+        targetId: agentId,
+        targetName: agent.name,
+        meta: { oldStatus, newStatus: "idle", reason: "pause_task" },
+      });
+    }
+
+    for (const uid of task.assignedUserIds) {
+      await createStatusChangeNotification(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "user",
+        uid,
+        userName,
+        task.title,
+        "blocked",
+      );
+    }
+    for (const agentId of task.assignedAgentIds) {
+      const agent = await ctx.db.get(agentId);
+      if (agent) {
+        await createStatusChangeNotification(
+          ctx,
+          task.accountId,
+          args.taskId,
+          "agent",
+          agentId,
+          userName,
+          task.title,
+          "blocked",
+        );
+      }
+    }
+
+    await logActivity({
+      ctx,
+      accountId: task.accountId,
+      type: "task_status_changed",
+      actorType: "user",
+      actorId: userId,
+      actorName: userName,
+      targetType: "task",
+      targetId: args.taskId,
+      targetName: task.title,
+      meta: {
+        oldStatus: currentStatus,
+        newStatus: "blocked",
+        blockedReason: PAUSED_BLOCKED_REASON,
+      },
+    });
+
+    return { paused: true };
   },
 });
 

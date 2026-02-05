@@ -17,7 +17,7 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ["assigned"],
   assigned: ["in_progress", "blocked", "inbox"],
   in_progress: ["review", "blocked"],
-  review: ["done", "in_progress"],
+  review: ["done", "in_progress", "blocked"],
   done: [], // Cannot transition from done
   blocked: ["assigned", "in_progress"],
 };
@@ -83,6 +83,26 @@ export function validateStatusRequirements(
   }
 
   return null;
+}
+
+/**
+ * Statuses from which /stop can move the task to blocked (emergency pause).
+ * Used by pauseAgentsOnTask; exported for unit tests.
+ */
+export const PAUSE_ALLOWED_STATUSES: readonly TaskStatus[] = [
+  "assigned",
+  "in_progress",
+  "review",
+];
+
+/**
+ * Returns true if a task in this status can be paused via /stop (moved to blocked).
+ *
+ * @param status - Current task status
+ * @returns True if pauseAgentsOnTask will transition to blocked; false for inbox, done, or already blocked
+ */
+export function isPauseAllowedStatus(status: TaskStatus): boolean {
+  return (PAUSE_ALLOWED_STATUSES as readonly string[]).includes(status);
 }
 
 /**

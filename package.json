@@ -2,9 +2,9 @@
   "name": "openclaw-mission-control",
   "private": true,
   "scripts": {
-    "dev:app": "(cd packages/backend && npx convex dev) & (cd apps/web && npm run dev) & wait",
+    "dev": "(cd packages/backend && npx convex dev) & (cd apps/web && npm run dev) & wait",
     "dev:openclaw": "cd apps/runtime && npm run docker:up:openclaw",
-    "dev": "turbo run dev",
+    "dev:turbo": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",

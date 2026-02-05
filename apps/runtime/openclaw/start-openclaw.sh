@@ -17,6 +17,8 @@ fi
 
 CONFIG_DIR="/root/.clawdbot"
 CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
+# Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
+OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
 TEMPLATE_DIR="/root/.clawdbot-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -291,6 +293,45 @@ function pruneSessionsIfConfigured() {
   }
 }
 
+// Merge runtime-generated config if present (profile sync from mission-control runtime).
+// We merge list and defaults so existing agents.defaults.model (Vercel/legacy) is preserved; only list and runtime defaults (e.g. skipBootstrap) are taken from generated.
+function modelForVercelGateway(model) {
+  if (!hasVercelKey || typeof model !== 'string') return model;
+  if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 'vercel-ai-gateway/' + model;
+  return model;
+}
+const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
+try {
+  if (require('fs').existsSync(openclawConfigPath)) {
+    const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));
+    if (generated) {
+      if (generated.agents) {
+        if (Array.isArray(generated.agents.list)) {
+          config.agents.list = generated.agents.list.map(function (entry) {
+            var copy = Object.assign({}, entry);
+            if (typeof copy.model === 'string') copy.model = modelForVercelGateway(copy.model);
+            return copy;
+          });
+        }
+        if (generated.agents.defaults && typeof generated.agents.defaults === 'object') {
+          config.agents.defaults = Object.assign({}, config.agents.defaults, generated.agents.defaults);
+        }
+        console.log('Merged agents from', openclawConfigPath);
+      }
+      if (generated.load) {
+        config.load = Object.assign({}, config.load || {}, generated.load);
+        console.log('Merged load (extraDirs) from', openclawConfigPath);
+      }
+      if (generated.skills && generated.skills.entries && typeof generated.skills.entries === 'object') {
+        config.skills.entries = Object.assign(config.skills.entries || {}, generated.skills.entries);
+        console.log('Merged skills.entries from', openclawConfigPath);
+      }
+    }
+  }
+} catch (e) {
+  console.warn('Could not merge OPENCLAW_CONFIG_PATH:', e.message);
+}
+
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');
 try {
@@ -403,8 +444,36 @@ else
   clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind local &
 fi
 GATEWAY_PID=$!
-trap 'kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait' SIGTERM SIGINT
+
+# Optional: when OPENCLAW_CONFIG_RELOAD=1, watch runtime-generated config and restart gateway on change
+if [ -n "${OPENCLAW_CONFIG_RELOAD:-}" ] && [ "${OPENCLAW_CONFIG_RELOAD}" = "1" ]; then
+  (
+    # Set baseline mtime so only changes after startup trigger a restart
+    LAST_MTIME=""
+    if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+      LAST_MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+    fi
+    while kill -0 "$GATEWAY_PID" 2>/dev/null; do
+      sleep 30
+      if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+        MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+        if [ -n "$MTIME" ] && [ -n "$LAST_MTIME" ] && [ "$MTIME" != "$LAST_MTIME" ]; then
+          echo "OpenClaw config changed, restarting gateway..."
+          kill "$GATEWAY_PID" 2>/dev/null || true
+          exit 0
+        fi
+        LAST_MTIME="$MTIME"
+      fi
+    done
+  ) &
+  WATCHER_PID=$!
+  trap 'kill $GATEWAY_PID $CHROMIUM_PID $WATCHER_PID 2>/dev/null; wait' SIGTERM SIGINT
+else
+  trap 'kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait' SIGTERM SIGINT
+fi
+
 wait $GATEWAY_PID
 EXIT_CODE=$?
 kill $CHROMIUM_PID 2>/dev/null
+[ -n "${WATCHER_PID:-}" ] && kill "$WATCHER_PID" 2>/dev/null
 exit $EXIT_CODE

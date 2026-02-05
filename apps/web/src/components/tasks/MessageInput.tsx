@@ -19,6 +19,7 @@ import {
   FileCheck,
   MessageSquareText,
   ListChecks,
+  Slash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
@@ -29,6 +30,10 @@ import {
   TooltipTrigger,
 } from "@packages/ui/components/tooltip";
 import { useAccount } from "@/lib/hooks/useAccount";
+import {
+  SLASH_COMMANDS,
+  parseSlashCommand,
+} from "@/components/tasks/slashCommands";
 
 interface AttachedFile {
   id: string;
@@ -47,7 +52,7 @@ type MentionOption =
   | { type: "agent"; agent: Doc<"agents"> };
 
 /**
- * Message input with send button and @ mention autocomplete.
+ * Message input with send button, @ mention autocomplete, and / slash commands.
  */
 export function MessageInput({
   taskId,
@@ -65,6 +70,7 @@ export function MessageInput({
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const slashDropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +78,12 @@ export function MessageInput({
   const agents = useQuery(api.agents.list, accountId ? { accountId } : "skip");
 
   const createMessage = useMutation(api.messages.create);
+  const pauseAgentsOnTask = useMutation(api.tasks.pauseAgentsOnTask);
+
+  const [showSlashDropdown, setShowSlashDropdown] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashStartIndex, setSlashStartIndex] = useState<number | null>(null);
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
 
   // Loading state for agents
   const isLoadingAgents = agents === undefined;
@@ -119,24 +131,50 @@ export function MessageInput({
     setSelectedMentionIndex(0);
   }, [filteredAgents.length]);
 
+  const filteredSlashCommands = useMemo(() => {
+    const q = slashQuery.toLowerCase();
+    return SLASH_COMMANDS.filter(
+      (cmd) =>
+        cmd.label.toLowerCase().startsWith(q) ||
+        cmd.label.toLowerCase().includes(q),
+    );
+  }, [slashQuery]);
+
+  useEffect(() => {
+    setSelectedSlashIndex(0);
+  }, [filteredSlashCommands.length]);
+
   const handleContentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       const cursorPos = e.target.selectionStart || 0;
       setContent(value);
 
-      // Check for @ mention trigger
       const textBeforeCursor = value.slice(0, cursorPos);
+      const slashMatch = textBeforeCursor.match(/\/(\w*)$/);
       const atMatch = textBeforeCursor.match(/@(\w*)$/);
 
-      if (atMatch) {
-        setShowMentionDropdown(true);
-        setMentionQuery(atMatch[1]);
-        setMentionStartIndex(cursorPos - atMatch[0].length);
-      } else {
+      if (slashMatch) {
+        setShowSlashDropdown(true);
+        setSlashQuery(slashMatch[1]);
+        setSlashStartIndex(cursorPos - slashMatch[0].length);
         setShowMentionDropdown(false);
         setMentionQuery("");
         setMentionStartIndex(null);
+      } else {
+        setShowSlashDropdown(false);
+        setSlashQuery("");
+        setSlashStartIndex(null);
+
+        if (atMatch) {
+          setShowMentionDropdown(true);
+          setMentionQuery(atMatch[1]);
+          setMentionStartIndex(cursorPos - atMatch[0].length);
+        } else {
+          setShowMentionDropdown(false);
+          setMentionQuery("");
+          setMentionStartIndex(null);
+        }
       }
     },
     [],
@@ -180,20 +218,75 @@ export function MessageInput({
     [insertMention],
   );
 
+  /** Clears input and both dropdowns, then refocuses the textarea. Use after successful submit. */
+  const clearInputAndFocus = useCallback(() => {
+    setContent("");
+    setShowMentionDropdown(false);
+    setShowSlashDropdown(false);
+    textareaRef.current?.focus();
+  }, []);
+
+  const insertSlashCommand = useCallback(
+    (commandLabel: string) => {
+      if (slashStartIndex === null) return;
+
+      const beforeSlash = content.slice(0, slashStartIndex);
+      const afterCursor = content.slice(
+        slashStartIndex + slashQuery.length + 1, // +1 for the /
+      );
+
+      const newContent = `${beforeSlash}/${commandLabel} ${afterCursor}`;
+      setContent(newContent);
+      setShowSlashDropdown(false);
+      setSlashQuery("");
+      setSlashStartIndex(null);
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const newCursorPos = beforeSlash.length + commandLabel.length + 2; // / + label + space
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
+    },
+    [content, slashStartIndex, slashQuery.length],
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || isSubmitting) return;
+    const trimmed = content.trim();
+    if (!trimmed || isSubmitting) return;
+
+    const slashParsed = parseSlashCommand(trimmed);
+    if (slashParsed?.command === "stop") {
+      setIsSubmitting(true);
+      try {
+        const result = await pauseAgentsOnTask({ taskId });
+        if (result?.alreadyBlocked) {
+          toast.info("Task is already paused.");
+        } else {
+          toast.success("Agents paused", {
+            description: "All agents on this task have been paused.",
+          });
+        }
+        clearInputAndFocus();
+      } catch (error) {
+        toast.error("Failed to pause agents", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       await createMessage({
         taskId,
-        content: content.trim(),
+        content: trimmed,
       });
-
-      setContent("");
-      setShowMentionDropdown(false);
-      textareaRef.current?.focus();
+      clearInputAndFocus();
     } catch (error) {
       toast.error("Failed to send message", {
         description: error instanceof Error ? error.message : "Unknown error",
@@ -204,6 +297,38 @@ export function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showSlashDropdown && filteredSlashCommands.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedSlashIndex((prev) =>
+          prev < filteredSlashCommands.length - 1 ? prev + 1 : 0,
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedSlashIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredSlashCommands.length - 1,
+        );
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const safeSlashIndex = Math.min(
+          selectedSlashIndex,
+          filteredSlashCommands.length - 1,
+        );
+        const cmd = filteredSlashCommands[safeSlashIndex];
+        if (cmd) insertSlashCommand(cmd.label);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSlashDropdown(false);
+        return;
+      }
+    }
+
     // Handle mention dropdown navigation
     if (showMentionDropdown && filteredAgents.length > 0) {
       if (e.key === "ArrowDown") {
@@ -222,7 +347,12 @@ export function MessageInput({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        handleMentionSelect(filteredAgents[selectedMentionIndex]);
+        const safeIndex = Math.min(
+          selectedMentionIndex,
+          filteredAgents.length - 1,
+        );
+        const option = filteredAgents[safeIndex];
+        if (option) handleMentionSelect(option);
         return;
       }
       if (e.key === "Escape") {
@@ -239,7 +369,7 @@ export function MessageInput({
     }
   };
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -247,6 +377,7 @@ export function MessageInput({
         !containerRef.current.contains(e.target as Node)
       ) {
         setShowMentionDropdown(false);
+        setShowSlashDropdown(false);
       }
     };
 
@@ -323,6 +454,17 @@ export function MessageInput({
     }
   }, [selectedMentionIndex, showMentionDropdown]);
 
+  useEffect(() => {
+    if (showSlashDropdown && slashDropdownRef.current) {
+      const selectedElement = slashDropdownRef.current.querySelector(
+        `[data-slash-index="${selectedSlashIndex}"]`,
+      );
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [selectedSlashIndex, showSlashDropdown]);
+
   return (
     <TooltipProvider>
       <div ref={containerRef} className="border-t bg-card/80 backdrop-blur-sm">
@@ -357,6 +499,102 @@ export function MessageInput({
 
         <form onSubmit={handleSubmit} className="p-4">
           <div className="relative">
+            {/* Slash command dropdown - positioned above input */}
+            {showSlashDropdown && (
+              <div
+                ref={slashDropdownRef}
+                className="absolute bottom-full left-0 right-0 mb-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 max-w-sm"
+              >
+                <div className="px-3 py-2.5 border-b border-border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Slash className="h-3.5 w-3.5 text-primary" />
+                    <p className="text-xs font-medium text-foreground">
+                      Slash command
+                    </p>
+                  </div>
+                </div>
+
+                {filteredSlashCommands.length > 0 ? (
+                  <div
+                    className="max-h-64 overflow-y-auto p-1"
+                    role="listbox"
+                    aria-label="Slash command suggestions"
+                  >
+                    {filteredSlashCommands.map((cmd, index) => (
+                      <button
+                        key={cmd.id}
+                        type="button"
+                        role="option"
+                        aria-selected={index === selectedSlashIndex}
+                        data-slash-index={index}
+                        onClick={() => insertSlashCommand(cmd.label)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all rounded-lg",
+                          index === selectedSlashIndex
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-accent",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
+                            index === selectedSlashIndex
+                              ? "bg-primary-foreground/20"
+                              : "bg-muted",
+                          )}
+                        >
+                          <Slash
+                            className={cn(
+                              "h-4 w-4",
+                              index === selectedSlashIndex
+                                ? "text-primary-foreground"
+                                : "text-muted-foreground",
+                            )}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold">/{cmd.label}</p>
+                          <p
+                            className={cn(
+                              "text-xs truncate",
+                              index === selectedSlashIndex
+                                ? "text-primary-foreground/70"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {cmd.description}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No matching commands
+                    </p>
+                  </div>
+                )}
+
+                <div className="px-3 py-2 border-t border-border bg-muted/30">
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <kbd className="px-1.5 py-0.5 bg-background rounded border font-mono">
+                        Tab
+                      </kbd>
+                      <span>select</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="px-1 py-0.5 bg-background rounded border font-mono">
+                        Esc
+                      </kbd>
+                      <span>close</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Mention Autocomplete Dropdown - positioned above input */}
             {showMentionDropdown && (
               <div
@@ -380,7 +618,11 @@ export function MessageInput({
                     </p>
                   </div>
                 ) : filteredAgents.length > 0 ? (
-                  <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label="Agent suggestions">
+                  <div
+                    className="max-h-64 overflow-y-auto p-1"
+                    role="listbox"
+                    aria-label="Agent suggestions"
+                  >
                     {filteredAgents.map((option, index) => (
                       <button
                         key={option.type === "all" ? "all" : option.agent._id}
@@ -559,7 +801,7 @@ export function MessageInput({
                 rows={1}
                 aria-label="Message input"
                 aria-describedby="message-input-hints"
-                aria-expanded={showMentionDropdown}
+                aria-expanded={showMentionDropdown || showSlashDropdown}
                 aria-haspopup="listbox"
                 aria-autocomplete="list"
                 className={cn(
@@ -631,7 +873,10 @@ export function MessageInput({
             </div>
 
             {/* Keyboard hints */}
-            <div id="message-input-hints" className="flex items-center gap-3 mt-2 px-1 opacity-60 hover:opacity-100 transition-opacity">
+            <div
+              id="message-input-hints"
+              className="flex items-center gap-3 mt-2 px-1 opacity-60 hover:opacity-100 transition-opacity"
+            >
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
                   Enter
@@ -649,6 +894,12 @@ export function MessageInput({
                   @
                 </kbd>
                 mention
+              </span>
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
+                  /
+                </kbd>
+                command
               </span>
             </div>
           </div>

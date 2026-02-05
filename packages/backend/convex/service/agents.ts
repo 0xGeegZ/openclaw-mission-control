@@ -1,12 +1,14 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { agentStatusValidator } from "../lib/validators";
 import { logActivity } from "../lib/activity";
+import { generateDefaultSoul } from "../lib/agent_soul";
 
 /**
  * Service-only agent functions.
  * These are called by the runtime service, not users.
- * 
+ *
  * NOTE: In production, these should validate service auth token.
  * For now, they're internal mutations that can be called by actions.
  */
@@ -26,16 +28,16 @@ export const upsertHeartbeat = internalMutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     const oldStatus = agent.status;
     const now = Date.now();
-    
+
     await ctx.db.patch(args.agentId, {
       status: args.status,
       currentTaskId: args.currentTaskId,
       lastHeartbeat: now,
     });
-    
+
     // Log activity if status changed
     if (oldStatus !== args.status) {
       await logActivity({
@@ -51,7 +53,7 @@ export const upsertHeartbeat = internalMutation({
         meta: { oldStatus, newStatus: args.status, heartbeat: true },
       });
     }
-    
+
     return { success: true, timestamp: now };
   },
 });
@@ -69,14 +71,14 @@ export const markAllOffline = internalMutation({
       .query("agents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
-    
+
     for (const agent of agents) {
       if (agent.status !== "offline") {
         await ctx.db.patch(agent._id, {
           status: "offline",
           currentTaskId: undefined,
         });
-        
+
         await logActivity({
           ctx,
           accountId: args.accountId,
@@ -87,11 +89,15 @@ export const markAllOffline = internalMutation({
           targetType: "agent",
           targetId: agent._id,
           targetName: agent.name,
-          meta: { oldStatus: agent.status, newStatus: "offline", reason: "runtime_shutdown" },
+          meta: {
+            oldStatus: agent.status,
+            newStatus: "offline",
+            reason: "runtime_shutdown",
+          },
         });
       }
     }
-    
+
     return { success: true, count: agents.length };
   },
 });
@@ -124,6 +130,66 @@ export const listInternal = internalQuery({
 });
 
 /**
+ * List agents for runtime profile sync.
+ * Returns effectiveSoulContent (fallback to default), openclawConfig, and resolvedSkills.
+ */
+export const listForRuntime = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+
+    return await Promise.all(
+      agents.map(async (agent) => {
+        const effectiveSoulContent =
+          agent.soulContent?.trim() ||
+          generateDefaultSoul(agent.name, agent.role);
+
+        const rawSkillIds = agent.openclawConfig?.skillIds ?? [];
+        const skillIds: Id<"skills">[] = rawSkillIds.filter(
+          (id): id is Id<"skills"> =>
+            typeof id === "string" && id.trim() !== "",
+        );
+        const resolvedSkills: Array<{
+          _id: Id<"skills">;
+          name: string;
+          slug: string;
+          description: string | undefined;
+          contentMarkdown: string | undefined;
+        }> = [];
+        for (const skillId of skillIds) {
+          const skill = await ctx.db.get(skillId);
+          if (skill && skill.accountId === args.accountId && skill.isEnabled) {
+            resolvedSkills.push({
+              _id: skill._id,
+              name: skill.name,
+              slug: skill.slug,
+              description: skill.description,
+              contentMarkdown: skill.contentMarkdown ?? undefined,
+            });
+          }
+        }
+
+        return {
+          _id: agent._id,
+          name: agent.name,
+          slug: agent.slug,
+          role: agent.role,
+          sessionKey: agent.sessionKey,
+          openclawConfig: agent.openclawConfig,
+          effectiveSoulContent,
+          resolvedSkills,
+        };
+      }),
+    );
+  },
+});
+
+/**
  * Get a task by ID (internal, no user auth required).
  * Helper to avoid service/tasks path typing issues.
  */
@@ -148,21 +214,21 @@ export const getStaleAgents = internalQuery({
   handler: async (ctx, args) => {
     const agents = await ctx.db
       .query("agents")
-      .withIndex("by_account_status", (q) => 
-        q.eq("accountId", args.accountId).eq("status", "online")
+      .withIndex("by_account_status", (q) =>
+        q.eq("accountId", args.accountId).eq("status", "online"),
       )
       .collect();
-    
+
     const now = Date.now();
     const staleAgents = agents.filter((agent) => {
       if (!agent.lastHeartbeat) return true;
-      
+
       const intervalMs = agent.heartbeatInterval * 60 * 1000; // Convert to ms
-      const expectedBy = agent.lastHeartbeat + intervalMs + (60 * 1000); // Add 1 min grace
-      
+      const expectedBy = agent.lastHeartbeat + intervalMs + 60 * 1000; // Add 1 min grace
+
       return now > expectedBy;
     });
-    
+
     return staleAgents;
   },
 });

@@ -25,6 +25,9 @@ services:
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
       - OPENCLAW_REQUEST_TIMEOUT_MS=180000
+    volumes:
+      # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
+      - ../../.runtime/openclaw-workspace:/root/clawd
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:

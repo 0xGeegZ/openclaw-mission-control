@@ -11,6 +11,7 @@ import {
   requireAccountAdmin,
   requireAccountOwner,
 } from "./lib/auth";
+import { AVAILABLE_MODELS } from "@packages/shared";
 
 /**
  * Create a new account.
@@ -226,6 +227,15 @@ export const update = mutation({
         if (!agent || agent.accountId !== args.accountId) {
           throw new Error(
             "Orchestrator agent not found or does not belong to this account",
+          );
+        }
+      }
+      const validModelValues: string[] = AVAILABLE_MODELS.map((m) => m.value);
+      if (args.settings.agentDefaults?.model != null) {
+        const model = String(args.settings.agentDefaults.model).trim();
+        if (model && !validModelValues.includes(model)) {
+          throw new Error(
+            `Invalid agent default model: "${model}". Must be one of: ${validModelValues.join(", ")}`,
           );
         }
       }

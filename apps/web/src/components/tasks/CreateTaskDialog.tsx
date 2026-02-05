@@ -27,18 +27,21 @@ interface CreateTaskDialogProps {
 /**
  * Dialog for creating a new task.
  */
-export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) {
+export function CreateTaskDialog({
+  open,
+  onOpenChange,
+}: CreateTaskDialogProps) {
   const { accountId } = useAccount();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const createTask = useMutation(api.tasks.create);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accountId || !title.trim()) return;
-    
+
     setIsSubmitting(true);
     try {
       await createTask({
@@ -46,7 +49,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         title: title.trim(),
         description: description.trim() || undefined,
       });
-      
+
       toast.success("Task created successfully");
       setTitle("");
       setDescription("");
@@ -92,32 +95,39 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="description" className="text-sm font-medium flex items-center gap-2">
+            <Label
+              htmlFor="description"
+              className="text-sm font-medium flex items-center gap-2"
+            >
               <FileText className="h-3.5 w-3.5 text-muted-foreground" />
               Description
-              <span className="text-muted-foreground/60 font-normal text-xs">(optional)</span>
+              <span className="text-muted-foreground/60 font-normal text-xs">
+                (optional)
+              </span>
             </Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add more details about this task..."
-              rows={4}
-              className="resize-none text-sm"
+              rows={8}
+              className="min-h-[10rem] resize-y text-sm"
             />
-            <p className="text-[11px] text-muted-foreground/60">Supports Markdown formatting</p>
+            <p className="text-[11px] text-muted-foreground/60">
+              Supports Markdown formatting
+            </p>
           </div>
           <DialogFooter className="gap-2 sm:gap-2 pt-2">
-            <Button 
-              type="button" 
-              variant="ghost" 
+            <Button
+              type="button"
+              variant="ghost"
               onClick={() => onOpenChange(false)}
               className="text-muted-foreground"
             >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isSubmitting || !title.trim()}
               className="min-w-[120px]"
             >
