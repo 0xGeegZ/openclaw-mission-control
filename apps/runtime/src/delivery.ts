@@ -10,6 +10,71 @@ import {
 
 const log = createLogger("[Delivery]");
 
+/**
+ * Context passed from getNotificationForDelivery (Convex service).
+ * Mirrors the return shape of service/notifications.getForDelivery for type safety.
+ */
+export interface DeliveryContext {
+  notification: {
+    _id: string;
+    type: string;
+    title: string;
+    body: string;
+    recipientId?: string;
+    taskId?: string;
+    messageId?: string;
+    accountId: string;
+  };
+  agent: {
+    _id: string;
+    sessionKey?: string;
+    role?: string;
+  } | null;
+  task: {
+    _id: string;
+    status: string;
+    title: string;
+    description?: string;
+    assignedAgentIds?: string[];
+  } | null;
+  message: {
+    _id: string;
+    authorType: string;
+    authorId: string;
+    content?: string;
+  } | null;
+  thread: Array<{
+    messageId: string;
+    authorType: string;
+    authorId: string;
+    authorName: string | null;
+    content: string;
+    createdAt: number;
+  }>;
+  sourceNotificationType: string | null;
+  orchestratorAgentId: string | null;
+  primaryUserMention: { id: string; name: string; email: string | null } | null;
+  mentionableAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  assignedAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  effectiveBehaviorFlags?: {
+    canCreateTasks?: boolean;
+    canModifyTaskStatus?: boolean;
+    canCreateDocuments?: boolean;
+    canMentionAgents?: boolean;
+  };
+  repositoryDoc: { title: string; content: string } | null;
+}
+
 /** Posted when tool execution ran but no final reply was received (e.g. follow-up request failed). */
 const FALLBACK_NO_REPLY_AFTER_TOOLS = [
   "**Summary**",
@@ -54,7 +119,9 @@ const state: DeliveryState = {
 /**
  * Start the notification delivery loop.
  * Polls Convex for undelivered agent notifications and delivers to OpenClaw.
- * Uses exponential backoff with jitter on poll errors.
+ * Uses exponential backoff with jitter on poll errors. No-op if already running.
+ *
+ * @param config - Runtime config (accountId, serviceToken, intervals, taskStatusBaseUrl).
  */
 export function startDeliveryLoop(config: RuntimeConfig): void {
   if (state.isRunning) return;
@@ -106,7 +173,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.debug("Skipped delivery for missing task", notification._id);
               continue;
             }
-            if (!shouldDeliverToAgent(context)) {
+            if (!shouldDeliverToAgent(context as DeliveryContext)) {
               await client.action(
                 api.service.actions.markNotificationDelivered,
                 {
@@ -152,7 +219,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 
             const result = await sendToOpenClaw(
               context.agent.sessionKey,
-              formatNotificationMessage(context, config.taskStatusBaseUrl),
+              formatNotificationMessage(
+                context as DeliveryContext,
+                config.taskStatusBaseUrl,
+              ),
               sendOptions,
             );
 
@@ -205,7 +275,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             if (taskId && textToPost) {
               const trimmed = textToPost.trim();
-              const finalContent = applyAutoMentionFallback(trimmed, context);
+              const finalContent = applyAutoMentionFallback(
+                trimmed,
+                context as DeliveryContext,
+              );
               if (finalContent !== trimmed) {
                 const originalTokens = extractMentionTokens(trimmed);
                 const finalTokens = extractMentionTokens(finalContent);
@@ -304,7 +377,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 }
 
 /**
- * Stop the delivery loop.
+ * Stop the delivery loop. Idempotent; safe to call when not running.
  */
 export function stopDeliveryLoop(): void {
   state.isRunning = false;
@@ -312,7 +385,9 @@ export function stopDeliveryLoop(): void {
 }
 
 /**
- * Get current delivery state.
+ * Get current delivery state (running flag, last delivery time, counts). Snapshot; safe to call from health or metrics.
+ *
+ * @returns Shallow copy of delivery state.
  */
 export function getDeliveryState(): DeliveryState {
   return { ...state };
@@ -325,17 +400,17 @@ export function getDeliveryState(): DeliveryState {
  * Skips agent-authored thread_update unless the recipient is assigned, or in review
  * as a reviewer; skips thread_update when task is DONE or BLOCKED to avoid reply loops.
  */
-function shouldDeliverToAgent(context: any): boolean {
-  const notificationType = context?.notification?.type;
-  const messageAuthorType = context?.message?.authorType;
-  const taskStatus = context?.task?.status;
+export function shouldDeliverToAgent(context: DeliveryContext): boolean {
+  const notificationType = context.notification?.type;
+  const messageAuthorType = context.message?.authorType;
+  const taskStatus = context.task?.status;
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
-    const recipientId = context?.notification?.recipientId;
-    const assignedAgentIds = context?.task?.assignedAgentIds;
-    const sourceNotificationType = context?.sourceNotificationType;
-    const orchestratorAgentId = context?.orchestratorAgentId;
-    const agentRole = context?.agent?.role;
+    const recipientId = context.notification?.recipientId;
+    const assignedAgentIds = context.task?.assignedAgentIds;
+    const sourceNotificationType = context.sourceNotificationType;
+    const orchestratorAgentId = context.orchestratorAgentId;
+    const agentRole = context.agent?.role;
     if (taskStatus === "done" || taskStatus === "blocked") {
       return false;
     }
@@ -348,7 +423,8 @@ function shouldDeliverToAgent(context: any): boolean {
     if (taskStatus === "review" && isReviewerRole(agentRole)) {
       return true;
     }
-    if (!Array.isArray(assignedAgentIds)) return false;
+    if (!Array.isArray(assignedAgentIds) || typeof recipientId !== "string")
+      return false;
     return assignedAgentIds.includes(recipientId);
   }
 
@@ -507,19 +583,21 @@ function buildAutoMentionPrefix(
  * recipient is orchestrator, reply has no @mentions, and there is at least one assigned agent (excluding orchestrator).
  * Otherwise returns content unchanged.
  */
-function applyAutoMentionFallback(content: string, context: any): string {
+function applyAutoMentionFallback(
+  content: string,
+  context: DeliveryContext,
+): string {
   if (!content.trim()) return content;
-  const type = context?.notification?.type;
-  const messageAuthorType = context?.message?.authorType;
-  const recipientId = context?.notification?.recipientId;
-  const orchestratorAgentId = context?.orchestratorAgentId;
-  const assignedAgents: MentionableAgent[] = context?.assignedAgents ?? [];
-  const mentionableAgents: MentionableAgent[] =
-    context?.mentionableAgents ?? [];
+  const type = context.notification?.type;
+  const messageAuthorType = context.message?.authorType;
+  const recipientId = context.notification?.recipientId;
+  const orchestratorAgentId = context.orchestratorAgentId;
+  const assignedAgents: MentionableAgent[] = context.assignedAgents ?? [];
+  const mentionableAgents: MentionableAgent[] = context.mentionableAgents ?? [];
   const primaryUser: PrimaryUserMention | null =
-    context?.primaryUserMention ?? null;
+    context.primaryUserMention ?? null;
   const canMentionAgents =
-    context?.effectiveBehaviorFlags?.canMentionAgents === true;
+    context.effectiveBehaviorFlags?.canMentionAgents === true;
   if (type !== "thread_update" || messageAuthorType !== "agent") return content;
   if (orchestratorAgentId == null || recipientId !== orchestratorAgentId)
     return content;
@@ -596,7 +674,9 @@ function formatPrimaryUserMentionSection(
 /**
  * Format full thread context lines for delivery.
  */
-function formatThreadContext(thread: any[] | undefined): string {
+function formatThreadContext(
+  thread: DeliveryContext["thread"] | undefined,
+): string {
   if (!thread || thread.length === 0) return "";
   const lines = ["Thread history (full):"];
   for (const item of thread) {
@@ -619,7 +699,7 @@ function formatThreadContext(thread: any[] | undefined): string {
 const MENTIONABLE_AGENTS_CAP = 25;
 
 function formatNotificationMessage(
-  context: any,
+  context: DeliveryContext,
   taskStatusBaseUrl: string,
 ): string {
   const {
@@ -633,12 +713,7 @@ function formatNotificationMessage(
     effectiveBehaviorFlags = {},
     orchestratorAgentId = null,
   } = context;
-  const flags = effectiveBehaviorFlags as {
-    canCreateTasks?: boolean;
-    canModifyTaskStatus?: boolean;
-    canCreateDocuments?: boolean;
-    canMentionAgents?: boolean;
-  };
+  const flags = context.effectiveBehaviorFlags ?? {};
   const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
   const canMentionAgents = flags.canMentionAgents === true;
   const capabilities: string[] = [];
@@ -703,14 +778,11 @@ function formatNotificationMessage(
     notification?.type === "assignment"
       ? canMentionAgents &&
         orchestratorAgentId &&
-        mentionableAgents.some(
-          (a: { id: string }) => a.id === orchestratorAgentId,
-        )
+        mentionableAgents.some((a) => a.id === orchestratorAgentId)
         ? (() => {
             const orch = mentionableAgents.find(
-              (a: { id: string; slug?: string; name: string }) =>
-                a.id === orchestratorAgentId,
-            ) as { slug?: string; name: string } | undefined;
+              (a) => a.id === orchestratorAgentId,
+            );
             if (!orch)
               return "For clarification questions, @mention the primary user (shown above).";
             const orchMention = (orch.slug ?? "").trim()

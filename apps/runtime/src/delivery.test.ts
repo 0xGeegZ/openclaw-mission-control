@@ -1,0 +1,115 @@
+/**
+ * Unit tests for delivery logic: shouldDeliverToAgent (reply-loop skip, orchestrator/assigned delivery).
+ */
+import { describe, it, expect } from "vitest";
+import { shouldDeliverToAgent, type DeliveryContext } from "./delivery";
+
+/** Build a minimal DeliveryContext for tests. */
+function buildContext(
+  overrides: Partial<DeliveryContext> = {},
+): DeliveryContext {
+  const base: DeliveryContext = {
+    notification: {
+      _id: "n1",
+      type: "thread_update",
+      title: "Update",
+      body: "Body",
+      recipientId: "agent-a",
+      accountId: "acc1",
+    },
+    agent: { _id: "agent-a", role: "Developer" },
+    task: {
+      _id: "task1",
+      status: "in_progress",
+      title: "Task",
+      assignedAgentIds: ["agent-a"],
+    },
+    message: {
+      _id: "m1",
+      authorType: "agent",
+      authorId: "agent-b",
+      content: "Done",
+    },
+    thread: [],
+    sourceNotificationType: null,
+    orchestratorAgentId: null,
+    primaryUserMention: null,
+    mentionableAgents: [],
+    assignedAgents: [],
+    effectiveBehaviorFlags: {},
+    repositoryDoc: null,
+  };
+  return { ...base, ...overrides } as DeliveryContext;
+}
+
+describe("shouldDeliverToAgent", () => {
+  it("returns false for thread_update + agent author when task is done", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "done",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns false for thread_update + agent author when task is blocked", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "blocked",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns false for thread_update + agent author when sourceNotificationType is thread_update", () => {
+    const ctx = buildContext({ sourceNotificationType: "thread_update" });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns true for thread_update + agent author when recipient is assigned", () => {
+    const ctx = buildContext();
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns true for thread_update + agent author when recipient is orchestrator", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: [],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns true for mention notification regardless of task status", () => {
+    const ctx = buildContext({
+      notification: { ...buildContext().notification, type: "mention" },
+      task: { _id: "t1", status: "done", title: "T", assignedAgentIds: [] },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns true for assignment notification", () => {
+    const ctx = buildContext({
+      notification: { ...buildContext().notification, type: "assignment" },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+});

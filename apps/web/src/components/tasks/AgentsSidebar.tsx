@@ -34,6 +34,7 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   idle: { color: "bg-blue-400", label: "IDLE" },
   offline: { color: "bg-muted-foreground/40", label: "OFFLINE" },
   error: { color: "bg-destructive", label: "ERROR" },
+  typing: { color: "bg-amber-500", label: "TYPING" },
 };
 
 /**
@@ -163,7 +164,7 @@ interface AgentItemProps {
 /** Single agent row in the sidebar; shows status or TYPING when in receipt window. */
 function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
   const statusConfig = isTyping
-    ? STATUS_CONFIG.busy
+    ? STATUS_CONFIG.typing
     : (STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline);
   const isLead = isLeadRole(agent.role);
 

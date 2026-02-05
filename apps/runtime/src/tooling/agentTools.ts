@@ -106,6 +106,9 @@ export type ToolResult = {
 /**
  * Build the list of tool schemas to send to OpenClaw based on effective behavior flags and task context.
  * task_status is offered only when a task exists and the agent can modify status.
+ *
+ * @param options - Capability flags and task context from delivery.
+ * @returns Array of OpenResponses tool schemas (task_status, task_create, document_upsert as allowed).
  */
 export function getToolSchemasForCapabilities(options: {
   canCreateTasks: boolean;
@@ -128,6 +131,9 @@ export function getToolSchemasForCapabilities(options: {
 
 /**
  * Execute a single tool call by name; returns result for function_call_output.
+ *
+ * @param params - Tool name, JSON arguments string, agent/account/task context, and service token.
+ * @returns Result with success flag; on failure includes error message. taskId/documentId set when relevant.
  */
 export async function executeAgentTool(params: {
   name: string;

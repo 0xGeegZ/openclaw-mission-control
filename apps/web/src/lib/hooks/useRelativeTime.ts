@@ -15,6 +15,7 @@ export interface UseRelativeTimeOptions {
 /**
  * Returns a relative time string that updates on a timer (e.g. "2 minutes ago").
  * Re-computes every 60s when the timestamp is valid so the label advances without new data from the server.
+ * If this hook is used in many places at once, consider a single global "now" tick (e.g. context or shared interval) to avoid N intervals for N instances.
  *
  * @param timestampMs - Unix timestamp in ms (e.g. agent.lastHeartbeat from Convex), or null/undefined when unknown.
  * @param options.addSuffix - Whether to add "ago" suffix. Default true.
@@ -28,9 +29,7 @@ export function useRelativeTime(
   const { addSuffix = true, fallback = "" } = options;
   const [, setNow] = useState(() => Date.now());
   const isValid =
-    timestampMs != null &&
-    typeof timestampMs === "number" &&
-    timestampMs > 0;
+    timestampMs != null && typeof timestampMs === "number" && timestampMs > 0;
 
   useEffect(() => {
     if (!isValid) return;
