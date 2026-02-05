@@ -7,13 +7,6 @@ import { Doc } from "@packages/backend/convex/_generated/dataModel";
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@packages/ui/components/select";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -23,7 +16,6 @@ import {
 import { Input } from "@packages/ui/components/input";
 import { Separator } from "@packages/ui/components/separator";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { TaskStatus, TASK_STATUS_LABELS } from "@packages/shared";
 import { toast } from "sonner";
 import {
   Edit2,
@@ -33,7 +25,6 @@ import {
   MoreHorizontal,
   Trash2,
   Settings2,
-  RotateCcw,
   Calendar,
   Flag,
   CheckCircle2,
@@ -42,9 +33,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { TaskAssignees } from "./TaskAssignees";
+import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskEditDialog } from "./TaskEditDialog";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
-import { BlockedReasonDialog } from "./BlockedReasonDialog";
 import { TaskSubscription } from "./TaskSubscription";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
@@ -71,11 +62,9 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const [title, setTitle] = useState(task.title);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showBlockedDialog, setShowBlockedDialog] = useState(false);
 
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
-  const reopenTask = useMutation(api.tasks.reopen);
 
   const handleTitleSave = async () => {
     if (title.trim() === task.title) {
@@ -95,48 +84,15 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
     }
   };
 
-  const handleStatusChange = async (newStatus: TaskStatus) => {
-    // If moving to blocked, show dialog for reason
-    if (newStatus === "blocked") {
-      setShowBlockedDialog(true);
-      return;
-    }
-
+  const handleMarkAsDone = async () => {
     try {
       await updateStatus({
         taskId: task._id,
-        status: newStatus,
+        status: "done",
       });
       toast.success("Status updated");
     } catch (error) {
       toast.error("Failed to update status", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const handleBlockedConfirm = async (reason: string) => {
-    try {
-      await updateStatus({
-        taskId: task._id,
-        status: "blocked",
-        blockedReason: reason,
-      });
-      toast.success("Task marked as blocked");
-    } catch (error) {
-      toast.error("Failed to update status", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-      throw error;
-    }
-  };
-
-  const handleReopen = async () => {
-    try {
-      await reopenTask({ taskId: task._id });
-      toast.success("Task reopened");
-    } catch (error) {
-      toast.error("Failed to reopen task", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -214,28 +170,13 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
             <TaskSubscription taskId={task._id} />
 
             {task.status === "review" && (
-              <Button
-                size="sm"
-                onClick={() => handleStatusChange("done")}
-                className="gap-1.5"
-              >
+              <Button size="sm" onClick={handleMarkAsDone} className="gap-1.5">
                 <CheckCircle2 className="h-4 w-4" />
                 Mark as done
               </Button>
             )}
 
-            <Select value={task.status} onValueChange={handleStatusChange}>
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(TASK_STATUS_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TaskStatusSelect task={task} />
 
             {/* Actions dropdown */}
             <DropdownMenu>
@@ -250,12 +191,6 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
                   <Settings2 className="mr-2 h-4 w-4" />
                   Edit Details
                 </DropdownMenuItem>
-                {task.status === "done" && (
-                  <DropdownMenuItem onClick={handleReopen}>
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reopen Task
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -345,12 +280,6 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
         onDeleted={handleDeleted}
-      />
-      <BlockedReasonDialog
-        open={showBlockedDialog}
-        onOpenChange={setShowBlockedDialog}
-        onConfirm={handleBlockedConfirm}
-        taskTitle={task.title}
       />
     </div>
   );

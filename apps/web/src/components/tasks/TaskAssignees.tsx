@@ -19,37 +19,39 @@ import { cn } from "@packages/ui/lib/utils";
 
 interface TaskAssigneesProps {
   task: Doc<"tasks">;
+  /** When false, do not render the "Assignees:" label (e.g. when parent provides its own section heading). */
+  showLabel?: boolean;
 }
 
 /**
  * Task assignees component with agent picker.
  * Allows assigning agents to a task.
  */
-export function TaskAssignees({ task }: TaskAssigneesProps) {
+export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
   const { accountId } = useAccount();
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  
+
   const agents = useQuery(
     api.agents.getRoster,
-    accountId ? { accountId } : "skip"
+    accountId ? { accountId } : "skip",
   );
-  
+
   const assignTask = useMutation(api.tasks.assign);
-  
+
   const handleToggleAgent = async (agentId: Id<"agents">) => {
     setIsUpdating(true);
     try {
       const isAssigned = task.assignedAgentIds.includes(agentId);
       const newAgentIds = isAssigned
-        ? task.assignedAgentIds.filter(id => id !== agentId)
+        ? task.assignedAgentIds.filter((id) => id !== agentId)
         : [...task.assignedAgentIds, agentId];
-      
+
       await assignTask({
         taskId: task._id,
         assignedAgentIds: newAgentIds,
       });
-      
+
       toast.success(isAssigned ? "Agent removed" : "Agent assigned");
     } catch (error) {
       toast.error("Failed to update assignees", {
@@ -59,22 +61,23 @@ export function TaskAssignees({ task }: TaskAssigneesProps) {
       setIsUpdating(false);
     }
   };
-  
+
   // Get assigned agent details
-  const assignedAgents = agents?.filter(agent => 
-    task.assignedAgentIds.includes(agent._id)
-  ) ?? [];
-  
+  const assignedAgents =
+    agents?.filter((agent) => task.assignedAgentIds.includes(agent._id)) ?? [];
+
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground">Assignees:</span>
-      
+      {showLabel && (
+        <span className="text-sm text-muted-foreground">Assignees:</span>
+      )}
+
       {/* Display assigned agents */}
       <div className="flex -space-x-2">
         {assignedAgents.length > 0 ? (
           assignedAgents.slice(0, 5).map((agent) => (
-            <Avatar 
-              key={agent._id} 
+            <Avatar
+              key={agent._id}
               className="h-7 w-7 border-2 border-background"
               title={agent.name}
             >
@@ -94,15 +97,11 @@ export function TaskAssignees({ task }: TaskAssigneesProps) {
           </div>
         )}
       </div>
-      
+
       {/* Agent picker popover */}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="h-7 px-2"
-          >
+          <Button variant="outline" size="sm" className="h-7 px-2">
             <UserPlus className="h-4 w-4" />
             <span className="sr-only">Assign agents</span>
           </Button>
@@ -114,7 +113,7 @@ export function TaskAssignees({ task }: TaskAssigneesProps) {
               Select agents to work on this task
             </p>
           </div>
-          
+
           <div className="max-h-64 overflow-y-auto">
             {agents === undefined ? (
               <div className="flex items-center justify-center py-6">
@@ -142,10 +141,10 @@ export function TaskAssignees({ task }: TaskAssigneesProps) {
                       className={cn(
                         "w-full flex items-center gap-3 p-2 rounded-md text-left",
                         "hover:bg-accent transition-colors",
-                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                        "disabled:opacity-50 disabled:cursor-not-allowed",
                       )}
                     >
-                      <Checkbox 
+                      <Checkbox
                         checked={isAssigned}
                         className="pointer-events-none"
                       />
@@ -162,14 +161,15 @@ export function TaskAssignees({ task }: TaskAssigneesProps) {
                           {agent.role}
                         </p>
                       </div>
-                      <div 
+                      <div
                         className={cn(
                           "w-2 h-2 rounded-full shrink-0",
                           agent.status === "online" && "bg-emerald-500",
                           agent.status === "busy" && "bg-amber-500",
                           agent.status === "idle" && "bg-blue-400",
-                          agent.status === "offline" && "bg-muted-foreground/40",
-                          agent.status === "error" && "bg-destructive"
+                          agent.status === "offline" &&
+                            "bg-muted-foreground/40",
+                          agent.status === "error" && "bg-destructive",
                         )}
                         title={agent.status}
                       />

@@ -75,6 +75,7 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 - If you need human review: move to REVIEW and explain what to review
 - If you are blocked: move to BLOCKED and explain the missing input
 - If done: move to DONE, post final summary, and ensure doc links exist
+- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW.
 
 ## Capabilities and tools
 
