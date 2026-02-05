@@ -65,6 +65,10 @@ Post updates using this exact structure:
 
 - Links if you researched anything
 
+### Short replies
+
+When replying with an acknowledgment, a quick confirmation, or when the thread already contains your full structured update, reply in 1–2 sentences only. Do not repeat the full structure. Use the full structure only for substantive updates (first reply on a task, status change, new deliverables, or reporting work/artifacts/next steps).
+
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS (unless already there)

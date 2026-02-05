@@ -135,7 +135,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
-            const canModifyTaskStatus = flags.canModifyTaskStatus === true;
+            const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
             const tools = getToolSchemasForCapabilities({
               canCreateTasks: flags.canCreateTasks === true,
               canModifyTaskStatus,
@@ -320,19 +320,15 @@ export function getDeliveryState(): DeliveryState {
 
 /**
  * Decide whether a notification should be delivered to an agent.
- * Skips agent-authored thread updates unless the recipient is assigned to the task
- * or the task is in review and the recipient is a reviewer role. Auto-generated
- * agent replies (from thread_update notifications) do not trigger further agent replies,
- * which avoids agent-to-agent loops while still notifying responsible reviewers.
+ * Mention notifications are always delivered (including when task is DONE) so the
+ * mentioned agent can reply once to a direct request (e.g. push PR).
+ * Skips agent-authored thread_update unless the recipient is assigned, or in review
+ * as a reviewer; skips thread_update on DONE to avoid reply loops.
  */
 function shouldDeliverToAgent(context: any): boolean {
   const notificationType = context?.notification?.type;
   const messageAuthorType = context?.message?.authorType;
   const taskStatus = context?.task?.status;
-
-  if (notificationType === "mention" && taskStatus === "done") {
-    return false;
-  }
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
     const recipientId = context?.notification?.recipientId;
@@ -642,7 +638,7 @@ function formatNotificationMessage(
     canCreateDocuments?: boolean;
     canMentionAgents?: boolean;
   };
-  const canModifyTaskStatus = flags.canModifyTaskStatus === true;
+  const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
   const canMentionAgents = flags.canMentionAgents === true;
   const capabilities: string[] = [];
   if (flags.canCreateTasks === true)
@@ -720,9 +716,9 @@ Use the thread history above before asking for missing info. Do not request item
 
 ${statusInstructions}
 ${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
-${task?.status === "done" ? "\nThis task is DONE. If you were mentioned, acknowledge at most once (e.g. 'Acknowledged.' or 'Ready for next task.') and do not reply again to this thread." : ""}
+${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 
-Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
+Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.
 
 ---
 Notification ID: ${notification._id}
