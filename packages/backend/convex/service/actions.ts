@@ -466,6 +466,7 @@ interface AgentForRuntimePayload {
     name: string;
     slug: string;
     description: string | undefined;
+    contentMarkdown?: string;
   }>;
 }
 

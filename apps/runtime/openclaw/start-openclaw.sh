@@ -433,7 +433,11 @@ GATEWAY_PID=$!
 # Optional: when OPENCLAW_CONFIG_RELOAD=1, watch runtime-generated config and restart gateway on change
 if [ -n "${OPENCLAW_CONFIG_RELOAD:-}" ] && [ "${OPENCLAW_CONFIG_RELOAD}" = "1" ]; then
   (
+    # Set baseline mtime so only changes after startup trigger a restart
     LAST_MTIME=""
+    if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+      LAST_MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+    fi
     while kill -0 "$GATEWAY_PID" 2>/dev/null; do
       sleep 30
       if [ -f "$OPENCLAW_CONFIG_PATH" ]; then

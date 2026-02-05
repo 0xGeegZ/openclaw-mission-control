@@ -149,7 +149,11 @@ export const listForRuntime = internalQuery({
           agent.soulContent?.trim() ||
           generateDefaultSoul(agent.name, agent.role);
 
-        const skillIds = agent.openclawConfig?.skillIds ?? [];
+        const rawSkillIds = agent.openclawConfig?.skillIds ?? [];
+        const skillIds: Id<"skills">[] = rawSkillIds.filter(
+          (id): id is Id<"skills"> =>
+            typeof id === "string" && id.trim() !== "",
+        );
         const resolvedSkills: Array<{
           _id: Id<"skills">;
           name: string;
@@ -158,8 +162,7 @@ export const listForRuntime = internalQuery({
           contentMarkdown: string | undefined;
         }> = [];
         for (const skillId of skillIds) {
-          if (typeof skillId !== "string" || !skillId.trim()) continue;
-          const skill = await ctx.db.get(skillId as Id<"skills">);
+          const skill = await ctx.db.get(skillId);
           if (skill && skill.accountId === args.accountId && skill.isEnabled) {
             resolvedSkills.push({
               _id: skill._id,
