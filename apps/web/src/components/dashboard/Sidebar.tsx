@@ -18,6 +18,7 @@ import {
   Users,
   Search,
   BarChart3,
+  Zap,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -128,6 +129,12 @@ const adminNavItems = [
     label: "Members",
     icon: Users,
     description: "Manage team members",
+  },
+  {
+    href: "admin/skills",
+    label: "Skills",
+    icon: Zap,
+    description: "Manage agent skills and tools",
   },
 ];
 
