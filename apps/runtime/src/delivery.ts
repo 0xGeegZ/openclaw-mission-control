@@ -323,7 +323,7 @@ export function getDeliveryState(): DeliveryState {
  * Mention notifications are always delivered (including when task is DONE) so the
  * mentioned agent can reply once to a direct request (e.g. push PR).
  * Skips agent-authored thread_update unless the recipient is assigned, or in review
- * as a reviewer; skips thread_update on DONE to avoid reply loops.
+ * as a reviewer; skips thread_update when task is DONE or BLOCKED to avoid reply loops.
  */
 function shouldDeliverToAgent(context: any): boolean {
   const notificationType = context?.notification?.type;
@@ -336,7 +336,7 @@ function shouldDeliverToAgent(context: any): boolean {
     const sourceNotificationType = context?.sourceNotificationType;
     const orchestratorAgentId = context?.orchestratorAgentId;
     const agentRole = context?.agent?.role;
-    if (taskStatus === "done") {
+    if (taskStatus === "done" || taskStatus === "blocked") {
       return false;
     }
     if (sourceNotificationType === "thread_update") {
@@ -728,6 +728,7 @@ function formatNotificationMessage(
       ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
       : "";
 
+  // Status-specific instructions: done (brief reply once), blocked (reply-loop fix — do not continue substantive work until unblocked).
   return `
 ${capabilitiesBlock}## Notification: ${notification.type}
 
@@ -748,6 +749,7 @@ Use the thread history above before asking for missing info. Do not request item
 ${statusInstructions}
 ${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
+${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
 ${assignmentAckBlock}
 
 Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.

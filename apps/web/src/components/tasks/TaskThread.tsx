@@ -5,12 +5,11 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { TYPING_WINDOW_MS } from "@packages/shared";
 import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, Sparkles } from "lucide-react";
-
-const TYPING_WINDOW_MS = 120_000;
 
 interface TaskThreadProps {
   taskId: Id<"tasks">;

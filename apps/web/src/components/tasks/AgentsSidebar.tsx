@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { useMemo } from "react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
@@ -48,6 +49,14 @@ export function AgentsSidebar({
   const agents = useQuery(
     api.agents.getRoster,
     accountId ? { accountId } : "skip",
+  );
+  const typingAgentIdsRaw = useQuery(
+    api.notifications.listAgentIdsTypingByAccount,
+    accountId ? { accountId } : "skip",
+  );
+  const typingAgentIds = useMemo(
+    () => new Set(typingAgentIdsRaw ?? []),
+    [typingAgentIdsRaw],
   );
 
   const isLoading = accountId && agents === undefined;
@@ -121,6 +130,7 @@ export function AgentsSidebar({
                   key={agent._id}
                   agent={agent}
                   isSelected={selectedAgentId === agent._id}
+                  isTyping={typingAgentIds.has(agent._id)}
                   onClick={() => onSelectAgent(agent._id)}
                 />
               ))}
@@ -146,11 +156,15 @@ export function AgentsSidebar({
 interface AgentItemProps {
   agent: Doc<"agents">;
   isSelected: boolean;
+  isTyping: boolean;
   onClick: () => void;
 }
 
-function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
-  const statusConfig = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline;
+/** Single agent row in the sidebar; shows status or TYPING when in receipt window. */
+function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
+  const statusConfig = isTyping
+    ? STATUS_CONFIG.busy
+    : (STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline);
   const isLead = isLeadRole(agent.role);
 
   return (

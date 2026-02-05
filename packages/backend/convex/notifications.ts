@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { TYPING_WINDOW_MS } from "@packages/shared";
 import { mutation, query } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
 
@@ -127,6 +128,47 @@ export const listAgentReceiptsByTask = query({
         deliveredAt: n.deliveredAt,
         createdAt: n.createdAt,
       }));
+  },
+});
+
+const LIST_TYPING_AGENTS_LIMIT = 200;
+
+/**
+ * List agent IDs currently in the typing window for an account.
+ * Used by the agents sidebar to show typing/busy state in sync with task thread.
+ * Typing = notification read by runtime (readAt set) but not yet delivered (deliveredAt null), within TYPING_WINDOW_MS.
+ */
+export const listAgentIdsTypingByAccount = query({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountMember(ctx, args.accountId);
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_account_undelivered", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "agent")
+          .eq("deliveredAt", undefined),
+      )
+      .take(LIST_TYPING_AGENTS_LIMIT);
+
+    const now = Date.now();
+    const typingAgentIds = new Set<string>();
+    for (const n of notifications) {
+      if (
+        n.recipientType === "agent" &&
+        n.recipientId &&
+        n.readAt != null &&
+        n.deliveredAt == null &&
+        now - n.readAt <= TYPING_WINDOW_MS
+      ) {
+        typingAgentIds.add(n.recipientId);
+      }
+    }
+    return Array.from(typingAgentIds);
   },
 });
 

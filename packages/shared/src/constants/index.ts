@@ -57,6 +57,13 @@ export const SKILL_CATEGORY_LABELS = {
 } as const;
 
 /**
+ * Typing indicator window in ms (2 minutes).
+ * Agent is considered "typing" when notification is read but not yet delivered, within this window.
+ * Used by task thread and agents sidebar for consistent typing semantics.
+ */
+export const TYPING_WINDOW_MS = 2 * 60 * 1000;
+
+/**
  * Default OpenClaw configuration for new agents.
  */
 export const DEFAULT_OPENCLAW_CONFIG = {
