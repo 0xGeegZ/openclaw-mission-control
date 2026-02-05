@@ -20,11 +20,15 @@ interface AgentsSidebarProps {
 
 function isLeadRole(role: string): boolean {
   const lowerRole = role.toLowerCase();
-  return lowerRole.includes("lead") || lowerRole.includes("founder") || lowerRole.includes("director");
+  return (
+    lowerRole.includes("lead") ||
+    lowerRole.includes("founder") ||
+    lowerRole.includes("director")
+  );
 }
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  online: { color: "bg-primary", label: "WORKING" },
+  online: { color: "bg-primary", label: "ONLINE" },
   busy: { color: "bg-amber-500", label: "BUSY" },
   idle: { color: "bg-blue-400", label: "IDLE" },
   offline: { color: "bg-muted-foreground/40", label: "OFFLINE" },
@@ -35,19 +39,20 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
  * Agents sidebar component for task view.
  * Shows all agents with their status and allows filtering tasks by agent.
  */
-export function AgentsSidebar({ 
-  accountId, 
-  selectedAgentId, 
+export function AgentsSidebar({
+  accountId,
+  selectedAgentId,
   onSelectAgent,
-  className 
+  className,
 }: AgentsSidebarProps) {
   const agents = useQuery(
     api.agents.getRoster,
-    accountId ? { accountId } : "skip"
+    accountId ? { accountId } : "skip",
   );
 
   const isLoading = accountId && agents === undefined;
-  const activeAgents = agents?.filter(a => a.status === "online" || a.status === "busy") ?? [];
+  const activeAgents =
+    agents?.filter((a) => a.status === "online" || a.status === "busy") ?? [];
 
   return (
     <div className={cn("flex flex-col h-full border-r bg-card", className)}>
@@ -55,7 +60,9 @@ export function AgentsSidebar({
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-primary" />
-          <h2 className="font-semibold text-sm uppercase tracking-wide">Agents</h2>
+          <h2 className="font-semibold text-sm uppercase tracking-wide">
+            Agents
+          </h2>
           <Badge variant="secondary" className="text-xs font-medium">
             {agents?.length ?? 0}
           </Badge>
@@ -69,7 +76,7 @@ export function AgentsSidebar({
             variant={selectedAgentId === null ? "secondary" : "ghost"}
             className={cn(
               "w-full justify-start gap-3 h-auto py-3 px-3 mb-1",
-              selectedAgentId === null && "bg-accent"
+              selectedAgentId === null && "bg-accent",
             )}
             onClick={() => onSelectAgent(null)}
           >
@@ -80,7 +87,9 @@ export function AgentsSidebar({
               <div className="font-medium">All Agents</div>
               <div className="text-xs text-muted-foreground">
                 {activeAgents.length > 0 && (
-                  <span className="text-primary">{activeAgents.length} active</span>
+                  <span className="text-primary">
+                    {activeAgents.length} active
+                  </span>
                 )}
                 {activeAgents.length === 0 && (
                   <span>{agents?.length ?? 0} total</span>
@@ -149,7 +158,7 @@ function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
       variant={isSelected ? "secondary" : "ghost"}
       className={cn(
         "w-full justify-start gap-3 h-auto py-3 px-3",
-        isSelected && "bg-accent"
+        isSelected && "bg-accent",
       )}
       onClick={onClick}
     >
@@ -158,16 +167,24 @@ function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
           {agent.name.slice(0, 2).toUpperCase()}
         </AvatarFallback>
       </Avatar>
-      
+
       <div className="flex-1 text-left min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium truncate">{agent.name}</span>
           {isLead && (
-            <Crown className="h-4 w-4 text-amber-500 shrink-0" aria-label="Lead" />
+            <Crown
+              className="h-4 w-4 text-amber-500 shrink-0"
+              aria-label="Lead"
+            />
           )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusConfig.color)} />
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              statusConfig.color,
+            )}
+          />
           <span className="text-xs text-primary font-medium uppercase tracking-wide">
             {statusConfig.label}
           </span>
