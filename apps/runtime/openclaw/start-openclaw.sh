@@ -318,10 +318,7 @@ try {
         }
         console.log('Merged agents from', openclawConfigPath);
       }
-      if (generated.load) {
-        config.load = Object.assign({}, config.load || {}, generated.load);
-        console.log('Merged load (extraDirs) from', openclawConfigPath);
-      }
+      // load (extraDirs) is written by runtime but not accepted by current clawdbot schema; skip to avoid config invalid.
       if (generated.skills && generated.skills.entries && typeof generated.skills.entries === 'object') {
         config.skills.entries = Object.assign(config.skills.entries || {}, generated.skills.entries);
         console.log('Merged skills.entries from', openclawConfigPath);
@@ -331,6 +328,9 @@ try {
 } catch (e) {
   console.warn('Could not merge OPENCLAW_CONFIG_PATH:', e.message);
 }
+
+// Current clawdbot rejects top-level "load"; remove so config is valid.
+delete config.load;
 
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');

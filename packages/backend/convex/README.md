@@ -88,3 +88,15 @@ function handleButtonPress() {
 Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
+
+## Seed skills content
+
+Seed skill bodies (contentMarkdown) come from `convex/seed-skills/*.md`. To refresh them:
+
+1. **Mapping:** Edit `convex/seed-skills-mapping.json` to map seed slugs to skills.sh sources (`source: "owner/repo"`, `path: "skills/name/SKILL.md"`). Skills without an entry use the existing `.md` in `seed-skills/` (e.g. custom skills).
+2. **Download:** From `packages/backend`, run `npm run seed-skills:download` to fetch SKILL.md from GitHub for each mapped slug into `convex/seed-skills/<slug>.md`.
+3. **Copy .cursor/skills:** Run `npm run seed-skills:copy-cursor` to copy each `.cursor/skills/<dir>/SKILL.md` into `convex/seed-skills/<dir>.md` (these are assigned to all seed agents).
+4. **Generate:** Run `npm run seed-skills:generate` to build `convex/seed_skills_content.generated.ts` from all `.md` files (validates 512 KB limit).
+5. **Deploy:** Commit and deploy as usual; seed uses `contentBySlug` when inserting skills.
+
+Or run `npm run seed-skills:sync` to do download + copy-cursor + generate in one step.
