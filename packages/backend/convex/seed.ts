@@ -201,9 +201,11 @@ If your capabilities do **not** include "mention other agents", then @mentions o
 
 **Preferred (when the runtime offers the tool):** Use the **task_status** tool. If your notification prompt lists a Task ID and you have the \`task_status\` tool available, call it with \`taskId\`, \`status\` (\`in_progress\` | \`review\` | \`done\` | \`blocked\`), and \`blockedReason\` when status is \`blocked\`. Call the tool **before** posting your thread reply. The runtime executes it and then you can post your message.
 
-**Fallback (manual):** When the tool is not available, call the HTTP endpoint:
+**Fallback (manual/CLI):** When the tool is not available, call the HTTP endpoint.
 
-- Endpoint: \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status\`
+Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), \`http://127.0.0.1:3000\` points at the gateway container and will fail — use \`http://runtime:3000\` instead.
+
+- Endpoint: \`POST {TASK_STATUS_BASE_URL}/agent/task-status\`
 - Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
 - Body: \`{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }\`
 
@@ -216,7 +218,8 @@ Rules:
 Example (HTTP fallback):
 
 \`\`\`bash
-curl -X POST "http://127.0.0.1:3000/agent/task-status" \
+BASE_URL="http://runtime:3000"
+curl -X POST "\${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
   -H "x-openclaw-session-key: agent:engineer:acc_123" \
   -d '{"taskId":"tsk_123","status":"review"}'
@@ -226,9 +229,9 @@ curl -X POST "http://127.0.0.1:3000/agent/task-status" \
 
 ### Optional HTTP fallbacks (manual/CLI)
 
-- **Task status:** \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status\` with body \`{ "taskId", "status", "blockedReason?" }\`.
-- **Task create:** \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-create\` with body \`{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }\`.
-- **Document:** \`POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
+- **Task status:** \`POST {TASK_STATUS_BASE_URL}/agent/task-status\` with body \`{ "taskId", "status", "blockedReason?" }\`.
+- **Task create:** \`POST {TASK_STATUS_BASE_URL}/agent/task-create\` with body \`{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }\`.
+- **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
 
 All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
 

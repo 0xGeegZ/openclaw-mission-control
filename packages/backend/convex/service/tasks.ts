@@ -124,8 +124,12 @@ export const updateStatusFromAgent = internalMutation({
     status: taskStatusValidator,
     blockedReason: v.optional(v.string()),
     expectedStatus: v.optional(taskStatusValidator),
+    suppressNotifications: v.optional(v.boolean()),
+    suppressActivity: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const suppressNotifications = args.suppressNotifications === true;
+    const suppressActivity = args.suppressActivity === true;
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
@@ -183,52 +187,56 @@ export const updateStatusFromAgent = internalMutation({
 
     await ctx.db.patch(args.taskId, updates);
 
-    for (const uid of task.assignedUserIds) {
-      await createStatusChangeNotification(
-        ctx,
-        task.accountId,
-        args.taskId,
-        "user",
-        uid,
-        agent.name,
-        task.title,
-        nextStatus,
-      );
-    }
-
-    for (const assignedAgentId of task.assignedAgentIds) {
-      if (assignedAgentId === args.agentId) continue;
-      const assignedAgent = await ctx.db.get(assignedAgentId);
-      if (assignedAgent) {
+    if (!suppressNotifications) {
+      for (const uid of task.assignedUserIds) {
         await createStatusChangeNotification(
           ctx,
           task.accountId,
           args.taskId,
-          "agent",
-          assignedAgentId,
+          "user",
+          uid,
           agent.name,
           task.title,
           nextStatus,
         );
       }
+
+      for (const assignedAgentId of task.assignedAgentIds) {
+        if (assignedAgentId === args.agentId) continue;
+        const assignedAgent = await ctx.db.get(assignedAgentId);
+        if (assignedAgent) {
+          await createStatusChangeNotification(
+            ctx,
+            task.accountId,
+            args.taskId,
+            "agent",
+            assignedAgentId,
+            agent.name,
+            task.title,
+            nextStatus,
+          );
+        }
+      }
     }
 
-    await logActivity({
-      ctx,
-      accountId: task.accountId,
-      type: "task_status_changed",
-      actorType: "agent",
-      actorId: args.agentId,
-      actorName: agent.name,
-      targetType: "task",
-      targetId: args.taskId,
-      targetName: task.title,
-      meta: {
-        oldStatus: currentStatus,
-        newStatus: nextStatus,
-        blockedReason: args.blockedReason,
-      },
-    });
+    if (!suppressActivity) {
+      await logActivity({
+        ctx,
+        accountId: task.accountId,
+        type: "task_status_changed",
+        actorType: "agent",
+        actorId: args.agentId,
+        actorName: agent.name,
+        targetType: "task",
+        targetId: args.taskId,
+        targetName: task.title,
+        meta: {
+          oldStatus: currentStatus,
+          newStatus: nextStatus,
+          blockedReason: args.blockedReason,
+        },
+      });
+    }
 
     return args.taskId;
   },

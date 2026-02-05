@@ -12,8 +12,55 @@ import {
   resolveBehaviorFlags,
   type BehaviorFlags,
 } from "../lib/behavior_flags";
+import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
 
 export type { BehaviorFlags };
+
+/**
+ * Find a shortest valid status path from `from` to `to`.
+ * Returns the list of *next* statuses to apply (excludes the current status).
+ *
+ * Note: We restrict intermediate steps to statuses the runtime is allowed to set
+ * (in_progress | review | done | blocked). This avoids paths that require setting
+ * inbox/assigned, which are intentionally not exposed for service status updates.
+ */
+function findStatusPath(options: {
+  from: TaskStatus;
+  to: TaskStatus;
+  allowedNextStatuses: ReadonlySet<TaskStatus>;
+}): TaskStatus[] | null {
+  const { from, to, allowedNextStatuses } = options;
+  if (from === to) return [];
+
+  const visited = new Set<TaskStatus>([from]);
+  const queue: TaskStatus[] = [from];
+  const prev = new Map<TaskStatus, TaskStatus>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const nextStatuses = TASK_STATUS_TRANSITIONS[current] ?? [];
+    for (const next of nextStatuses) {
+      if (!allowedNextStatuses.has(next)) continue;
+      if (visited.has(next)) continue;
+
+      visited.add(next);
+      prev.set(next, current);
+      if (next === to) {
+        const path: TaskStatus[] = [];
+        let node: TaskStatus | undefined = to;
+        while (node && node !== from) {
+          path.push(node);
+          node = prev.get(node);
+        }
+        path.reverse();
+        return path;
+      }
+      queue.push(next);
+    }
+  }
+
+  return null;
+}
 
 /**
  * Service actions for runtime service.
@@ -510,23 +557,57 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Agent is not allowed to modify task status");
     }
 
-    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
-      taskId: args.taskId,
-    });
-    if (!task) {
-      throw new Error("Not found: Task does not exist");
-    }
-    if (task.accountId !== args.accountId) {
-      throw new Error("Forbidden: Task belongs to different account");
-    }
+    const allowedNextStatuses = new Set<TaskStatus>([
+      "in_progress",
+      "review",
+      "done",
+      "blocked",
+    ]);
 
-    await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
-      taskId: args.taskId,
-      agentId: args.agentId,
-      status: args.status,
-      blockedReason: args.blockedReason,
-      expectedStatus: args.expectedStatus,
-    });
+    // Apply the minimum number of valid transitions to reach the target status.
+    // This makes tool calls resilient when the agent asks for "done" while the task is still
+    // in_progress/assigned (we auto-advance through review).
+    const targetStatus = args.status as TaskStatus;
+    for (let i = 0; i < 10; i++) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task) throw new Error("Not found: Task does not exist");
+      if (task.accountId !== args.accountId)
+        throw new Error("Forbidden: Task belongs to different account");
+
+      const currentStatus = task.status as TaskStatus;
+      if (
+        i === 0 &&
+        args.expectedStatus &&
+        currentStatus !== args.expectedStatus
+      )
+        return { success: true };
+      if (currentStatus === targetStatus) break;
+
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      const nextStatus = path[0];
+      const isFinalStep = path.length === 1;
+      await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        status: nextStatus,
+        blockedReason:
+          nextStatus === "blocked" ? args.blockedReason : undefined,
+        suppressNotifications: !isFinalStep,
+        suppressActivity: !isFinalStep,
+      });
+    }
 
     return { success: true };
   },

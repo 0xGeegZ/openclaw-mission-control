@@ -1,7 +1,10 @@
 import { execSync } from "child_process";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { createLogger } from "./logger";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
+
+const log = createLogger("[Config]");
 
 export interface RuntimeConfig {
   /** Account ID this runtime serves */
@@ -113,6 +116,28 @@ function parseIntOrDefault(
 }
 
 /**
+ * Determine if a host is loopback-only.
+ */
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1"
+  );
+}
+
+/**
+ * Convert a bind host into a usable connect host for URLs.
+ * 0.0.0.0 / :: are bind-all and not routable.
+ */
+function toConnectHost(bindHost: string): string {
+  const normalized = bindHost.trim().toLowerCase();
+  if (normalized === "0.0.0.0" || normalized === "::") return "127.0.0.1";
+  return bindHost;
+}
+
+/**
  * Load runtime configuration from environment variables.
  */
 export async function loadConfig(): Promise<RuntimeConfig> {
@@ -162,12 +187,52 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     parseOpenClawGatewayToken(),
   );
 
+  const healthPort = parseIntOrDefault(process.env.HEALTH_PORT, 3000);
+  const healthHost =
+    normalizeEnvValue(process.env.HEALTH_HOST)?.trim() || "127.0.0.1";
+
+  const explicitTaskStatusBaseUrl = normalizeEnvValue(
+    process.env.TASK_STATUS_BASE_URL,
+  )?.trim();
+  const taskStatusBaseUrl =
+    explicitTaskStatusBaseUrl ||
+    `http://${toConnectHost(healthHost)}:${healthPort}`;
+
+  if (explicitTaskStatusBaseUrl) {
+    try {
+      new URL(explicitTaskStatusBaseUrl);
+    } catch {
+      throw new Error(
+        "Invalid TASK_STATUS_BASE_URL. Expected a valid URL like http://runtime:3000.",
+      );
+    }
+  } else if (healthHost.trim() === "0.0.0.0" || healthHost.trim() === "::") {
+    log.warn(
+      "TASK_STATUS_BASE_URL is not set; defaulting to",
+      taskStatusBaseUrl,
+      "because HEALTH_HOST is a bind-all address.",
+      "Set TASK_STATUS_BASE_URL explicitly when other containers/hosts must reach the runtime.",
+    );
+  }
+
+  try {
+    const taskStatusHost = new URL(taskStatusBaseUrl).hostname;
+    if (!isLoopbackHost(taskStatusHost) && isLoopbackHost(healthHost)) {
+      log.warn(
+        "HEALTH_HOST is loopback but TASK_STATUS_BASE_URL is non-loopback; /agent/* endpoints may be unreachable from other containers/hosts.",
+        { healthHost, taskStatusBaseUrl },
+      );
+    }
+  } catch {
+    // Should not happen (validated above); keep config load resilient.
+  }
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
     serviceToken,
-    healthPort: parseIntOrDefault(process.env.HEALTH_PORT, 3000),
-    healthHost: process.env.HEALTH_HOST || "127.0.0.1",
+    healthPort,
+    healthHost,
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
     healthCheckInterval: parseIntOrDefault(
       process.env.HEALTH_CHECK_INTERVAL,
@@ -197,9 +262,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
       180000,
     ),
-    taskStatusBaseUrl:
-      normalizeEnvValue(process.env.TASK_STATUS_BASE_URL)?.trim() ||
-      `http://${process.env.HEALTH_HOST || "127.0.0.1"}:${parseIntOrDefault(process.env.HEALTH_PORT, 3000)}`,
+    taskStatusBaseUrl,
   };
 }
 
