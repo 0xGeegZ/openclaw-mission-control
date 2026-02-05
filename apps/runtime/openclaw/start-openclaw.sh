@@ -293,14 +293,29 @@ function pruneSessionsIfConfigured() {
   }
 }
 
-// Merge runtime-generated config if present (profile sync from mission-control runtime)
+// Merge runtime-generated config if present (profile sync from mission-control runtime).
+// We merge list and defaults so existing agents.defaults.model (Vercel/legacy) is preserved; only list and runtime defaults (e.g. skipBootstrap) are taken from generated.
+function modelForVercelGateway(model) {
+  if (!hasVercelKey || typeof model !== 'string') return model;
+  if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 'vercel-ai-gateway/' + model;
+  return model;
+}
 const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
 try {
   if (require('fs').existsSync(openclawConfigPath)) {
     const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));
     if (generated) {
       if (generated.agents) {
-        config.agents = generated.agents;
+        if (Array.isArray(generated.agents.list)) {
+          config.agents.list = generated.agents.list.map(function (entry) {
+            var copy = Object.assign({}, entry);
+            if (typeof copy.model === 'string') copy.model = modelForVercelGateway(copy.model);
+            return copy;
+          });
+        }
+        if (generated.agents.defaults && typeof generated.agents.defaults === 'object') {
+          config.agents.defaults = Object.assign({}, config.agents.defaults, generated.agents.defaults);
+        }
         console.log('Merged agents from', openclawConfigPath);
       }
       if (generated.load) {
