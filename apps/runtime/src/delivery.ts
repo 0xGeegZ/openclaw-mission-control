@@ -173,7 +173,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 },
               );
               state.deliveredCount++;
-              log.debug("Skipped delivery for missing task", notification._id);
+              log.info("Skipped delivery for missing task", notification._id);
               continue;
             }
             if (!shouldDeliverToAgent(context as DeliveryContext)) {
@@ -236,6 +236,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             let textToPost: string | null = result.text?.trim() ?? null;
             if (result.toolCalls.length > 0) {
               const outputs: { call_id: string; output: string }[] = [];
+              // taskId is the notification's task; tools (e.g. task_status) are expected to operate on this task only.
               for (const call of result.toolCalls) {
                 const toolResult = await executeAgentTool({
                   name: call.name,
@@ -435,7 +436,10 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     const sourceNotificationType = context.sourceNotificationType;
     const orchestratorAgentId = context.orchestratorAgentId;
     const agentRole = context.agent?.role;
-    if (taskStatus != null && TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)) {
+    if (
+      taskStatus != null &&
+      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+    ) {
       return false;
     }
     if (sourceNotificationType === "thread_update") {

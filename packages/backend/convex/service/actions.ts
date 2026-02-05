@@ -7,7 +7,8 @@ import {
   hashServiceTokenSecret,
 } from "../lib/service_auth";
 import { taskStatusValidator, documentTypeValidator } from "../lib/validators";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+import type { GetForDeliveryResult } from "./notifications";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -290,7 +291,7 @@ export const listUndeliveredNotifications = action({
     serviceToken: v.string(),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<any[]> => {
+  handler: async (ctx, args): Promise<Doc<"notifications">[]> => {
     // Validate service token and verify account matches
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -319,7 +320,7 @@ export const getNotificationForDelivery = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<any> => {
+  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
     // Validate service token
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 

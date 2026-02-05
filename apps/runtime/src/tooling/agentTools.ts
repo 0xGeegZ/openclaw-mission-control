@@ -205,6 +205,7 @@ export async function executeAgentTool(params: {
     } catch {
       return { success: false, error: "Invalid JSON arguments" };
     }
+    // When invoked from delivery, taskId param is the current notification's task; LLM may also send taskId in args.
     const result: TaskStatusToolResult = await executeTaskStatusTool({
       agentId,
       taskId: args.taskId ?? taskId ?? "",

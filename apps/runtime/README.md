@@ -125,6 +125,16 @@ The runtime sends per-request tools (task_status, task_create, document_upsert) 
 - **Works for one agent, fails for another** — Same root cause as above. The runtime sends the same header and tools to every agent; the run that **succeeds** (e.g. Squad Lead moving to REVIEW, or Engineer moving to REVIEW) was executed in the session that matches `x-openclaw-session-key`, so it received the tools. The run that **fails** (e.g. QA or another agent reporting "tool not in function set") was executed in a different session (e.g. `openresponses:...`), so it did not. It is not that one agent has tools and another does not—it is that the gateway sometimes routes the request to the correct session and sometimes to another. Check gateway logs per run: the session key in the log should match the one the runtime sent for that agent.
 - **"HTTP endpoint (127.0.0.1:3000) connection refused"** / **"HTTP fallback unreachable"** — The prompt embeds a task-status fallback URL from the runtime’s `taskStatusBaseUrl`. The **agent runs inside the gateway process/container**, so `127.0.0.1:3000` is the gateway’s localhost, not the runtime. Set **TASK_STATUS_BASE_URL** to a URL the **gateway** can use to reach the runtime (e.g. `http://runtime:3000` when both run in Docker Compose). The runtime’s docker-compose already sets this for the runtime service; if you run the runtime outside Docker while the gateway is in Docker, set `TASK_STATUS_BASE_URL` in the runtime’s env to the hostname/IP the gateway can resolve (e.g. `host.docker.internal` or the host IP).
 
+## Testing
+
+Unit tests (Vitest) cover delivery (`shouldDeliverToAgent`, `formatNotificationMessage`), agent tools, and task status tool:
+
+```bash
+npm run test
+```
+
+**Note:** You may see a deprecation warning from Vite’s Node API (“The CJS build of Vite's Node API is deprecated”). This comes from Vitest’s use of Vite internally. The tests run correctly; a follow-up to migrate the runtime to ESM (or update the test runner config) is planned to clear the warning.
+
 ## Graceful shutdown
 
 On `SIGTERM` or `SIGINT`, the runtime:
