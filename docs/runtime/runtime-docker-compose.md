@@ -32,7 +32,7 @@ This guide covers running the OpenClaw Mission Control runtime (and optional Ope
    npm run docker:up
    ```
 
-   Health: `curl -s http://127.0.0.1:3001/health`
+   Health: `curl -s http://127.0.0.1:3000/health`
 
 3. **Start runtime + OpenClaw gateway**
 
@@ -41,7 +41,7 @@ This guide covers running the OpenClaw Mission Control runtime (and optional Ope
    npm run docker:up:openclaw
    ```
 
-   - Runtime health: `curl -s http://127.0.0.1:3001/health`
+   - Runtime health: `curl -s http://127.0.0.1:3000/health`
 
 - OpenClaw Control UI: http://localhost:18789/ (or `?token=...` if set)
 
@@ -58,7 +58,7 @@ docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up 
 
 - **File**: `apps/runtime/docker-compose.runtime.yml`.
 - **Services**:
-  - `runtime` — OpenClaw Mission Control runtime service (health on port 3001).
+  - `runtime` — OpenClaw Mission Control runtime service (health on port 3000).
   - `openclaw-gateway` — OpenClaw (Clawdbot) gateway; started only with profile `openclaw`.
 
 Ports are bound to `127.0.0.1` by default so only the host can access them. Do not expose these ports publicly without setting gateway token and hardening (see OpenClaw docs).
@@ -73,11 +73,12 @@ See `apps/runtime/.env.example`. Summary:
 | `CONVEX_URL`                      | Yes          | Convex deployment URL.                                                                                                                                                                          |
 | `SERVICE_TOKEN`                   | Yes          | Convex service token (account-scoped).                                                                                                                                                          |
 | `HEALTH_HOST`                     | No           | Bind address for health server; use `0.0.0.0` in Docker so healthcheck works.                                                                                                                   |
+| `TASK_STATUS_BASE_URL`            | No           | Base URL the OpenClaw gateway can use to reach runtime HTTP fallback endpoints (defaults to `http://{HEALTH_HOST}:{HEALTH_PORT}`).                                                              |
 | `LOG_LEVEL`                       | No           | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                        |
 | `AGENT_SYNC_INTERVAL`             | No           | Agent list sync interval in ms; new agents picked up without restart (default `60000`).                                                                                                         |
 | `OPENCLAW_GATEWAY_URL`            | No           | OpenClaw gateway base URL for sending messages to sessions. Default `http://127.0.0.1:18789`; with profile `openclaw` set `http://openclaw-gateway:18789` so the runtime can reach the gateway. |
 | `OPENCLAW_GATEWAY_TOKEN`          | No           | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                              |
-| `OPENCLAW_REQUEST_TIMEOUT_MS`     | No           | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase if agent runs are long.                                                  |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`     | No           | Timeout for `/v1/responses` requests in ms (default `180000`). Agent replies are written back to task threads; increase if agent runs are long.                                                 |
 | `OPENCLAW_SESSION_RETENTION_DAYS` | No           | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                     |
 | `AI_GATEWAY_API_KEY`              | For OpenClaw | Vercel AI Gateway API key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                           |
 | `VERCEL_AI_GATEWAY_API_KEY`       | For OpenClaw | Vercel AI Gateway API key; mapped to `AI_GATEWAY_API_KEY`.                                                                                                                                      |
@@ -127,7 +128,12 @@ If you only need to trim the session list shown at `/sessions`, set `OPENCLAW_SE
   Check logs: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw logs openclaw-gateway`. Set `VERCEL_AI_GATEWAY_API_KEY` (or `ANTHROPIC_API_KEY`) for agents to run. The gateway may still start without it for the Control UI.
 
 - **Port already in use**  
-  Change `HEALTH_PORT` (runtime) or the host port mapping in `apps/runtime/docker-compose.runtime.yml` (e.g. `"127.0.0.1:3002:3001"`). For OpenClaw, change the published port (e.g. `"127.0.0.1:18790:18789"`).
+  Change `HEALTH_PORT` (runtime) or the host port mapping in `apps/runtime/docker-compose.runtime.yml` (e.g. `"127.0.0.1:3002:3000"`). For OpenClaw, change the published port (e.g. `"127.0.0.1:18790:18789"`).
+
+- **Task status: "tool not available" or "HTTP endpoint not accessible"**  
+  The agent can update task status via the **task_status** tool (sent by the runtime with each notification) or the **HTTP fallback** (POST to runtime health server).
+  1. **Tool**: The runtime sends `tools: [{ type: "function", function: { name, description, parameters } }]` per [OpenResponses API](https://docs.clawd.bot/gateway/openresponses-http-api). Ensure the OpenClaw (Clawdbot) gateway version supports client-side function tools and forwards the `tools` parameter to the model. Set `LOG_LEVEL=debug` in the runtime and confirm logs show "Sending with tools" for task notifications. If the tool still does not appear in the agent UI, use the HTTP fallback (see below) or upgrade the gateway to a version that supports the Tools (client-side function tools) contract.
+  2. **HTTP fallback**: The agent must be able to reach the runtime at `TASK_STATUS_BASE_URL` (e.g. `http://runtime:3000`). With profile `openclaw`, both services use the same Docker network; from the gateway container, verify: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw exec openclaw-gateway curl -s http://runtime:3000/health`. If that fails, runtime and gateway are not on the same network or the runtime is not running. Ensure you start both with the same compose file and profile: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build`.
 
 ## Further reading
 

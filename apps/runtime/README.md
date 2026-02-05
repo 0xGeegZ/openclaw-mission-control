@@ -37,7 +37,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `ACCOUNT_ID`                                          | Yes      | Convex `accounts` document ID this runtime serves.                                                                                                                                                                                     |
 | `CONVEX_URL`                                          | Yes      | Convex deployment URL (e.g. `https://xxx.convex.cloud`).                                                                                                                                                                               |
 | `SERVICE_TOKEN`                                       | Yes      | Token for Convex service-only actions (account-scoped).                                                                                                                                                                                |
-| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3001`).                                                                                                                                                                                          |
+| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3000`).                                                                                                                                                                                          |
 | `DELIVERY_INTERVAL`                                   | No       | Notification poll interval in ms (default `5000`).                                                                                                                                                                                     |
 | `HEALTH_CHECK_INTERVAL`                               | No       | Convex status report interval in ms (default `60000`).                                                                                                                                                                                 |
 | `AGENT_SYNC_INTERVAL`                                 | No       | Agent list sync interval in ms; new agents picked up without restart (default `60000`).                                                                                                                                                |
@@ -45,10 +45,11 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `OPENCLAW_VERSION`                                    | No       | Override if `openclaw --version` fails.                                                                                                                                                                                                |
 | `LOG_LEVEL`                                           | No       | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                                                               |
 | `HEALTH_HOST`                                         | No       | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker).                                                                                                                                                         |
+| `TASK_STATUS_BASE_URL`                                | No       | Base URL the OpenClaw gateway can use to reach runtime HTTP fallback endpoints (defaults to `http://{HEALTH_HOST}:{HEALTH_PORT}`).                                                                                                     |
 | `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                           |
 | `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
 | `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                     |
-| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `60000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                            |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `180000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                           |
 | `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                            |
 | `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                      |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                            |
@@ -74,7 +75,7 @@ The Dockerfile expects to be built from the **monorepo root** (it copies `apps/r
 
 ```bash
 docker build -f apps/runtime/Dockerfile -t openclaw-mission-control-runtime .
-docker run --env-file apps/runtime/.env -p 3001:3001 openclaw-mission-control-runtime
+docker run --env-file apps/runtime/.env -p 3000:3000 openclaw-mission-control-runtime
 ```
 
 Pass env vars via `--env-file` or `-e`; the app does not read `.env` from disk inside the image unless you mount it.
@@ -112,7 +113,27 @@ Upgrade workflow (pull new images and restart):
 - **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts (including `consecutiveFailures`, `lastErrorAt`, `lastErrorMessage` on errors).
 - **`GET /version`** — Lightweight: runtime version, OpenClaw version, droplet id/region.
 
-Both return JSON. Default port: `3001`.
+Both return JSON. Default port: `3000`.
+
+### Tools and session key
+
+The runtime sends per-request tools (task_status, task_create, document_upsert) in the same POST body as the notification message. It also sends **session routing** so the gateway uses the correct session: the `x-openclaw-session-key` header and the OpenResponses `user` field (set to the same session key). Per [OpenResponses API](https://docs.clawd.bot/gateway/openresponses-http-api), the endpoint is stateless by default and generates a new session each call unless the request provides a stable session (e.g. via `user` or the advanced `x-openclaw-session-key` header). If the gateway still runs under a different session (e.g. `openresponses:uuid`), the model will not receive our tools and will report "tool not in function set". When debugging, check gateway logs to confirm the run uses the session key the runtime sent.
+
+### Troubleshooting
+
+- **"task_status tool not found in function set"** — (1) **Session routing**: The runtime sends `x-openclaw-session-key`, `user: sessionKey` in the body, and `tools`. If gateway logs still show `session=openresponses:...` or `agent=main`, the gateway is running in a different session and per-request tools are not applied. The OpenResponses API is [stateless by default](https://docs.clawd.bot/gateway/openresponses-http-api#session-behavior); the `user` field (and header) tell it which session to use. Ensure your OpenClaw (Clawdbot) gateway version honors `user` and/or `x-openclaw-session-key` for session routing. If the problem persists, check the gateway version and the "Session behavior" / "Choosing an agent" sections of the [OpenResponses API](https://docs.clawd.bot/gateway/openresponses-http-api) docs. (2) **Schema compatibility**: Some OpenClaw/Cloud Code Assist backends accept only a strict subset of JSON Schema; avoid unsupported keywords (e.g. `anyOf`/`oneOf`/`allOf`, `patternProperties`, `additionalProperties`, `minLength`/`maxLength`, `format`). If the gateway returns a 400 "invalid tool schema", check OpenClaw troubleshooting for tool schema compatibility.
+- **Works for one agent, fails for another** — Same root cause as above. The runtime sends the same header and tools to every agent; the run that **succeeds** (e.g. Squad Lead moving to REVIEW, or Engineer moving to REVIEW) was executed in the session that matches `x-openclaw-session-key`, so it received the tools. The run that **fails** (e.g. QA or another agent reporting "tool not in function set") was executed in a different session (e.g. `openresponses:...`), so it did not. It is not that one agent has tools and another does not—it is that the gateway sometimes routes the request to the correct session and sometimes to another. Check gateway logs per run: the session key in the log should match the one the runtime sent for that agent.
+- **"HTTP endpoint (127.0.0.1:3000) connection refused"** / **"HTTP fallback unreachable"** — The prompt embeds a task-status fallback URL from the runtime’s `taskStatusBaseUrl`. The **agent runs inside the gateway process/container**, so `127.0.0.1:3000` is the gateway’s localhost, not the runtime. Set **TASK_STATUS_BASE_URL** to a URL the **gateway** can use to reach the runtime (e.g. `http://runtime:3000` when both run in Docker Compose). The runtime’s docker-compose already sets this for the runtime service; if you run the runtime outside Docker while the gateway is in Docker, set `TASK_STATUS_BASE_URL` in the runtime’s env to the hostname/IP the gateway can resolve (e.g. `host.docker.internal` or the host IP).
+
+## Testing
+
+Unit tests (Vitest) cover delivery (`shouldDeliverToAgent`, `formatNotificationMessage`), agent tools, and task status tool:
+
+```bash
+npm run test
+```
+
+**Note:** You may see a deprecation warning from Vite’s Node API (“The CJS build of Vite's Node API is deprecated”). This comes from Vitest’s use of Vite internally. The tests run correctly; a follow-up to migrate the runtime to ESM (or update the test runner config) is planned to clear the warning.
 
 ## Graceful shutdown
 

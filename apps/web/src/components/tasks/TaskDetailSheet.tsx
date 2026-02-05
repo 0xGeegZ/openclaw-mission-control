@@ -10,8 +10,6 @@ import {
   SheetTitle,
 } from "@packages/ui/components/sheet";
 import { Badge } from "@packages/ui/components/badge";
-import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
-
 import { Skeleton } from "@packages/ui/components/skeleton";
 import {
   Tabs,
@@ -31,9 +29,10 @@ import {
   Tag,
 } from "lucide-react";
 import Link from "next/link";
-import { TASK_STATUS_LABELS } from "@packages/shared";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
+import { TaskStatusSelect } from "./TaskStatusSelect";
+import { TaskAssignees } from "./TaskAssignees";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskDetailSheetProps {
@@ -121,14 +120,6 @@ export function TaskDetailSheet({
 }: TaskDetailSheetProps) {
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
 
-  const agents = useQuery(
-    api.agents.getRoster,
-    task?.accountId ? { accountId: task.accountId } : "skip",
-  );
-
-  const assignedAgents =
-    agents?.filter((agent) => task?.assignedAgentIds.includes(agent._id)) ?? [];
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -172,17 +163,13 @@ export function TaskDetailSheet({
             </SheetHeader>
 
             <div className="p-5 space-y-4 shrink-0 border-b border-border/50">
-              {/* Status badge */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge
-                  variant="outline"
-                  className={`gap-1.5 border ${STATUS_CONFIG[task.status]?.bgColor}`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
-                  />
-                  {TASK_STATUS_LABELS[task.status]}
-                </Badge>
+              {/* Status and priority */}
+              <div
+                className="flex items-center gap-2 flex-wrap"
+                role="group"
+                aria-label="Task status and priority"
+              >
+                <TaskStatusSelect task={task} variant="compact" />
 
                 {task.priority && (
                   <Badge
@@ -224,36 +211,16 @@ export function TaskDetailSheet({
               {/* Metadata grid */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 {/* Assignees */}
-                <div className="space-y-2 p-3 rounded-xl bg-muted/30">
+                <div
+                  className="space-y-2 p-3 rounded-xl bg-muted/30"
+                  role="group"
+                  aria-label="Task assignees"
+                >
                   <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
                     Assignees
                   </span>
                   <div className="flex items-center gap-2">
-                    {assignedAgents.length > 0 ? (
-                      <div className="flex -space-x-2">
-                        {assignedAgents.slice(0, 4).map((agent) => (
-                          <Avatar
-                            key={agent._id}
-                            className="h-7 w-7 ring-2 ring-background shadow-sm"
-                          >
-                            <AvatarFallback className="text-[10px] font-semibold bg-gradient-to-br from-primary/15 to-primary/5 text-primary">
-                              {agent.name.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                        {assignedAgents.length > 4 && (
-                          <div className="h-7 w-7 rounded-full ring-2 ring-background bg-muted flex items-center justify-center shadow-sm">
-                            <span className="text-[10px] font-semibold text-muted-foreground">
-                              +{assignedAgents.length - 4}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground/60 text-xs italic">
-                        Unassigned
-                      </span>
-                    )}
+                    <TaskAssignees task={task} showLabel={false} />
                   </div>
                 </div>
 

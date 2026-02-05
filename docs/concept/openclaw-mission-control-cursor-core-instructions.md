@@ -221,9 +221,10 @@ These functions must reject user identities and accept only runtime/service iden
 - `service.notifications.listUndeliveredForAccount(accountId, limit)`
 - `service.notifications.markDelivered(notificationId)`
 - `service.agents.upsertHeartbeat(agentId, status, currentTaskId?)`
-- `service.messages.createFromAgent(taskId, content, meta)`
-- `service.docs.createOrUpdateFromAgent(taskId?, title, content, type, meta)`
-- `service.tasks.updateStatusFromAgent(taskId, nextStatus, meta)`
+- `service.messages.createFromAgent(taskId, content, meta)` (gated by canMentionAgents for agent mentions)
+- `service.actions.createTaskFromAgent(agentId, title, …)` → internal `service.tasks.createFromAgent`
+- `service.actions.createDocumentFromAgent(agentId, title, content, type, …)` → internal `service.documents.createOrUpdateFromAgent`
+- `service.actions.updateTaskStatusFromAgent(taskId, agentId, status, …)` (gated by canModifyTaskStatus) → internal `service.tasks.updateStatusFromAgent`
 
 All inputs must be validated (zod or equivalent) and all writes must log `activities`.
 

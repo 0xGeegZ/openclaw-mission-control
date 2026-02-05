@@ -32,4 +32,4 @@ docker compose -f "$COMPOSE_FILE" ${PROFILE:+--profile "$PROFILE"} down
 echo "Starting services..."
 docker compose -f "$COMPOSE_FILE" ${PROFILE:+--profile "$PROFILE"} up -d
 
-echo "Done. Check health: curl -s http://127.0.0.1:3001/health"
+echo "Done. Check health: curl -s http://127.0.0.1:3000/health"

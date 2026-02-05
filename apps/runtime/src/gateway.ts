@@ -6,6 +6,19 @@ import { createLogger } from "./logger";
 
 const log = createLogger("[Gateway]");
 
+/** OpenResponses function_call output item from the agent response */
+export interface OpenClawToolCall {
+  call_id: string;
+  name: string;
+  arguments: string;
+}
+
+/** Result of sendToOpenClaw: text reply and/or tool calls to execute */
+export interface SendToOpenClawResult {
+  text: string | null;
+  toolCalls: OpenClawToolCall[];
+}
+
 /**
  * Collect response text from OpenClaw content fields (string/object/array).
  */
@@ -35,16 +48,20 @@ function collectOpenClawContentText(content: unknown, parts: string[]): void {
 }
 
 /**
- * Extract agent reply text from OpenClaw /v1/responses JSON body.
- * Handles output_text, output[] content arrays, and common fallbacks.
+ * Parse OpenClaw /v1/responses JSON body into text and function_call items.
+ * Handles output_text, output[] (message + function_call), and fallbacks.
  */
-function parseOpenClawResponseBody(body: string): string | null {
+function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
+  const empty: SendToOpenClawResult = { text: null, toolCalls: [] };
   const trimmed = body?.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return empty;
   try {
     const data = JSON.parse(trimmed) as Record<string, unknown>;
+    const toolCalls: OpenClawToolCall[] = [];
+    let text: string | null = null;
+
     if (typeof data.output_text === "string" && data.output_text.trim()) {
-      return data.output_text.trim();
+      text = data.output_text.trim();
     }
     const output = data.output;
     if (Array.isArray(output)) {
@@ -52,27 +69,45 @@ function parseOpenClawResponseBody(body: string): string | null {
       for (const item of output) {
         if (item && typeof item === "object") {
           const obj = item as Record<string, unknown>;
+          if (obj.type === "function_call") {
+            const callId =
+              typeof obj.call_id === "string" ? obj.call_id : undefined;
+            const name = typeof obj.name === "string" ? obj.name : undefined;
+            const args =
+              typeof obj.arguments === "string"
+                ? obj.arguments
+                : typeof obj.arguments === "object" && obj.arguments !== null
+                  ? JSON.stringify(obj.arguments)
+                  : "";
+            if (callId && name) {
+              toolCalls.push({ call_id: callId, name, arguments: args ?? "" });
+            }
+            continue;
+          }
           if (typeof obj.content !== "undefined") {
             collectOpenClawContentText(obj.content, parts);
           }
           if (typeof obj.text === "string") {
-            const text = obj.text.trim();
-            if (text) parts.push(text);
+            const t = (obj.text as string).trim();
+            if (t) parts.push(t);
           }
         }
       }
-      if (parts.length > 0) return parts.join("\n").trim();
+      if (parts.length > 0 && text === null) {
+        text = parts.join("\n").trim();
+      }
     }
-    if (typeof data.text === "string" && data.text.trim())
-      return data.text.trim();
-    if (typeof data.content !== "undefined") {
+    if (text === null && typeof data.text === "string" && data.text.trim()) {
+      text = (data.text as string).trim();
+    }
+    if (text === null && typeof data.content !== "undefined") {
       const parts: string[] = [];
       collectOpenClawContentText(data.content, parts);
-      if (parts.length > 0) return parts.join("\n").trim();
+      if (parts.length > 0) text = parts.join("\n").trim();
     }
-    return null;
+    return { text, toolCalls };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -309,17 +344,33 @@ export function getAgentIdForSessionKey(
   return session ? session.agentId : null;
 }
 
+/** Options for sendToOpenClaw when tools are enabled */
+export interface SendToOpenClawOptions {
+  /** OpenResponses tools array (e.g. task_status); only sent when task exists and agent can modify status */
+  tools?: unknown[];
+  /** tool_choice: "auto" | "required" | { type: "function", name: string } */
+  toolChoice?: "auto" | "required" | { type: "function"; name: string };
+}
+
 /**
  * Send a message to an OpenClaw session via OpenResponses HTTP API.
  * POST {openclawGatewayUrl}/v1/responses with x-openclaw-session-key and optional Bearer token.
- * Uses stream: false so the response body contains the full agent reply for write-back.
+ * Uses stream: false so the response body contains the full agent reply and any tool calls.
  * Throws on non-2xx or when gateway URL is disabled so delivery loop keeps notification undelivered.
- * @returns Extracted response text from the agent, or null when unavailable or empty.
+ *
+ * Session key and tools: The gateway must run this request in the session identified by
+ * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
+ * task_create, document_upsert) are applied to that run. If the gateway runs the request under a
+ * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
+ * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
+ *
+ * @returns Structured result with extracted text and any function_call items.
  */
 export async function sendToOpenClaw(
   sessionKey: string,
   message: string,
-): Promise<string | null> {
+  options?: SendToOpenClawOptions,
+): Promise<SendToOpenClawResult> {
   const session = state.sessions.get(sessionKey);
   if (!session) {
     throw new Error(`Unknown session: ${sessionKey}`);
@@ -345,11 +396,25 @@ export async function sendToOpenClaw(
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
-  const body = JSON.stringify({
+  const payload: Record<string, unknown> = {
     model: `openclaw:${agentId}`,
     input: message,
     stream: false,
-  });
+    // OpenResponses session routing: "user" lets the gateway derive a stable session key
+    // so the run uses this session (and receives per-request tools). Without it, the
+    // endpoint is stateless per request and generates a new session (e.g. openresponses:uuid).
+    user: sessionKey,
+  };
+  if (
+    options?.tools &&
+    Array.isArray(options.tools) &&
+    options.tools.length > 0
+  ) {
+    payload.tools = options.tools;
+    payload.tool_choice =
+      options.toolChoice !== undefined ? options.toolChoice : "auto";
+  }
+  const body = JSON.stringify(payload);
 
   const timeoutMs = state.openclawRequestTimeoutMs;
   let res: Response;
@@ -388,6 +453,70 @@ export async function sendToOpenClaw(
 
   const responseBody = await res.text();
   return parseOpenClawResponseBody(responseBody);
+}
+
+/**
+ * Send function_call_output back to OpenClaw and return the final agent reply.
+ * Used after executing a tool (e.g. task_status) so the agent can emit its closing message.
+ */
+export async function sendOpenClawToolResults(
+  sessionKey: string,
+  outputs: { call_id: string; output: string }[],
+): Promise<string | null> {
+  const session = state.sessions.get(sessionKey);
+  if (!session) {
+    throw new Error(`Unknown session: ${sessionKey}`);
+  }
+
+  const baseUrl = state.openclawGatewayUrl?.trim();
+  if (!baseUrl) {
+    throw new Error(
+      "OpenClaw gateway URL is not set; cannot send tool results",
+    );
+  }
+
+  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-openclaw-session-key": sessionKey,
+    "x-openclaw-agent-id": agentId,
+  };
+  if (state.openclawGatewayToken) {
+    headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
+  }
+  const body = JSON.stringify({
+    model: `openclaw:${agentId}`,
+    stream: false,
+    user: sessionKey,
+    function_call_output: outputs,
+  });
+
+  const timeoutMs = state.openclawRequestTimeoutMs;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `OpenClaw gateway (tool result) returned ${res.status}: ${text || res.statusText}`,
+    );
+  }
+
+  const responseBody = await res.text();
+  const parsed = parseOpenClawResponseBody(responseBody);
+  return parsed.text;
 }
 
 /**

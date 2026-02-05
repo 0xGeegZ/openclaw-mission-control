@@ -13,7 +13,10 @@ import {
   createAssignmentNotification,
   createStatusChangeNotification,
 } from "./lib/notifications";
-import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
+import {
+  ensureSubscribed,
+  ensureOrchestratorSubscribed,
+} from "./subscriptions";
 
 /**
  * Internal: list tasks for an account (for standup/cron). No auth.
@@ -373,7 +376,8 @@ export const updateStatus = mutation({
 /**
  * Assign users and/or agents to a task.
  * Newly assigned entities are auto-subscribed to the thread.
- * Auto-transitions between inbox and assigned based on assignees.
+ * Auto-transitions: inbox → in_progress when at least one agent is assigned;
+ * inbox → assigned when only users are assigned; assigned → inbox when all assignees removed.
  */
 export const assign = mutation({
   args: {
@@ -424,8 +428,11 @@ export const assign = mutation({
       nextAssignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
     const shouldAssign = task.status === "inbox" && hasAssignees;
     const shouldUnassign = task.status === "assigned" && !hasAssignees;
+    /** When at least one agent is assigned from inbox, auto-start to in_progress for UI; user-only stays assigned. */
     const nextStatus: TaskStatus | null = shouldAssign
-      ? "assigned"
+      ? nextAssignedAgentIds.length > 0
+        ? "in_progress"
+        : "assigned"
       : shouldUnassign
         ? "inbox"
         : null;
@@ -532,6 +539,8 @@ export const assign = mutation({
     });
 
     if (nextStatus && nextStatus !== task.status) {
+      const autoStartOnAssign =
+        task.status === "inbox" && nextStatus === "in_progress";
       await logActivity({
         ctx,
         accountId: task.accountId,
@@ -545,7 +554,9 @@ export const assign = mutation({
         meta: {
           oldStatus: task.status,
           newStatus: nextStatus,
-          reason: "auto_assignment",
+          reason: autoStartOnAssign
+            ? "auto_start_on_assign"
+            : "auto_assignment",
         },
       });
     }

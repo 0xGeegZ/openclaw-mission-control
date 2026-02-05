@@ -1,6 +1,42 @@
 import { v } from "convex/values";
 import { internalQuery, internalMutation } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+import { resolveBehaviorFlags, type BehaviorFlags } from "../lib/behavior_flags";
+
+/**
+ * Return type of getForDelivery. Used by service actions and runtime for type-safe delivery context.
+ */
+export interface GetForDeliveryResult {
+  notification: Doc<"notifications">;
+  agent: Doc<"agents"> | null;
+  task: Doc<"tasks"> | null;
+  message: Doc<"messages"> | null;
+  thread: Array<{
+    messageId: Id<"messages">;
+    authorType: "user" | "agent";
+    authorId: string;
+    authorName: string | null;
+    content: string;
+    createdAt: number;
+  }>;
+  sourceNotificationType: string | null;
+  orchestratorAgentId: Id<"agents"> | null;
+  primaryUserMention: { id: string; name: string; email: string | null } | null;
+  mentionableAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  assignedAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  effectiveBehaviorFlags: BehaviorFlags;
+  repositoryDoc: { title: string; content: string } | null;
+}
 
 /**
  * List undelivered agent notifications for an account (service-only).
@@ -12,7 +48,7 @@ export const listUndeliveredForAccount = internalQuery({
     accountId: v.id("accounts"),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Doc<"notifications">[]> => {
     const notifications = await ctx.db
       .query("notifications")
       .withIndex("by_account_undelivered", (q) =>
@@ -87,7 +123,7 @@ export const getForDelivery = internalQuery({
   args: {
     notificationId: v.id("notifications"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
     const notification = await ctx.db.get(args.notificationId);
     if (!notification) {
       return null;
@@ -271,6 +307,8 @@ export const getForDelivery = internalQuery({
       assignedIdsSet.has(a.id),
     );
 
+    const effectiveBehaviorFlags = resolveBehaviorFlags(agent, account);
+
     return {
       notification,
       agent,
@@ -282,6 +320,7 @@ export const getForDelivery = internalQuery({
       primaryUserMention,
       mentionableAgents,
       assignedAgents,
+      effectiveBehaviorFlags,
       repositoryDoc: repositoryDoc
         ? {
             title:

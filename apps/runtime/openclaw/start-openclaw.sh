@@ -52,8 +52,26 @@ try {
 
 config.agents = config.agents || {};
 config.agents.defaults = config.agents.defaults || {};
-config.agents.defaults.model = config.agents.defaults.model || {};
-config.agents.defaults.models = config.agents.defaults.models || {};
+const rawModel = config.agents.defaults.model;
+if (rawModel && typeof rawModel === 'object' && !Array.isArray(rawModel)) {
+  config.agents.defaults.model = rawModel;
+} else if (typeof rawModel === 'string' && rawModel.trim()) {
+  config.agents.defaults.model = { primary: rawModel.trim(), fallbacks: [] };
+} else {
+  config.agents.defaults.model = {};
+}
+if (
+  config.agents.defaults.model.fallbacks &&
+  !Array.isArray(config.agents.defaults.model.fallbacks)
+) {
+  config.agents.defaults.model.fallbacks = [];
+}
+const rawModels = config.agents.defaults.models;
+if (rawModels && typeof rawModels === 'object' && !Array.isArray(rawModels)) {
+  config.agents.defaults.models = rawModels;
+} else {
+  config.agents.defaults.models = {};
+}
 config.gateway = config.gateway || {};
 config.channels = config.channels || {};
 config.auth = config.auth || {};
@@ -354,7 +372,7 @@ if [ -d "$WRITABLE_REPO_DIR/.git" ]; then
   sync_doc_if_changed "$WRITABLE_REPO_DIR/docs/runtime/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
 fi
 
-TOKEN="${OPENCLAW_GATEWAY_TOKEN-local}"
+TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}"
 echo ""
 echo "============================================================"
 if [ -n "$TOKEN" ]; then

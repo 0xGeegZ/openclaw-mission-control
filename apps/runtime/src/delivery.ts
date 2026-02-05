@@ -1,10 +1,103 @@
 import { getConvexClient, api } from "./convex-client";
 import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
-import { sendToOpenClaw } from "./gateway";
+import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
+import {
+  getToolCapabilitiesAndSchemas,
+  executeAgentTool,
+  type ToolCapabilitiesAndSchemas,
+} from "./tooling/agentTools";
 
 const log = createLogger("[Delivery]");
+
+/**
+ * Context passed from getNotificationForDelivery (Convex service).
+ * Mirrors the return shape of service/notifications.getForDelivery for type safety.
+ */
+export interface DeliveryContext {
+  notification: {
+    _id: string;
+    type: string;
+    title: string;
+    body: string;
+    recipientId?: string;
+    recipientType?: "user" | "agent";
+    taskId?: string;
+    messageId?: string;
+    accountId: string;
+  };
+  agent: {
+    _id: string;
+    sessionKey?: string;
+    role?: string;
+    name?: string;
+  } | null;
+  task: {
+    _id: string;
+    status: string;
+    title: string;
+    description?: string;
+    assignedAgentIds?: string[];
+  } | null;
+  message: {
+    _id: string;
+    authorType: string;
+    authorId: string;
+    content?: string;
+  } | null;
+  thread: Array<{
+    messageId: string;
+    authorType: string;
+    authorId: string;
+    authorName: string | null;
+    content: string;
+    createdAt: number;
+  }>;
+  sourceNotificationType: string | null;
+  orchestratorAgentId: string | null;
+  primaryUserMention: { id: string; name: string; email: string | null } | null;
+  mentionableAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  assignedAgents: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+  }>;
+  effectiveBehaviorFlags?: {
+    canCreateTasks?: boolean;
+    canModifyTaskStatus?: boolean;
+    canCreateDocuments?: boolean;
+    canMentionAgents?: boolean;
+  };
+  repositoryDoc: { title: string; content: string } | null;
+}
+
+/** Posted when tool execution ran but no final reply was received (e.g. follow-up request failed). */
+const FALLBACK_NO_REPLY_AFTER_TOOLS = [
+  "**Summary**",
+  "- Tool(s) were executed; the final reply could not be retrieved.",
+  "",
+  "**Work done**",
+  "- Executed tool calls for this notification.",
+  "",
+  "**Artifacts**",
+  "- None.",
+  "",
+  "**Risks / blockers**",
+  "- If a tool reported an error (success: false), consider the task BLOCKED and do not claim status was changed.",
+  "",
+  "**Next step (one)**",
+  "- Retry once the runtime or gateway is healthy.",
+  "",
+  "**Sources**",
+  "- None.",
+].join("\n");
 
 interface DeliveryState {
   isRunning: boolean;
@@ -29,7 +122,9 @@ const state: DeliveryState = {
 /**
  * Start the notification delivery loop.
  * Polls Convex for undelivered agent notifications and delivers to OpenClaw.
- * Uses exponential backoff with jitter on poll errors.
+ * Uses exponential backoff with jitter on poll errors. No-op if already running.
+ *
+ * @param config - Runtime config (accountId, serviceToken, intervals, taskStatusBaseUrl).
  */
 export function startDeliveryLoop(config: RuntimeConfig): void {
   if (state.isRunning) return;
@@ -78,10 +173,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 },
               );
               state.deliveredCount++;
-              log.debug("Skipped delivery for missing task", notification._id);
+              log.info("Skipped delivery for missing task", notification._id);
               continue;
             }
-            if (!shouldDeliverToAgent(context)) {
+            if (!shouldDeliverToAgent(context as DeliveryContext)) {
               await client.action(
                 api.service.actions.markNotificationDelivered,
                 {
@@ -108,14 +203,90 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 msg,
               );
             }
-            const responseText = await sendToOpenClaw(
+            const flags = context.effectiveBehaviorFlags ?? {};
+            const hasTask = !!context?.task;
+            const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+            const toolCapabilities = getToolCapabilitiesAndSchemas({
+              canCreateTasks: flags.canCreateTasks === true,
+              canModifyTaskStatus,
+              canCreateDocuments: flags.canCreateDocuments === true,
+              hasTaskContext: hasTask,
+            });
+            const sendOptions =
+              toolCapabilities.schemas.length > 0
+                ? {
+                    tools: toolCapabilities.schemas,
+                    toolChoice: "auto" as const,
+                  }
+                : undefined;
+            if (sendOptions) {
+              log.debug("Sending with tools", sendOptions.tools.length);
+            }
+
+            const result = await sendToOpenClaw(
               context.agent.sessionKey,
-              formatNotificationMessage(context),
+              formatNotificationMessage(
+                context as DeliveryContext,
+                config.taskStatusBaseUrl,
+                toolCapabilities,
+              ),
+              sendOptions,
             );
+
+            let textToPost: string | null = result.text?.trim() ?? null;
+            if (result.toolCalls.length > 0) {
+              const outputs: { call_id: string; output: string }[] = [];
+              // taskId is the notification's task; tools (e.g. task_status) are expected to operate on this task only.
+              for (const call of result.toolCalls) {
+                const toolResult = await executeAgentTool({
+                  name: call.name,
+                  arguments: call.arguments,
+                  agentId: context.agent._id,
+                  accountId: config.accountId,
+                  serviceToken: config.serviceToken,
+                  taskId: context.notification?.taskId,
+                });
+                if (!toolResult.success) {
+                  log.warn(
+                    "Tool execution failed",
+                    call.name,
+                    notification._id,
+                    toolResult.error ?? "unknown",
+                  );
+                }
+                outputs.push({
+                  call_id: call.call_id,
+                  output: JSON.stringify(toolResult),
+                });
+              }
+              if (outputs.length > 0) {
+                try {
+                  const finalText = await sendOpenClawToolResults(
+                    context.agent.sessionKey,
+                    outputs,
+                  );
+                  textToPost = finalText?.trim() ?? textToPost;
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  log.warn("Failed to send tool results to OpenClaw", msg);
+                }
+              }
+            }
+
             const taskId = context.notification?.taskId;
-            if (taskId && responseText?.trim()) {
-              const trimmed = responseText.trim();
-              const finalContent = applyAutoMentionFallback(trimmed, context);
+            if (taskId && !textToPost && result.toolCalls.length > 0) {
+              textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
+              log.warn(
+                "No reply after tool execution; posting fallback message",
+                notification._id,
+              );
+            }
+            if (taskId && textToPost) {
+              const trimmed = textToPost.trim();
+              const finalContent = applyAutoMentionFallback(
+                trimmed,
+                context as DeliveryContext,
+              );
               if (finalContent !== trimmed) {
                 const originalTokens = extractMentionTokens(trimmed);
                 const finalTokens = extractMentionTokens(finalContent);
@@ -138,6 +309,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 sourceNotificationId: notification._id,
               });
               if (
+                canModifyTaskStatus &&
                 context.task?.status === "assigned" &&
                 context.notification?.type === "assignment"
               ) {
@@ -213,7 +385,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 }
 
 /**
- * Stop the delivery loop.
+ * Stop the delivery loop. Idempotent; safe to call when not running.
  */
 export function stopDeliveryLoop(): void {
   state.isRunning = false;
@@ -221,31 +393,53 @@ export function stopDeliveryLoop(): void {
 }
 
 /**
- * Get current delivery state.
+ * Get current delivery state (running flag, last delivery time, counts). Snapshot; safe to call from health or metrics.
+ *
+ * @returns Shallow copy of delivery state.
  */
 export function getDeliveryState(): DeliveryState {
   return { ...state };
 }
 
+/** Task statuses for which we skip delivering status_change to agents to avoid ack storms. */
+const TASK_STATUSES_SKIP_STATUS_CHANGE = new Set(["done", "blocked"]);
+
 /**
  * Decide whether a notification should be delivered to an agent.
- * Skips agent-authored thread updates unless the recipient is assigned to the task
- * or the task is in review and the recipient is a reviewer role. Auto-generated
- * agent replies (from thread_update notifications) do not trigger further agent replies,
- * which avoids agent-to-agent loops while still notifying responsible reviewers.
+ * Mention notifications are always delivered (including when task is DONE) so the
+ * mentioned agent can reply once to a direct request (e.g. push PR).
+ * Skips status_change notifications to agents when task is DONE or BLOCKED to avoid
+ * acknowledgment storms (each agent replying to "task status changed to done").
+ * Skips agent-authored thread_update unless the recipient is assigned, or in review
+ * as a reviewer; skips thread_update when task is DONE or BLOCKED to avoid reply loops.
+ *
+ * @param context - Delivery context from getNotificationForDelivery (notification, task, message, thread, flags).
+ * @returns true if the notification should be sent to the agent, false to skip (and mark delivered).
  */
-function shouldDeliverToAgent(context: any): boolean {
-  const notificationType = context?.notification?.type;
-  const messageAuthorType = context?.message?.authorType;
+export function shouldDeliverToAgent(context: DeliveryContext): boolean {
+  const notificationType = context.notification?.type;
+  const messageAuthorType = context.message?.authorType;
+  const taskStatus = context.task?.status;
+
+  if (
+    notificationType === "status_change" &&
+    context.notification?.recipientType === "agent" &&
+    taskStatus != null &&
+    TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+  ) {
+    return false;
+  }
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
-    const taskStatus = context?.task?.status;
-    const recipientId = context?.notification?.recipientId;
-    const assignedAgentIds = context?.task?.assignedAgentIds;
-    const sourceNotificationType = context?.sourceNotificationType;
-    const orchestratorAgentId = context?.orchestratorAgentId;
-    const agentRole = context?.agent?.role;
-    if (taskStatus === "done") {
+    const recipientId = context.notification?.recipientId;
+    const assignedAgentIds = context.task?.assignedAgentIds;
+    const sourceNotificationType = context.sourceNotificationType;
+    const orchestratorAgentId = context.orchestratorAgentId;
+    const agentRole = context.agent?.role;
+    if (
+      taskStatus != null &&
+      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+    ) {
       return false;
     }
     if (sourceNotificationType === "thread_update") {
@@ -257,7 +451,8 @@ function shouldDeliverToAgent(context: any): boolean {
     if (taskStatus === "review" && isReviewerRole(agentRole)) {
       return true;
     }
-    if (!Array.isArray(assignedAgentIds)) return false;
+    if (!Array.isArray(assignedAgentIds) || typeof recipientId !== "string")
+      return false;
     return assignedAgentIds.includes(recipientId);
   }
 
@@ -416,17 +611,21 @@ function buildAutoMentionPrefix(
  * recipient is orchestrator, reply has no @mentions, and there is at least one assigned agent (excluding orchestrator).
  * Otherwise returns content unchanged.
  */
-function applyAutoMentionFallback(content: string, context: any): string {
+function applyAutoMentionFallback(
+  content: string,
+  context: DeliveryContext,
+): string {
   if (!content.trim()) return content;
-  const type = context?.notification?.type;
-  const messageAuthorType = context?.message?.authorType;
-  const recipientId = context?.notification?.recipientId;
-  const orchestratorAgentId = context?.orchestratorAgentId;
-  const assignedAgents: MentionableAgent[] = context?.assignedAgents ?? [];
-  const mentionableAgents: MentionableAgent[] =
-    context?.mentionableAgents ?? [];
+  const type = context.notification?.type;
+  const messageAuthorType = context.message?.authorType;
+  const recipientId = context.notification?.recipientId;
+  const orchestratorAgentId = context.orchestratorAgentId;
+  const assignedAgents: MentionableAgent[] = context.assignedAgents ?? [];
+  const mentionableAgents: MentionableAgent[] = context.mentionableAgents ?? [];
   const primaryUser: PrimaryUserMention | null =
-    context?.primaryUserMention ?? null;
+    context.primaryUserMention ?? null;
+  const canMentionAgents =
+    context.effectiveBehaviorFlags?.canMentionAgents === true;
   if (type !== "thread_update" || messageAuthorType !== "agent") return content;
   if (orchestratorAgentId == null || recipientId !== orchestratorAgentId)
     return content;
@@ -441,7 +640,7 @@ function applyAutoMentionFallback(content: string, context: any): string {
   const userPrefix =
     primaryUser && needsUserMention ? buildUserMentionPrefix(primaryUser) : "";
   const agentPrefix =
-    !hasAnyMentions && !hasAllMention
+    canMentionAgents && !hasAnyMentions && !hasAllMention
       ? buildAutoMentionPrefix(assignedAgents, orchestratorAgentId)
       : "";
   if (!userPrefix && !agentPrefix) return content;
@@ -503,7 +702,9 @@ function formatPrimaryUserMentionSection(
 /**
  * Format full thread context lines for delivery.
  */
-function formatThreadContext(thread: any[] | undefined): string {
+function formatThreadContext(
+  thread: DeliveryContext["thread"] | undefined,
+): string {
   if (!thread || thread.length === 0) return "";
   const lines = ["Thread history (full):"];
   for (const item of thread) {
@@ -518,13 +719,21 @@ function formatThreadContext(thread: any[] | undefined): string {
   return lines.join("\n");
 }
 
-/**
- * Format notification message for OpenClaw.
- * Instructs the agent to reply in the AGENTS.md thread-update format so write-back fits the shared brain.
- */
 const MENTIONABLE_AGENTS_CAP = 25;
 
-function formatNotificationMessage(context: any): string {
+/**
+ * Format notification message for OpenClaw (identity line, capabilities, task context, status instructions).
+ * Exported for unit tests.
+ *
+ * @param context - Delivery context (notification, task, message, thread, repositoryDoc, agents, behavior flags).
+ * @param taskStatusBaseUrl - Base URL the agent can use for task-status HTTP fallback (e.g. http://runtime:3000 in Docker).
+ * @param toolCapabilities - Capability labels and hasTaskStatus for prompt; must match tools sent to OpenClaw.
+ */
+export function formatNotificationMessage(
+  context: DeliveryContext,
+  taskStatusBaseUrl: string,
+  toolCapabilities: ToolCapabilitiesAndSchemas,
+): string {
   const {
     notification,
     task,
@@ -533,7 +742,24 @@ function formatNotificationMessage(context: any): string {
     repositoryDoc,
     mentionableAgents = [],
     primaryUserMention = null,
+    effectiveBehaviorFlags = {},
+    orchestratorAgentId = null,
   } = context;
+  const flags = context.effectiveBehaviorFlags ?? {};
+  const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+  const canMentionAgents = flags.canMentionAgents === true;
+
+  const capabilityLabels = [...toolCapabilities.capabilityLabels];
+  if (canMentionAgents) capabilityLabels.push("mention other agents");
+  const capabilitiesBlock =
+    capabilityLabels.length > 0
+      ? `Capabilities: ${capabilityLabels.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED, include the error message, and do not claim you changed status.\n\n`
+      : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
+
+  const agentName = context.agent?.name?.trim() || "Agent";
+  const agentRole = context.agent?.role?.trim() || "Unknown role";
+  const identityLine = `You are replying as: **${agentName}** (${agentRole}). Reply only as this agent; do not speak as or ask whether you are another role.\n\n`;
+
   const taskDescription = task?.description?.trim()
     ? `Task description:\n${task.description.trim()}`
     : "";
@@ -568,30 +794,68 @@ function formatNotificationMessage(context: any): string {
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
 
+  const statusInstructions = task
+    ? toolCapabilities.hasTaskStatus
+      ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.`
+      : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
+    : "";
+
+  const mentionableSection = canMentionAgents
+    ? formatMentionableAgentsSection(mentionableAgents)
+    : "";
+
+  /** For assignment notifications: who to @mention for clarification (orchestrator if allowed, else primary user). */
+  const assignmentClarificationTarget =
+    notification?.type === "assignment"
+      ? canMentionAgents &&
+        orchestratorAgentId &&
+        mentionableAgents.some((a) => a.id === orchestratorAgentId)
+        ? (() => {
+            const orch = mentionableAgents.find(
+              (a) => a.id === orchestratorAgentId,
+            );
+            if (!orch)
+              return "For clarification questions, @mention the primary user (shown above).";
+            const orchMention = (orch.slug ?? "").trim()
+              ? `@${(orch.slug ?? "").trim()}`
+              : `@"${(orch.name ?? "").replace(/"/g, "").trim()}"`;
+            return `For clarification questions, @mention the orchestrator (${orchMention}).`;
+          })()
+        : primaryUserMention
+          ? "For clarification questions, @mention the primary user (shown above)."
+          : "If you need clarification, ask in the thread."
+      : "";
+
+  const assignmentAckBlock =
+    notification?.type === "assignment"
+      ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
+      : "";
+
+  // Status-specific instructions: done (brief reply once), blocked (reply-loop fix — do not continue substantive work until unblocked).
   return `
-## Notification: ${notification.type}
+${identityLine}${capabilitiesBlock}## Notification: ${notification.type}
 
 **${notification.title}**
 
 ${notification.body}
 
-${task ? `Task: ${task.title} (${task.status})` : ""}
+${task ? `Task: ${task.title} (${task.status})\nTask ID: ${task._id}` : ""}
 ${taskDescription}
 ${repositoryDetails}
 ${messageDetails}
 ${threadDetails}
-${formatMentionableAgentsSection(mentionableAgents)}
+${mentionableSection}
 ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
 
-If you need to change task status, call the runtime tool BEFORE posting a thread update:
-- POST http://{HEALTH_HOST}:{HEALTH_PORT}/agent/task-status
-- Header: x-openclaw-session-key: agent:{slug}:{accountId}
-- Body: { "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }
-- Note: inbox/assigned are handled by assignment changes, not this tool.
+${statusInstructions}
+${task?.status === "review" && toolCapabilities.hasTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
+${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
+${assignmentAckBlock}
 
-Reply in the task thread using the required format: **Summary**, **Work done**, **Artifacts**, **Risks / blockers**, **Next step**, **Sources** (see AGENTS.md). Keep your reply concise.
+Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.
 
 ---
 Notification ID: ${notification._id}

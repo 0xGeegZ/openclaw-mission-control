@@ -310,6 +310,178 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
+    if (req.url === "/agent/task-create") {
+      if (req.method !== "POST") {
+        res.writeHead(405, { Allow: "POST" });
+        res.end("Method Not Allowed");
+        return;
+      }
+      if (!isLocalAddress(req.socket.remoteAddress)) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: endpoint is local-only",
+        });
+        return;
+      }
+      const sessionHeader = req.headers["x-openclaw-session-key"];
+      const sessionKey = Array.isArray(sessionHeader)
+        ? sessionHeader[0]
+        : sessionHeader;
+      if (!sessionKey) {
+        sendJson(res, 401, {
+          success: false,
+          error: "Missing x-openclaw-session-key header",
+        });
+        return;
+      }
+      const agentId = getAgentIdForSessionKey(sessionKey);
+      if (!agentId) {
+        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        return;
+      }
+      if (!runtimeConfig) {
+        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        return;
+      }
+      let body: {
+        title?: string;
+        description?: string;
+        priority?: number;
+        labels?: string[];
+        status?: string;
+        blockedReason?: string;
+      };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.title?.trim()) {
+        sendJson(res, 400, {
+          success: false,
+          error: "Missing required field: title",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const { taskId } = await client.action(
+          api.service.actions.createTaskFromAgent,
+          {
+            accountId: runtimeConfig.accountId,
+            serviceToken: runtimeConfig.serviceToken,
+            agentId,
+            title: body.title.trim(),
+            description: body.description?.trim(),
+            priority: body.priority,
+            labels: body.labels,
+            status: body.status as
+              | "inbox"
+              | "assigned"
+              | "in_progress"
+              | "review"
+              | "done"
+              | "blocked"
+              | undefined,
+            blockedReason: body.blockedReason?.trim(),
+          },
+        );
+        sendJson(res, 200, { success: true, taskId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/document") {
+      if (req.method !== "POST") {
+        res.writeHead(405, { Allow: "POST" });
+        res.end("Method Not Allowed");
+        return;
+      }
+      if (!isLocalAddress(req.socket.remoteAddress)) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: endpoint is local-only",
+        });
+        return;
+      }
+      const sessionHeader = req.headers["x-openclaw-session-key"];
+      const sessionKey = Array.isArray(sessionHeader)
+        ? sessionHeader[0]
+        : sessionHeader;
+      if (!sessionKey) {
+        sendJson(res, 401, {
+          success: false,
+          error: "Missing x-openclaw-session-key header",
+        });
+        return;
+      }
+      const agentId = getAgentIdForSessionKey(sessionKey);
+      if (!agentId) {
+        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        return;
+      }
+      if (!runtimeConfig) {
+        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        return;
+      }
+      const allowedTypes = ["deliverable", "note", "template", "reference"];
+      let body: {
+        documentId?: string;
+        taskId?: string;
+        title?: string;
+        content?: string;
+        type?: string;
+      };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (
+        !body?.title?.trim() ||
+        body?.content == null ||
+        !body?.type ||
+        !allowedTypes.includes(body.type)
+      ) {
+        sendJson(res, 400, {
+          success: false,
+          error:
+            "Missing or invalid: title, content, and type (deliverable|note|template|reference) required",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const { documentId } = await client.action(
+          api.service.actions.createDocumentFromAgent,
+          {
+            accountId: runtimeConfig.accountId,
+            serviceToken: runtimeConfig.serviceToken,
+            agentId,
+            documentId: body.documentId as Id<"documents"> | undefined,
+            taskId: body.taskId as Id<"tasks"> | undefined,
+            title: body.title.trim(),
+            content: body.content,
+            type: body.type as
+              | "deliverable"
+              | "note"
+              | "template"
+              | "reference",
+          },
+        );
+        sendJson(res, 200, { success: true, documentId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
     res.writeHead(404);
     res.end("Not Found");
   });

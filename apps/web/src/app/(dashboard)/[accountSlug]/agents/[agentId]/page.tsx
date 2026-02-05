@@ -45,12 +45,13 @@ import {
   Crown,
   MinusCircle,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
 import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
+import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -145,6 +146,9 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
     offline: { variant: "outline" },
     error: { variant: "destructive" },
   };
+  const lastSeenText = useRelativeTime(agent?.lastHeartbeat, {
+    addSuffix: true,
+  });
   const status = agent
     ? (statusConfig[agent.status] ?? statusConfig.offline)
     : statusConfig.offline;
@@ -293,10 +297,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   {agent.lastHeartbeat && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Clock className="h-4 w-4" />
-                      Last seen{" "}
-                      {formatDistanceToNow(agent.lastHeartbeat, {
-                        addSuffix: true,
-                      })}
+                      Last seen {lastSeenText}
                     </div>
                   )}
                   {agent.sessionKey && (
@@ -336,6 +337,29 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 </CardContent>
               </Card>
             </div>
+
+            {isAdmin && (
+              <AgentBehaviorFlagsCard
+                agent={agent}
+                accountDefaults={
+                  (
+                    account?.settings as
+                      | {
+                          agentDefaults?: {
+                            behaviorFlags?: {
+                              canCreateTasks?: boolean;
+                              canModifyTaskStatus?: boolean;
+                              canCreateDocuments?: boolean;
+                              canMentionAgents?: boolean;
+                            };
+                          };
+                        }
+                      | undefined
+                  )?.agentDefaults?.behaviorFlags ?? null
+                }
+              />
+            )}
+
             {/* Assigned Tasks */}
             <Card>
               <CardHeader>

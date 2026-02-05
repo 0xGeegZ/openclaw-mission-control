@@ -17,6 +17,8 @@
 4. A thread I'm subscribed to with new messages
 5. Otherwise: scan the activity feed for something I can improve
 
+**New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
 ## 3) Execute one atomic action
 
 Pick one action that can be completed quickly:

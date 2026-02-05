@@ -6,8 +6,62 @@ import {
   generateServiceToken,
   hashServiceTokenSecret,
 } from "../lib/service_auth";
-import { taskStatusValidator } from "../lib/validators";
-import { Id } from "../_generated/dataModel";
+import { taskStatusValidator, documentTypeValidator } from "../lib/validators";
+import { Doc, Id } from "../_generated/dataModel";
+import type { GetForDeliveryResult } from "./notifications";
+import {
+  resolveBehaviorFlags,
+  type BehaviorFlags,
+} from "../lib/behavior_flags";
+import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
+
+export type { BehaviorFlags };
+
+/**
+ * Find a shortest valid status path from `from` to `to`.
+ * Returns the list of *next* statuses to apply (excludes the current status).
+ *
+ * Note: We restrict intermediate steps to statuses the runtime is allowed to set
+ * (in_progress | review | done | blocked). This avoids paths that require setting
+ * inbox/assigned, which are intentionally not exposed for service status updates.
+ */
+function findStatusPath(options: {
+  from: TaskStatus;
+  to: TaskStatus;
+  allowedNextStatuses: ReadonlySet<TaskStatus>;
+}): TaskStatus[] | null {
+  const { from, to, allowedNextStatuses } = options;
+  if (from === to) return [];
+
+  const visited = new Set<TaskStatus>([from]);
+  const queue: TaskStatus[] = [from];
+  const prev = new Map<TaskStatus, TaskStatus>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const nextStatuses = TASK_STATUS_TRANSITIONS[current] ?? [];
+    for (const next of nextStatuses) {
+      if (!allowedNextStatuses.has(next)) continue;
+      if (visited.has(next)) continue;
+
+      visited.add(next);
+      prev.set(next, current);
+      if (next === to) {
+        const path: TaskStatus[] = [];
+        let node: TaskStatus | undefined = to;
+        while (node && node !== from) {
+          path.push(node);
+          node = prev.get(node);
+        }
+        path.reverse();
+        return path;
+      }
+      queue.push(next);
+    }
+  }
+
+  return null;
+}
 
 /**
  * Service actions for runtime service.
@@ -237,7 +291,7 @@ export const listUndeliveredNotifications = action({
     serviceToken: v.string(),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<any[]> => {
+  handler: async (ctx, args): Promise<Doc<"notifications">[]> => {
     // Validate service token and verify account matches
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -266,7 +320,7 @@ export const getNotificationForDelivery = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<any> => {
+  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
     // Validate service token
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -455,8 +509,7 @@ export const updateAgentHeartbeat = action({
 
 /**
  * Update task status on behalf of an agent (service-only).
- * Validates service token and account ownership.
- * Optionally guard against unexpected current status changes.
+ * Validates service token, account ownership, and canModifyTaskStatus behavior flag.
  */
 export const updateTaskStatusFromAgent = action({
   args: {
@@ -497,25 +550,192 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
-      taskId: args.taskId,
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
     });
-    if (!task) {
-      throw new Error("Not found: Task does not exist");
-    }
-    if (task.accountId !== args.accountId) {
-      throw new Error("Forbidden: Task belongs to different account");
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canModifyTaskStatus) {
+      throw new Error("Forbidden: Agent is not allowed to modify task status");
     }
 
-    await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
-      taskId: args.taskId,
-      agentId: args.agentId,
-      status: args.status,
-      blockedReason: args.blockedReason,
-      expectedStatus: args.expectedStatus,
-    });
+    const allowedNextStatuses = new Set<TaskStatus>([
+      "in_progress",
+      "review",
+      "done",
+      "blocked",
+    ]);
+
+    // Apply the minimum number of valid transitions to reach the target status.
+    // This makes tool calls resilient when the agent asks for "done" while the task is still
+    // in_progress/assigned (we auto-advance through review).
+    const targetStatus = args.status as TaskStatus;
+    for (let i = 0; i < 10; i++) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task) throw new Error("Not found: Task does not exist");
+      if (task.accountId !== args.accountId)
+        throw new Error("Forbidden: Task belongs to different account");
+
+      const currentStatus = task.status as TaskStatus;
+      if (
+        i === 0 &&
+        args.expectedStatus &&
+        currentStatus !== args.expectedStatus
+      )
+        return { success: true };
+      if (currentStatus === targetStatus) break;
+
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      const nextStatus = path[0];
+      const isFinalStep = path.length === 1;
+      await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        status: nextStatus,
+        blockedReason:
+          nextStatus === "blocked" ? args.blockedReason : undefined,
+        suppressNotifications: !isFinalStep,
+        suppressActivity: !isFinalStep,
+      });
+    }
 
     return { success: true };
+  },
+});
+
+/**
+ * Create a task on behalf of an agent (service-only).
+ * Gated by canCreateTasks behavior flag.
+ */
+export const createTaskFromAgent = action({
+  args: {
+    agentId: v.id("agents"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    dueDate: v.optional(v.number()),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ taskId: Id<"tasks"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canCreateTasks) {
+      throw new Error("Forbidden: Agent is not allowed to create tasks");
+    }
+
+    const taskId = await ctx.runMutation(
+      internal.service.tasks.createFromAgent,
+      {
+        agentId: args.agentId,
+        title: args.title,
+        description: args.description,
+        priority: args.priority,
+        labels: args.labels,
+        dueDate: args.dueDate,
+        status: args.status,
+        blockedReason: args.blockedReason,
+      },
+    );
+
+    return { taskId };
+  },
+});
+
+/**
+ * Create or update a document on behalf of an agent (service-only).
+ * Gated by canCreateDocuments behavior flag.
+ */
+export const createDocumentFromAgent = action({
+  args: {
+    agentId: v.id("agents"),
+    documentId: v.optional(v.id("documents")),
+    taskId: v.optional(v.id("tasks")),
+    title: v.string(),
+    content: v.string(),
+    type: documentTypeValidator,
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ documentId: Id<"documents"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canCreateDocuments) {
+      throw new Error("Forbidden: Agent is not allowed to create documents");
+    }
+
+    if (args.taskId) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task || task.accountId !== args.accountId) {
+        throw new Error(
+          "Not found: Task does not exist or belongs to different account",
+        );
+      }
+    }
+
+    const documentId = await ctx.runMutation(
+      internal.service.documents.createOrUpdateFromAgent,
+      {
+        agentId: args.agentId,
+        documentId: args.documentId,
+        taskId: args.taskId,
+        title: args.title,
+        content: args.content,
+        type: args.type,
+      },
+    );
+
+    return { documentId };
   },
 });
 
@@ -523,6 +743,7 @@ export const updateTaskStatusFromAgent = action({
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread (e.g. after OpenClaw response write-back).
  * Optional sourceNotificationId enables idempotent delivery (no duplicate messages on retry).
+ * Gated by canMentionAgents for agent mention resolution.
  */
 export const createMessageFromAgent = action({
   args: {
@@ -579,7 +800,12 @@ export const createMessageFromAgent = action({
       throw new Error("Forbidden: Task belongs to different account");
     }
 
-    // Call internal mutation
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    const allowAgentMentions = flags.canMentionAgents;
+
     const messageId: Id<"messages"> = await ctx.runMutation(
       internal.service.messages.createFromAgent,
       {
@@ -588,6 +814,7 @@ export const createMessageFromAgent = action({
         content: args.content,
         attachments: args.attachments,
         sourceNotificationId: args.sourceNotificationId,
+        allowAgentMentions,
       },
     );
 

@@ -5,12 +5,14 @@ import { Streamdown } from "streamdown";
 
 /**
  * Display shape for a mention. Matches Convex messages.mentions stored shape
- * (type, id, name); id and type are optional for display-only use.
+ * (type, id, name, optional slug); id and type are optional for display-only use.
  */
 export interface Mention {
   name: string;
   id?: string;
   type?: "user" | "agent";
+  /** Agent slug so @slug in content matches (e.g. @squad-lead). */
+  slug?: string;
 }
 
 /**
@@ -33,9 +35,13 @@ function MentionBadge({ name }: { name: string }) {
  */
 const MENTION_REGEX = /@(?:"([^"]+)"|(\w+(?:-\w+)*))/g;
 
+/** Matches @all so we can render it as a badge even though backend stores expanded list. */
+const HAS_ALL_MENTION = /@all\b/i;
+
 /**
  * Splits text by @mentions and returns an array of string segments and
- * MentionBadge nodes. Unresolved mentions are left as plain text.
+ * MentionBadge nodes. Resolved mentions use stored name; unresolved @-tokens
+ * (e.g. from old messages or slug-only) render as badges with the token as label.
  *
  * @param text - Raw message segment
  * @param mentionMap - Map of normalized name (lowercase) -> Mention
@@ -45,7 +51,7 @@ function processTextWithMentions(
   text: string,
   mentionMap: Map<string, Mention>,
 ): (string | React.ReactNode)[] {
-  if (!text || mentionMap.size === 0) {
+  if (!text) {
     return [text];
   }
 
@@ -62,14 +68,11 @@ function processTextWithMentions(
 
     const mentionName = match[1] ?? match[2] ?? "";
     const mention = mentionMap.get(mentionName.toLowerCase());
+    const displayName = mention?.name ?? mentionName;
 
-    if (mention) {
-      parts.push(
-        <MentionBadge key={`mention-${keyIndex++}`} name={mention.name} />,
-      );
-    } else {
-      parts.push(match[0]);
-    }
+    parts.push(
+      <MentionBadge key={`mention-${keyIndex++}`} name={displayName} />,
+    );
 
     lastIndex = match.index + match[0].length;
   }
@@ -146,16 +149,29 @@ export interface MessageContentProps {
 /**
  * Renders message body as markdown (Streamdown) with inline @mention badges.
  * Mention patterns: @name, @hyphenated-name, @"name with spaces".
- * Unresolved or legacy @text is left as plain text.
+ * Resolved mentions use stored name; unresolved @-tokens render as badges with the token as label.
  */
 export function MessageContent({ content, mentions }: MessageContentProps) {
   const components = useMemo(() => {
-    if (!mentions?.length) {
-      return undefined;
+    const mentionMap = new Map<string, Mention>();
+
+    if (mentions?.length) {
+      for (const m of mentions) {
+        mentionMap.set(m.name.toLowerCase(), m);
+        if (m.slug) {
+          mentionMap.set(m.slug.toLowerCase(), m);
+        }
+      }
     }
-    const mentionMap = new Map(mentions.map((m) => [m.name.toLowerCase(), m]));
+
+    // Backend expands @all into the full user/agent list; add synthetic "all" so it renders as a badge.
+    if (content && HAS_ALL_MENTION.test(content)) {
+      mentionMap.set("all", { name: "all" });
+    }
+
+    // Always use mention components so @-tokens render as badges even when unresolved (e.g. old messages, slug-only).
     return createMentionComponents(mentionMap);
-  }, [mentions]);
+  }, [content, mentions]);
 
   return <Streamdown components={components}>{content}</Streamdown>;
 }

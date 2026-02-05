@@ -1,6 +1,6 @@
 ---
 name: agent-task-creation
-overview: Enable all agent behavior flags (create tasks/docs, modify status, mention agents) via runtime tools and Convex service actions, with per-agent overrides, account-default fallback, and UI updates.
+overview: Enable all agent behavior flags (create tasks/docs, modify status, mention agents) via OpenResponses client-side tools executed by the runtime + Convex service actions, with per-agent overrides, account-default fallback, and UI updates.
 todos: []
 isProject: false
 ---
@@ -9,7 +9,7 @@ isProject: false
 
 ## 1. Context & goal
 
-Implement full behavior-flag support for agents (create tasks, modify task status, create documents, mention agents) using the same runtime-tool + Convex service-action pattern as task status updates. The goal is to make the OpenClaw admin behavior flags real, add per-agent overrides with account-default fallback, update the UI to edit overrides, and document the tools so agents use them safely. Constraints: Convex service auth, local-only runtime endpoints, strict workflow validation, and no regex-based inference (V2 replaces reviewer regex).
+Implement full behavior-flag support for agents (create tasks, modify task status, create documents, mention agents) using **OpenResponses client-side tools** executed by the runtime, backed by Convex service actions. The goal is to make the OpenClaw admin behavior flags real, add per-agent overrides with account-default fallback, update the UI to edit overrides, and document the tools so agents use them safely. Constraints: Convex service auth, strict workflow validation, and tool availability must be enforced via OpenClaw tool schema + allow/deny policies (tools must appear in both system prompt and schema to be callable).
 
 ## 2. Codebase research summary
 
@@ -243,7 +243,9 @@ export const create = mutation({
 });
 ```
 
-- `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` — regex-based reviewer detection to target for V2 replacement.
+- `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` — prompt construction and notification delivery; add tool availability and tool instructions.
+- `[apps/runtime/src/gateway.ts](apps/runtime/src/gateway.ts)` — OpenResponses request/response handling; currently parses text only, needs tool call handling.
+- OpenClaw OpenResponses API docs — supports client-side `tools` and `function_call_output` for turn-based tool execution.
 
 ```201:243:apps/runtime/src/delivery.ts
 function shouldDeliverToAgent(context: any): boolean {
@@ -299,10 +301,11 @@ Other relevant references:
 
 ### V1 (this plan)
 
-- Add runtime local-only endpoints for agent tools:
-  - `POST /agent/task-create` (create task)
-  - `POST /agent/document` (create or update doc)
-  - Reuse existing `POST /agent/task-status` but enforce `canModifyTaskStatus` in the service action.
+- Implement OpenResponses **client-side tools** executed by the runtime (primary path):
+  - `task_create` — create tasks
+  - `task_status` — update task status (reuse existing service action, now gated)
+  - `document_upsert` — create/update docs
+- Attach tool schemas only when the agent is allowed by `behaviorFlags` (tool must appear in system prompt + schema to be callable).
 - Add service actions to gate behavior flags and call internal mutations:
   - `service.actions.createTaskFromAgent`
   - `service.actions.createDocumentFromAgent` (wrapper around `service.documents.createOrUpdateFromAgent`)
@@ -311,19 +314,21 @@ Other relevant references:
 - Add/adjust internal mutations:
   - `internal.service.tasks.createFromAgent` to insert tasks, log `task_created`, ensure subscriptions
   - Update `internal.service.messages.createFromAgent` to accept a boolean `allowAgentMentions` and filter mention resolution accordingly
+- Keep local-only HTTP endpoints as **optional fallback** for manual calls (e.g., `/agent/task-status`), but prefer tool-based path for agent flows.
 - Add per-agent override UI on the agent detail page, with a “Use account defaults” toggle that clears `openclawConfig.behaviorFlags` when enabled.
-- Update runtime prompts + `docs/runtime/AGENTS.md` to document all tools and remind agents to check capabilities.
+- Update runtime prompts + `docs/runtime/AGENTS.md` to document tool usage and remind agents to check capabilities.
 
 **Data flows (V1):**
 
-- **Task create:** Agent → runtime `/agent/task-create` → `service.actions.createTaskFromAgent` → `internal.service.tasks.createFromAgent` → `tasks` insert + `activities` log + orchestrator subscription → UI updates via `tasks.list`/`listByStatus`.
-- **Document create/update:** Agent → runtime `/agent/document` → `service.actions.createDocumentFromAgent` → `internal.service.documents.createOrUpdateFromAgent` → `documents` insert/update + `activities` log → UI updates in docs + task detail.
+- **Task create:** Agent tool call → runtime executes `task_create` → `service.actions.createTaskFromAgent` → `internal.service.tasks.createFromAgent` → `tasks` insert + `activities` log + orchestrator subscription → UI updates via `tasks.list`/`listByStatus`.
+- **Document create/update:** Agent tool call → runtime executes `document_upsert` → `service.actions.createDocumentFromAgent` → `internal.service.documents.createOrUpdateFromAgent` → `documents` insert/update + `activities` log → UI updates in docs + task detail.
+- **Status update:** Agent tool call → runtime executes `task_status` → `service.actions.updateTaskStatusFromAgent` → `internal.service.tasks.updateStatusFromAgent` → `activities` log + notifications.
 - **Message + mentions:** OpenClaw response → runtime `createMessageFromAgent` → mention filtering (if `canMentionAgents=false`) → notifications/subscriptions.
 
 ```mermaid
 flowchart TD
-  Agent[OpenClawAgent] --> RuntimeHealthTask["Runtime /agent/task-create"]
-  RuntimeHealthTask --> ServiceActionTask["Convex action createTaskFromAgent"]
+  Agent[OpenClawAgent] --> RuntimeToolExec["Runtime execute task_create tool"]
+  RuntimeToolExec --> ServiceActionTask["Convex action createTaskFromAgent"]
   ServiceActionTask --> InternalMutationTask["internal.service.tasks.createFromAgent"]
   InternalMutationTask --> TasksDB[(tasks)]
   InternalMutationTask --> ActivityDB[(activities)]
@@ -345,13 +350,17 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 
 ### Existing files to touch
 
-- `[apps/runtime/src/health.ts](apps/runtime/src/health.ts)`
-  - Add `POST /agent/task-create` and `POST /agent/document` handlers (local-only, session-key auth).
-  - Validate request JSON, reject invalid status or missing `blockedReason`, map errors to HTTP codes.
-  - Call `api.service.actions.createTaskFromAgent` and `api.service.actions.createDocumentFromAgent`.
+- `[apps/runtime/src/gateway.ts](apps/runtime/src/gateway.ts)`
+  - Extend OpenResponses request body to include `tools` + `tool_choice`.
+  - Parse `function_call` items from responses and return structured tool calls.
+  - Send follow-up `function_call_output` to complete the turn after tool execution.
 - `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)`
   - Add a short “Capabilities” block (flags + allowed tools) in the OpenClaw prompt.
-  - Mention both `/agent/task-create` and `/agent/document` next to `/agent/task-status`.
+  - Include `Task ID` in the prompt when a task exists.
+  - Attach tool schemas only when the agent is allowed (behavior flags).
+- `[apps/runtime/src/health.ts](apps/runtime/src/health.ts)` (optional fallback)
+  - Keep `/agent/task-status` and optionally add `/agent/task-create` + `/agent/document` for manual/CLI use.
+  - These are not the primary agent path; tool-based calls are preferred.
 - `[packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts)`
   - Add `createTaskFromAgent` and `createDocumentFromAgent` actions.
   - Update `updateTaskStatusFromAgent` to gate `canModifyTaskStatus`.
@@ -370,13 +379,16 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 - `[apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx)`
   - Clarify these are account-level defaults and link to per-agent overrides.
 - `[docs/runtime/AGENTS.md](docs/runtime/AGENTS.md)`
-  - Add “How to create tasks” and “How to create/update documents” sections with examples.
+  - Document the tool-based flow (task_create, task_status, document_upsert) and the fallback HTTP endpoints.
   - Add a note on mention gating (agent mentions are ignored when `canMentionAgents=false`).
 - `[docs/concept/openclaw-mission-control-cursor-core-instructions.md](docs/concept/openclaw-mission-control-cursor-core-instructions.md)`
   - Add `service.tasks.createFromAgent` and `service.documents.createOrUpdateFromAgent` to the service-only list.
 
 ### New files to create
 
+- `[apps/runtime/src/tooling/agentTools.ts](apps/runtime/src/tooling/agentTools.ts)`
+  - Define OpenResponses tool schemas (`task_create`, `task_status`, `document_upsert`).
+  - Provide execution helpers that call the Convex service actions and return tool outputs.
 - `[apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx](apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx)`
   - UI card for per-agent behavior flags, includes “inherit defaults” toggle, checkboxes, and Save action.
   - Uses `api.agents.updateOpenclawConfig` and merges existing `openclawConfig` fields so only behavior flags change.
@@ -427,17 +439,16 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 - If `allowAgentMentions=false`, filter resolved mentions to **users only** before creating notifications/subscriptions (keep message content unchanged).
 - For `@all`, still mention users, but exclude agents.
 
-1. **Runtime endpoints (local-only tools)**
+1. **Runtime tool wiring (OpenResponses client-side tools)**
 
-- Add `POST /agent/task-create` in `[apps/runtime/src/health.ts](apps/runtime/src/health.ts)`:
-  - Required: `title`. Optional: `description`, `priority`, `labels`, `dueDate`, `status`, `blockedReason`.
-  - Validate `status` is one of `TaskStatus` values; require `blockedReason` when `status=blocked`.
-  - Use the same session-key auth and local-only check as `/agent/task-status`.
-  - Call `api.service.actions.createTaskFromAgent`; return `{ success: true, taskId }`.
-- Add `POST /agent/document`:
-  - Required: `title`, `content`, `type`. Optional: `documentId`, `taskId`.
-  - Validate `type` is one of `deliverable|note|template|reference`.
-  - Call `api.service.actions.createDocumentFromAgent`; return `{ success: true, documentId }`.
+- Define OpenResponses tool schemas for `task_create`, `task_status`, `document_upsert` in `[apps/runtime/src/tooling/agentTools.ts](apps/runtime/src/tooling/agentTools.ts)`.
+- Update `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` to pass tool schemas + `tool_choice` only when the agent’s effective `behaviorFlags` allow it and a task context exists.
+- Update `[apps/runtime/src/gateway.ts](apps/runtime/src/gateway.ts)` to:
+  - Accept `tools` + `tool_choice` in the request body.
+  - Parse `function_call` output items from OpenResponses.
+  - Execute tool calls via the helper and send `function_call_output` back to OpenClaw.
+  - Post only the final reply after tool execution.
+- Optional fallback: keep `/agent/task-status` (and add `/agent/task-create` + `/agent/document` only if you want manual/CLI usage); these are not the primary agent path.
 
 1. **Apply account defaults + allow per-agent overrides**
 
@@ -461,15 +472,17 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 1. **Docs + prompt updates**
 
 - Update `[docs/runtime/AGENTS.md](docs/runtime/AGENTS.md)` with:
-  - “How to create tasks” (`/agent/task-create`) example.
-  - “How to create/update documents” (`/agent/document`) example.
+  - “How to create tasks” and “How to create/update documents” via tool calls.
+  - Optional fallback examples using the local HTTP endpoints.
   - Mention gating: “Agent mentions are ignored if `canMentionAgents=false`.”
-- Update `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` prompt block to list capabilities and tool URLs.
+- Update `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` prompt block to list capabilities and tool availability.
 - Update `[docs/concept/openclaw-mission-control-cursor-core-instructions.md](docs/concept/openclaw-mission-control-cursor-core-instructions.md)` service-only function list to include the new actions.
 
 ## 6. Edge cases & risks
 
 - **Permission mismatch:** Each action should return `Forbidden` when its flag is disabled (`canCreateTasks`, `canModifyTaskStatus`, `canCreateDocuments`, `canMentionAgents`).
+- **Tool exposure:** If a tool is not exposed (flags disabled), the agent cannot call it; prompt should instruct the agent to report `BLOCKED` instead of pretending to update status.
+- **Tool execution errors:** When tool execution fails (validation/Forbidden), return a structured error in `function_call_output` and let the agent explain in the final reply.
 - **Mention gating:** When `canMentionAgents=false`, ensure no agent notifications are created (including `@all`).
 - **Task creation status:** Allowing `review`/`done` at creation might bypass workflow expectations. Keep a clear rule and document it.
 - **Assignments + status:** If `status` implies assignees, auto-assign the creating agent or reject; do not allow agent to assign users in V1.
@@ -482,12 +495,12 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
 - **Manual QA**
   - **UI defaults:** In `/[accountSlug]/admin/openclaw`, toggle each behavior flag and save. Verify values persist.
   - **Per-agent overrides:** In `/[accountSlug]/agents/[agentId]`, toggle “Use account defaults” and verify checkboxes reflect defaults; save overrides and re-open page to confirm persistence.
-  - **Create task (allowed):** `POST /agent/task-create` with `{ title }` → task appears in Inbox and `task_created` activity shows agent name.
-  - **Create task (blocked):** `POST /agent/task-create` with `status=blocked` and no `blockedReason` → 422.
-  - **Create task (disallowed):** Disable `canCreateTasks` and retry → 403.
-  - **Modify status (disallowed):** Disable `canModifyTaskStatus` and call `/agent/task-status` → 403.
-  - **Create document (allowed):** `POST /agent/document` with `{ title, content, type }` → document exists; activity shows `document_created`.
-  - **Create document (disallowed):** Disable `canCreateDocuments` and retry → 403.
+- **Create task (allowed):** Agent calls `task_create` tool with `{ title }` → task appears in Inbox and `task_created` activity shows agent name.
+- **Create task (blocked):** Agent calls `task_create` with `status=blocked` and no `blockedReason` → tool returns validation error; agent explains failure.
+- **Create task (disallowed):** Disable `canCreateTasks` → tool not exposed; agent reports blocked.
+- **Modify status (disallowed):** Disable `canModifyTaskStatus` → `task_status` tool not exposed; agent reports blocked.
+- **Create document (allowed):** Agent calls `document_upsert` with `{ title, content, type }` → document exists; activity shows `document_created`.
+- **Create document (disallowed):** Disable `canCreateDocuments` → tool not exposed; agent reports blocked.
   - **Mentions (disallowed):** Disable `canMentionAgents`; post agent message containing `@agentSlug` or `@all` and verify **no agent mention notifications** are created, but user mentions still work.
   - **Orchestrator subscription:** Confirm orchestrator is subscribed on newly created tasks.
 - **(Optional) Unit tests**
@@ -512,9 +525,10 @@ Replace regex-based reviewer detection in `[apps/runtime/src/delivery.ts](apps/r
   - Update `service/messages.createFromAgent` to filter agent mentions when disallowed.
   - Update `agents.create` to apply defaults and allow behaviorFlags to be omitted.
 - **Runtime**
-  - Add `POST /agent/task-create` endpoint in `apps/runtime/src/health.ts`.
-  - Add `POST /agent/document` endpoint in `apps/runtime/src/health.ts`.
-  - Update `apps/runtime/src/delivery.ts` prompt to list capabilities and tool URLs.
+  - Add OpenResponses tool schemas + execution helpers in `apps/runtime/src/tooling/agentTools.ts`.
+  - Update `apps/runtime/src/gateway.ts` to support `tools`, parse `function_call`, and send `function_call_output`.
+  - Update `apps/runtime/src/delivery.ts` to list capabilities, include Task ID, and attach tools only when allowed.
+  - Optional fallback: keep `/agent/task-status` and add `/agent/task-create` + `/agent/document` in `apps/runtime/src/health.ts`.
 - **Frontend**
   - Add `AgentBehaviorFlagsCard` component and mount it in agent detail page.
   - Update OpenClaw admin page copy to clarify defaults vs overrides.
