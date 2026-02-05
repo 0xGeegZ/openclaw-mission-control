@@ -1,5 +1,9 @@
 import { loadConfig, RuntimeConfig } from "./config";
-import { startAgentSync, stopAgentSync } from "./agent-sync";
+import {
+  runProfileSyncOnce,
+  startAgentSync,
+  stopAgentSync,
+} from "./agent-sync";
 import { initConvexClient, getConvexClient, api } from "./convex-client";
 import { startDeliveryLoop, stopDeliveryLoop } from "./delivery";
 import {
@@ -59,10 +63,12 @@ async function main() {
 
     /**
      * Start delivery, heartbeats, and agent sync once.
+     * Profile sync runs first so OpenClaw workspaces and config exist before heartbeats.
      */
     const startAgentWork = async () => {
       if (agentWorkStarted) return;
       agentWorkStarted = true;
+      await runProfileSyncOnce(config);
       startDeliveryLoop(config);
       await startHeartbeats(config);
       startAgentSync(config);

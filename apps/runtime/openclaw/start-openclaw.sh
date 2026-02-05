@@ -17,6 +17,8 @@ fi
 
 CONFIG_DIR="/root/.clawdbot"
 CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
+# Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
+OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
 TEMPLATE_DIR="/root/.clawdbot-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -291,6 +293,20 @@ function pruneSessionsIfConfigured() {
   }
 }
 
+// Merge runtime-generated agents config if present (profile sync from mission-control runtime)
+const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
+try {
+  if (require('fs').existsSync(openclawConfigPath)) {
+    const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));
+    if (generated && generated.agents) {
+      config.agents = generated.agents;
+      console.log('Merged agents from', openclawConfigPath);
+    }
+  }
+} catch (e) {
+  console.warn('Could not merge OPENCLAW_CONFIG_PATH:', e.message);
+}
+
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');
 try {
@@ -403,8 +419,32 @@ else
   clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind local &
 fi
 GATEWAY_PID=$!
-trap 'kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait' SIGTERM SIGINT
+
+# Optional: when OPENCLAW_CONFIG_RELOAD=1, watch runtime-generated config and restart gateway on change
+if [ -n "${OPENCLAW_CONFIG_RELOAD:-}" ] && [ "${OPENCLAW_CONFIG_RELOAD}" = "1" ]; then
+  (
+    LAST_MTIME=""
+    while kill -0 "$GATEWAY_PID" 2>/dev/null; do
+      sleep 30
+      if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+        MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+        if [ -n "$MTIME" ] && [ -n "$LAST_MTIME" ] && [ "$MTIME" != "$LAST_MTIME" ]; then
+          echo "OpenClaw config changed, restarting gateway..."
+          kill "$GATEWAY_PID" 2>/dev/null || true
+          exit 0
+        fi
+        LAST_MTIME="$MTIME"
+      fi
+    done
+  ) &
+  WATCHER_PID=$!
+  trap 'kill $GATEWAY_PID $CHROMIUM_PID $WATCHER_PID 2>/dev/null; wait' SIGTERM SIGINT
+else
+  trap 'kill $GATEWAY_PID $CHROMIUM_PID 2>/dev/null; wait' SIGTERM SIGINT
+fi
+
 wait $GATEWAY_PID
 EXIT_CODE=$?
 kill $CHROMIUM_PID 2>/dev/null
+[ -n "${WATCHER_PID:-}" ] && kill $WATCHER_PID 2>/dev/null
 exit $EXIT_CODE

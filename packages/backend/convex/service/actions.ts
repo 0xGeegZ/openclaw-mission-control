@@ -452,6 +452,43 @@ export const listAgents = action({
   },
 });
 
+/** One agent from listForRuntime (for profile sync). */
+interface AgentForRuntimePayload {
+  _id: Id<"agents">;
+  name: string;
+  slug: string;
+  role: string;
+  sessionKey: string;
+  openclawConfig: Doc<"agents">["openclawConfig"];
+  effectiveSoulContent: string;
+  resolvedSkills: Array<{
+    _id: Id<"skills">;
+    name: string;
+    slug: string;
+    description: string | undefined;
+  }>;
+}
+
+/**
+ * List agents for runtime profile sync (SOUL, skills, openclaw config).
+ * Returns effectiveSoulContent and resolved skill metadata for OpenClaw workspace generation.
+ */
+export const listAgentsForRuntime = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<AgentForRuntimePayload[]> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    return await ctx.runQuery(internal.service.agents.listForRuntime, {
+      accountId: args.accountId,
+    });
+  },
+});
+
 /**
  * Update agent heartbeat.
  * Called by runtime when agent completes heartbeat cycle.

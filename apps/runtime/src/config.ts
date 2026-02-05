@@ -50,6 +50,14 @@ export interface RuntimeConfig {
    * In Docker with gateway in another container, set to e.g. http://runtime:3000 so the gateway can reach this service.
    */
   taskStatusBaseUrl: string;
+  /** Root directory for per-agent OpenClaw workspaces (SOUL.md, TOOLS.md, etc.). */
+  openclawWorkspaceRoot: string;
+  /** Path to generated openclaw.json read by the OpenClaw gateway. */
+  openclawConfigPath: string;
+  /** Optional path to AGENTS.md to copy into each agent workspace; unset uses embedded default. */
+  openclawAgentsMdPath: string | undefined;
+  /** When false, disable profile sync (workspaces and openclaw.json); runtime continues without writing. */
+  openclawProfileSyncEnabled: boolean;
 }
 
 /**
@@ -227,6 +235,19 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     // Should not happen (validated above); keep config load resilient.
   }
 
+  const openclawWorkspaceRoot =
+    normalizeEnvValue(process.env.OPENCLAW_WORKSPACE_ROOT)?.trim() ||
+    "/root/clawd/agents";
+  const openclawConfigPath =
+    normalizeEnvValue(process.env.OPENCLAW_CONFIG_PATH)?.trim() ||
+    "/root/clawd/openclaw.json";
+  const openclawAgentsMdPath = normalizeEnvValue(
+    process.env.OPENCLAW_AGENTS_MD_PATH,
+  )?.trim();
+
+  const openclawProfileSyncEnabled =
+    normalizeEnvValue(process.env.OPENCLAW_PROFILE_SYNC) !== "false";
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
@@ -263,6 +284,10 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       180000,
     ),
     taskStatusBaseUrl,
+    openclawWorkspaceRoot,
+    openclawConfigPath,
+    openclawAgentsMdPath: openclawAgentsMdPath || undefined,
+    openclawProfileSyncEnabled,
   };
 }
 

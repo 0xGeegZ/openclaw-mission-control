@@ -8,6 +8,10 @@ import {
   type AgentForHeartbeat,
 } from "./heartbeat";
 import { createLogger } from "./logger";
+import {
+  syncOpenClawProfiles,
+  type AgentForProfile,
+} from "./openclaw-profiles";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 
 const log = createLogger("[AgentSync]");
@@ -82,6 +86,22 @@ async function runSync(config: RuntimeConfig): Promise<void> {
       }
     }
 
+    if (config.openclawProfileSyncEnabled) {
+      const profileAgents = (await client.action(
+        api.service.actions.listAgentsForRuntime,
+        {
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
+        },
+      )) as AgentForProfile[];
+
+      syncOpenClawProfiles(profileAgents, {
+        workspaceRoot: config.openclawWorkspaceRoot,
+        configPath: config.openclawConfigPath,
+        agentsMdPath: config.openclawAgentsMdPath,
+      });
+    }
+
     state.lastSyncAt = Date.now();
     state.addedCount = added;
     state.removedCount = removed;
@@ -94,6 +114,31 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     log.error("Sync failed:", message);
   } finally {
     state.syncInProgress = false;
+  }
+}
+
+/**
+ * Run profile sync once (fetch listAgentsForRuntime, write workspaces and openclaw.json).
+ * Used at startup before heartbeats so OpenClaw config exists when gateway runs.
+ */
+export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
+  if (!config.openclawProfileSyncEnabled) return;
+  try {
+    const client = getConvexClient();
+    const profileAgents = (await client.action(
+      api.service.actions.listAgentsForRuntime,
+      {
+        accountId: config.accountId,
+        serviceToken: config.serviceToken,
+      },
+    )) as AgentForProfile[];
+    syncOpenClawProfiles(profileAgents, {
+      workspaceRoot: config.openclawWorkspaceRoot,
+      configPath: config.openclawConfigPath,
+      agentsMdPath: config.openclawAgentsMdPath,
+    });
+  } catch (error) {
+    log.warn("Initial profile sync failed:", getErrorMessage(error));
   }
 }
 
