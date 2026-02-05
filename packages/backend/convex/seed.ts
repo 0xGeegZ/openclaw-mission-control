@@ -1,4 +1,5 @@
 import { mutation, internalMutation } from "./_generated/server";
+import { contentBySlug } from "./seed_skills_content.generated";
 import { requireAuth } from "./lib/auth";
 import { validateContentMarkdown } from "./lib/skills_validation";
 import type { Id } from "./_generated/dataModel";
@@ -7,30 +8,21 @@ import type { MutationCtx } from "./_generated/server";
 const DEMO_SLUG = "demo";
 const DEMO_NAME = "Demo";
 
-/** Seed skills: custom category, empty config, enabled. Optional contentMarkdown = full SKILL.md body materialized by runtime. */
+/** Seed skills: custom category, empty config, enabled. contentMarkdown from seed-skills/*.md via contentBySlug. */
 const seedSkills: Array<{
   name: string;
   slug: string;
   description?: string;
-  contentMarkdown?: string;
 }> = [
   {
     name: "GitHub issue triage",
     slug: "github-issue-triage",
     description: "Issue triage and backlog hygiene.",
-    contentMarkdown: `# GitHub issue triage
-
-Use this skill when triaging GitHub issues: label, prioritize, assign. Check repo CONTRIBUTING and issue templates.
-`,
   },
   {
     name: "Sprint planning",
     slug: "sprint-planning",
     description: "Sprint planning, milestones, and priority setting.",
-    contentMarkdown: `# Sprint planning
-
-Use this skill for sprint planning: milestones, capacity, priorities. Align with squad lead and existing backlog.
-`,
   },
   {
     name: "Release management",
@@ -67,7 +59,108 @@ Use this skill for sprint planning: milestones, capacity, priorities. Align with
     slug: "test-automation",
     description: "Implement unit/integration/e2e tests.",
   },
+  // .cursor/skills (assigned to all seed agents)
+  {
+    name: "Address GitHub PR comments",
+    slug: "address-github-pr-comments",
+    description: "Address review comments on GitHub PRs.",
+  },
+  {
+    name: "Clarify task",
+    slug: "clarify-task",
+    description: "Clarify requirements before implementation.",
+  },
+  {
+    name: "Code review checklist",
+    slug: "code-review-checklist",
+    description: "Structured code review checklist.",
+  },
+  {
+    name: "Commit",
+    slug: "commit",
+    description: "Create clear, conventional commits.",
+  },
+  {
+    name: "Create PR",
+    slug: "create-pr",
+    description: "Open pull requests with good descriptions.",
+  },
+  {
+    name: "Debug issue",
+    slug: "debug-issue",
+    description: "Systematic debugging and root cause analysis.",
+  },
+  {
+    name: "Deslop",
+    slug: "deslop",
+    description: "Reduce slop and unnecessary verbosity.",
+  },
+  {
+    name: "Fix merge conflict",
+    slug: "fix-merge-conflict",
+    description: "Resolve merge conflicts safely.",
+  },
+  {
+    name: "Generate PR description",
+    slug: "generate-pr-description",
+    description: "Generate PR descriptions from changes.",
+  },
+  {
+    name: "Plan feature",
+    slug: "plan-feature",
+    description: "Setup and plan a feature (Cursor plan mode).",
+  },
+  {
+    name: "PR review comments",
+    slug: "pr-review-comments",
+    description: "Write actionable PR review comments.",
+  },
+  {
+    name: "Production-ready refactor",
+    slug: "production-ready-refactor",
+    description: "Refactor toward production quality.",
+  },
+  {
+    name: "Rate current update",
+    slug: "rate-current-update",
+    description: "Rate and improve the current update.",
+  },
+  {
+    name: "Run tests and fix",
+    slug: "run-tests-and-fix",
+    description: "Run tests and fix failures.",
+  },
+  {
+    name: "Security audit",
+    slug: "security-audit",
+    description: "Security audit of code and dependencies.",
+  },
+  {
+    name: "Security audit (copy)",
+    slug: "security-audit-copy",
+    description: "Security audit variant.",
+  },
 ];
+
+/** Slugs for .cursor/skills; assigned to every seed agent. */
+const CURSOR_SKILL_SLUGS = [
+  "address-github-pr-comments",
+  "clarify-task",
+  "code-review-checklist",
+  "commit",
+  "create-pr",
+  "debug-issue",
+  "deslop",
+  "fix-merge-conflict",
+  "generate-pr-description",
+  "plan-feature",
+  "pr-review-comments",
+  "production-ready-refactor",
+  "rate-current-update",
+  "run-tests-and-fix",
+  "security-audit",
+  "security-audit-copy",
+] as const;
 
 /** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
 const seedAgents = [
@@ -81,6 +174,7 @@ const seedAgents = [
       "github-issue-triage",
       "sprint-planning",
       "release-management",
+      ...CURSOR_SKILL_SLUGS,
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: true,
@@ -95,6 +189,7 @@ const seedAgents = [
       "repo-architecture",
       "frontend-nextjs",
       "backend-convex",
+      ...CURSOR_SKILL_SLUGS,
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
@@ -105,7 +200,12 @@ const seedAgents = [
     role: "QA / Reviewer",
     agentRole: "qa" as const,
     description: "Reviews PRs and maintains the test suite.",
-    skillSlugs: ["pr-review", "test-strategy", "test-automation"] as const,
+    skillSlugs: [
+      "pr-review",
+      "test-strategy",
+      "test-automation",
+      ...CURSOR_SKILL_SLUGS,
+    ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
   },
@@ -631,7 +731,13 @@ async function ensureSkills(
         disabledSkipped += 1;
       }
     } else {
-      validateContentMarkdown(s.contentMarkdown);
+      const contentMarkdown = contentBySlug[s.slug];
+      if (contentMarkdown === undefined) {
+        console.warn(
+          `Seed skill "${s.slug}" has no content in contentBySlug; run seed-skills:generate if you added a new skill.`,
+        );
+      }
+      validateContentMarkdown(contentMarkdown);
       const now = Date.now();
       const id = await ctx.db.insert("skills", {
         accountId,
@@ -639,7 +745,7 @@ async function ensureSkills(
         slug: s.slug,
         category: "custom",
         description: s.description,
-        contentMarkdown: s.contentMarkdown ?? undefined,
+        contentMarkdown: contentMarkdown ?? undefined,
         config: {},
         isEnabled: true,
         createdAt: now,

@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { SKILL_CATEGORY_LABELS } from "@packages/shared/src/constants";
+import { SKILL_CATEGORY_LABELS } from "@packages/shared";
 import {
   Card,
   CardContent,
@@ -27,7 +27,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@packages/ui/components/dialog";
 import {
   Select,
@@ -155,10 +154,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   const { accountId, isLoading, isAdmin } = useAccount();
 
   // Queries & Mutations
-  const skills = useQuery(
-    api.skills.list,
-    accountId ? { accountId } : "skip",
-  );
+  const skills = useQuery(api.skills.list, accountId ? { accountId } : "skip");
   const createSkill = useMutation(api.skills.create);
   const updateSkill = useMutation(api.skills.update);
   const removeSkill = useMutation(api.skills.remove);
@@ -166,9 +162,9 @@ export default function SkillsPage({ params }: SkillsPageProps) {
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterCategory, setFilterCategory] = useState<
-    SkillCategory | "all"
-  >("all");
+  const [filterCategory, setFilterCategory] = useState<SkillCategory | "all">(
+    "all",
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Id<"skills"> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -184,11 +180,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   // ---------------------------------------------------------------------------
 
   const filteredSkills = (skills ?? []).filter((s) => {
-    if (
-      filterCategory !== "all" &&
-      s.category !== filterCategory
-    )
-      return false;
+    if (filterCategory !== "all" && s.category !== filterCategory) return false;
     if (
       searchQuery &&
       !s.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -202,9 +194,11 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   // Category counts for tabs
   const counts = {
     all: (skills ?? []).length,
-    mcp_server: (skills ?? []).filter((s) => s.category === "mcp_server").length,
+    mcp_server: (skills ?? []).filter((s) => s.category === "mcp_server")
+      .length,
     tool: (skills ?? []).filter((s) => s.category === "tool").length,
-    integration: (skills ?? []).filter((s) => s.category === "integration").length,
+    integration: (skills ?? []).filter((s) => s.category === "integration")
+      .length,
     custom: (skills ?? []).filter((s) => s.category === "custom").length,
   };
 
@@ -233,9 +227,13 @@ export default function SkillsPage({ params }: SkillsPageProps) {
       icon: skill.icon ?? "",
       contentMarkdown: skill.contentMarkdown ?? "",
       serverUrl: skill.config.serverUrl ?? "",
-      authType: (skill.config.authType ?? "none") as "none" | "api_key" | "oauth",
+      authType: (skill.config.authType ?? "none") as
+        | "none"
+        | "api_key"
+        | "oauth",
       credentialRef: skill.config.credentialRef ?? "",
-      rateLimit: skill.config.rateLimit != null ? String(skill.config.rateLimit) : "",
+      rateLimit:
+        skill.config.rateLimit != null ? String(skill.config.rateLimit) : "",
       requiresApproval: skill.config.requiresApproval ?? false,
       isEnabled: skill.isEnabled,
     });
@@ -284,9 +282,12 @@ export default function SkillsPage({ params }: SkillsPageProps) {
       resetForm();
       setEditingSkill(null);
     } catch (e) {
-      toast.error(editingSkill ? "Failed to update skill" : "Failed to create skill", {
-        description: e instanceof Error ? e.message : "Unknown error",
-      });
+      toast.error(
+        editingSkill ? "Failed to update skill" : "Failed to create skill",
+        {
+          description: e instanceof Error ? e.message : "Unknown error",
+        },
+      );
     } finally {
       setIsSaving(false);
     }
@@ -391,30 +392,35 @@ export default function SkillsPage({ params }: SkillsPageProps) {
             <TabsTrigger value="all" className="rounded-lg">
               All
               {counts.all > 0 && (
-                <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+                <Badge
+                  variant="secondary"
+                  className="ml-1.5 h-5 px-1.5 text-[10px]"
+                >
                   {counts.all}
                 </Badge>
               )}
             </TabsTrigger>
-            {(
-              Object.keys(SKILL_CATEGORY_LABELS) as SkillCategory[]
-            ).map((cat) => {
-              const Icon = CATEGORY_ICONS[cat];
-              return (
-                <TabsTrigger key={cat} value={cat} className="rounded-lg">
-                  <Icon className={cn("h-3.5 w-3.5 mr-1.5", CATEGORY_COLORS[cat])} />
-                  {SKILL_CATEGORY_LABELS[cat]}
-                  {counts[cat] > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1.5 h-5 px-1.5 text-[10px]"
-                    >
-                      {counts[cat]}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              );
-            })}
+            {(Object.keys(SKILL_CATEGORY_LABELS) as SkillCategory[]).map(
+              (cat) => {
+                const Icon = CATEGORY_ICONS[cat];
+                return (
+                  <TabsTrigger key={cat} value={cat} className="rounded-lg">
+                    <Icon
+                      className={cn("h-3.5 w-3.5 mr-1.5", CATEGORY_COLORS[cat])}
+                    />
+                    {SKILL_CATEGORY_LABELS[cat]}
+                    {counts[cat] > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-1.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {counts[cat]}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                );
+              },
+            )}
           </TabsList>
 
           {/* We use a single content panel since the filtering is JS-driven */}
@@ -696,10 +702,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                         <SelectItem key={value} value={value}>
                           <div className="flex items-center gap-2">
                             <Icon
-                              className={cn(
-                                "h-4 w-4",
-                                CATEGORY_COLORS[value],
-                              )}
+                              className={cn("h-4 w-4", CATEGORY_COLORS[value])}
                             />
                             {label}
                           </div>
@@ -796,9 +799,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                   </div>
                   {form.authType !== "none" && (
                     <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor="cred-ref">
-                        Credential Reference
-                      </Label>
+                      <Label htmlFor="cred-ref">Credential Reference</Label>
                       <Input
                         id="cred-ref"
                         placeholder="ENV_VAR_NAME or secret reference"
@@ -823,9 +824,7 @@ export default function SkillsPage({ params }: SkillsPageProps) {
 
             {/* Content Markdown (for custom skills) */}
             <div className="space-y-2">
-              <Label htmlFor="skill-content">
-                SKILL.md Content (optional)
-              </Label>
+              <Label htmlFor="skill-content">SKILL.md Content (optional)</Label>
               <Textarea
                 id="skill-content"
                 placeholder="# Skill Instructions&#10;&#10;Markdown content that gets materialized as SKILL.md in the agent directory..."

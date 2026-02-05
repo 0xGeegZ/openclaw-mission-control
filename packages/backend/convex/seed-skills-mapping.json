@@ -1,0 +1,26 @@
+{
+  "sprint-planning": {
+    "source": "obra/superpowers",
+    "path": "skills/writing-plans/SKILL.md"
+  },
+  "repo-architecture": {
+    "source": "softaworks/agent-toolkit",
+    "path": "skills/c4-architecture/SKILL.md"
+  },
+  "frontend-nextjs": {
+    "source": "vercel-labs/agent-skills",
+    "path": "skills/react-best-practices/SKILL.md"
+  },
+  "pr-review": {
+    "source": "obra/superpowers",
+    "path": "skills/requesting-code-review/SKILL.md"
+  },
+  "test-strategy": {
+    "source": "obra/superpowers",
+    "path": "skills/test-driven-development/SKILL.md"
+  },
+  "test-automation": {
+    "source": "anthropics/skills",
+    "path": "skills/webapp-testing/SKILL.md"
+  }
+}
