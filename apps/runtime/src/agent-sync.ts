@@ -17,6 +17,7 @@ import {
   type AgentForProfile,
 } from "./openclaw-profiles";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { recordSuccess, recordFailure } from "./metrics";
 
 const log = createLogger("[AgentSync]");
 
@@ -55,6 +56,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
   state.syncInProgress = true;
   state.lastError = null;
 
+  const syncStart = Date.now();
   try {
     const client = getConvexClient();
     const agents = (await client.action(api.service.actions.listAgents, {
@@ -115,11 +117,15 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     state.lastSyncAt = Date.now();
     state.addedCount = added;
     state.removedCount = removed;
+    const syncDuration = Date.now() - syncStart;
+    recordSuccess("agent_sync.run", syncDuration);
     if (added > 0 || removed > 0) {
       log.info("Sync complete:", { added, removed, total: agents.length });
     }
   } catch (error) {
     const message = getErrorMessage(error);
+    const syncDuration = Date.now() - syncStart;
+    recordFailure("agent_sync.run", syncDuration, message);
     state.lastError = message;
     log.error("Sync failed:", message);
   } finally {

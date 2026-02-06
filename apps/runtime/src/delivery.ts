@@ -8,6 +8,7 @@ import {
   executeAgentTool,
   type ToolCapabilitiesAndSchemas,
 } from "./tooling/agentTools";
+import { recordSuccess, recordFailure } from "./metrics";
 
 const log = createLogger("[Delivery]");
 
@@ -135,6 +136,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
   const poll = async () => {
     if (!state.isRunning) return;
 
+    const pollStart = Date.now();
     try {
       const client = getConvexClient();
       const notifications = await client.action(
@@ -362,11 +364,17 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
       }
 
       state.lastDelivery = Date.now();
+      const pollDuration = Date.now() - pollStart;
+      if (notifications.length > 0) {
+        recordSuccess("delivery.poll", pollDuration);
+      }
     } catch (error) {
       state.consecutiveFailures++;
       state.lastErrorAt = Date.now();
       state.lastErrorMessage =
         error instanceof Error ? error.message : String(error);
+      const pollDuration = Date.now() - pollStart;
+      recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
       log.error("Poll error:", state.lastErrorMessage);
     }
 
