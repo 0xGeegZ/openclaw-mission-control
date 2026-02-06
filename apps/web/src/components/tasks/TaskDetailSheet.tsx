@@ -124,7 +124,7 @@ export function TaskDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:w-[50vw] sm:max-w-none p-0 flex flex-col"
+        className="w-full sm:w-[65vw] sm:max-w-none p-0 flex flex-col"
         showCloseButton={true}
         headerActions={
           task && (

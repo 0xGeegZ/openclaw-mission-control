@@ -290,6 +290,12 @@ export const updateStatus = mutation({
     const currentStatus = task.status as TaskStatus;
     const nextStatus = args.status as TaskStatus;
 
+    if (nextStatus === "done") {
+      throw new Error(
+        "Forbidden: Only the orchestrator can mark tasks as done",
+      );
+    }
+
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
       throw new Error(

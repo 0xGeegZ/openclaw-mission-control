@@ -89,7 +89,7 @@ const LIST_AGENT_RECEIPTS_LIMIT_DEFAULT = 200;
 /**
  * List agent notification receipts for a task (for typing/read indicators).
  * Returns only agent notifications with taskId/messageId; used by task thread UI.
- * Uses by_task_created index and limit to avoid heavy reads on large threads.
+ * Uses by_task_recipient_created index to avoid mixing user receipts.
  */
 export const listAgentReceiptsByTask = query({
   args: {
@@ -108,13 +108,14 @@ export const listAgentReceiptsByTask = query({
     );
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_task_created", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_task_recipient_created", (q) =>
+        q.eq("taskId", args.taskId).eq("recipientType", "agent"),
+      )
       .order("desc")
       .take(limit);
     return notifications
       .filter(
         (n) =>
-          n.recipientType === "agent" &&
           n.accountId === task.accountId &&
           n.taskId != null &&
           n.messageId != null,

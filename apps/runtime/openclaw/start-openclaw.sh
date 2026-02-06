@@ -133,6 +133,7 @@ if (hasVercelKey) {
   config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'] = { alias: 'Claude Sonnet 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'] = { alias: 'Claude Opus 4.5' };
 } else {
   // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
   const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);

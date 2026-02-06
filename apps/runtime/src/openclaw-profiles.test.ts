@@ -17,10 +17,10 @@ import {
 describe("mapModelToOpenClaw", () => {
   it("maps known Convex model ids to OpenClaw provider/model strings", () => {
     expect(mapModelToOpenClaw("claude-sonnet-4-20250514")).toBe(
-      "anthropic/claude-sonnet-4-5",
+      "anthropic/claude-sonnet-4.5",
     );
     expect(mapModelToOpenClaw("claude-opus-4-20250514")).toBe(
-      "anthropic/claude-opus-4-5",
+      "anthropic/claude-opus-4.5",
     );
     expect(mapModelToOpenClaw("gpt-4o")).toBe("openai/gpt-4o");
     expect(mapModelToOpenClaw("gpt-4o-mini")).toBe("openai/gpt-4o-mini");
@@ -214,7 +214,7 @@ describe("syncOpenClawProfiles", () => {
       configPath,
     });
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    expect(config.agents.list[0].model).toBe("anthropic/claude-sonnet-4-5");
+    expect(config.agents.list[0].model).toBe("anthropic/claude-sonnet-4.5");
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 

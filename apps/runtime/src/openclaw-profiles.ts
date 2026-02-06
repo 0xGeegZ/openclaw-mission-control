@@ -66,8 +66,8 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 `;
 
 const MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4-5",
-  "claude-opus-4-20250514": "anthropic/claude-opus-4-5",
+  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4.5",
+  "claude-opus-4-20250514": "anthropic/claude-opus-4.5",
   "gpt-4o": "openai/gpt-4o",
   "gpt-4o-mini": "openai/gpt-4o-mini",
 };
@@ -117,7 +117,9 @@ function splitFrontmatter(
   if (lines.length === 0) return null;
   if (lines[0]?.trim() !== "---") return null;
 
-  const endIndex = lines.findIndex((line, idx) => idx > 0 && line.trim() === "---");
+  const endIndex = lines.findIndex(
+    (line, idx) => idx > 0 && line.trim() === "---",
+  );
   if (endIndex === -1) return null;
 
   const frontmatterLines = lines.slice(1, endIndex);
@@ -133,7 +135,7 @@ function parseYamlFrontmatterScalar(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
     try {
       const parsed = JSON.parse(trimmed);
       if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
@@ -220,7 +222,9 @@ ${trimmed}
 
   if (!existingDescription) {
     const descriptionLine = `description: ${formatFrontmatterDescription(desc)}`;
-    const nameIndex = ensuredLines.findIndex((l) => l.trimStart().startsWith("name:"));
+    const nameIndex = ensuredLines.findIndex((l) =>
+      l.trimStart().startsWith("name:"),
+    );
     if (nameIndex !== -1) {
       ensuredLines.splice(nameIndex + 1, 0, descriptionLine);
     } else {

@@ -156,6 +156,25 @@ export const updateStatusFromAgent = internalMutation({
       return args.taskId;
     }
 
+    if (nextStatus === "done") {
+      const account = await ctx.db.get(task.accountId);
+      const orchestratorAgentId = (
+        account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+      )?.orchestratorAgentId;
+
+      if (!orchestratorAgentId) {
+        throw new Error(
+          "Forbidden: Orchestrator must be set to mark tasks as done",
+        );
+      }
+
+      if (orchestratorAgentId !== args.agentId) {
+        throw new Error(
+          "Forbidden: Only the orchestrator can mark tasks as done",
+        );
+      }
+    }
+
     if (!isValidTransition(currentStatus, nextStatus)) {
       throw new Error(
         `Invalid transition: Cannot move from '${currentStatus}' to '${nextStatus}'`,
