@@ -415,6 +415,14 @@ export const getCount = query({
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    // Load task and verify ownership
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return 0;
+    }
+
+    await requireAccountMember(ctx, task.accountId);
+
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))

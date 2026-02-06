@@ -25,6 +25,12 @@ export const list = query({
     let documents;
     
     if (args.taskId) {
+      // Validate that task belongs to accountId
+      const task = await ctx.db.get(args.taskId);
+      if (!task || task.accountId !== args.accountId) {
+        return [];
+      }
+      
       documents = await ctx.db
         .query("documents")
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
