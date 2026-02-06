@@ -6,12 +6,14 @@ import { useAuth } from "@clerk/nextjs";
 import { ReactNode } from "react";
 
 import { env } from "@packages/env/nextjs-client";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 const convex = new ConvexReactClient(env.NEXT_PUBLIC_CONVEX_URL);
 
 /**
  * Convex client provider with Clerk auth for the Next.js app.
  * Must be wrapped by ClerkProvider. Provides Convex context and syncs Clerk auth to Convex.
+ * Wrapped with ErrorBoundary to catch data-fetching errors gracefully.
  */
 export default function ConvexClientProvider({
   children,
@@ -19,8 +21,10 @@ export default function ConvexClientProvider({
   children: ReactNode;
 }) {
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-      {children}
-    </ConvexProviderWithClerk>
+    <ErrorBoundary variant="page">
+      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+        {children}
+      </ConvexProviderWithClerk>
+    </ErrorBoundary>
   );
 }

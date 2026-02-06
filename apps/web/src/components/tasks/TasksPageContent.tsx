@@ -13,6 +13,7 @@ import { Badge } from "@packages/ui/components/badge";
 import { PanelLeftClose, PanelLeft } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import { TaskStatus } from "@packages/shared";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 interface TasksPageContentProps {
   accountSlug: string;
@@ -165,11 +166,13 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
 
         {/* Kanban board */}
         <div className="flex-1 overflow-hidden py-4">
-          <KanbanBoard
-            accountSlug={accountSlug}
-            filterByAgentId={selectedAgentId}
-            statusFilter={statusFilter === "all" ? undefined : statusFilter}
-          />
+          <ErrorBoundary variant="section">
+            <KanbanBoard
+              accountSlug={accountSlug}
+              filterByAgentId={selectedAgentId}
+              statusFilter={statusFilter === "all" ? undefined : statusFilter}
+            />
+          </ErrorBoundary>
         </div>
       </div>
     </div>

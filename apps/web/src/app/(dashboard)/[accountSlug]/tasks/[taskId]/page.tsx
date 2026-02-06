@@ -17,6 +17,7 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, FileText, AlertCircle } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import Link from "next/link";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 interface TaskDetailPageProps {
   params: Promise<{ accountSlug: string; taskId: string }>;
@@ -78,18 +79,22 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           value="thread"
           className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
         >
-          <TaskThread
-            taskId={task._id}
-            accountSlug={accountSlug}
-            accountId={task.accountId}
-          />
+          <ErrorBoundary variant="section">
+            <TaskThread
+              taskId={task._id}
+              accountSlug={accountSlug}
+              accountId={task.accountId}
+            />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent
           value="documents"
           className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden"
         >
-          <TaskDocuments taskId={task._id} />
+          <ErrorBoundary variant="section">
+            <TaskDocuments taskId={task._id} />
+          </ErrorBoundary>
         </TabsContent>
       </Tabs>
     </div>
