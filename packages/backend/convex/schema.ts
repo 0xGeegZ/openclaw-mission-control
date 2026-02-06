@@ -933,4 +933,146 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // ==========================================================================
+  // BILLING SUBSCRIPTIONS
+  // Stripe subscription management for plan upgrades and billing.
+  // ==========================================================================
+  billingSubscriptions: defineTable({
+    /** Account this subscription belongs to */
+    accountId: v.id("accounts"),
+
+    /** Stripe customer ID */
+    stripeCustomerId: v.string(),
+
+    /** Stripe subscription ID */
+    stripeSubscriptionId: v.string(),
+
+    /** Stripe price ID (identifies the plan tier) */
+    stripePriceId: v.string(),
+
+    /** Current subscription plan */
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("enterprise"),
+    ),
+
+    /** Subscription status from Stripe */
+    status: v.union(
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("incomplete"),
+      v.literal("trialing"),
+      v.literal("unpaid"),
+    ),
+
+    /** Current billing period start (Unix timestamp) */
+    currentPeriodStart: v.number(),
+
+    /** Current billing period end (Unix timestamp) */
+    currentPeriodEnd: v.number(),
+
+    /** Whether subscription will cancel at period end */
+    cancelAtPeriodEnd: v.boolean(),
+
+    /** Trial end date (optional, Unix timestamp) */
+    trialEnd: v.optional(v.number()),
+
+    /** Timestamp of creation */
+    createdAt: v.number(),
+
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"]),
+
+  // ==========================================================================
+  // INVOICES
+  // Track Stripe invoices for billing history and downloads.
+  // ==========================================================================
+  invoices: defineTable({
+    /** Account this invoice belongs to */
+    accountId: v.id("accounts"),
+
+    /** Stripe invoice ID */
+    stripeInvoiceId: v.string(),
+
+    /** Stripe customer ID */
+    stripeCustomerId: v.string(),
+
+    /** Amount due in cents */
+    amountDue: v.number(),
+
+    /** Amount paid in cents */
+    amountPaid: v.number(),
+
+    /** Currency code (e.g., "usd") */
+    currency: v.string(),
+
+    /** Invoice status from Stripe */
+    status: v.union(
+      v.literal("draft"),
+      v.literal("open"),
+      v.literal("paid"),
+      v.literal("void"),
+      v.literal("uncollectible"),
+    ),
+
+    /** Hosted invoice URL (Stripe-hosted page) */
+    hostedInvoiceUrl: v.optional(v.string()),
+
+    /** Invoice PDF URL */
+    invoicePdf: v.optional(v.string()),
+
+    /** Billing period start (Unix timestamp) */
+    periodStart: v.number(),
+
+    /** Billing period end (Unix timestamp) */
+    periodEnd: v.number(),
+
+    /** Timestamp of invoice creation */
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_stripe_invoice", ["stripeInvoiceId"]),
+
+  // ==========================================================================
+  // USAGE RECORDS
+  // Track monthly usage for plan limits and metering.
+  // ==========================================================================
+  usageRecords: defineTable({
+    /** Account this usage record belongs to */
+    accountId: v.id("accounts"),
+
+    /** Period in YYYY-MM format */
+    period: v.string(),
+
+    /** Number of agents created this period */
+    agents: v.number(),
+
+    /** Number of tasks created this period */
+    tasks: v.number(),
+
+    /** Number of messages sent this period */
+    messages: v.number(),
+
+    /** Number of documents created this period */
+    documents: v.number(),
+
+    /** Storage used in bytes */
+    storageBytes: v.number(),
+
+    /** Timestamp of creation */
+    createdAt: v.number(),
+
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account_period", ["accountId", "period"])
+    .index("by_period", ["period"]),
 });
