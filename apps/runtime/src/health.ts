@@ -11,6 +11,12 @@ import {
   checkAndApplyPendingUpgrade,
 } from "./self-upgrade";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+import {
+  recordSuccess,
+  recordFailure,
+  getAllMetrics,
+  formatPrometheusMetrics,
+} from "./metrics";
 
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
@@ -207,6 +213,7 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     if (req.url === "/agent/task-status") {
+      const requestStart = Date.now();
       if (req.method !== "POST") {
         res.writeHead(405, { Allow: "POST" });
         res.end("Method Not Allowed");
@@ -226,6 +233,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         ? sessionHeader[0]
         : sessionHeader;
       if (!sessionKey) {
+        log.warn("[task-status] Missing session key");
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
@@ -235,6 +243,7 @@ export function startHealthServer(config: RuntimeConfig): void {
 
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
+        log.warn("[task-status] Unknown session:", sessionKey);
         sendJson(res, 401, { success: false, error: "Unknown session key" });
         return;
       }
@@ -252,6 +261,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           blockedReason?: string;
         }>(req);
       } catch (error) {
+        log.warn("[task-status] Invalid JSON:", error);
         sendJson(res, 400, { success: false, error: "Invalid JSON body" });
         return;
       }
@@ -261,6 +271,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         typeof body.taskId !== "string" ||
         typeof body.status !== "string"
       ) {
+        log.warn("[task-status] Missing fields:", body);
         sendJson(res, 400, {
           success: false,
           error: "Missing required fields: taskId, status",
@@ -275,6 +286,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         "blocked",
       ]);
       if (!allowedStatuses.has(body.status)) {
+        log.warn("[task-status] Invalid status:", body.status);
         sendJson(res, 422, {
           success: false,
           error:
@@ -284,12 +296,19 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
 
       if (body.status === "blocked" && !body.blockedReason?.trim()) {
+        log.warn("[task-status] Missing blockedReason for blocked status");
         sendJson(res, 422, {
           success: false,
           error: "blockedReason is required when status is blocked",
         });
         return;
       }
+
+      log.info("[task-status] Request:", {
+        agentId,
+        taskId: body.taskId,
+        status: body.status,
+      });
 
       try {
         const client = getConvexClient();
@@ -301,9 +320,26 @@ export function startHealthServer(config: RuntimeConfig): void {
           status: body.status as "in_progress" | "review" | "done" | "blocked",
           blockedReason: body.blockedReason,
         });
+        const duration = Date.now() - requestStart;
+        recordSuccess("agent.task_status", duration);
+        log.info("[task-status] Success:", {
+          agentId,
+          taskId: body.taskId,
+          status: body.status,
+          durationMs: duration,
+        });
         sendJson(res, 200, { success: true });
       } catch (error) {
+        const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
+        recordFailure("agent.task_status", duration, message);
+        log.error("[task-status] Failed:", {
+          agentId,
+          taskId: body.taskId,
+          status: body.status,
+          error: message,
+          durationMs: duration,
+        });
         const mapped = mapTaskStatusError(message);
         sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
@@ -311,6 +347,7 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     if (req.url === "/agent/task-create") {
+      const requestStart = Date.now();
       if (req.method !== "POST") {
         res.writeHead(405, { Allow: "POST" });
         res.end("Method Not Allowed");
@@ -328,6 +365,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         ? sessionHeader[0]
         : sessionHeader;
       if (!sessionKey) {
+        log.warn("[task-create] Missing session key");
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
@@ -336,6 +374,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
+        log.warn("[task-create] Unknown session:", sessionKey);
         sendJson(res, 401, { success: false, error: "Unknown session key" });
         return;
       }
@@ -353,17 +392,24 @@ export function startHealthServer(config: RuntimeConfig): void {
       };
       try {
         body = await readJsonBody<typeof body>(req);
-      } catch {
+      } catch (error) {
+        log.warn("[task-create] Invalid JSON:", error);
         sendJson(res, 400, { success: false, error: "Invalid JSON body" });
         return;
       }
       if (!body?.title?.trim()) {
+        log.warn("[task-create] Missing title");
         sendJson(res, 400, {
           success: false,
           error: "Missing required field: title",
         });
         return;
       }
+      log.info("[task-create] Request:", {
+        agentId,
+        title: body.title.substring(0, 50),
+        status: body.status,
+      });
       try {
         const client = getConvexClient();
         const { taskId } = await client.action(
@@ -387,15 +433,30 @@ export function startHealthServer(config: RuntimeConfig): void {
             blockedReason: body.blockedReason?.trim(),
           },
         );
+        const duration = Date.now() - requestStart;
+        recordSuccess("agent.task_create", duration);
+        log.info("[task-create] Success:", {
+          agentId,
+          taskId,
+          durationMs: duration,
+        });
         sendJson(res, 200, { success: true, taskId });
       } catch (error) {
+        const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
+        recordFailure("agent.task_create", duration, message);
+        log.error("[task-create] Failed:", {
+          agentId,
+          error: message,
+          durationMs: duration,
+        });
         sendJson(res, 403, { success: false, error: message });
       }
       return;
     }
 
     if (req.url === "/agent/document") {
+      const requestStart = Date.now();
       if (req.method !== "POST") {
         res.writeHead(405, { Allow: "POST" });
         res.end("Method Not Allowed");
@@ -413,6 +474,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         ? sessionHeader[0]
         : sessionHeader;
       if (!sessionKey) {
+        log.warn("[document] Missing session key");
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
@@ -421,6 +483,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
+        log.warn("[document] Unknown session:", sessionKey);
         sendJson(res, 401, { success: false, error: "Unknown session key" });
         return;
       }
@@ -438,7 +501,8 @@ export function startHealthServer(config: RuntimeConfig): void {
       };
       try {
         body = await readJsonBody<typeof body>(req);
-      } catch {
+      } catch (error) {
+        log.warn("[document] Invalid JSON:", error);
         sendJson(res, 400, { success: false, error: "Invalid JSON body" });
         return;
       }
@@ -448,6 +512,11 @@ export function startHealthServer(config: RuntimeConfig): void {
         !body?.type ||
         !allowedTypes.includes(body.type)
       ) {
+        log.warn("[document] Missing/invalid fields:", {
+          hasTitle: !!body?.title,
+          hasContent: body?.content != null,
+          type: body?.type,
+        });
         sendJson(res, 400, {
           success: false,
           error:
@@ -455,6 +524,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         });
         return;
       }
+      log.info("[document] Request:", {
+        agentId,
+        title: body.title.substring(0, 50),
+        type: body.type,
+        taskId: body.taskId,
+        contentLength: body.content.length,
+      });
       try {
         const client = getConvexClient();
         const { documentId } = await client.action(
@@ -474,10 +550,69 @@ export function startHealthServer(config: RuntimeConfig): void {
               | "reference",
           },
         );
+        const duration = Date.now() - requestStart;
+        recordSuccess("agent.document", duration);
+        log.info("[document] Success:", {
+          agentId,
+          documentId,
+          durationMs: duration,
+        });
         sendJson(res, 200, { success: true, documentId });
       } catch (error) {
+        const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
+        recordFailure("agent.document", duration, message);
+        log.error("[document] Failed:", {
+          agentId,
+          error: message,
+          durationMs: duration,
+        });
         sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    // Metrics endpoint - Prometheus-style metrics + JSON format
+    if (req.url === "/metrics") {
+      const format = req.headers["accept"]?.includes("application/json")
+        ? "json"
+        : "prometheus";
+
+      if (format === "json") {
+        const metricsData = getAllMetrics();
+        const delivery = getDeliveryState();
+        const gateway = getGatewayState();
+        const heartbeat = getHeartbeatState();
+
+        const json = {
+          operations: metricsData,
+          runtime: {
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+          },
+          components: {
+            delivery: {
+              running: delivery.isRunning,
+              delivered: delivery.deliveredCount,
+              failed: delivery.failedCount,
+            },
+            gateway: {
+              running: gateway.isRunning,
+              sessions: gateway.sessions.size,
+            },
+            heartbeat: {
+              running: heartbeat.isRunning,
+              scheduled: heartbeat.scheduledCount,
+            },
+          },
+          timestamp: Date.now(),
+        };
+        sendJson(res, 200, json);
+      } else {
+        // Prometheus text format
+        const prometheusText = formatPrometheusMetrics();
+        res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
+        res.end(prometheusText);
       }
       return;
     }

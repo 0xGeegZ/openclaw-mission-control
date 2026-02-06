@@ -3,6 +3,7 @@ import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
+import { recordSuccess, recordFailure } from "./metrics";
 
 const log = createLogger("[Heartbeat]");
 
@@ -83,6 +84,7 @@ function runHeartbeatCycle(
   intervalMs: number,
 ): void {
   const execute = async () => {
+    const heartbeatStart = Date.now();
     try {
       log.debug("Executing for", agent.name);
 
@@ -107,7 +109,13 @@ Current time: ${new Date().toISOString()}
         serviceToken: config.serviceToken,
         accountId: config.accountId,
       });
+      
+      const duration = Date.now() - heartbeatStart;
+      recordSuccess("heartbeat.execute", duration);
     } catch (error) {
+      const duration = Date.now() - heartbeatStart;
+      const message = error instanceof Error ? error.message : String(error);
+      recordFailure("heartbeat.execute", duration, message);
       log.error("Failed for", agent.name, ":", error);
     }
 
