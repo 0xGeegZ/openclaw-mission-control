@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -68,77 +68,14 @@ const notificationColors: Record<NotificationType, string> = {
     "bg-slate-100 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400",
 };
 
-/** Marks notification as read when its row becomes visible in the scroll container. */
-function useMarkReadWhenVisible(
-  elementRef: React.RefObject<HTMLElement | null>,
-  scrollContainerRef: React.RefObject<HTMLElement | null>,
-  isUnread: boolean,
-  notificationId: Id<"notifications">,
-  markAsRead: (args: {
-    notificationId: Id<"notifications">;
-  }) => Promise<unknown>,
-) {
-  useEffect(() => {
-    if (!isUnread || !scrollContainerRef.current || !elementRef.current) return;
-    const el = elementRef.current;
-    const root = scrollContainerRef.current;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry?.isIntersecting) {
-          markAsRead({ notificationId });
-          observer.disconnect();
-        }
-      },
-      { root, rootMargin: "0px", threshold: 0.5 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [isUnread, notificationId, markAsRead, scrollContainerRef, elementRef]);
-}
-
-interface NotificationRowWrapperProps {
-  notification: { _id: Id<"notifications">; readAt?: number | undefined };
-  scrollContainerRef: React.RefObject<HTMLElement | null>;
-  markAsRead: (args: {
-    notificationId: Id<"notifications">;
-  }) => Promise<unknown>;
-  className?: string;
-  children: React.ReactNode;
-}
-
-/** Wraps a notification row and marks it read when visible. */
-function NotificationRowWrapper({
-  notification,
-  scrollContainerRef,
-  markAsRead,
-  className,
-  children,
-}: NotificationRowWrapperProps) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  useMarkReadWhenVisible(
-    rowRef,
-    scrollContainerRef,
-    !notification.readAt,
-    notification._id,
-    markAsRead,
-  );
-  return (
-    <div ref={rowRef} className={className}>
-      {children}
-    </div>
-  );
-}
-
 /**
  * Notification bell with unread count badge. Opens a popover with recent
- * notifications; items are marked read when visible. Dismiss and mark-all-read available.
+ * notifications with dismiss/mark-all actions and pagination.
  */
 export function NotificationBell({ accountSlug }: NotificationBellProps) {
   const { accountId, account } = useAccount();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [accumulatedMore, setAccumulatedMore] = useState<
     Doc<"notifications">[]
   >([]);
@@ -191,7 +128,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
     : (result?.nextCursor ?? lastNextCursor);
 
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
-  const markAsRead = useMutation(api.notifications.markAsRead);
+  const dismissAll = useMutation(api.notifications.dismissAll);
   const removeNotification = useMutation(api.notifications.remove);
 
   const hasUnread = unreadCount !== undefined && unreadCount > 0;
@@ -204,6 +141,16 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
       toast.success("All notifications marked as read");
     } catch {
       toast.error("Failed to mark all as read");
+    }
+  };
+
+  const handleDismissAll = async () => {
+    if (!accountId) return;
+    try {
+      await dismissAll({ accountId });
+      toast.success("All notifications dismissed");
+    } catch {
+      toast.error("Failed to dismiss notifications");
     }
   };
 
@@ -305,7 +252,19 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                 Unread
               </Button>
             </div>
-            {notifications.length > 0 && (
+            {notifications.length > 0 && filter === "all" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleDismissAll}
+                title="Dismiss all notifications"
+              >
+                <X className="mr-1.5 h-3.5 w-3.5" />
+                Dismiss all
+              </Button>
+            )}
+            {notifications.length > 0 && filter === "unread" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -319,10 +278,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
             )}
           </div>
 
-          <div
-            ref={scrollContainerRef}
-            className="overflow-y-auto flex-1 min-h-0"
-          >
+          <div className="overflow-y-auto flex-1 min-h-0">
             {result === undefined ? (
               <div className="p-3 space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -387,11 +343,8 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                   );
 
                   return (
-                    <NotificationRowWrapper
+                    <div
                       key={notification._id}
-                      notification={notification}
-                      scrollContainerRef={scrollContainerRef}
-                      markAsRead={markAsRead}
                       className={cn(
                         "flex gap-3 p-2.5 transition-colors hover:bg-muted/50",
                         isUnread && "bg-primary/5",
@@ -426,7 +379,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                       >
                         <X className="h-3.5 w-3.5" />
                       </Button>
-                    </NotificationRowWrapper>
+                    </div>
                   );
                 })}
                 <div className="p-2 border-t border-border bg-muted/20">

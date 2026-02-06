@@ -54,9 +54,10 @@ Use this checklist for new pages and runtime controls before release.
 - [ ] Bell in sidebar shows unread count badge; count updates in real time
 - [ ] Click bell opens popover with recent notifications (All / Unread filter)
 - [ ] Popover: loading skeletons show while fetching; empty state shows "All caught up!" when no notifications
-- [ ] Mark as read (per item) removes unread styling and updates badge
 - [ ] Dismiss (per item) removes notification from list and updates badge
-- [ ] Mark all read clears unread styling and badge
+- [ ] All view shows "Dismiss all" in header; clears notifications
+- [ ] Unread view shows "Mark all read" in header; clears unread styling and badge
+- [ ] Load more appears at list footer; fetches next page or shows "No more notifications"
 - [ ] Click notification with task links to task detail; popover closes
 - [ ] Visiting `/[accountSlug]/notifications` redirects to tasks (no dead page)
 
