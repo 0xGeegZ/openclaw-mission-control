@@ -114,6 +114,22 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
+const NO_RESPONSE_FROM_OPENCLAW_MESSAGE = "No response from OpenClaw.";
+const NO_RESPONSE_MENTION_PREFIX_PATTERN =
+  /^(@[A-Za-z0-9_-]+)(\s+@[A-Za-z0-9_-]+)*$/;
+const NO_RESPONSE_FALLBACK_MESSAGE = [
+  "**Summary**",
+  "- OpenClaw did not return a response for this run.",
+  "",
+  "**Work done**",
+  "- None (no output received).",
+  "",
+  "**Next step (one)**",
+  "- Retry once the runtime or gateway is healthy; check OpenClaw logs if this persists.",
+  "",
+  "**Sources**",
+  "- None.",
+].join("\n");
 
 interface GatewayAddress {
   host: string;
@@ -216,6 +232,38 @@ const state: GatewayState = {
   lastSendAt: null,
   lastSendError: null,
 };
+
+/**
+ * Detect OpenClaw "no response" placeholder messages, including mention-only prefixes.
+ */
+function parseNoResponsePlaceholder(
+  response: string,
+): { isPlaceholder: boolean; mentionPrefix: string | null } {
+  const trimmed = response.trim();
+  if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
+  if (trimmed === NO_RESPONSE_FROM_OPENCLAW_MESSAGE) {
+    return { isPlaceholder: true, mentionPrefix: null };
+  }
+  if (!trimmed.endsWith(NO_RESPONSE_FROM_OPENCLAW_MESSAGE)) {
+    return { isPlaceholder: false, mentionPrefix: null };
+  }
+  const prefix = trimmed
+    .slice(0, trimmed.length - NO_RESPONSE_FROM_OPENCLAW_MESSAGE.length)
+    .trim();
+  if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
+  if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {
+    return { isPlaceholder: true, mentionPrefix: prefix };
+  }
+  return { isPlaceholder: false, mentionPrefix: null };
+}
+
+/**
+ * Build a fallback response for placeholder OpenClaw messages.
+ */
+function buildNoResponseFallbackMessage(mentionPrefix?: string | null): string {
+  const prefix = mentionPrefix ? `${mentionPrefix.trim()}\n\n` : "";
+  return `${prefix}${NO_RESPONSE_FALLBACK_MESSAGE}`;
+}
 
 /**
  * Initialize the OpenClaw gateway.
@@ -534,7 +582,24 @@ export async function receiveFromOpenClaw(
     throw new Error(`Unknown session: ${sessionKey}`);
   }
 
-  log.debug("Received from", sessionKey, ":", response.substring(0, 100));
+  const trimmedResponse = response.trim();
+  if (!trimmedResponse) {
+    log.warn("OpenClaw returned empty response; skipping message", sessionKey);
+    return;
+  }
+
+  log.debug("Received from", sessionKey, ":", trimmedResponse.substring(0, 100));
+
+  const placeholder = parseNoResponsePlaceholder(response);
+  let messageContent = response;
+  if (placeholder.isPlaceholder) {
+    log.warn(
+      "OpenClaw placeholder response received; replacing with fallback message",
+      sessionKey,
+      taskId ?? "no-task",
+    );
+    messageContent = buildNoResponseFallbackMessage(placeholder.mentionPrefix);
+  }
 
   // Post response as message in Convex via service action
   const client = getConvexClient();
@@ -544,7 +609,7 @@ export async function receiveFromOpenClaw(
     await client.action(api.service.actions.createMessageFromAgent, {
       agentId: session.agentId,
       taskId,
-      content: response,
+      content: messageContent,
       serviceToken: config.serviceToken,
       accountId: config.accountId,
     });

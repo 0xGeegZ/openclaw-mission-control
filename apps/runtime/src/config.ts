@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import * as path from "path";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 
@@ -45,6 +46,8 @@ export interface RuntimeConfig {
   openclawGatewayToken: string | undefined;
   /** Timeout for OpenClaw /v1/responses requests (ms); default 180000 for long agent runs */
   openclawRequestTimeoutMs: number;
+  /** When false, disable client-side tools and rely on HTTP fallbacks. */
+  openclawClientToolsEnabled: boolean;
   /**
    * Base URL the agent (OpenClaw) uses to reach the runtime health server for task-status fallback.
    * In Docker with gateway in another container, set to e.g. http://runtime:3000 so the gateway can reach this service.
@@ -56,6 +59,8 @@ export interface RuntimeConfig {
   openclawConfigPath: string;
   /** Optional path to AGENTS.md to copy into each agent workspace; unset uses embedded default. */
   openclawAgentsMdPath: string | undefined;
+  /** Optional path to HEARTBEAT.md to copy into each agent workspace; unset uses embedded default. */
+  openclawHeartbeatMdPath: string | undefined;
   /** When false, disable profile sync (workspaces and openclaw.json); runtime continues without writing. */
   openclawProfileSyncEnabled: boolean;
 }
@@ -94,9 +99,9 @@ async function detectOpenClawVersion(): Promise<string> {
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   try {
     try {
-      return execVersionCommand("clawdbot --version") || "unknown";
-    } catch {
       return execVersionCommand("openclaw --version") || "unknown";
+    } catch {
+      return execVersionCommand("clawdbot --version") || "unknown";
     }
   } catch {
     return "unknown";
@@ -121,6 +126,21 @@ function parseIntOrDefault(
 ): number {
   const parsed = parseInt(value || "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/**
+ * Parse a boolean-like env value with a default fallback.
+ */
+function parseBooleanEnv(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value === undefined || value === null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  return fallback;
 }
 
 /**
@@ -244,9 +264,20 @@ export async function loadConfig(): Promise<RuntimeConfig> {
   const openclawAgentsMdPath = normalizeEnvValue(
     process.env.OPENCLAW_AGENTS_MD_PATH,
   )?.trim();
+  const defaultHeartbeatMdPath = path.join(
+    path.dirname(openclawWorkspaceRoot),
+    "HEARTBEAT.md",
+  );
+  const openclawHeartbeatMdPath =
+    normalizeEnvValue(process.env.OPENCLAW_HEARTBEAT_MD_PATH)?.trim() ||
+    defaultHeartbeatMdPath;
 
   const openclawProfileSyncEnabled =
     normalizeEnvValue(process.env.OPENCLAW_PROFILE_SYNC) !== "false";
+  const openclawClientToolsEnabled = parseBooleanEnv(
+    normalizeEnvValue(process.env.OPENCLAW_CLIENT_TOOLS_ENABLED),
+    true,
+  );
 
   return {
     accountId: accountId as Id<"accounts">,
@@ -283,10 +314,12 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
       180000,
     ),
+    openclawClientToolsEnabled,
     taskStatusBaseUrl,
     openclawWorkspaceRoot,
     openclawConfigPath,
     openclawAgentsMdPath: openclawAgentsMdPath || undefined,
+    openclawHeartbeatMdPath: openclawHeartbeatMdPath || undefined,
     openclawProfileSyncEnabled,
   };
 }

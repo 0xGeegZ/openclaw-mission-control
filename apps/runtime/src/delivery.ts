@@ -206,16 +206,30 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+            const canCreateTasks = flags.canCreateTasks === true;
+            const canCreateDocuments = flags.canCreateDocuments === true;
             const canMarkDone =
               context.orchestratorAgentId != null &&
               context.agent._id === context.orchestratorAgentId;
-            const toolCapabilities = getToolCapabilitiesAndSchemas({
-              canCreateTasks: flags.canCreateTasks === true,
+            const rawToolCapabilities = getToolCapabilitiesAndSchemas({
+              canCreateTasks,
               canModifyTaskStatus,
-              canCreateDocuments: flags.canCreateDocuments === true,
+              canCreateDocuments,
               hasTaskContext: hasTask,
               canMarkDone,
             });
+            const toolCapabilities = config.openclawClientToolsEnabled
+              ? rawToolCapabilities
+              : {
+                  ...rawToolCapabilities,
+                  capabilityLabels: buildHttpCapabilityLabels({
+                    canCreateTasks,
+                    canModifyTaskStatus,
+                    canCreateDocuments,
+                    hasTaskContext: hasTask,
+                  }),
+                  schemas: [],
+                };
             const sendOptions =
               toolCapabilities.schemas.length > 0
                 ? {
@@ -724,6 +738,28 @@ function formatThreadContext(
   return lines.join("\n");
 }
 
+/**
+ * Build capability labels for HTTP fallback mode (no client-side tools).
+ */
+function buildHttpCapabilityLabels(options: {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  hasTaskContext: boolean;
+}): string[] {
+  const labels: string[] = [];
+  if (options.hasTaskContext && options.canModifyTaskStatus) {
+    labels.push("change task status via HTTP (POST /agent/task-status)");
+  }
+  if (options.canCreateTasks) {
+    labels.push("create tasks via HTTP (POST /agent/task-create)");
+  }
+  if (options.canCreateDocuments) {
+    labels.push("create/update documents via HTTP (POST /agent/document)");
+  }
+  return labels;
+}
+
 const MENTIONABLE_AGENTS_CAP = 25;
 
 /**
@@ -752,14 +788,21 @@ export function formatNotificationMessage(
   } = context;
   const flags = context.effectiveBehaviorFlags ?? {};
   const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+  const canCreateTasks = flags.canCreateTasks === true;
+  const canCreateDocuments = flags.canCreateDocuments === true;
   const canMentionAgents = flags.canMentionAgents === true;
+  const isOrchestrator =
+    orchestratorAgentId != null && context.agent?._id === orchestratorAgentId;
+  const hasRuntimeTools = toolCapabilities.schemas.length > 0;
+  const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
+  const sessionKey = context.agent?.sessionKey ?? "<session-key>";
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   if (canMentionAgents) capabilityLabels.push("mention other agents");
   const capabilitiesBlock =
     capabilityLabels.length > 0
-      ? `Capabilities: ${capabilityLabels.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED, include the error message, and do not claim you changed status.\n\n`
-      : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
+      ? `Runtime capabilities: ${capabilityLabels.join("; ")}. Use only the runtime capabilities listed here. If a runtime tool or HTTP fallback fails, report BLOCKED with the error message.\n\n`
+      : "Runtime capabilities: none. If asked to create tasks, change status, or create documents, report BLOCKED.\n\n";
 
   const agentName = context.agent?.name?.trim() || "Agent";
   const agentRole = context.agent?.role?.trim() || "Unknown role";
@@ -799,11 +842,35 @@ export function formatNotificationMessage(
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
 
+  const doneRestrictionNote = toolCapabilities.canMarkDone
+    ? ""
+    : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed.";
   const statusInstructions = task
-    ? toolCapabilities.hasTaskStatus
-      ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${toolCapabilities.canMarkDone ? "" : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed."}`
+    ? canModifyTaskStatus
+      ? hasRuntimeTools && toolCapabilities.hasTaskStatus
+        ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${doneRestrictionNote}`
+        : `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. Use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this endpoint. If the HTTP call fails, report BLOCKED and include the error message.${doneRestrictionNote}`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
+  const taskCreateInstructions = canCreateTasks
+    ? hasRuntimeTools
+      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+    : "";
+  const documentInstructions = canCreateDocuments
+    ? hasRuntimeTools
+      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+    : "";
+  const followupTaskInstruction =
+    isOrchestrator && task
+      ? `\nOrchestrator note: If this task needs follow-up work, create those follow-up tasks before moving this task to done. If any PRs were reopened, merge them before moving this task to done.${canCreateTasks ? (hasRuntimeTools ? " Use the task_create tool." : ` Use the HTTP fallback (${runtimeBaseUrl}/agent/task-create).`) : " If task creation is not permitted, state the follow-ups needed and ask the primary user to create them."}`
+      : "";
+  const largeResultInstruction = canCreateDocuments
+    ? hasRuntimeTools
+      ? "If the result is large, create a document (document_upsert) and summarize it here."
+      : "If the result is large, create a document via the HTTP fallback (/agent/document) and summarize it here."
+    : "If the result is large, summarize it here (document creation not permitted).";
 
   const mentionableSection = canMentionAgents
     ? formatMentionableAgentsSection(mentionableAgents)
@@ -854,10 +921,13 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
 
-Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. If the result is large, create a document (document_upsert) and summarize it here.
+Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 
 ${statusInstructions}
-${task?.status === "review" && toolCapabilities.hasTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${taskCreateInstructions}
+${documentInstructions}
+${followupTaskInstruction}
+${task?.status === "review" && canModifyTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 ${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
 ${assignmentAckBlock}

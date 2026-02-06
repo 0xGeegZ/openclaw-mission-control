@@ -590,6 +590,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
 - Review tasks in REVIEW promptly; close them (move to DONE) with a clear acceptance note.
+- If any PRs were reopened, merge them before moving the task to DONE.
 - When closing a task (move to DONE): use the task_status tool with status "done" first (or the runtime task-status endpoint if the tool is not offered). Then post your acceptance note. If you cannot update status, report BLOCKED — do not post a final summary or claim DONE. Posting in the thread alone does not update the task status and causes a loop.
 - When a task is DONE: if you mention other agents, only direct them to start or continue work on other existing tasks (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this (done) task thread; that causes reply loops.
 - Write docs for decisions; link from task threads.

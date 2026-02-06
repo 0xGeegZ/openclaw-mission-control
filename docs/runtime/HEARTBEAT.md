@@ -8,6 +8,7 @@
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
+- If you are the orchestrator: also review in_progress and review tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
@@ -15,7 +16,8 @@
 2. A task assigned to me and in REVIEW (needs response)
 3. A task assigned to me and in IN_PROGRESS / ASSIGNED
 4. A thread I'm subscribed to with new messages
-5. Otherwise: scan the activity feed for something I can improve
+5. If orchestrator: follow up on in_progress/review tasks even if assigned to others.
+6. Otherwise: scan the activity feed for something I can improve
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 
@@ -34,6 +36,7 @@ Pick one action that can be completed quickly:
 
 - If you took a concrete action on a task:
   - Post a thread update using the required format
+  - Include a line: `Task ID: <id>` so the runtime can attach your update
   - Update WORKING.md (current task, status, next step)
   - Append a short entry to today's log with timestamp
 - If you did not take a concrete action:

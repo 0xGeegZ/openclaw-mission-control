@@ -147,6 +147,7 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
   - the doc library
   - the activity feed
   - your WORKING.md and recent daily notes
+- Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
 ### Mentions (Orchestrator)
 

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
   isValidTransition,
@@ -28,6 +28,82 @@ export const getInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.taskId);
+  },
+});
+
+/**
+ * List tasks assigned to a specific agent (internal, service-only).
+ * Uses by_account index to avoid full table scans.
+ */
+export const listAssignedForAgent = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    includeDone: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.accountId !== args.accountId) {
+      return [];
+    }
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+
+    const includeDone = args.includeDone === true;
+    const assignedTasks = tasks.filter((task) =>
+      task.assignedAgentIds.includes(args.agentId),
+    );
+    const filtered = includeDone
+      ? assignedTasks
+      : assignedTasks.filter((task) => task.status !== "done");
+
+    const limit = Math.min(args.limit ?? 50, 200);
+    return filtered.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
+  },
+});
+
+/**
+ * List tasks for an account filtered by status (internal, service-only).
+ * Uses by_account_status index per status and merges results.
+ */
+export const listByStatusForAccount = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    statuses: v.array(taskStatusValidator),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const uniqueStatuses = Array.from(new Set(args.statuses));
+    if (uniqueStatuses.length === 0) {
+      return [];
+    }
+
+    const perStatusLimit = limit;
+    const results = await Promise.all(
+      uniqueStatuses.map((status) =>
+        ctx.db
+          .query("tasks")
+          .withIndex("by_account_status", (q) =>
+            q.eq("accountId", args.accountId).eq("status", status),
+          )
+          .order("desc")
+          .take(perStatusLimit),
+      ),
+    );
+
+    const merged = new Map<Id<"tasks">, Doc<"tasks">>();
+    for (const task of results.flat()) {
+      merged.set(task._id, task);
+    }
+
+    return Array.from(merged.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, limit);
   },
 });
 
