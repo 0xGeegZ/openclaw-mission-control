@@ -34,6 +34,8 @@ export interface ProfileSyncOptions {
   configPath: string;
   /** Optional path to AGENTS.md to copy into each workspace; if unset, embedded default is used */
   agentsMdPath?: string;
+  /** Optional path to HEARTBEAT.md to copy into each workspace; unset uses embedded default. */
+  heartbeatMdPath?: string;
 }
 
 /** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). */
@@ -55,19 +57,74 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 3. Never assume permissions. If you cannot access something, report it and mark the task BLOCKED.
 4. Always include evidence when you claim facts.
 5. Prefer small, finished increments over large vague progress.
+6. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS.
 - If you need human review: move to REVIEW.
 - If blocked: move to BLOCKED and explain.
-- If done: move to DONE, post final summary.
+- If done: move to DONE only after QA review passes (QA marks done when configured).
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
 `;
 
+/** Default HEARTBEAT.md content when file path is not available (e.g. in Docker runtime container). */
+const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
+
+## 1) Load context (always)
+
+- Read memory/WORKING.md
+- Read today's note (memory/YYYY-MM-DD.md)
+- Fetch:
+  - unread notifications (mentions + thread updates)
+  - tasks assigned to me where status != done
+  - last 20 activities for the account
+- If you are the orchestrator: also review in_progress and review tasks across the account.
+
+## 2) Decide what to do (priority order)
+
+1. A direct @mention to me
+2. A task assigned to me and in REVIEW (needs response)
+3. A task assigned to me and in IN_PROGRESS / ASSIGNED
+4. A thread I'm subscribed to with new messages
+5. If orchestrator: follow up on in_progress/review tasks even if assigned to others.
+6. Otherwise: scan the activity feed for something I can improve
+
+**New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1-2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+## 3) Execute one atomic action
+
+Pick one action that can be completed quickly:
+
+- post a clarifying question (only if truly blocked)
+- write a doc section
+- test a repro step and attach logs
+- update a task status with explanation
+- refactor a small component (developer agent)
+- produce a small deliverable chunk
+
+## 4) Report + persist memory (always)
+
+- If you took a concrete action on a task:
+  - Post a thread update using the required format
+  - Include a line: \`Task ID: <id>\` so the runtime can attach your update
+  - Update WORKING.md (current task, status, next step)
+  - Append a short entry to today's log with timestamp
+- If you did not take a concrete action:
+  - Reply with \`HEARTBEAT_OK\` only
+  - Do not post a thread update
+
+## 5) Stand down rules
+
+If you did not act:
+
+- Post \`HEARTBEAT_OK\` only
+- Otherwise stay silent to avoid noise
+`;
+
 const MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4-5",
-  "claude-opus-4-20250514": "anthropic/claude-opus-4-5",
+  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4.5",
+  "claude-opus-4-20250514": "anthropic/claude-opus-4.5",
   "gpt-4o": "openai/gpt-4o",
   "gpt-4o-mini": "openai/gpt-4o-mini",
 };
@@ -107,6 +164,140 @@ export function buildToolsMd(
 }
 
 /**
+ * Split YAML frontmatter from markdown content.
+ * Returns null when content does not start with a valid frontmatter block.
+ */
+function splitFrontmatter(
+  content: string,
+): { frontmatterLines: string[]; body: string } | null {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0) return null;
+  if (lines[0]?.trim() !== "---") return null;
+
+  const endIndex = lines.findIndex(
+    (line, idx) => idx > 0 && line.trim() === "---",
+  );
+  if (endIndex === -1) return null;
+
+  const frontmatterLines = lines.slice(1, endIndex);
+  const body = lines
+    .slice(endIndex + 1)
+    .join("\n")
+    .replace(/^\n+/, "");
+
+  return { frontmatterLines, body };
+}
+
+function parseYamlFrontmatterScalar(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
+    } catch {
+      // fall through to raw handling
+    }
+  }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    const inner = trimmed.slice(1, -1).replace(/''/g, "'");
+    return inner.trim() || null;
+  }
+
+  return trimmed;
+}
+
+function getFrontmatterField(
+  frontmatterLines: string[],
+  key: string,
+): string | null {
+  const prefix = `${key}:`;
+  for (const line of frontmatterLines) {
+    const trimmedLine = line.trimStart();
+    if (!trimmedLine.startsWith(prefix)) continue;
+    const rawValue = trimmedLine.slice(prefix.length);
+    return parseYamlFrontmatterScalar(rawValue);
+  }
+  return null;
+}
+
+function formatFrontmatterDescription(description: string): string {
+  // YAML 1.2 is a superset of JSON; JSON-style quoted strings are valid YAML scalars.
+  return JSON.stringify(description);
+}
+
+/**
+ * Parses the OpenClaw/AgentSkills frontmatter `name` from SKILL.md content.
+ * OpenClaw matches skills.entries keys to this name. Returns null if not found.
+ */
+function parseSkillNameFromFrontmatter(content: string): string | null {
+  const parsed = splitFrontmatter(content.trim());
+  if (!parsed) return null;
+  return getFrontmatterField(parsed.frontmatterLines, "name");
+}
+
+/**
+ * Ensures content has OpenClaw-required frontmatter (name, description).
+ * If missing, prepends frontmatter so the written SKILL.md is valid per docs.openclaw.ai/tools/skills.
+ */
+function ensureOpenClawFrontmatter(
+  content: string,
+  slug: string,
+  description: string,
+): string {
+  const trimmed = content.trim();
+  const desc = (description || slug)
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, 200);
+
+  const parsed = splitFrontmatter(trimmed);
+  if (!parsed) {
+    return `---
+name: ${slug}
+description: ${formatFrontmatterDescription(desc)}
+---
+
+${trimmed}
+`;
+  }
+
+  const existingName = getFrontmatterField(parsed.frontmatterLines, "name");
+  const existingDescription = getFrontmatterField(
+    parsed.frontmatterLines,
+    "description",
+  );
+  if (existingName && existingDescription) return trimmed;
+
+  const ensuredLines = [...parsed.frontmatterLines];
+
+  if (!existingName) {
+    ensuredLines.unshift(`name: ${slug}`);
+  }
+
+  if (!existingDescription) {
+    const descriptionLine = `description: ${formatFrontmatterDescription(desc)}`;
+    const nameIndex = ensuredLines.findIndex((l) =>
+      l.trimStart().startsWith("name:"),
+    );
+    if (nameIndex !== -1) {
+      ensuredLines.splice(nameIndex + 1, 0, descriptionLine);
+    } else {
+      ensuredLines.push(descriptionLine);
+    }
+  }
+
+  return `---
+${ensuredLines.join("\n")}
+---
+
+${parsed.body.trim()}
+`;
+}
+
+/**
  * Simple content hash for change detection (non-crypto).
  */
 function contentHash(content: string): string {
@@ -143,6 +334,23 @@ function getAgentsMdContent(agentsMdPath: string | undefined): string {
     }
   }
   return DEFAULT_AGENTS_MD;
+}
+
+/**
+ * Read HEARTBEAT.md from path or return embedded default.
+ */
+function getHeartbeatMdContent(heartbeatMdPath: string | undefined): string {
+  if (heartbeatMdPath && fs.existsSync(heartbeatMdPath)) {
+    try {
+      return fs.readFileSync(heartbeatMdPath, "utf-8");
+    } catch (e) {
+      log.warn("Failed to read HEARTBEAT.md from path, using default", {
+        path: heartbeatMdPath,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return DEFAULT_HEARTBEAT_MD;
 }
 
 /**
@@ -216,7 +424,7 @@ function writeIfChanged(filePath: string, content: string): boolean {
 
 /**
  * Sync per-agent workspace files and generate openclaw.json.
- * Writes SOUL.md, AGENTS.md, TOOLS.md and, for skills with contentMarkdown, skills/<slug>/SKILL.md.
+ * Writes SOUL.md, AGENTS.md, HEARTBEAT.md, TOOLS.md and, for skills with contentMarkdown, skills/<slug>/SKILL.md.
  * Generates openclaw.json with agents.list, load.extraDirs, and skills.entries for materialized skills.
  *
  * @returns { configChanged: boolean } — true when the generated config file was written (caller may trigger gateway reload when OPENCLAW_CONFIG_RELOAD=1).
@@ -225,15 +433,17 @@ export function syncOpenClawProfiles(
   agents: AgentForProfile[],
   options: ProfileSyncOptions,
 ): { configChanged: boolean } {
-  const { workspaceRoot, configPath, agentsMdPath } = options;
+  const { workspaceRoot, configPath, agentsMdPath, heartbeatMdPath } = options;
   const agentsMdContent = getAgentsMdContent(agentsMdPath);
+  const heartbeatMdContent = getHeartbeatMdContent(heartbeatMdPath);
 
   ensureDir(workspaceRoot);
 
   const rootResolved = path.resolve(workspaceRoot);
   const validAgents: Array<{ agent: AgentForProfile; agentDir: string }> = [];
   const extraDirsSet = new Set<string>();
-  const materializedSlugsSet = new Set<string>();
+  /** OpenClaw skills.entries keys: must match frontmatter `name` in each SKILL.md. */
+  const materializedSkillKeysSet = new Set<string>();
 
   for (const agent of agents) {
     const agentDir = resolveAgentDir(workspaceRoot, agent.slug);
@@ -249,6 +459,7 @@ export function syncOpenClawProfiles(
 
     writeIfChanged(path.join(agentDir, "SOUL.md"), agent.effectiveSoulContent);
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
+    writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(
       path.join(agentDir, "TOOLS.md"),
       buildToolsMd(agent.resolvedSkills),
@@ -256,9 +467,8 @@ export function syncOpenClawProfiles(
 
     const skillsDir = path.join(agentDir, "skills");
     for (const skill of agent.resolvedSkills) {
-      // Normalize: we trim before write so stored content is consistent and trailing newlines don't churn writeIfChanged.
-      const content = skill.contentMarkdown?.trim();
-      if (!content) continue;
+      const rawContent = skill.contentMarkdown?.trim();
+      if (!rawContent) continue;
       const safeSlug = safeSkillSlug(skill.slug);
       if (!safeSlug) {
         log.warn("Skipping skill with unsafe slug", {
@@ -267,13 +477,20 @@ export function syncOpenClawProfiles(
         });
         continue;
       }
+      const contentToWrite = ensureOpenClawFrontmatter(
+        rawContent,
+        safeSlug,
+        skill.description ?? skill.name,
+      );
+      const configKey =
+        parseSkillNameFromFrontmatter(contentToWrite) ?? safeSlug;
       const skillDir = path.join(skillsDir, safeSlug);
       const skillMdPath = path.join(skillDir, "SKILL.md");
       try {
         ensureDir(skillDir);
-        writeIfChanged(skillMdPath, content);
+        writeIfChanged(skillMdPath, contentToWrite);
         extraDirsSet.add(skillsDir);
-        materializedSlugsSet.add(safeSlug);
+        materializedSkillKeysSet.add(configKey);
       } catch (err) {
         log.error("Failed to write SKILL.md; skipping skill", {
           skillId: skill._id,
@@ -314,7 +531,7 @@ export function syncOpenClawProfiles(
     })),
     rootResolved,
     Array.from(extraDirsSet),
-    Array.from(materializedSlugsSet),
+    Array.from(materializedSkillKeysSet),
   );
   const configJson = JSON.stringify(openclawConfig, null, 2);
   const configDir = path.dirname(configPath);
@@ -359,13 +576,13 @@ interface AgentWithWorkspacePath extends AgentForProfile {
 /**
  * Build openclaw.json structure: agents.list[], load.extraDirs, skills.entries.
  * agents.defaults.skipBootstrap: true; per-agent model from mapModelToOpenClaw when mapped.
- * Caller must pass only agents that passed resolveAgentDir (use _workspacePath).
+ * skills.entries keys must match the frontmatter `name` in each SKILL.md (OpenClaw convention).
  */
 function buildOpenClawConfig(
   agents: AgentWithWorkspacePath[],
   _workspaceRoot: string,
   extraDirs: string[],
-  materializedSlugs: string[],
+  materializedSkillKeys: string[],
 ): Record<string, unknown> {
   const list = agents.map((agent) => {
     const entry: Record<string, unknown> = {
@@ -392,10 +609,10 @@ function buildOpenClawConfig(
   if (extraDirs.length > 0) {
     result.load = { extraDirs };
   }
-  if (materializedSlugs.length > 0) {
+  if (materializedSkillKeys.length > 0) {
     const entries: Record<string, { enabled: boolean }> = {};
-    for (const slug of materializedSlugs) {
-      entries[slug] = { enabled: true };
+    for (const key of materializedSkillKeys) {
+      entries[key] = { enabled: true };
     }
     result.skills = { entries };
   }

@@ -1,25 +1,30 @@
 #!/bin/bash
 # Startup script for OpenClaw gateway in Docker (OpenClaw Mission Control local dev).
 # 1. Initializes config from template on first run
-# 2. Merges environment variables into clawdbot.json
+# 2. Merges environment variables into openclaw.json
 # 3. Starts the gateway
 
 set -e
 
-if pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
+if pgrep -f "openclaw gateway" > /dev/null 2>&1 || pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
   echo "OpenClaw gateway is already running, exiting."
   exit 0
+fi
+
+CLI_BIN="clawdbot"
+if command -v openclaw > /dev/null 2>&1; then
+  CLI_BIN="openclaw"
 fi
 
 if [ -n "${VERCEL_AI_GATEWAY_API_KEY:-}" ] && [ -z "${AI_GATEWAY_API_KEY:-}" ]; then
   export AI_GATEWAY_API_KEY="$VERCEL_AI_GATEWAY_API_KEY"
 fi
 
-CONFIG_DIR="/root/.clawdbot"
-CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
+CONFIG_DIR="/root/.openclaw"
+CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 # Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
 OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
-TEMPLATE_DIR="/root/.clawdbot-templates"
+TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
 mkdir -p "$CONFIG_DIR"
@@ -44,7 +49,7 @@ fi
 node << 'EOFNODE'
 const fs = require('fs');
 const path = require('path');
-const configPath = '/root/.clawdbot/clawdbot.json';
+const configPath = '/root/.openclaw/openclaw.json';
 let config = {};
 try {
   config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -133,6 +138,7 @@ if (hasVercelKey) {
   config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'] = { alias: 'Claude Sonnet 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'] = { alias: 'Claude Opus 4.5' };
 } else {
   // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
   const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -278,7 +284,7 @@ function pruneSessionsIfConfigured() {
     console.warn('OPENCLAW_SESSION_RETENTION_DAYS must be a non-negative number; skipping prune.');
     return;
   }
-  const dataRoot = '/root/.clawdbot';
+  const dataRoot = '/root/.openclaw';
   const stores = collectSessionStores(dataRoot);
   if (stores.length === 0) return;
   const clearAll = retentionDays === 0;
@@ -428,7 +434,7 @@ echo "Starting Chromium (headless, CDP on port 18800)..."
 chromium \
   --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
   --remote-debugging-port=18800 --remote-debugging-address=127.0.0.1 \
-  --user-data-dir=/root/.clawdbot/browser/clawd/user-data \
+  --user-data-dir=/root/.openclaw/browser/clawd/user-data \
   about:blank 2>/dev/null &
 CHROMIUM_PID=$!
 sleep 2
@@ -439,9 +445,9 @@ else
 fi
 
 if [ -n "$TOKEN" ]; then
-  clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind lan --token "$TOKEN" &
+  "$CLI_BIN" gateway --port 18789 --verbose --allow-unconfigured --bind lan --token "$TOKEN" &
 else
-  clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind local &
+  "$CLI_BIN" gateway --port 18789 --verbose --allow-unconfigured --bind local &
 fi
 GATEWAY_PID=$!
 

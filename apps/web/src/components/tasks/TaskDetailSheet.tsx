@@ -124,7 +124,7 @@ export function TaskDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:w-[50vw] sm:max-w-none p-0 flex flex-col"
+        className="w-full sm:w-[65vw] sm:max-w-none p-0 flex flex-col"
         showCloseButton={true}
         headerActions={
           task && (
@@ -186,7 +186,7 @@ export function TaskDetailSheet({
 
               {/* Description */}
               {task.description && (
-                <div className="text-sm leading-relaxed">
+                <div className="max-h-60 overflow-y-auto pr-3 text-sm leading-relaxed">
                   <MarkdownRenderer content={task.description} compact />
                 </div>
               )}

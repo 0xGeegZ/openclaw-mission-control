@@ -24,7 +24,9 @@ services:
       - HEALTH_HOST=0.0.0.0
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
-      - OPENCLAW_REQUEST_TIMEOUT_MS=180000
+      - OPENCLAW_REQUEST_TIMEOUT_MS=300000
+      # OpenClaw gateway (local) ignores client-side tools; use HTTP fallbacks instead.
+      - OPENCLAW_CLIENT_TOOLS_ENABLED=0
     volumes:
       # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
       - ../../.runtime/openclaw-workspace:/root/clawd
@@ -53,11 +55,13 @@ services:
       - openclaw
     env_file:
       - ./.env
+    environment:
+      - OPENCLAW_CONFIG_RELOAD=1
     # Same network as runtime so agent can reach http://runtime:3000 for task-status HTTP fallback
     networks:
       - default
     volumes:
-      - ../../.runtime/openclaw-data:/root/.clawdbot
+      - ../../.runtime/openclaw-data:/root/.openclaw
       - ../../.runtime/openclaw-workspace:/root/clawd
     ports:
       - "127.0.0.1:18789:18789"

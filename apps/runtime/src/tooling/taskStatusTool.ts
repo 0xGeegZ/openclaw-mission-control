@@ -11,6 +11,47 @@ const log = createLogger("[TaskStatusTool]");
 
 const ALLOWED_STATUSES = new Set(["in_progress", "review", "done", "blocked"]);
 
+/**
+ * Build the task_status tool schema with optional "done" support.
+ * The enum is tailored per agent to avoid invalid "done" requests.
+ */
+export function createTaskStatusToolSchema(options?: {
+  allowDone?: boolean;
+}): typeof TASK_STATUS_TOOL_SCHEMA {
+  const allowDone = options?.allowDone !== false;
+  const statusEnum = allowDone
+    ? ["in_progress", "review", "done", "blocked"]
+    : ["in_progress", "review", "blocked"];
+  return {
+    type: "function" as const,
+    function: {
+      name: "task_status",
+      description:
+        "Update the current task's status. Call this BEFORE posting your thread reply when you change status (e.g. move to done, review, or blocked). Posting alone does not update the task.",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: {
+            type: "string",
+            description: "The task ID (from the notification prompt)",
+          },
+          status: {
+            type: "string",
+            enum: statusEnum,
+            description: "New status for the task",
+          },
+          blockedReason: {
+            type: "string",
+            description:
+              "Required when status is 'blocked'; reason for blocking",
+          },
+        },
+        required: ["taskId", "status"],
+      },
+    },
+  };
+}
+
 /** OpenResponses function tool schema for task_status */
 export const TASK_STATUS_TOOL_SCHEMA = {
   type: "function" as const,

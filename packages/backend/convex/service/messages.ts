@@ -267,6 +267,7 @@ export const createFromAgent = internalMutation({
       task.title,
       mentionedIds,
       hasAgentMentions,
+      task.status,
     );
 
     return messageId;

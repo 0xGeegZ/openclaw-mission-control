@@ -1,4 +1,4 @@
-import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
@@ -19,6 +19,140 @@ const state: HeartbeatState = {
   schedules: new Map(),
   intervals: new Map(),
 };
+
+const HEARTBEAT_OK_RESPONSE = "HEARTBEAT_OK";
+const HEARTBEAT_TASK_LIMIT = 12;
+const HEARTBEAT_DESCRIPTION_MAX_CHARS = 240;
+const HEARTBEAT_STATUS_PRIORITY = ["review", "in_progress", "assigned"];
+const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
+  "review",
+  "in_progress",
+];
+const TASK_ID_PATTERN = /Task ID:\s*([A-Za-z0-9_-]+)/i;
+
+type HeartbeatTask = Doc<"tasks">;
+type HeartbeatStatus = HeartbeatTask["status"];
+
+/**
+ * Sort tasks by heartbeat priority (review > in_progress > assigned) and recency.
+ */
+function sortHeartbeatTasks(tasks: HeartbeatTask[]): HeartbeatTask[] {
+  const statusRank = new Map<string, number>(
+    HEARTBEAT_STATUS_PRIORITY.map((status, index) => [status, index]),
+  );
+  return [...tasks].sort((a, b) => {
+    const rankA = statusRank.get(a.status) ?? 999;
+    const rankB = statusRank.get(b.status) ?? 999;
+    if (rankA !== rankB) return rankA - rankB;
+    return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+  });
+}
+
+/**
+ * Pick the single task to focus during heartbeat, if any.
+ */
+function selectHeartbeatFocusTask(
+  tasks: HeartbeatTask[],
+): HeartbeatTask | null {
+  return tasks[0] ?? null;
+}
+
+/**
+ * Merge task lists, deduplicating by task id.
+ */
+export function mergeHeartbeatTasks(lists: HeartbeatTask[][]): HeartbeatTask[] {
+  const merged = new Map<Id<"tasks">, HeartbeatTask>();
+  for (const list of lists) {
+    for (const task of list) {
+      merged.set(task._id, task);
+    }
+  }
+  return Array.from(merged.values());
+}
+
+/**
+ * Fetch the orchestrator agent id for the account.
+ */
+async function getOrchestratorAgentId(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+): Promise<Id<"agents"> | null> {
+  const result = (await client.action(
+    api.service.actions.getOrchestratorAgentId,
+    {
+      accountId: config.accountId,
+      serviceToken: config.serviceToken,
+    },
+  )) as { orchestratorAgentId: Id<"agents"> | null };
+  return result?.orchestratorAgentId ?? null;
+}
+
+/**
+ * Extract a task id from a heartbeat response, if present.
+ */
+function extractTaskIdFromHeartbeatResponse(
+  response: string,
+): Id<"tasks"> | null {
+  const match = TASK_ID_PATTERN.exec(response);
+  if (!match?.[1]) return null;
+  return match[1] as Id<"tasks">;
+}
+
+/**
+ * Truncate text for compact prompt output.
+ */
+function truncateHeartbeatText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 1)).trim()}…`;
+}
+
+/**
+ * Build the heartbeat prompt with assigned task context.
+ */
+export function buildHeartbeatMessage(options: {
+  focusTask: HeartbeatTask | null;
+  tasks: HeartbeatTask[];
+  isOrchestrator: boolean;
+}): string {
+  const { focusTask, tasks, isOrchestrator } = options;
+  const orchestratorLine = isOrchestrator
+    ? "- As the orchestrator, follow up on in_progress/review tasks (even if assigned to other agents)."
+    : null;
+  const taskHeading = isOrchestrator ? "Tracked tasks:" : "Assigned tasks:";
+  const taskLines = tasks.map((task) => {
+    const description = task.description?.trim()
+      ? ` — ${truncateHeartbeatText(
+          task.description.trim(),
+          HEARTBEAT_DESCRIPTION_MAX_CHARS,
+        )}`
+      : "";
+    return `- ${task.title} (${task.status}) — Task ID: ${task._id}${description}`;
+  });
+  const focusLine = focusTask
+    ? `Focus Task ID: ${focusTask._id} (${focusTask.title})`
+    : isOrchestrator
+      ? "No tracked tasks found."
+      : "No assigned tasks found.";
+  const tasksBlock = taskLines.length > 0 ? taskLines.join("\n") : "- None";
+  return `
+## Heartbeat Check
+
+Follow the HEARTBEAT.md checklist.
+- Load context (WORKING.md, memory, mentions, assigned/tracked tasks, activity feed).
+- Take one concrete action if appropriate.
+- If you took action, post a thread update using AGENTS.md format.
+- If you did not take action, reply with a single line: ${HEARTBEAT_OK_RESPONSE}
+${orchestratorLine ? `\n${orchestratorLine}` : ""}
+
+${taskHeading}
+${tasksBlock}
+
+${focusLine}
+If you take action on a task, include a line with: Task ID: <id>. If you work on a task other than the focus task, include its Task ID explicitly.
+
+Current time: ${new Date().toISOString()}
+`.trim();
+}
 
 /**
  * Start heartbeat scheduling for all agents.
@@ -88,26 +222,101 @@ function runHeartbeatCycle(
     try {
       log.debug("Executing for", agent.name);
 
-      const heartbeatMessage = `
-## Heartbeat Check
-
-Follow the HEARTBEAT.md checklist.
-- Load context (WORKING.md, memory, mentions, assigned tasks, activity feed).
-- Take one concrete action if appropriate.
-- If you took action, post a thread update using AGENTS.md format and update memory.
-- If you did not take action, reply with a single line: HEARTBEAT_OK
-
-Current time: ${new Date().toISOString()}
-`.trim();
-
-      await sendToOpenClaw(agent.sessionKey, heartbeatMessage);
-
       const client = getConvexClient();
+      let assignedTasks: HeartbeatTask[] = [];
+      let orchestratorTasks: HeartbeatTask[] = [];
+      let isOrchestrator = false;
+      try {
+        const orchestratorAgentId = await getOrchestratorAgentId(
+          client,
+          config,
+        );
+        isOrchestrator =
+          orchestratorAgentId != null && orchestratorAgentId === agent._id;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn("Failed to load orchestrator agent id:", message);
+      }
+
+      try {
+        assignedTasks = (await client.action(
+          api.service.actions.listAssignedTasksForAgent,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId: agent._id,
+            includeDone: false,
+            limit: HEARTBEAT_TASK_LIMIT,
+          },
+        )) as HeartbeatTask[];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn("Failed to load assigned tasks for heartbeat:", message);
+      }
+
+      if (isOrchestrator) {
+        try {
+          orchestratorTasks = (await client.action(
+            api.service.actions.listTasksForOrchestratorHeartbeat,
+            {
+              accountId: config.accountId,
+              serviceToken: config.serviceToken,
+              statuses: ORCHESTRATOR_HEARTBEAT_STATUSES,
+              limit: HEARTBEAT_TASK_LIMIT,
+            },
+          )) as HeartbeatTask[];
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          log.warn("Failed to load orchestrator tasks for heartbeat:", message);
+        }
+      }
+
+      const mergedTasks = mergeHeartbeatTasks([
+        assignedTasks,
+        orchestratorTasks,
+      ]);
+      const sortedTasks = sortHeartbeatTasks(mergedTasks);
+      const focusTask = selectHeartbeatFocusTask(sortedTasks);
+      const heartbeatMessage = buildHeartbeatMessage({
+        focusTask,
+        tasks: sortedTasks,
+        isOrchestrator,
+      });
+
+      const result = await sendToOpenClaw(agent.sessionKey, heartbeatMessage);
+      const responseText = result.text?.trim() ?? "";
+      const isHeartbeatOk = responseText === HEARTBEAT_OK_RESPONSE;
+      const responseTaskId =
+        responseText && !isHeartbeatOk
+          ? (extractTaskIdFromHeartbeatResponse(responseText) ??
+            focusTask?._id ??
+            null)
+          : null;
+
+      if (responseText && !isHeartbeatOk) {
+        if (responseTaskId) {
+          await client.action(api.service.actions.createMessageFromAgent, {
+            agentId: agent._id,
+            taskId: responseTaskId,
+            content: responseText,
+            serviceToken: config.serviceToken,
+            accountId: config.accountId,
+          });
+        } else {
+          log.warn(
+            "Heartbeat response missing task id; skipping thread update",
+            agent.name,
+          );
+        }
+      }
+
       await client.action(api.service.actions.updateAgentHeartbeat, {
         agentId: agent._id,
         status: "online",
         serviceToken: config.serviceToken,
         accountId: config.accountId,
+        currentTaskId: responseTaskId ?? undefined,
       });
       
       const duration = Date.now() - heartbeatStart;

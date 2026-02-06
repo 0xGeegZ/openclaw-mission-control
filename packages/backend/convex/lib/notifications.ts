@@ -75,6 +75,8 @@ export async function createMentionNotifications(
  * Respects account notificationPreferences.agentActivity for user recipients.
  * When an agent is explicitly mentioned, skip thread_update notifications for agents
  * to avoid multiple agent replies.
+ * If taskStatus is done/blocked, skip agent thread_update notifications to avoid
+ * reply storms when humans post in completed tasks.
  */
 export async function createThreadNotifications(
   ctx: MutationCtx,
@@ -87,13 +89,18 @@ export async function createThreadNotifications(
   taskTitle: string,
   mentionedIds: Set<string>,
   hasAgentMentions: boolean,
+  taskStatus?: string,
 ): Promise<Id<"notifications">[]> {
+  const shouldSkipAgentThreadUpdates =
+    taskStatus === "done" || taskStatus === "blocked";
   const subscriptions = await ctx.db
     .query("subscriptions")
     .withIndex("by_task", (q) => q.eq("taskId", taskId))
     .collect();
   const notificationIds: Id<"notifications">[] = [];
   for (const subscription of subscriptions) {
+    if (shouldSkipAgentThreadUpdates && subscription.subscriberType === "agent")
+      continue;
     if (hasAgentMentions && subscription.subscriberType === "agent") continue;
     if (
       subscription.subscriberType === authorType &&

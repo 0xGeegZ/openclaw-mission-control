@@ -1,3 +1,8 @@
+---
+name: release-management
+description: Release checklists, changelogs, and versioning. Align with the squad lead and any existing release process.
+---
+
 # Release management
 
 Use this skill for release checklists, changelogs, and versioning. Align with the squad lead and any existing release process.

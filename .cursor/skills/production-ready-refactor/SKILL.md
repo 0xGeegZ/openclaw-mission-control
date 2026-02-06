@@ -40,8 +40,8 @@ Follow this workflow:
 ## 5) Tests & verification
 
 - Add or update tests for critical logic and regressions.
-- Run `pnpm tsc --noEmit` and `pnpm lint`.
-- Run `pnpm build` if the change impacts build-time behavior.
+- Run `npm tsc --noEmit` and `npm lint`.
+- Run `npm build` if the change impacts build-time behavior.
 
 ## 6) Final response
 

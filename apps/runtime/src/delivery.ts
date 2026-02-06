@@ -1,7 +1,12 @@
 import { getConvexClient, api } from "./convex-client";
 import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
-import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
+import {
+  buildNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+  sendOpenClawToolResults,
+  sendToOpenClaw,
+} from "./gateway";
 import { createLogger } from "./logger";
 import {
   getToolCapabilitiesAndSchemas,
@@ -100,6 +105,9 @@ const FALLBACK_NO_REPLY_AFTER_TOOLS = [
   "- None.",
 ].join("\n");
 
+const NO_RESPONSE_RETRY_LIMIT = 3;
+const NO_RESPONSE_RETRY_RESET_MS = 10 * 60 * 1000;
+
 interface DeliveryState {
   isRunning: boolean;
   lastDelivery: number | null;
@@ -108,6 +116,7 @@ interface DeliveryState {
   consecutiveFailures: number;
   lastErrorAt: number | null;
   lastErrorMessage: string | null;
+  noResponseFailures: Map<string, { count: number; lastAt: number }>;
 }
 
 const state: DeliveryState = {
@@ -118,7 +127,37 @@ const state: DeliveryState = {
   consecutiveFailures: 0,
   lastErrorAt: null,
   lastErrorMessage: null,
+  noResponseFailures: new Map(),
 };
+
+/**
+ * @internal Track retries for placeholder/empty OpenClaw responses.
+ */
+export function _getNoResponseRetryDecision(
+  notificationId: string,
+  now: number = Date.now(),
+): { attempt: number; shouldRetry: boolean } {
+  const existing = state.noResponseFailures.get(notificationId);
+  let count = existing?.count ?? 0;
+  const lastAt = existing?.lastAt ?? 0;
+  if (existing && now - lastAt > NO_RESPONSE_RETRY_RESET_MS) {
+    count = 0;
+  }
+  const attempt = count + 1;
+  state.noResponseFailures.set(notificationId, { count: attempt, lastAt: now });
+  return { attempt, shouldRetry: attempt < NO_RESPONSE_RETRY_LIMIT };
+}
+
+/**
+ * @internal Reset retry tracking for a notification id.
+ */
+export function _resetNoResponseRetryState(): void {
+  state.noResponseFailures.clear();
+}
+
+function clearNoResponseRetry(notificationId: string): void {
+  state.noResponseFailures.delete(notificationId);
+}
 
 /**
  * Start the notification delivery loop.
@@ -208,12 +247,43 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
-            const toolCapabilities = getToolCapabilitiesAndSchemas({
-              canCreateTasks: flags.canCreateTasks === true,
-              canModifyTaskStatus,
-              canCreateDocuments: flags.canCreateDocuments === true,
-              hasTaskContext: hasTask,
+            const canCreateTasks = flags.canCreateTasks === true;
+            const canCreateDocuments = flags.canCreateDocuments === true;
+            const hasQaAgent = context.mentionableAgents.some((agent) =>
+              isQaAgentProfile(agent),
+            );
+            const currentAgentProfile = context.mentionableAgents.find(
+              (agent) => agent.id === context.agent?._id,
+            );
+            const isOrchestrator =
+              context.orchestratorAgentId != null &&
+              context.agent._id === context.orchestratorAgentId;
+            const canMarkDone = canAgentMarkDone({
+              taskStatus: context.task?.status,
+              agentRole: currentAgentProfile?.role ?? context.agent?.role,
+              agentSlug: currentAgentProfile?.slug,
+              isOrchestrator,
+              hasQaAgent,
             });
+            const rawToolCapabilities = getToolCapabilitiesAndSchemas({
+              canCreateTasks,
+              canModifyTaskStatus,
+              canCreateDocuments,
+              hasTaskContext: hasTask,
+              canMarkDone,
+            });
+            const toolCapabilities = config.openclawClientToolsEnabled
+              ? rawToolCapabilities
+              : {
+                  ...rawToolCapabilities,
+                  capabilityLabels: buildHttpCapabilityLabels({
+                    canCreateTasks,
+                    canModifyTaskStatus,
+                    canCreateDocuments,
+                    hasTaskContext: hasTask,
+                  }),
+                  schemas: [],
+                };
             const sendOptions =
               toolCapabilities.schemas.length > 0
                 ? {
@@ -236,6 +306,44 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             );
 
             let textToPost: string | null = result.text?.trim() ?? null;
+            const taskId = context.notification?.taskId;
+            const noResponsePlaceholder = textToPost
+              ? parseNoResponsePlaceholder(textToPost)
+              : null;
+            const needsRetry =
+              result.toolCalls.length === 0 &&
+              (!textToPost || noResponsePlaceholder?.isPlaceholder);
+            if (needsRetry) {
+              const reason = !textToPost
+                ? "empty response"
+                : "placeholder response";
+              const decision = _getNoResponseRetryDecision(notification._id);
+              if (decision.shouldRetry) {
+                log.warn(
+                  "OpenClaw returned no response; will retry notification",
+                  notification._id,
+                  context.agent.name,
+                  `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+                );
+                throw new Error(`OpenClaw returned ${reason}`);
+              }
+              log.warn(
+                "OpenClaw returned no response; giving up",
+                notification._id,
+                context.agent.name,
+                `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+              );
+              if (taskId) {
+                textToPost = buildNoResponseFallbackMessage(
+                  noResponsePlaceholder?.mentionPrefix,
+                );
+              } else {
+                textToPost = null;
+              }
+              clearNoResponseRetry(notification._id);
+            } else {
+              clearNoResponseRetry(notification._id);
+            }
             if (result.toolCalls.length > 0) {
               const outputs: { call_id: string; output: string }[] = [];
               // taskId is the notification's task; tools (e.g. task_status) are expected to operate on this task only.
@@ -247,6 +355,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   accountId: config.accountId,
                   serviceToken: config.serviceToken,
                   taskId: context.notification?.taskId,
+                  canMarkDone: toolCapabilities.canMarkDone,
                 });
                 if (!toolResult.success) {
                   log.warn(
@@ -275,7 +384,19 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               }
             }
 
-            const taskId = context.notification?.taskId;
+            if (textToPost) {
+              const placeholder = parseNoResponsePlaceholder(textToPost);
+              if (placeholder.isPlaceholder) {
+                log.warn(
+                  "OpenClaw placeholder response received; posting fallback",
+                  notification._id,
+                  context.agent.name,
+                );
+                textToPost = buildNoResponseFallbackMessage(
+                  placeholder.mentionPrefix,
+                );
+              }
+            }
             if (taskId && !textToPost && result.toolCalls.length > 0) {
               textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
               log.warn(
@@ -473,6 +594,43 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
 function isReviewerRole(role: string | undefined): boolean {
   if (!role) return false;
   return /squad lead|qa|review/i.test(role);
+}
+
+/**
+ * Check whether an agent role or slug indicates QA.
+ */
+function isQaAgentProfile(
+  profile?: {
+    role?: string;
+    slug?: string;
+  } | null,
+): boolean {
+  if (!profile) return false;
+  const role = profile.role ?? "";
+  const slug = profile.slug ?? "";
+  if (slug.trim().toLowerCase() === "qa") return true;
+  return /\bqa\b|quality assurance|quality\b/i.test(role);
+}
+
+/**
+ * Determine if an agent can mark a task as done.
+ * Requires the task to be in review. When QA exists, only QA can close.
+ */
+export function canAgentMarkDone(options: {
+  taskStatus?: string;
+  agentRole?: string;
+  agentSlug?: string;
+  isOrchestrator: boolean;
+  hasQaAgent: boolean;
+}): boolean {
+  if (options.taskStatus !== "review") return false;
+  if (options.hasQaAgent) {
+    return isQaAgentProfile({
+      role: options.agentRole,
+      slug: options.agentSlug,
+    });
+  }
+  return options.isOrchestrator;
 }
 
 /** Same pattern as backend extractMentionStrings (slug or quoted name). */
@@ -727,6 +885,28 @@ function formatThreadContext(
   return lines.join("\n");
 }
 
+/**
+ * Build capability labels for HTTP fallback mode (no client-side tools).
+ */
+function buildHttpCapabilityLabels(options: {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  hasTaskContext: boolean;
+}): string[] {
+  const labels: string[] = [];
+  if (options.hasTaskContext && options.canModifyTaskStatus) {
+    labels.push("change task status via HTTP (POST /agent/task-status)");
+  }
+  if (options.canCreateTasks) {
+    labels.push("create tasks via HTTP (POST /agent/task-create)");
+  }
+  if (options.canCreateDocuments) {
+    labels.push("create/update documents via HTTP (POST /agent/document)");
+  }
+  return labels;
+}
+
 const MENTIONABLE_AGENTS_CAP = 25;
 
 /**
@@ -755,14 +935,21 @@ export function formatNotificationMessage(
   } = context;
   const flags = context.effectiveBehaviorFlags ?? {};
   const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+  const canCreateTasks = flags.canCreateTasks === true;
+  const canCreateDocuments = flags.canCreateDocuments === true;
   const canMentionAgents = flags.canMentionAgents === true;
+  const isOrchestrator =
+    orchestratorAgentId != null && context.agent?._id === orchestratorAgentId;
+  const hasRuntimeTools = toolCapabilities.schemas.length > 0;
+  const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
+  const sessionKey = context.agent?.sessionKey ?? "<session-key>";
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   if (canMentionAgents) capabilityLabels.push("mention other agents");
   const capabilitiesBlock =
     capabilityLabels.length > 0
-      ? `Capabilities: ${capabilityLabels.join("; ")}. Only use tools you have; if a capability is missing, report BLOCKED. If a tool returns an error (e.g. success: false), report BLOCKED, include the error message, and do not claim you changed status.\n\n`
-      : "Capabilities: none (no tools available). If asked to create tasks, change status, or create documents, reply that you are not allowed and report BLOCKED.\n\n";
+      ? `Runtime capabilities: ${capabilityLabels.join("; ")}. Use only the runtime capabilities listed here. If a runtime tool or HTTP fallback fails, report BLOCKED with the error message.\n\n`
+      : "Runtime capabilities: none. If asked to create tasks, change status, or create documents, report BLOCKED.\n\n";
 
   const agentName = context.agent?.name?.trim() || "Agent";
   const agentRole = context.agent?.role?.trim() || "Unknown role";
@@ -802,11 +989,43 @@ export function formatNotificationMessage(
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
 
+  const hasQaAgent = context.mentionableAgents.some((agent) =>
+    isQaAgentProfile(agent),
+  );
+  const qaReviewNote = hasQaAgent
+    ? " When QA is configured, only QA can mark tasks as done after review passes."
+    : "";
+  const doneRestrictionNote = toolCapabilities.canMarkDone
+    ? ""
+    : hasQaAgent
+      ? " You are not allowed to mark tasks as done; QA must approve and close the task."
+      : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed.";
   const statusInstructions = task
-    ? toolCapabilities.hasTaskStatus
-      ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.`
+    ? canModifyTaskStatus
+      ? hasRuntimeTools && toolCapabilities.hasTaskStatus
+        ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review.${qaReviewNote} You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. assigned -> in_progress -> review) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${doneRestrictionNote}`
+        : `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review.${qaReviewNote} Use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this endpoint. If the HTTP call fails, report BLOCKED and include the error message.${doneRestrictionNote}`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
+  const taskCreateInstructions = canCreateTasks
+    ? hasRuntimeTools
+      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+    : "";
+  const documentInstructions = canCreateDocuments
+    ? hasRuntimeTools
+      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+    : "";
+  const followupTaskInstruction =
+    isOrchestrator && task
+      ? `\nOrchestrator note: If this task needs follow-up work, create those follow-up tasks before moving this task to done. If any PRs were reopened, merge them before moving this task to done.${canCreateTasks ? (hasRuntimeTools ? " Use the task_create tool." : ` Use the HTTP fallback (${runtimeBaseUrl}/agent/task-create).`) : " If task creation is not permitted, state the follow-ups needed and ask the primary user to create them."}`
+      : "";
+  const largeResultInstruction = canCreateDocuments
+    ? hasRuntimeTools
+      ? "If the result is large, create a document (document_upsert) and summarize it here."
+      : "If the result is large, create a document via the HTTP fallback (/agent/document) and summarize it here."
+    : "If the result is large, summarize it here (document creation not permitted).";
 
   const mentionableSection = canMentionAgents
     ? formatMentionableAgentsSection(mentionableAgents)
@@ -857,8 +1076,13 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
 
+Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
+
 ${statusInstructions}
-${task?.status === "review" && toolCapabilities.hasTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${taskCreateInstructions}
+${documentInstructions}
+${followupTaskInstruction}
+${task?.status === "review" && toolCapabilities.canMarkDone ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 ${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
 ${assignmentAckBlock}

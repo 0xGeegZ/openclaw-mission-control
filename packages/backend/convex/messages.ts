@@ -13,7 +13,10 @@ import {
   hasAllMention,
   getAllMentions,
 } from "./lib/mentions";
-import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
+import {
+  ensureSubscribed,
+  ensureOrchestratorSubscribed,
+} from "./subscriptions";
 import {
   createMentionNotifications,
   createThreadNotifications,
@@ -324,6 +327,7 @@ export const create = mutation({
       task.title,
       mentionedIds,
       hasAgentMentions,
+      task.status,
     );
 
     return messageId;

@@ -8,6 +8,7 @@ import { getConvexClient, api } from "../convex-client";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
   TASK_STATUS_TOOL_SCHEMA,
+  createTaskStatusToolSchema,
   executeTaskStatusTool,
   type TaskStatusToolResult,
 } from "./taskStatusTool";
@@ -111,6 +112,8 @@ export interface ToolCapabilitiesAndSchemas {
   schemas: unknown[];
   /** True when task_status is in the allowed set (for status instructions in prompt). */
   hasTaskStatus: boolean;
+  /** True when the agent is allowed to mark tasks as done. */
+  canMarkDone: boolean;
 }
 
 /**
@@ -125,13 +128,15 @@ export function getToolCapabilitiesAndSchemas(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMarkDone?: boolean;
 }): ToolCapabilitiesAndSchemas {
   const capabilityLabels: string[] = [];
   const schemas: unknown[] = [];
+  const canMarkDone = options.canMarkDone === true;
 
   if (options.hasTaskContext && options.canModifyTaskStatus) {
     capabilityLabels.push("change task status (task_status tool)");
-    schemas.push(TASK_STATUS_TOOL_SCHEMA);
+    schemas.push(createTaskStatusToolSchema({ allowDone: canMarkDone }));
   }
   if (options.canCreateTasks) {
     capabilityLabels.push("create tasks (task_create tool)");
@@ -146,6 +151,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels,
     schemas,
     hasTaskStatus: options.hasTaskContext && options.canModifyTaskStatus,
+    canMarkDone,
   };
 }
 
@@ -166,6 +172,24 @@ export function getToolSchemasForCapabilities(options: {
 }
 
 /**
+ * Normalize priority inputs from tool calls.
+ * Supports numeric values and common labels like "high".
+ */
+function normalizeTaskPriority(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  const map: Record<string, number> = {
+    critical: 1,
+    high: 2,
+    medium: 3,
+    low: 4,
+    lowest: 5,
+  };
+  return map[normalized];
+}
+
+/**
  * Execute a single tool call by name; returns result for function_call_output.
  *
  * @param params - Tool name, JSON arguments string, agent/account/task context, and service token.
@@ -178,6 +202,7 @@ export async function executeAgentTool(params: {
   accountId: Id<"accounts">;
   serviceToken: string;
   taskId?: Id<"tasks">;
+  canMarkDone?: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -191,6 +216,7 @@ export async function executeAgentTool(params: {
     accountId,
     serviceToken,
     taskId,
+    canMarkDone,
   } = params;
   const client = getConvexClient();
 
@@ -206,6 +232,12 @@ export async function executeAgentTool(params: {
       return { success: false, error: "Invalid JSON arguments" };
     }
     // When invoked from delivery, taskId param is the current notification's task; LLM may also send taskId in args.
+    if (args.status === "done" && canMarkDone !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Not allowed to mark tasks as done",
+      };
+    }
     const result: TaskStatusToolResult = await executeTaskStatusTool({
       agentId,
       taskId: args.taskId ?? taskId ?? "",
@@ -236,6 +268,14 @@ export async function executeAgentTool(params: {
       return { success: false, error: "title is required" };
     }
     try {
+      const normalizedPriority = normalizeTaskPriority(args.priority);
+      if (args.priority != null && normalizedPriority == null) {
+        return {
+          success: false,
+          error:
+            "Invalid priority: use 1-5 or one of critical|high|medium|low|lowest",
+        };
+      }
       const { taskId: newTaskId } = await client.action(
         api.service.actions.createTaskFromAgent,
         {
@@ -244,7 +284,7 @@ export async function executeAgentTool(params: {
           agentId,
           title: args.title.trim(),
           description: args.description?.trim(),
-          priority: args.priority,
+          priority: normalizedPriority,
           labels: args.labels,
           status: args.status as
             | "inbox"

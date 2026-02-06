@@ -29,22 +29,23 @@ RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
 
 RUN npm install -g pnpm
 
-# Install clawdbot (OpenClaw CLI). Pin for reproducible builds.
-RUN npm install -g clawdbot@2026.1.24-3 \
+# Install OpenClaw CLI (newer) with clawdbot fallback.
+RUN npm install -g openclaw@latest clawdbot@latest \
+    && openclaw --version \
     && clawdbot --version
 
 COPY user-setup.sh /tmp/user-setup.sh
 RUN chmod +x /tmp/user-setup.sh && /tmp/user-setup.sh
 
-RUN mkdir -p /root/.clawdbot \
-    && mkdir -p /root/.clawdbot-templates \
+RUN mkdir -p /root/.openclaw \
+    && mkdir -p /root/.openclaw-templates \
     && mkdir -p /root/clawd \
     && mkdir -p /root/clawd/skills
 
 COPY start-openclaw.sh /usr/local/bin/start-openclaw.sh
 RUN chmod +x /usr/local/bin/start-openclaw.sh
 
-COPY openclaw.json.template /root/.clawdbot-templates/openclaw.json.template
+COPY openclaw.json.template /root/.openclaw-templates/openclaw.json.template
 
 WORKDIR /root/clawd
 

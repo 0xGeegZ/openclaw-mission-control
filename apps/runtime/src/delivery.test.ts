@@ -4,6 +4,9 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  _getNoResponseRetryDecision,
+  _resetNoResponseRetryState,
+  canAgentMarkDone,
   shouldDeliverToAgent,
   formatNotificationMessage,
   type DeliveryContext,
@@ -230,5 +233,79 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).toContain("You are replying as: **Agent** (Unknown role).");
+  });
+});
+
+describe("no response retry decision", () => {
+  it("retries until the limit is reached", () => {
+    _resetNoResponseRetryState();
+    const first = _getNoResponseRetryDecision("n1");
+    const second = _getNoResponseRetryDecision("n1");
+    const third = _getNoResponseRetryDecision("n1");
+    expect(first.shouldRetry).toBe(true);
+    expect(second.shouldRetry).toBe(true);
+    expect(third.shouldRetry).toBe(false);
+  });
+});
+
+describe("canAgentMarkDone", () => {
+  it("allows QA to mark done when QA exists and task is in review", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "review",
+        agentRole: "QA / Reviewer",
+        agentSlug: "engineer",
+        isOrchestrator: false,
+        hasQaAgent: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("allows slug-based QA when role is not QA", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "review",
+        agentRole: "Developer",
+        agentSlug: "qa",
+        isOrchestrator: false,
+        hasQaAgent: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks non-QA when QA exists", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "review",
+        agentRole: "Squad Lead",
+        agentSlug: "lead",
+        isOrchestrator: true,
+        hasQaAgent: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("allows orchestrator when no QA exists", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "review",
+        agentRole: "Squad Lead",
+        agentSlug: "lead",
+        isOrchestrator: true,
+        hasQaAgent: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks when task is not in review", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "in_progress",
+        agentRole: "QA / Reviewer",
+        agentSlug: "qa",
+        isOrchestrator: false,
+        hasQaAgent: true,
+      }),
+    ).toBe(false);
   });
 });

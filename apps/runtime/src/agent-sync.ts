@@ -105,6 +105,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
         workspaceRoot: config.openclawWorkspaceRoot,
         configPath: config.openclawConfigPath,
         agentsMdPath: config.openclawAgentsMdPath,
+        heartbeatMdPath: config.openclawHeartbeatMdPath,
       });
       // Reload is handled by the gateway when OPENCLAW_CONFIG_RELOAD=1 (file watch + restart).
       if (configChanged) {
@@ -152,6 +153,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
       workspaceRoot: config.openclawWorkspaceRoot,
       configPath: config.openclawConfigPath,
       agentsMdPath: config.openclawAgentsMdPath,
+      heartbeatMdPath: config.openclawHeartbeatMdPath,
     });
   } catch (error) {
     log.warn("Initial profile sync failed:", getErrorMessage(error));

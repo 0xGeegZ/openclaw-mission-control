@@ -82,6 +82,7 @@ See `apps/runtime/.env.example`. Summary:
 | `OPENCLAW_WORKSPACE_ROOT`         | No           | Root directory for per-agent OpenClaw workspaces (default `/root/clawd/agents`). Runtime writes SOUL.md, TOOLS.md, AGENTS.md here. Must be writable and shared with gateway when using profile sync. |
 | `OPENCLAW_CONFIG_PATH`            | No           | Path to generated `openclaw.json` (default `/root/clawd/openclaw.json`). Gateway merges `agents`, `load` (extraDirs), and `skills.entries` from this file at startup.                                |
 | `OPENCLAW_AGENTS_MD_PATH`         | No           | Optional path to AGENTS.md to copy into each agent workspace; unset uses embedded default.                                                                                                           |
+| `OPENCLAW_HEARTBEAT_MD_PATH`      | No           | Optional path to HEARTBEAT.md to copy into each agent workspace; defaults to `/root/clawd/HEARTBEAT.md`.                                                                                             |
 | `OPENCLAW_PROFILE_SYNC`           | No           | Set to `false` to disable profile sync (workspaces and openclaw.json); default is enabled.                                                                                                           |
 | `OPENCLAW_CONFIG_RELOAD`          | No           | Gateway only: set to `1` to watch runtime-generated config and restart gateway when it changes (default: off).                                                                                       |
 | `OPENCLAW_SESSION_RETENTION_DAYS` | No           | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                          |
@@ -112,10 +113,10 @@ The script runs `docker compose pull`, `down`, then `up -d` from the repo root.
 
 When using profile `openclaw`, Compose mounts:
 
-- `.runtime/openclaw-data` → OpenClaw config and state (persists across restarts).
+- `.runtime/openclaw-data` → OpenClaw config and state (mounted at `/root/.openclaw`, persists across restarts).
 - `.runtime/openclaw-workspace` → Agent workspace (persists across restarts).
 
-**Both** the `runtime` and `openclaw-gateway` services mount `.runtime/openclaw-workspace` at `/root/clawd`. The runtime writes per-agent workspaces (SOUL.md, TOOLS.md, AGENTS.md, memory/) and a generated `openclaw.json` there; the gateway reads that config and uses the agent list. This **profile sync** keeps OpenClaw sessions aligned with Convex agent profiles (role, skills, soul content) without manual steps. Skills can optionally store a SKILL.md body (`contentMarkdown`) in Convex; the runtime materializes them under each agent's `skills/<slug>/` and adds those paths to the generated config so OpenClaw can load them.
+**Both** the `runtime` and `openclaw-gateway` services mount `.runtime/openclaw-workspace` at `/root/clawd`. The runtime writes per-agent workspaces (SOUL.md, TOOLS.md, AGENTS.md, HEARTBEAT.md, memory/) and a generated `openclaw.json` there; the gateway reads that config and uses the agent list. This **profile sync** keeps OpenClaw sessions aligned with Convex agent profiles (role, skills, soul content) without manual steps. Skills can optionally store a SKILL.md body (`contentMarkdown`) in Convex; the runtime materializes them under each agent's `skills/<slug>/` and adds those paths to the generated config so OpenClaw can load them.
 
 These directories are created on first run and are gitignored (`.runtime/`). To reset OpenClaw state, remove `.runtime/openclaw-data` and `.runtime/openclaw-workspace` and restart.
 
@@ -141,8 +142,8 @@ If you only need to trim the session list shown at `/sessions`, set `OPENCLAW_SE
   Change `HEALTH_PORT` (runtime) or the host port mapping in `apps/runtime/docker-compose.runtime.yml` (e.g. `"127.0.0.1:3002:3000"`). For OpenClaw, change the published port (e.g. `"127.0.0.1:18790:18789"`).
 
 - **Task status: "tool not available" or "HTTP endpoint not accessible"**  
-  The agent can update task status via the **task_status** tool (sent by the runtime with each notification) or the **HTTP fallback** (POST to runtime health server).
-  1. **Tool**: The runtime sends `tools: [{ type: "function", function: { name, description, parameters } }]` per [OpenResponses API](https://docs.clawd.bot/gateway/openresponses-http-api). Ensure the OpenClaw (Clawdbot) gateway version supports client-side function tools and forwards the `tools` parameter to the model. Set `LOG_LEVEL=debug` in the runtime and confirm logs show "Sending with tools" for task notifications. If the tool still does not appear in the agent UI, use the HTTP fallback (see below) or upgrade the gateway to a version that supports the Tools (client-side function tools) contract.
+  The agent can update task status via the **task_status** tool (when client tools are enabled) or the **HTTP fallback** (POST to runtime health server).
+  1. **Tool**: The runtime sends `tools: [{ type: "function", function: { name, description, parameters } }]` per [OpenResponses API](https://docs.clawd.bot/gateway/openresponses-http-api). Ensure the OpenClaw gateway version supports client-side function tools and forwards the `tools` parameter to the model. Set `LOG_LEVEL=debug` in the runtime and confirm logs show "Sending with tools" for task notifications. If the tool still does not appear in the agent UI, set `OPENCLAW_CLIENT_TOOLS_ENABLED=false` to force HTTP fallbacks, or upgrade the gateway to a version that supports the Tools (client-side function tools) contract.
   2. **HTTP fallback**: The agent must be able to reach the runtime at `TASK_STATUS_BASE_URL` (e.g. `http://runtime:3000`). With profile `openclaw`, both services use the same Docker network; from the gateway container, verify: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw exec openclaw-gateway curl -s http://runtime:3000/health`. If that fails, runtime and gateway are not on the same network or the runtime is not running. Ensure you start both with the same compose file and profile: `docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build`.
 
 ## Further reading
