@@ -206,11 +206,15 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const flags = context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
+            const canMarkDone =
+              context.orchestratorAgentId != null &&
+              context.agent._id === context.orchestratorAgentId;
             const toolCapabilities = getToolCapabilitiesAndSchemas({
               canCreateTasks: flags.canCreateTasks === true,
               canModifyTaskStatus,
               canCreateDocuments: flags.canCreateDocuments === true,
               hasTaskContext: hasTask,
+              canMarkDone,
             });
             const sendOptions =
               toolCapabilities.schemas.length > 0
@@ -245,6 +249,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   accountId: config.accountId,
                   serviceToken: config.serviceToken,
                   taskId: context.notification?.taskId,
+                  orchestratorAgentId: context.orchestratorAgentId,
                 });
                 if (!toolResult.success) {
                   log.warn(
@@ -796,7 +801,7 @@ export function formatNotificationMessage(
 
   const statusInstructions = task
     ? toolCapabilities.hasTaskStatus
-      ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review|done|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.`
+      ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review. You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status, you can call it. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. in_progress -> review -> done) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${taskStatusBaseUrl.replace(/\/$/, "")}/agent/task-status with header \`x-openclaw-session-key: ${context.agent?.sessionKey ?? ""}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${toolCapabilities.canMarkDone ? "" : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed."}`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
 
@@ -848,6 +853,8 @@ ${mentionableSection}
 ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use the thread history above before asking for missing info. Do not request items already present there.
+
+Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. If the result is large, create a document (document_upsert) and summarize it here.
 
 ${statusInstructions}
 ${task?.status === "review" && toolCapabilities.hasTaskStatus ? '\nIf you are accepting this task as done, you MUST update status to "done" (task_status tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
