@@ -123,9 +123,8 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
 
   const firstPage = result?.notifications ?? [];
   const notifications = [...firstPage, ...accumulatedMore];
-  const nextCursor = cursorToFetch
-    ? undefined
-    : (result?.nextCursor ?? lastNextCursor);
+  const nextCursor =
+    accumulatedMore.length > 0 ? lastNextCursor : result?.nextCursor;
 
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
   const dismissAll = useMutation(api.notifications.dismissAll);
@@ -138,6 +137,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
     if (!accountId) return;
     try {
       await markAllAsRead({ accountId });
+      resetPagination();
       toast.success("All notifications marked as read");
     } catch {
       toast.error("Failed to mark all as read");
@@ -148,6 +148,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
     if (!accountId) return;
     try {
       await dismissAll({ accountId });
+      resetPagination();
       toast.success("All notifications dismissed");
     } catch {
       toast.error("Failed to dismiss notifications");
@@ -155,13 +156,27 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   };
 
   const handleLoadMore = () => {
-    const cursor = result?.nextCursor ?? lastNextCursor;
+    if (cursorToFetch) return;
+    const cursor = nextCursor;
     if (cursor) setCursorToFetch(cursor);
   };
 
   const handleDismiss = async (notificationId: Id<"notifications">) => {
     try {
       await removeNotification({ notificationId });
+      const remainingNotifications = notifications.filter(
+        (notification) => notification._id !== notificationId,
+      );
+      const fallbackCursor =
+        remainingNotifications.length > 0
+          ? remainingNotifications[remainingNotifications.length - 1]?._id
+          : undefined;
+      setLastNextCursor((prev) =>
+        prev === notificationId ? fallbackCursor : prev,
+      );
+      setAccumulatedMore((prev) =>
+        prev.filter((notification) => notification._id !== notificationId),
+      );
       toast.success("Notification dismissed");
     } catch {
       toast.error("Failed to dismiss notification");
