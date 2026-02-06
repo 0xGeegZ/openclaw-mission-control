@@ -186,7 +186,7 @@ export function TaskDetailSheet({
 
               {/* Description */}
               {task.description && (
-                <div className="text-sm leading-relaxed">
+                <div className="max-h-60 overflow-y-auto pr-3 text-sm leading-relaxed">
                   <MarkdownRenderer content={task.description} compact />
                 </div>
               )}
