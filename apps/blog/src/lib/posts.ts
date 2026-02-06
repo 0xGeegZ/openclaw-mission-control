@@ -19,6 +19,14 @@ export interface Post {
 const postsDirectory = path.join(process.cwd(), "src/content/posts");
 
 /**
+ * Validate slug contains only safe characters (alphanumeric, hyphens, underscores).
+ * Prevents path traversal attacks.
+ */
+function isValidSlug(slug: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(slug);
+}
+
+/**
  * Get all blog posts sorted by date (newest first)
  */
 export async function getPosts(): Promise<PostMetadata[]> {
@@ -49,10 +57,26 @@ export async function getPosts(): Promise<PostMetadata[]> {
 }
 
 /**
- * Get a specific blog post by slug
+ * Get a specific blog post by slug.
+ * Includes path traversal protection and slug validation.
  */
 export async function getPostBySlug(slug: string): Promise<Post | null> {
+  // Security: Reject invalid slugs immediately (prevents path traversal)
+  if (!isValidSlug(slug)) {
+    console.warn(`[Blog Security] Invalid slug rejected: "${slug}"`);
+    return null;
+  }
+
   const filePath = path.join(postsDirectory, `${slug}.mdx`);
+  
+  // Security: Ensure resolved path is within postsDirectory
+  const resolvedPath = path.resolve(filePath);
+  const resolvedBase = path.resolve(postsDirectory);
+  
+  if (!resolvedPath.startsWith(resolvedBase + path.sep)) {
+    console.warn(`[Blog Security] Path traversal blocked: "${slug}" resolved to "${resolvedPath}"`);
+    return null; // Path traversal attempt blocked
+  }
 
   try {
     const content = await fs.readFile(filePath, "utf-8");
@@ -69,7 +93,11 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
       },
       content,
     };
-  } catch {
+  } catch (error) {
+    // Log error for debugging but return null (404 will be handled by caller)
+    if (error instanceof Error && !error.message.includes("ENOENT")) {
+      console.error(`[Blog] Error loading post "${slug}":`, error.message);
+    }
     return null;
   }
 }
