@@ -1,3 +1,8 @@
+---
+name: backend-convex
+description: Convex schema, queries, mutations, auth guards, and indexes. Follow project patterns in packages/backend/convex.
+---
+
 # Backend Convex
 
 Use this skill when working with the Convex backend: schema, queries, mutations, auth guards, and indexes. Follow project patterns in `packages/backend/convex`.

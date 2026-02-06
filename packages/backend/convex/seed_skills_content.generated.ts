@@ -41,7 +41,12 @@ responses for each GitHub pull-request comment.
 - [ ] Follow-up items documented or escalated
 - [ ] PR status updated for reviewers
 `,
-  "backend-convex": `# Backend Convex
+  "backend-convex": `---
+name: backend-convex
+description: Convex schema, queries, mutations, auth guards, and indexes. Follow project patterns in packages/backend/convex.
+---
+
+# Backend Convex
 
 Use this skill when working with the Convex backend: schema, queries, mutations, auth guards, and indexes. Follow project patterns in \`packages/backend/convex\`.
 
@@ -711,7 +716,12 @@ Create a comprehensive pull request description based on the changes in this bra
 - [ ] Noted any follow-up work required
 - [ ] Formatted as proper markdown for GitHub PR
 `,
-  "github-issue-triage": `# GitHub issue triage
+  "github-issue-triage": `---
+name: github-issue-triage
+description: Triage GitHub issues: label, prioritize, assign. Check repo CONTRIBUTING and issue templates.
+---
+
+# GitHub issue triage
 
 Use this skill when triaging GitHub issues: label, prioritize, assign. Check repo CONTRIBUTING and issue templates.
 `,
@@ -1062,7 +1072,12 @@ Follow this workflow:
 - List tests run and their results.
 - Call out any remaining risks, manual QA steps, or follow-ups.
 `,
-  "release-management": `# Release management
+  "release-management": `---
+name: release-management
+description: Release checklists, changelogs, and versioning. Align with the squad lead and any existing release process.
+---
+
+# Release management
 
 Use this skill for release checklists, changelogs, and versioning. Align with the squad lead and any existing release process.
 

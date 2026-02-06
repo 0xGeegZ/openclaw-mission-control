@@ -218,7 +218,7 @@ describe("syncOpenClawProfiles", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("writes SKILL.md for resolved skills with contentMarkdown", () => {
+  it("writes SKILL.md for resolved skills with contentMarkdown (OpenClaw frontmatter ensured)", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
     const workspaceRoot = path.join(tmp, "agents");
@@ -254,7 +254,12 @@ describe("syncOpenClawProfiles", () => {
       "SKILL.md",
     );
     expect(fs.existsSync(skillPath)).toBe(true);
-    expect(fs.readFileSync(skillPath, "utf-8")).toBe(skillContent.trim());
+    const written = fs.readFileSync(skillPath, "utf-8");
+    expect(written).toContain("# Test skill");
+    expect(written).toContain("Do something useful");
+    expect(written).toMatch(/^---\s/);
+    expect(written).toContain("name: test-skill");
+    expect(written).toContain("description:");
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -290,6 +295,57 @@ describe("syncOpenClawProfiles", () => {
     expect(config.load.extraDirs[0]).toContain("skills");
     expect(config.skills?.entries).toBeDefined();
     expect(config.skills.entries["web-search"]).toEqual({ enabled: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("uses frontmatter name as skills.entries key when present (OpenClaw convention)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents");
+    const contentWithCustomName = `---
+name: custom-skill-name
+description: Custom name in frontmatter
+---
+
+# Body
+`;
+    const agents: AgentForProfile[] = [
+      {
+        _id: "a1",
+        name: "Engineer",
+        slug: "engineer",
+        role: "R",
+        sessionKey: "agent:engineer:acc1",
+        effectiveSoulContent: "# SOUL",
+        resolvedSkills: [
+          {
+            _id: "s1",
+            name: "Display Name",
+            slug: "our-slug",
+            contentMarkdown: contentWithCustomName,
+          },
+        ],
+      },
+    ];
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configPath,
+    });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.skills?.entries?.["custom-skill-name"]).toEqual({
+      enabled: true,
+    });
+    expect(config.skills?.entries?.["our-slug"]).toBeUndefined();
+    const skillPath = path.join(
+      workspaceRoot,
+      "engineer",
+      "skills",
+      "our-slug",
+      "SKILL.md",
+    );
+    expect(fs.readFileSync(skillPath, "utf-8")).toContain(
+      "name: custom-skill-name",
+    );
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 

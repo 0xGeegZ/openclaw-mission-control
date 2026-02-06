@@ -107,6 +107,49 @@ export function buildToolsMd(
 }
 
 /**
+ * Parses the OpenClaw/AgentSkills frontmatter `name` from SKILL.md content.
+ * OpenClaw matches skills.entries keys to this name. Returns null if not found.
+ */
+function parseSkillNameFromFrontmatter(content: string): string | null {
+  const start = content.indexOf("---");
+  if (start !== 0) return null;
+  const end = content.indexOf("---", 3);
+  if (end === -1) return null;
+  const block = content.slice(3, end);
+  const match = block.match(/^name:\s*(.+)$/m);
+  if (!match) return null;
+  const name = match[1].trim();
+  return name.length > 0 ? name : null;
+}
+
+/**
+ * Ensures content has OpenClaw-required frontmatter (name, description).
+ * If missing, prepends frontmatter so the written SKILL.md is valid per docs.openclaw.ai/tools/skills.
+ */
+function ensureOpenClawFrontmatter(
+  content: string,
+  slug: string,
+  description: string,
+): string {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("---")) {
+    const end = trimmed.indexOf("---", 3);
+    if (end !== -1) {
+      const block = trimmed.slice(3, end);
+      if (/^name:\s*.+$/m.test(block)) return trimmed;
+    }
+  }
+  const desc = (description || slug).replace(/\n/g, " ").trim().slice(0, 200);
+  return `---
+name: ${slug}
+description: ${desc}
+---
+
+${trimmed}
+`;
+}
+
+/**
  * Simple content hash for change detection (non-crypto).
  */
 function contentHash(content: string): string {
@@ -233,7 +276,8 @@ export function syncOpenClawProfiles(
   const rootResolved = path.resolve(workspaceRoot);
   const validAgents: Array<{ agent: AgentForProfile; agentDir: string }> = [];
   const extraDirsSet = new Set<string>();
-  const materializedSlugsSet = new Set<string>();
+  /** OpenClaw skills.entries keys: must match frontmatter `name` in each SKILL.md. */
+  const materializedSkillKeysSet = new Set<string>();
 
   for (const agent of agents) {
     const agentDir = resolveAgentDir(workspaceRoot, agent.slug);
@@ -256,9 +300,8 @@ export function syncOpenClawProfiles(
 
     const skillsDir = path.join(agentDir, "skills");
     for (const skill of agent.resolvedSkills) {
-      // Normalize: we trim before write so stored content is consistent and trailing newlines don't churn writeIfChanged.
-      const content = skill.contentMarkdown?.trim();
-      if (!content) continue;
+      const rawContent = skill.contentMarkdown?.trim();
+      if (!rawContent) continue;
       const safeSlug = safeSkillSlug(skill.slug);
       if (!safeSlug) {
         log.warn("Skipping skill with unsafe slug", {
@@ -267,13 +310,20 @@ export function syncOpenClawProfiles(
         });
         continue;
       }
+      const contentToWrite = ensureOpenClawFrontmatter(
+        rawContent,
+        safeSlug,
+        skill.description ?? skill.name,
+      );
+      const configKey =
+        parseSkillNameFromFrontmatter(contentToWrite) ?? safeSlug;
       const skillDir = path.join(skillsDir, safeSlug);
       const skillMdPath = path.join(skillDir, "SKILL.md");
       try {
         ensureDir(skillDir);
-        writeIfChanged(skillMdPath, content);
+        writeIfChanged(skillMdPath, contentToWrite);
         extraDirsSet.add(skillsDir);
-        materializedSlugsSet.add(safeSlug);
+        materializedSkillKeysSet.add(configKey);
       } catch (err) {
         log.error("Failed to write SKILL.md; skipping skill", {
           skillId: skill._id,
@@ -314,7 +364,7 @@ export function syncOpenClawProfiles(
     })),
     rootResolved,
     Array.from(extraDirsSet),
-    Array.from(materializedSlugsSet),
+    Array.from(materializedSkillKeysSet),
   );
   const configJson = JSON.stringify(openclawConfig, null, 2);
   const configDir = path.dirname(configPath);
@@ -359,13 +409,13 @@ interface AgentWithWorkspacePath extends AgentForProfile {
 /**
  * Build openclaw.json structure: agents.list[], load.extraDirs, skills.entries.
  * agents.defaults.skipBootstrap: true; per-agent model from mapModelToOpenClaw when mapped.
- * Caller must pass only agents that passed resolveAgentDir (use _workspacePath).
+ * skills.entries keys must match the frontmatter `name` in each SKILL.md (OpenClaw convention).
  */
 function buildOpenClawConfig(
   agents: AgentWithWorkspacePath[],
   _workspaceRoot: string,
   extraDirs: string[],
-  materializedSlugs: string[],
+  materializedSkillKeys: string[],
 ): Record<string, unknown> {
   const list = agents.map((agent) => {
     const entry: Record<string, unknown> = {
@@ -392,10 +442,10 @@ function buildOpenClawConfig(
   if (extraDirs.length > 0) {
     result.load = { extraDirs };
   }
-  if (materializedSlugs.length > 0) {
+  if (materializedSkillKeys.length > 0) {
     const entries: Record<string, { enabled: boolean }> = {};
-    for (const slug of materializedSlugs) {
-      entries[slug] = { enabled: true };
+    for (const key of materializedSkillKeys) {
+      entries[key] = { enabled: true };
     }
     result.skills = { entries };
   }
