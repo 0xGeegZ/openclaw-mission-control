@@ -7,6 +7,7 @@ import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { Toaster } from "sonner";
 import { SkipLink } from "@/components/ui/SkipLink";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -41,23 +42,25 @@ export default function RootLayout({
         )}
         suppressHydrationWarning
       >
-        <ClerkProvider>
-          <ThemeProvider>
-            <ConvexClientProvider>
-              <SkipLink />
-              <div id="main-content">{children}</div>
-              <Toaster
-                position="bottom-right"
-                toastOptions={{
-                  className: "font-sans",
-                  style: {
-                    borderRadius: "0.625rem",
-                  },
-                }}
-              />
-            </ConvexClientProvider>
-          </ThemeProvider>
-        </ClerkProvider>
+        <ErrorBoundary variant="page">
+          <ClerkProvider>
+            <ThemeProvider>
+              <ConvexClientProvider>
+                <SkipLink />
+                <div id="main-content">{children}</div>
+                <Toaster
+                  position="bottom-right"
+                  toastOptions={{
+                    className: "font-sans",
+                    style: {
+                      borderRadius: "0.625rem",
+                    },
+                  }}
+                />
+              </ConvexClientProvider>
+            </ThemeProvider>
+          </ClerkProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
