@@ -107,19 +107,76 @@ export function buildToolsMd(
 }
 
 /**
+ * Split YAML frontmatter from markdown content.
+ * Returns null when content does not start with a valid frontmatter block.
+ */
+function splitFrontmatter(
+  content: string,
+): { frontmatterLines: string[]; body: string } | null {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0) return null;
+  if (lines[0]?.trim() !== "---") return null;
+
+  const endIndex = lines.findIndex((line, idx) => idx > 0 && line.trim() === "---");
+  if (endIndex === -1) return null;
+
+  const frontmatterLines = lines.slice(1, endIndex);
+  const body = lines
+    .slice(endIndex + 1)
+    .join("\n")
+    .replace(/^\n+/, "");
+
+  return { frontmatterLines, body };
+}
+
+function parseYamlFrontmatterScalar(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
+    } catch {
+      // fall through to raw handling
+    }
+  }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    const inner = trimmed.slice(1, -1).replace(/''/g, "'");
+    return inner.trim() || null;
+  }
+
+  return trimmed;
+}
+
+function getFrontmatterField(
+  frontmatterLines: string[],
+  key: string,
+): string | null {
+  const prefix = `${key}:`;
+  for (const line of frontmatterLines) {
+    const trimmedLine = line.trimStart();
+    if (!trimmedLine.startsWith(prefix)) continue;
+    const rawValue = trimmedLine.slice(prefix.length);
+    return parseYamlFrontmatterScalar(rawValue);
+  }
+  return null;
+}
+
+function formatFrontmatterDescription(description: string): string {
+  // YAML 1.2 is a superset of JSON; JSON-style quoted strings are valid YAML scalars.
+  return JSON.stringify(description);
+}
+
+/**
  * Parses the OpenClaw/AgentSkills frontmatter `name` from SKILL.md content.
  * OpenClaw matches skills.entries keys to this name. Returns null if not found.
  */
 function parseSkillNameFromFrontmatter(content: string): string | null {
-  const start = content.indexOf("---");
-  if (start !== 0) return null;
-  const end = content.indexOf("---", 3);
-  if (end === -1) return null;
-  const block = content.slice(3, end);
-  const match = block.match(/^name:\s*(.+)$/m);
-  if (!match) return null;
-  const name = match[1].trim();
-  return name.length > 0 ? name : null;
+  const parsed = splitFrontmatter(content.trim());
+  if (!parsed) return null;
+  return getFrontmatterField(parsed.frontmatterLines, "name");
 }
 
 /**
@@ -132,20 +189,50 @@ function ensureOpenClawFrontmatter(
   description: string,
 ): string {
   const trimmed = content.trim();
-  if (trimmed.startsWith("---")) {
-    const end = trimmed.indexOf("---", 3);
-    if (end !== -1) {
-      const block = trimmed.slice(3, end);
-      if (/^name:\s*.+$/m.test(block)) return trimmed;
-    }
-  }
-  const desc = (description || slug).replace(/\n/g, " ").trim().slice(0, 200);
-  return `---
+  const desc = (description || slug)
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, 200);
+
+  const parsed = splitFrontmatter(trimmed);
+  if (!parsed) {
+    return `---
 name: ${slug}
-description: ${desc}
+description: ${formatFrontmatterDescription(desc)}
 ---
 
 ${trimmed}
+`;
+  }
+
+  const existingName = getFrontmatterField(parsed.frontmatterLines, "name");
+  const existingDescription = getFrontmatterField(
+    parsed.frontmatterLines,
+    "description",
+  );
+  if (existingName && existingDescription) return trimmed;
+
+  const ensuredLines = [...parsed.frontmatterLines];
+
+  if (!existingName) {
+    ensuredLines.unshift(`name: ${slug}`);
+  }
+
+  if (!existingDescription) {
+    const descriptionLine = `description: ${formatFrontmatterDescription(desc)}`;
+    const nameIndex = ensuredLines.findIndex((l) => l.trimStart().startsWith("name:"));
+    if (nameIndex !== -1) {
+      ensuredLines.splice(nameIndex + 1, 0, descriptionLine);
+    } else {
+      ensuredLines.push(descriptionLine);
+    }
+  }
+
+  return `---
+${ensuredLines.join("\n")}
+---
+
+${parsed.body.trim()}
 `;
 }
 

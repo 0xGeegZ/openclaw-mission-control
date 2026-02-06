@@ -5,11 +5,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { SKILL_CATEGORY_LABELS } from "@packages/shared";
+import { SKILL_CATEGORY_LABELS, type SkillCategory } from "@packages/shared";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@packages/ui/components/card";
@@ -91,8 +90,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type SkillCategory = "mcp_server" | "tool" | "integration" | "custom";
 
 interface SkillFormData {
   name: string;
@@ -261,24 +258,70 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   }
 
   async function handleSave() {
-    if (!accountId || !form.name.trim() || !form.slug.trim()) return;
+    if (!accountId) {
+      toast.error("No account selected", {
+        description: "Please reload the page and try again.",
+      });
+      return;
+    }
+
+    const name = form.name.trim();
+    const slug = form.slug.trim();
+
+    if (!name || !slug) {
+      toast.error("Missing required fields", {
+        description: "Name and slug are required.",
+      });
+      return;
+    }
+
+    if (!editingSkill && !/^[a-z0-9_-]+$/.test(slug)) {
+      toast.error("Invalid slug", {
+        description: "Use only lowercase letters, numbers, hyphens, and underscores.",
+      });
+      return;
+    }
+
+    const contentMarkdown = form.contentMarkdown.trim();
+    if (contentMarkdown) {
+      const bytes =
+        typeof TextEncoder !== "undefined"
+          ? new TextEncoder().encode(contentMarkdown).length
+          : contentMarkdown.length;
+      if (bytes > 512 * 1024) {
+        toast.error("SKILL.md content is too large", {
+          description: "Maximum size is 512 KB.",
+        });
+        return;
+      }
+    }
+
+    const rateLimitRaw = form.rateLimit.trim();
+    const rateLimit = rateLimitRaw ? Number(rateLimitRaw) : undefined;
+    if (rateLimit != null && (!Number.isFinite(rateLimit) || rateLimit < 0)) {
+      toast.error("Invalid rate limit", {
+        description: "Enter a non-negative number (requests per minute).",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const config = {
-        serverUrl: form.serverUrl || undefined,
+        serverUrl: form.serverUrl.trim() || undefined,
         authType: form.authType !== "none" ? form.authType : undefined,
-        credentialRef: form.credentialRef || undefined,
-        rateLimit: form.rateLimit ? Number(form.rateLimit) : undefined,
+        credentialRef: form.credentialRef.trim() || undefined,
+        rateLimit,
         requiresApproval: form.requiresApproval || undefined,
       };
 
       if (editingSkill) {
         await updateSkill({
           skillId: editingSkill,
-          name: form.name.trim(),
+          name,
           description: form.description.trim() || undefined,
           icon: form.icon.trim() || undefined,
-          contentMarkdown: form.contentMarkdown.trim() || undefined,
+          contentMarkdown: contentMarkdown || undefined,
           config,
           isEnabled: form.isEnabled,
         });
@@ -286,12 +329,12 @@ export default function SkillsPage({ params }: SkillsPageProps) {
       } else {
         await createSkill({
           accountId,
-          name: form.name.trim(),
-          slug: form.slug.trim(),
+          name,
+          slug,
           category: form.category,
           description: form.description.trim() || undefined,
           icon: form.icon.trim() || undefined,
-          contentMarkdown: form.contentMarkdown.trim() || undefined,
+          contentMarkdown: contentMarkdown || undefined,
           config,
           isEnabled: form.isEnabled,
         });
@@ -344,6 +387,37 @@ export default function SkillsPage({ params }: SkillsPageProps) {
   // ---------------------------------------------------------------------------
   // Guards
   // ---------------------------------------------------------------------------
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-border/50 bg-card/50 backdrop-blur-sm">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-32 rounded-xl" />
+        </header>
+        <div className="flex-1 overflow-auto p-6 space-y-6">
+          <Skeleton className="h-10 w-full max-w-md rounded-xl" />
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="border-border/50">
+                <CardHeader>
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-4 w-48" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (

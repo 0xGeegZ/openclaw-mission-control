@@ -244,17 +244,23 @@ export const agentsBySkill = query({
     > = {};
 
     for (const agent of agents) {
-      const skillIds = agent.openclawConfig?.skillIds ?? [];
-      for (const skillId of skillIds) {
-        const key = skillId as string;
-        if (!map[key]) map[key] = [];
-        map[key].push({
+      const rawSkillIds = agent.openclawConfig?.skillIds ?? [];
+      const uniqueSkillIds = new Set<string>();
+      for (const rawSkillId of rawSkillIds) {
+        // openclawConfig.skillIds is stored as unknown[] for flexibility; only strings are valid keys.
+        if (typeof rawSkillId !== "string") continue;
+        uniqueSkillIds.add(rawSkillId);
+      }
+
+      uniqueSkillIds.forEach((skillId) => {
+        if (!map[skillId]) map[skillId] = [];
+        map[skillId].push({
           _id: agent._id,
           name: agent.name,
           slug: agent.slug,
           avatarUrl: agent.avatarUrl,
         });
-      }
+      });
     }
 
     return map;

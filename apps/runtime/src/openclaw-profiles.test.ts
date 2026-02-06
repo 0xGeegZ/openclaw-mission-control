@@ -263,6 +263,60 @@ describe("syncOpenClawProfiles", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("does not prepend a second frontmatter block when SKILL.md already has frontmatter but no name", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents");
+    const skillContent = `---
+description: Existing description
+disable-model-invocation: true
+---
+
+# Body
+`;
+    const agents: AgentForProfile[] = [
+      {
+        _id: "a1",
+        name: "Engineer",
+        slug: "engineer",
+        role: "R",
+        sessionKey: "agent:engineer:acc1",
+        effectiveSoulContent: "# SOUL",
+        resolvedSkills: [
+          {
+            _id: "s1",
+            name: "Test Skill",
+            slug: "test-skill",
+            contentMarkdown: skillContent,
+          },
+        ],
+      },
+    ];
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configPath,
+    });
+
+    const skillPath = path.join(
+      workspaceRoot,
+      "engineer",
+      "skills",
+      "test-skill",
+      "SKILL.md",
+    );
+    const written = fs.readFileSync(skillPath, "utf-8");
+    const delimiterCount = written
+      .split(/\r?\n/)
+      .filter((l) => l.trim() === "---").length;
+    expect(delimiterCount).toBe(2);
+    expect(written).toContain("name: test-skill");
+    expect(written).toContain("disable-model-invocation: true");
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.skills?.entries?.["test-skill"]).toEqual({ enabled: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("generated openclaw.json includes load.extraDirs and skills.entries when skills have content", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
