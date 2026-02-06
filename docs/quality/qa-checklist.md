@@ -49,12 +49,16 @@ Use this checklist for new pages and runtime controls before release.
 - [ ] Activity items show actor, description, timestamp
 - [ ] All activity types render (task_created, message_created, member_added, etc.)
 
-## Notifications
+## Notifications (bell popover)
 
-- [ ] Notifications page loads; list with pagination
-- [ ] Filter by type works
-- [ ] Mark as read works
-- [ ] Click notification deep-links to task (or correct target)
+- [ ] Bell in sidebar shows unread count badge; count updates in real time
+- [ ] Click bell opens popover with recent notifications (All / Unread filter)
+- [ ] Popover: loading skeletons show while fetching; empty state shows "All caught up!" when no notifications
+- [ ] Mark as read (per item) removes unread styling and updates badge
+- [ ] Dismiss (per item) removes notification from list and updates badge
+- [ ] Mark all read clears unread styling and badge
+- [ ] Click notification with task links to task detail; popover closes
+- [ ] Visiting `/[accountSlug]/notifications` redirects to tasks (no dead page)
 
 ## Search
 
