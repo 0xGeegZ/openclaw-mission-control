@@ -56,6 +56,9 @@ export const notificationTypeValidator = v.union(
   v.literal("assignment"),
   v.literal("thread_update"),
   v.literal("status_change"),
+  v.literal("member_added"),
+  v.literal("member_removed"),
+  v.literal("role_changed"),
 );
 
 /** Activity type validator */
