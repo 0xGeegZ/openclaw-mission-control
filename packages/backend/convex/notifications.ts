@@ -292,9 +292,40 @@ export const remove = mutation({
 });
 
 /**
+ * Delete all notifications for the current user in an account.
+ */
+export const removeAll = mutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAccountMember(ctx, args.accountId);
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_account_recipient", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "user")
+          .eq("recipientId", userId),
+      )
+      .collect();
+
+    let count = 0;
+    for (const notification of notifications) {
+      await ctx.db.delete(notification._id);
+      count++;
+    }
+
+    return { count };
+  },
+});
+
+/**
  * Frontend API aliases (roadmap). Keep these so the UI can call list / markAsRead / markAllAsRead
  * without changing backend naming. Do not remove.
  */
 export const list = listMine;
 export const markAsRead = markRead;
 export const markAllAsRead = markAllRead;
+export const dismissAll = removeAll;
