@@ -25,6 +25,13 @@ export const list = query({
     let documents;
     
     if (args.taskId) {
+      // Validate that task exists and caller has access to its account
+      const task = await ctx.db.get(args.taskId);
+      if (!task) {
+        return [];
+      }
+      await requireAccountMember(ctx, task.accountId);
+      
       documents = await ctx.db
         .query("documents")
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))

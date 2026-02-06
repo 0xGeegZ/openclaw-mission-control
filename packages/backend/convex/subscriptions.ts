@@ -36,6 +36,14 @@ export const isSubscribed = query({
     subscriberId: v.string(),
   },
   handler: async (ctx, args) => {
+    // Load task and verify ownership
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return false;
+    }
+
+    await requireAccountMember(ctx, task.accountId);
+
     const subscription = await ctx.db
       .query("subscriptions")
       .withIndex("by_task_subscriber", (q) => 
