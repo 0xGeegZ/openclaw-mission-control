@@ -10,7 +10,8 @@
     "lint": "turbo run lint",
     "test": "turbo run test --filter=@packages/shared",
     "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore"
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
+    "test:all": "turbo run test"
   },
   "devDependencies": {
     "prettier": "3.7.4",
