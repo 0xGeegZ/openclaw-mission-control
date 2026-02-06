@@ -1,0 +1,181 @@
+---
+title: Getting Started with OpenClaw
+date: 2026-02-06
+author: Engineer
+tags: [introduction, tutorial, openclaw]
+excerpt: A comprehensive guide to getting started with OpenClaw Mission Control, the open-source agent orchestration platform.
+---
+
+# Getting Started with OpenClaw
+
+Welcome to OpenClaw Mission Control! This guide will help you set up and run your first agent orchestration workflow.
+
+## What is OpenClaw?
+
+OpenClaw is an open-source agent orchestration platform designed to manage and coordinate multiple AI agents across different tasks. Built on a modular architecture, it provides:
+
+- **Unified Agent Management** — Coordinate agents with different capabilities
+- **Task Orchestration** — Define workflows and dependencies between tasks
+- **Real-time Monitoring** — Track agent status, logs, and performance
+- **Extensible Architecture** — Add custom agents and integrations
+
+## Installation
+
+### Prerequisites
+
+- Node.js >= 24.0.0
+- npm >= 11.0.0
+- Git
+
+### Quick Start
+
+```bash
+git clone https://github.com/0xGeegZ/openclaw-mission-control.git
+cd openclaw-mission-control
+
+# Install dependencies using npm workspaces
+npm install
+
+# Start development environment
+npm run dev
+```
+
+This command starts both the web app and the backend Convex development environment.
+
+## Project Structure
+
+```
+openclaw-mission-control/
+├── apps/
+│   ├── web/           # Next.js web interface
+│   ├── runtime/       # OpenClaw runtime engine
+│   └── native/        # React Native mobile app
+├── packages/
+│   ├── shared/        # Shared types and utilities
+│   ├── ui/            # UI component library
+│   ├── backend/       # Convex backend
+│   └── env/           # Environment configuration
+└── docs/              # Documentation
+```
+
+## Creating Your First Agent
+
+Agents are the core building blocks of OpenClaw. Here's how to create one:
+
+### 1. Define Agent Configuration
+
+```typescript
+interface AgentConfig {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  model: string;
+}
+
+const myAgent: AgentConfig = {
+  id: "my-first-agent",
+  name: "Code Reviewer",
+  description: "Reviews code and suggests improvements",
+  capabilities: ["code-review", "linting", "documentation"],
+  model: "claude-opus",
+};
+```
+
+### 2. Implement Agent Logic
+
+Create an agent handler that processes tasks:
+
+```typescript
+async function handleTask(task: Task): Promise<Result> {
+  // Process the task using your agent's logic
+  const analysis = await analyzeCode(task.input);
+  
+  return {
+    success: true,
+    output: analysis,
+    metadata: {
+      processingTime: Date.now() - task.startTime,
+    },
+  };
+}
+```
+
+### 3. Register the Agent
+
+Register your agent with the orchestration system:
+
+```typescript
+await registerAgent(myAgent, handleTask);
+```
+
+## Building a Simple Workflow
+
+Here's a minimal workflow that chains two agents:
+
+```typescript
+const workflow = {
+  id: "code-review-workflow",
+  steps: [
+    {
+      agentId: "code-reviewer",
+      input: { code: fileContent },
+      dependsOn: [],
+    },
+    {
+      agentId: "documentation-generator",
+      input: { review: "{{ steps[0].output }}" },
+      dependsOn: ["code-reviewer"],
+    },
+  ],
+};
+
+const result = await executeWorkflow(workflow);
+```
+
+## Monitoring and Debugging
+
+OpenClaw provides real-time monitoring tools in the web dashboard:
+
+1. **Agent Status** — View connected agents and their health
+2. **Task Logs** — Stream logs from running tasks
+3. **Performance Metrics** — Track agent performance and throughput
+4. **Error Tracking** — Catch and diagnose failures
+
+## Next Steps
+
+- Read the [Architecture Guide](#) to understand the system design
+- Explore [Integration Examples](#) for connecting external services
+- Check out the [API Reference](#) for detailed endpoint documentation
+- Join the [Community Discord](https://discord.com/invite/clawd) for support
+
+## Common Issues
+
+### Port Already in Use
+
+If port 3000 is already in use:
+
+```bash
+PORT=3001 npm run dev
+```
+
+### Convex Connection Failed
+
+Ensure your `.env` file contains valid Convex credentials:
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=your-convex-url
+```
+
+## Support
+
+Need help? Check out:
+
+- **Documentation:** See our comprehensive guides
+- **GitHub Issues:** Report bugs or request features
+- **Community Discord:** Chat with other users and maintainers
+- **Email:** contact@openclaw.ai
+
+---
+
+Happy building! 🚀
