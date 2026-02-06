@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
-import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import type { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
 import {
   Bell,
   BellOff,
@@ -18,6 +18,7 @@ import {
   Shield,
   Filter,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import {
@@ -29,6 +30,7 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import type { NotificationType } from "@packages/shared";
 
 interface NotificationBellProps {
@@ -137,6 +139,15 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [accumulatedMore, setAccumulatedMore] = useState<
+    Doc<"notifications">[]
+  >([]);
+  const [cursorToFetch, setCursorToFetch] = useState<
+    Id<"notifications"> | undefined
+  >(undefined);
+  const [lastNextCursor, setLastNextCursor] = useState<
+    Id<"notifications"> | undefined
+  >(undefined);
 
   const unreadCount = useQuery(
     api.notifications.getUnreadCount,
@@ -150,7 +161,35 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
       : "skip",
   );
 
-  const notifications = result?.notifications ?? [];
+  const resultMore = useQuery(
+    api.notifications.list,
+    accountId && open && cursorToFetch
+      ? {
+          accountId,
+          filter,
+          limit: NOTIFICATION_LIST_LIMIT,
+          cursor: cursorToFetch,
+        }
+      : "skip",
+  );
+
+  useEffect(() => {
+    if (!cursorToFetch || resultMore === undefined) return;
+    const nextCursor = resultMore.nextCursor;
+    const page = resultMore.notifications ?? [];
+    queueMicrotask(() => {
+      setAccumulatedMore((prev) => [...prev, ...page]);
+      setLastNextCursor(nextCursor);
+      setCursorToFetch(undefined);
+    });
+  }, [cursorToFetch, resultMore]);
+
+  const firstPage = result?.notifications ?? [];
+  const notifications = [...firstPage, ...accumulatedMore];
+  const nextCursor = cursorToFetch
+    ? undefined
+    : (result?.nextCursor ?? lastNextCursor);
+
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
   const markAsRead = useMutation(api.notifications.markAsRead);
   const removeNotification = useMutation(api.notifications.remove);
@@ -159,19 +198,49 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   const accountSlugResolved = account?.slug ?? accountSlug;
 
   const handleMarkAllAsRead = async () => {
-    if (accountId) {
+    if (!accountId) return;
+    try {
       await markAllAsRead({ accountId });
+      toast.success("All notifications marked as read");
+    } catch {
+      toast.error("Failed to mark all as read");
     }
   };
 
+  const handleLoadMore = () => {
+    const cursor = result?.nextCursor ?? lastNextCursor;
+    if (cursor) setCursorToFetch(cursor);
+  };
+
   const handleDismiss = async (notificationId: Id<"notifications">) => {
-    await removeNotification({ notificationId });
+    try {
+      await removeNotification({ notificationId });
+      toast.success("Notification dismissed");
+    } catch {
+      toast.error("Failed to dismiss notification");
+    }
   };
 
   const listUnreadCount = notifications.filter((n) => !n.readAt).length;
+  const isLoadingMore = cursorToFetch !== undefined;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setAccumulatedMore([]);
+      setCursorToFetch(undefined);
+      setLastNextCursor(undefined);
+    }
+  };
+
+  const resetPagination = () => {
+    setAccumulatedMore([]);
+    setCursorToFetch(undefined);
+    setLastNextCursor(undefined);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -216,7 +285,10 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                 variant={filter === "all" ? "secondary" : "ghost"}
                 size="sm"
                 className="gap-1.5 h-7 text-xs"
-                onClick={() => setFilter("all")}
+                onClick={() => {
+                  setFilter("all");
+                  resetPagination();
+                }}
               >
                 <Filter className="h-3 w-3" />
                 All
@@ -225,17 +297,21 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                 variant={filter === "unread" ? "secondary" : "ghost"}
                 size="sm"
                 className="gap-1.5 h-7 text-xs"
-                onClick={() => setFilter("unread")}
+                onClick={() => {
+                  setFilter("unread");
+                  resetPagination();
+                }}
               >
                 Unread
               </Button>
             </div>
-            {notifications.length > 0 && listUnreadCount > 0 && (
+            {notifications.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
                 onClick={handleMarkAllAsRead}
+                title={listUnreadCount > 0 ? "Mark all as read" : "All read"}
               >
                 <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
                 Mark all read
@@ -353,6 +429,33 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                     </NotificationRowWrapper>
                   );
                 })}
+                <div className="p-2 border-t border-border bg-muted/20">
+                  {nextCursor ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full h-8 text-xs gap-1.5"
+                      onClick={handleLoadMore}
+                      disabled={isLoadingMore}
+                      aria-label="Load more notifications"
+                    >
+                      {isLoadingMore ? (
+                        "Loading…"
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3.5 w-3.5" />
+                          Load more
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <p className="text-center text-xs text-muted-foreground py-1">
+                      {notifications.length > 0
+                        ? "No more notifications"
+                        : null}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
