@@ -79,6 +79,8 @@ export function MessageInput({
 
   const createMessage = useMutation(api.messages.create);
   const pauseAgentsOnTask = useMutation(api.tasks.pauseAgentsOnTask);
+  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
+  const registerUpload = useMutation(api.messages.registerUpload);
 
   const [showSlashDropdown, setShowSlashDropdown] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -282,10 +284,62 @@ export function MessageInput({
 
     setIsSubmitting(true);
     try {
+      // Upload files if any are attached
+      let attachments: Array<{
+        storageId: Id<"_storage">;
+        name: string;
+        type: string;
+        size: number;
+      }> | undefined;
+
+      if (attachedFiles.length > 0) {
+        attachments = [];
+        for (const attachedFile of attachedFiles) {
+          try {
+            // 1. Get upload URL
+            const uploadUrl = await generateUploadUrl({ taskId });
+            
+            // 2. Upload file to Convex storage
+            const result = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": attachedFile.file.type },
+              body: attachedFile.file,
+            });
+
+            if (!result.ok) {
+              throw new Error(`Upload failed for ${attachedFile.file.name}`);
+            }
+
+            const { storageId } = await result.json();
+
+            // 3. Register upload
+            await registerUpload({ taskId, storageId });
+
+            // 4. Add to attachments array
+            attachments.push({
+              storageId,
+              name: attachedFile.file.name,
+              type: attachedFile.file.type,
+              size: attachedFile.file.size,
+            });
+          } catch (uploadError) {
+            toast.error(`Failed to upload ${attachedFile.file.name}`, {
+              description: uploadError instanceof Error ? uploadError.message : "Unknown error",
+            });
+            throw uploadError; // Stop message creation if upload fails
+          }
+        }
+      }
+
+      // Create message with attachments
       await createMessage({
         taskId,
         content: trimmed,
+        attachments,
       });
+
+      // Clear all state on success
+      setAttachedFiles([]);
       clearInputAndFocus();
     } catch (error) {
       toast.error("Failed to send message", {
