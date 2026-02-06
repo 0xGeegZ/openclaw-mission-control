@@ -1,0 +1,239 @@
+---
+title: Building a Markdown Blog in Next.js
+date: 2026-02-05
+author: Engineer
+tags: [nextjs, markdown, architecture, blog]
+excerpt: Learn how we built a scalable markdown-based blog system using @next/mdx, gray-matter, and industry-standard tools.
+---
+
+# Building a Markdown Blog in Next.js
+
+When planning the documentation and blog infrastructure for OpenClaw, we evaluated several approaches. Here's why we chose a markdown-based system and how it's architected.
+
+## Why Markdown?
+
+Markdown offers several advantages for content management:
+
+1. **Version Control Friendly** — Content lives in Git alongside your code
+2. **Simple Format** — Easy to write and maintain without special tools
+3. **Minimal Dependencies** — No external CMS or database needed
+4. **Portability** — Export your content anytime; it's just text files
+5. **Developer Experience** — Familiar to engineers who write documentation
+
+## Tech Stack Overview
+
+| Tool | Purpose |
+|------|---------|
+| `@next/mdx` | Official Next.js integration for MDX files |
+| `gray-matter` | Extract YAML frontmatter (metadata) from markdown |
+| `remark-gfm` | GitHub Flavored Markdown support |
+| `rehype-pretty-code` | Beautiful syntax highlighting with Shiki |
+| `@tailwindcss/typography` | Prose styling for unstyled content |
+
+## Architecture
+
+### Directory Structure
+
+```
+apps/blog/
+├── src/
+│   ├── app/
+│   │   ├── (layout)/
+│   │   │   ├── layout.tsx          # Root layout
+│   │   │   └── page.tsx            # Blog index
+│   │   └── [slug]/
+│   │       ├── layout.tsx          # Post layout
+│   │       └── page.tsx            # Dynamic post route
+│   ├── content/
+│   │   └── posts/
+│   │       ├── getting-started.mdx
+│   │       └── ...
+│   ├── lib/
+│   │   └── posts.ts                # Post utilities
+│   └── components/
+│       ├── BlogCard.tsx
+│       ├── BlogLayout.tsx
+│       └── ...
+├── mdx-components.tsx              # Global MDX overrides
+├── next.config.ts                  # MDX configuration
+└── package.json
+```
+
+### Content Model
+
+Each blog post is an MDX file with YAML frontmatter:
+
+```mdx
+---
+title: Post Title
+date: 2026-02-06
+author: Engineer
+tags: [tag1, tag2]
+excerpt: Brief description
+---
+
+# Your content starts here
+
+Post content in markdown...
+```
+
+The frontmatter becomes strongly-typed metadata:
+
+```typescript
+interface PostMetadata {
+  title: string;
+  date: string;
+  author: string;
+  tags: string[];
+  excerpt?: string;
+  slug: string;
+}
+```
+
+## Key Features
+
+### 1. Syntax Highlighting
+
+Using `rehype-pretty-code` with Shiki for beautiful code blocks:
+
+```typescript
+// This code block is automatically syntax highlighted
+const greeting = (name: string): string => {
+  return `Hello, ${name}!`;
+};
+```
+
+### 2. GitHub Flavored Markdown
+
+Tables, strikethrough, and more work out of the box:
+
+- ~~Deleted text~~ works
+- Tables are fully supported
+- Task lists: [ ] Todo item
+
+### 3. Type-Safe Content Loading
+
+Server-side utilities ensure type safety:
+
+```typescript
+// These utilities are fully typed
+const posts = await getPosts();           // PostMetadata[]
+const post = await getPostBySlug(slug);   // Post | null
+```
+
+### 4. Static Generation
+
+Using `generateStaticParams` for optimal performance:
+
+```typescript
+export async function generateStaticParams() {
+  const posts = await getPosts();
+  return posts.map((post) => ({ slug: post.slug }));
+}
+```
+
+This pre-renders all blog posts at build time, resulting in static HTML files served blazingly fast.
+
+## Performance Considerations
+
+- **Build Time:** O(n) where n = number of posts
+- **Static Generation:** All posts pre-rendered at build time
+- **Incremental Builds:** Only changed posts are rebuilt
+- **Bundle Size:** Minimal; `@next/mdx` is ~50KB gzipped
+
+## Metadata and SEO
+
+Each post can define metadata for search engines:
+
+```typescript
+export const metadata: Metadata = {
+  title: postData.metadata.title,
+  description: postData.metadata.excerpt,
+  authors: [{ name: postData.metadata.author }],
+  tags: postData.metadata.tags,
+  openGraph: {
+    type: "article",
+    publishedTime: postData.metadata.date,
+  },
+};
+```
+
+## Extensibility
+
+The system is designed for growth:
+
+### Adding RSS Feed
+
+```typescript
+// Generate RSS for subscription
+export async function generateRSSFeed() {
+  const posts = await getPosts();
+  return posts.map((post) => ({
+    title: post.title,
+    link: `/blog/${post.slug}`,
+    pubDate: post.date,
+    description: post.excerpt,
+  }));
+}
+```
+
+### Search Integration
+
+```typescript
+// Index posts for full-text search
+export async function buildSearchIndex() {
+  const posts = await getPosts();
+  return posts.map((post) => ({
+    slug: post.slug,
+    title: post.title,
+    content: post.content,
+  }));
+}
+```
+
+### Comment System
+
+Integrate with Convex for serverless comments:
+
+```typescript
+const comments = await convex.query(
+  api.posts.getComments,
+  { postSlug: slug }
+);
+```
+
+## Comparison with Alternatives
+
+| Approach | Pros | Cons | Best For |
+|----------|------|------|----------|
+| **Markdown Files** | Simple, version-controlled, portable | Limited CMS features | Developer docs, technical blogs |
+| **Headless CMS** | Rich UI, easy for non-devs | External dependency, cost | Large editorial teams |
+| **Database** | Dynamic, queryable | Complex setup, infrastructure | High-traffic platforms |
+| **Static Site Generators** | Fast, simple | Limited interactivity | Personal blogs |
+
+## Migration Path
+
+If you outgrow markdown files:
+
+1. **Phase 1** — Current: Markdown in monorepo
+2. **Phase 2** — Optional: Add RSS feed, search
+3. **Phase 3** — Optional: Migrate to Convex for dynamic content
+4. **Phase 4** — Optional: Connect headless CMS (preserving markdown format)
+
+The beauty of this approach is that each step is optional and backward-compatible.
+
+## Conclusion
+
+A markdown-based blog is perfect for projects that value:
+
+- Developer experience
+- Source control parity
+- Minimal infrastructure
+- Fast build times
+- Type safety
+
+It scales from a single blog post to hundreds of articles without performance degradation.
+
+---
+
+Start building your blog today! See the [Getting Started](./getting-started.mdx) guide for setup instructions.
