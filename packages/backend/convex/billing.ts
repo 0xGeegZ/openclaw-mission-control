@@ -361,8 +361,6 @@ export const updateAccountPlanInternal = internalMutation({
 /**
  * Create a Stripe Checkout session for upgrading to a paid plan.
  * Returns the checkout session URL to redirect the user.
- * 
- * NOTE: This will be fully implemented in Phase 2 with Stripe SDK.
  */
 export const createCheckoutSession = action({
   args: {
@@ -372,20 +370,71 @@ export const createCheckoutSession = action({
     cancelUrl: v.string(),
   },
   handler: async (ctx, args): Promise<string> => {
-    // TODO: Verify account membership via runQuery (Phase 2)
-    // TODO: Initialize Stripe client (needs STRIPE_SECRET_KEY from env)
-    // TODO: Create checkout session
-    // TODO: Return checkout URL
-    
-    throw new Error("Stripe checkout not yet configured. Set STRIPE_SECRET_KEY in environment.");
+    // Verify account membership
+    await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("STRIPE_SECRET_KEY is not configured in environment variables");
+    }
+
+    // Initialize Stripe (lazy import to avoid bundling in client)
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2024-12-18.acacia",
+    });
+
+    // Get or create Stripe customer for this account
+    const account = await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+    let customerId: string;
+
+    // Check if subscription already exists
+    const existingSubscription = await ctx.runQuery(api.billing.getSubscription, {
+      accountId: args.accountId,
+    });
+
+    if (existingSubscription) {
+      customerId = existingSubscription.stripeCustomerId;
+    } else {
+      // Create new customer
+      const customer = await stripe.customers.create({
+        metadata: {
+          accountId: args.accountId,
+          accountSlug: account.slug,
+        },
+      });
+      customerId = customer.id;
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: args.priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+      metadata: {
+        accountId: args.accountId,
+      },
+    });
+
+    if (!session.url) {
+      throw new Error("Failed to create checkout session URL");
+    }
+
+    return session.url;
   },
 });
 
 /**
  * Create a Stripe Customer Portal session.
  * Returns the portal URL to redirect the user for managing their subscription.
- * 
- * NOTE: This will be fully implemented in Phase 2 with Stripe SDK.
  */
 export const createCustomerPortalSession = action({
   args: {
@@ -393,11 +442,35 @@ export const createCustomerPortalSession = action({
     returnUrl: v.string(),
   },
   handler: async (ctx, args): Promise<string> => {
-    // TODO: Verify account membership via runQuery (Phase 2)
-    // TODO: Get subscription to retrieve Stripe customer ID
-    // TODO: Initialize Stripe client and create portal session
-    // TODO: Return portal URL
-    
-    throw new Error("Stripe portal not yet configured. Set STRIPE_SECRET_KEY in environment.");
+    // Verify account membership
+    await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("STRIPE_SECRET_KEY is not configured in environment variables");
+    }
+
+    // Get subscription to retrieve Stripe customer ID
+    const subscription = await ctx.runQuery(api.billing.getSubscription, {
+      accountId: args.accountId,
+    });
+
+    if (!subscription) {
+      throw new Error("No active subscription found for this account");
+    }
+
+    // Initialize Stripe
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2024-12-18.acacia",
+    });
+
+    // Create portal session
+    const session = await stripe.billingPortal.sessions.create({
+      customer: subscription.stripeCustomerId,
+      return_url: args.returnUrl,
+    });
+
+    return session.url;
   },
 });
