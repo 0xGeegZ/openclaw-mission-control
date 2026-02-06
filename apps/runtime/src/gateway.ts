@@ -236,9 +236,10 @@ const state: GatewayState = {
 /**
  * Detect OpenClaw "no response" placeholder messages, including mention-only prefixes.
  */
-function parseNoResponsePlaceholder(
-  response: string,
-): { isPlaceholder: boolean; mentionPrefix: string | null } {
+export function parseNoResponsePlaceholder(response: string): {
+  isPlaceholder: boolean;
+  mentionPrefix: string | null;
+} {
   const trimmed = response.trim();
   if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
   if (trimmed === NO_RESPONSE_FROM_OPENCLAW_MESSAGE) {
@@ -260,7 +261,9 @@ function parseNoResponsePlaceholder(
 /**
  * Build a fallback response for placeholder OpenClaw messages.
  */
-function buildNoResponseFallbackMessage(mentionPrefix?: string | null): string {
+export function buildNoResponseFallbackMessage(
+  mentionPrefix?: string | null,
+): string {
   const prefix = mentionPrefix ? `${mentionPrefix.trim()}\n\n` : "";
   return `${prefix}${NO_RESPONSE_FALLBACK_MESSAGE}`;
 }
@@ -588,7 +591,12 @@ export async function receiveFromOpenClaw(
     return;
   }
 
-  log.debug("Received from", sessionKey, ":", trimmedResponse.substring(0, 100));
+  log.debug(
+    "Received from",
+    sessionKey,
+    ":",
+    trimmedResponse.substring(0, 100),
+  );
 
   const placeholder = parseNoResponsePlaceholder(response);
   let messageContent = response;

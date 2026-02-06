@@ -202,7 +202,7 @@ export async function executeAgentTool(params: {
   accountId: Id<"accounts">;
   serviceToken: string;
   taskId?: Id<"tasks">;
-  orchestratorAgentId?: Id<"agents"> | null;
+  canMarkDone?: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -216,7 +216,7 @@ export async function executeAgentTool(params: {
     accountId,
     serviceToken,
     taskId,
-    orchestratorAgentId,
+    canMarkDone,
   } = params;
   const client = getConvexClient();
 
@@ -232,14 +232,10 @@ export async function executeAgentTool(params: {
       return { success: false, error: "Invalid JSON arguments" };
     }
     // When invoked from delivery, taskId param is the current notification's task; LLM may also send taskId in args.
-    if (
-      args.status === "done" &&
-      orchestratorAgentId != null &&
-      orchestratorAgentId !== agentId
-    ) {
+    if (args.status === "done" && canMarkDone !== true) {
       return {
         success: false,
-        error: "Forbidden: Only the orchestrator can mark tasks as done",
+        error: "Forbidden: Not allowed to mark tasks as done",
       };
     }
     const result: TaskStatusToolResult = await executeTaskStatusTool({

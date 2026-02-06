@@ -74,8 +74,8 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 - If you start work: move task to IN_PROGRESS (unless already there)
 - If you need human review: move to REVIEW and explain what to review
 - If you are blocked: move to BLOCKED and explain the missing input
-- If done: move to DONE, post final summary, and ensure doc links exist
-- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW.
+- If done: move to DONE only after QA review passes; when QA is configured, QA should mark DONE
+- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW. When QA is configured, only QA can mark DONE.
 
 ### Assignment acknowledgment
 
@@ -114,6 +114,7 @@ Rules:
 - Only use `in_progress`, `review`, `done`, `blocked`
 - `blockedReason` is required when status is `blocked`
 - `inbox`/`assigned` are handled by assignment changes, not this tool
+- When QA is configured, only QA can set status to `done`
 
 Example (HTTP fallback):
 
@@ -125,7 +126,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
-**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When a task is in REVIEW, request QA approval. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ### Optional HTTP fallbacks (manual/CLI)
 

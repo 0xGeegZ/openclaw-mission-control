@@ -688,24 +688,6 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Agent is not allowed to modify task status");
     }
 
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-
-    if (args.status === "done") {
-      if (!orchestratorAgentId) {
-        throw new Error(
-          "Forbidden: Orchestrator must be set to mark tasks as done",
-        );
-      }
-
-      if (orchestratorAgentId !== args.agentId) {
-        throw new Error(
-          "Forbidden: Only the orchestrator can mark tasks as done",
-        );
-      }
-    }
-
     const allowedNextStatuses = new Set<TaskStatus>([
       "in_progress",
       "review",
@@ -732,6 +714,16 @@ export const updateTaskStatusFromAgent = action({
         currentStatus !== args.expectedStatus
       )
         return { success: true };
+      if (
+        i === 0 &&
+        targetStatus === "done" &&
+        currentStatus !== "review" &&
+        currentStatus !== "done"
+      ) {
+        throw new Error(
+          "Forbidden: Task must be in review before marking done",
+        );
+      }
       if (currentStatus === targetStatus) break;
 
       const path = findStatusPath({

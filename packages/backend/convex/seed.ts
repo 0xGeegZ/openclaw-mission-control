@@ -288,8 +288,8 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 - If you start work: move task to IN_PROGRESS (unless already there)
 - If you need human review: move to REVIEW and explain what to review
 - If you are blocked: move to BLOCKED and explain the missing input
-- If done: move to DONE, post final summary, and ensure doc links exist
-- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW.
+- If done: move to DONE only after QA review passes; when QA is configured, QA should mark DONE
+- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW. When QA is configured, only QA can mark DONE.
 
 ### Assignment acknowledgment
 
@@ -339,7 +339,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
-**Orchestrator (squad lead):** When you accept a task in REVIEW and close it, use the **task_status** tool with \`"status": "done"\` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When a task is in REVIEW, request QA approval. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with \`"status": "done"\` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ### Optional HTTP fallbacks (manual/CLI)
 
@@ -589,9 +589,9 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
-- Review tasks in REVIEW promptly; close them (move to DONE) with a clear acceptance note.
+- Review tasks in REVIEW promptly; if QA exists, wait for QA approval and do not move to DONE yourself. If no QA agent exists, close tasks (move to DONE) with a clear acceptance note.
 - If any PRs were reopened, merge them before moving the task to DONE.
-- When closing a task (move to DONE): use the task_status tool with status "done" first (or the runtime task-status endpoint if the tool is not offered). Then post your acceptance note. If you cannot update status, report BLOCKED — do not post a final summary or claim DONE. Posting in the thread alone does not update the task status and causes a loop.
+- When closing a task (only when no QA agent is configured): use the task_status tool with status "done" first (or the runtime task-status endpoint if the tool is not offered). Then post your acceptance note. If you cannot update status, report BLOCKED — do not post a final summary or claim DONE. Posting in the thread alone does not update the task status and causes a loop.
 - When a task is DONE: if you mention other agents, only direct them to start or continue work on other existing tasks (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this (done) task thread; that causes reply loops.
 - Write docs for decisions; link from task threads.
 
@@ -679,7 +679,7 @@ Protect quality and scale readiness. Review PRs and maintain the test suite.
 
 - On heartbeat: review open PRs, run or add tests, post QA notes.
 - Write or request tests; update QA/release notes.
-- Move task to DONE when verified; flag blockers clearly.
+- Move task to DONE after review passes; flag blockers clearly.
 
 ## Quality checks (must pass)
 

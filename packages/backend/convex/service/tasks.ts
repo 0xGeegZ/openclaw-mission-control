@@ -1,5 +1,9 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
@@ -13,6 +17,34 @@ import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
+
+const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
+
+/**
+ * Returns true when an agent is considered QA based on role or slug.
+ */
+function isQaAgent(
+  agent: Pick<Doc<"agents">, "role" | "slug"> | null,
+): boolean {
+  if (!agent) return false;
+  const role = (agent.role ?? "").toLowerCase();
+  const slug = (agent.slug ?? "").toLowerCase();
+  return slug === "qa" || QA_ROLE_PATTERN.test(role);
+}
+
+/**
+ * Returns true when the account has at least one QA agent configured.
+ */
+async function hasQaAgent(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+): Promise<boolean> {
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+  return agents.some((agent) => isQaAgent(agent));
+}
 
 /**
  * Service-only task queries for runtime service.
@@ -233,21 +265,32 @@ export const updateStatusFromAgent = internalMutation({
     }
 
     if (nextStatus === "done") {
-      const account = await ctx.db.get(task.accountId);
-      const orchestratorAgentId = (
-        account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
-      )?.orchestratorAgentId;
-
-      if (!orchestratorAgentId) {
-        throw new Error(
-          "Forbidden: Orchestrator must be set to mark tasks as done",
-        );
+      const hasQaReviewer = await hasQaAgent(ctx, task.accountId);
+      if (hasQaReviewer && !isQaAgent(agent)) {
+        throw new Error("Forbidden: QA must approve and mark tasks as done");
       }
 
-      if (orchestratorAgentId !== args.agentId) {
-        throw new Error(
-          "Forbidden: Only the orchestrator can mark tasks as done",
-        );
+      if (!hasQaReviewer) {
+        const account = await ctx.db.get(task.accountId);
+        const orchestratorAgentId = (
+          account?.settings as
+            | {
+                orchestratorAgentId?: Id<"agents">;
+              }
+            | undefined
+        )?.orchestratorAgentId;
+
+        if (!orchestratorAgentId) {
+          throw new Error(
+            "Forbidden: Orchestrator must be set to mark tasks as done",
+          );
+        }
+
+        if (orchestratorAgentId !== args.agentId) {
+          throw new Error(
+            "Forbidden: Only the orchestrator can mark tasks as done",
+          );
+        }
       }
     }
 

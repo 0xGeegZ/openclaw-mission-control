@@ -64,7 +64,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - If you start work: move task to IN_PROGRESS.
 - If you need human review: move to REVIEW.
 - If blocked: move to BLOCKED and explain.
-- If done: move to DONE, post final summary.
+- If done: move to DONE only after QA review passes (QA marks done when configured).
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
 `;
 
