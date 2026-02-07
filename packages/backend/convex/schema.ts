@@ -205,6 +205,8 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
+        /** Task ID for the system orchestrator chat thread. */
+        orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */

@@ -318,6 +318,7 @@ export function TaskDetailSheet({
                   taskId={task._id}
                   accountSlug={accountSlug}
                   accountId={task.accountId}
+                  useReadByFallback
                 />
               </TabsContent>
 

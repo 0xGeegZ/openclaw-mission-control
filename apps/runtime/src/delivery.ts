@@ -45,6 +45,7 @@ export interface DeliveryContext {
     title: string;
     description?: string;
     assignedAgentIds?: string[];
+    labels?: string[];
   } | null;
   message: {
     _id: string;
@@ -82,6 +83,21 @@ export interface DeliveryContext {
     canMentionAgents?: boolean;
   };
   repositoryDoc: { title: string; content: string } | null;
+  globalBriefingDoc: { title: string; content: string } | null;
+  taskOverview: {
+    totals: Array<{ status: string; count: number }>;
+    topTasks: Array<{
+      status: string;
+      tasks: Array<{
+        taskId: string;
+        title: string;
+        status: string;
+        priority: number;
+        assignedAgentIds: string[];
+        assignedUserIds: string[];
+      }>;
+    }>;
+  } | null;
 }
 
 /** Posted when tool execution ran but no final reply was received (e.g. follow-up request failed). */
@@ -107,6 +123,14 @@ const FALLBACK_NO_REPLY_AFTER_TOOLS = [
 
 const NO_RESPONSE_RETRY_LIMIT = 3;
 const NO_RESPONSE_RETRY_RESET_MS = 10 * 60 * 1000;
+const NO_REPLY_SIGNAL_VALUES = new Set(["NO_REPLY", "NO", "NO_"]);
+
+/**
+ * Detect explicit "no reply" signals from OpenClaw output.
+ */
+function isNoReplySignal(value: string): boolean {
+  return NO_REPLY_SIGNAL_VALUES.has(value.trim());
+}
 
 interface DeliveryState {
   isRunning: boolean;
@@ -230,6 +254,22 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.debug("Skipped delivery for notification", notification._id);
               continue;
             }
+            if (isStaleThreadUpdateNotification(context as DeliveryContext)) {
+              await client.action(
+                api.service.actions.markNotificationDelivered,
+                {
+                  notificationId: notification._id,
+                  serviceToken: config.serviceToken,
+                  accountId: config.accountId,
+                },
+              );
+              state.deliveredCount++;
+              log.debug(
+                "Skipped stale thread update notification",
+                notification._id,
+              );
+              continue;
+            }
             try {
               await client.action(api.service.actions.markNotificationRead, {
                 notificationId: notification._id,
@@ -271,6 +311,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               canCreateDocuments,
               hasTaskContext: hasTask,
               canMarkDone,
+              isOrchestrator,
             });
             const toolCapabilities = config.openclawClientToolsEnabled
               ? rawToolCapabilities
@@ -281,6 +322,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                     canModifyTaskStatus,
                     canCreateDocuments,
                     hasTaskContext: hasTask,
+                    isOrchestrator,
                   }),
                   schemas: [],
                 };
@@ -310,6 +352,26 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const noResponsePlaceholder = textToPost
               ? parseNoResponsePlaceholder(textToPost)
               : null;
+            const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
+            if (isNoReply && result.toolCalls.length === 0) {
+              log.info(
+                "OpenClaw returned NO_REPLY; skipping notification",
+                notification._id,
+                context.agent.name,
+              );
+              clearNoResponseRetry(notification._id);
+              await client.action(
+                api.service.actions.markNotificationDelivered,
+                {
+                  notificationId: notification._id,
+                  serviceToken: config.serviceToken,
+                  accountId: config.accountId,
+                },
+              );
+              state.deliveredCount++;
+              log.debug("Delivered notification (no reply)", notification._id);
+              continue;
+            }
             const needsRetry =
               result.toolCalls.length === 0 &&
               (!textToPost || noResponsePlaceholder?.isPlaceholder);
@@ -356,6 +418,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   serviceToken: config.serviceToken,
                   taskId: context.notification?.taskId,
                   canMarkDone: toolCapabilities.canMarkDone,
+                  isOrchestrator,
                 });
                 if (!toolResult.success) {
                   log.warn(
@@ -532,6 +595,16 @@ export function getDeliveryState(): DeliveryState {
 
 /** Task statuses for which we skip delivering status_change to agents to avoid ack storms. */
 const TASK_STATUSES_SKIP_STATUS_CHANGE = new Set(["done", "blocked"]);
+const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/**
+ * Check whether a task is the orchestrator chat thread.
+ */
+function isOrchestratorChatTask(
+  task: DeliveryContext["task"] | null | undefined,
+): boolean {
+  return !!task?.labels?.includes(ORCHESTRATOR_CHAT_LABEL);
+}
 
 /**
  * Decide whether a notification should be delivered to an agent.
@@ -549,6 +622,11 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const notificationType = context.notification?.type;
   const messageAuthorType = context.message?.authorType;
   const taskStatus = context.task?.status;
+  const isOrchestratorChat = isOrchestratorChatTask(context.task);
+
+  if (isOrchestratorChat && context.notification?.recipientType === "agent") {
+    return context.notification?.recipientId === context.orchestratorAgentId;
+  }
 
   if (
     notificationType === "status_change" &&
@@ -586,6 +664,31 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   }
 
   return true;
+}
+
+/**
+ * Returns true when a thread_update notification is stale because a newer
+ * user-authored message exists later in the thread.
+ */
+function isStaleThreadUpdateNotification(context: DeliveryContext): boolean {
+  const notification = context.notification;
+  if (!notification || notification.type !== "thread_update") return false;
+  if (notification.recipientType !== "agent") return false;
+  if (!notification.messageId) return false;
+  if (context.message?.authorType !== "user") return false;
+  if (!Array.isArray(context.thread) || context.thread.length === 0)
+    return false;
+
+  const messageIndex = context.thread.findIndex(
+    (item) => item.messageId === notification.messageId,
+  );
+  if (messageIndex < 0) return false;
+
+  for (let i = messageIndex + 1; i < context.thread.length; i++) {
+    if (context.thread[i].authorType === "user") return true;
+  }
+
+  return false;
 }
 
 /**
@@ -886,6 +989,48 @@ function formatThreadContext(
 }
 
 /**
+ * Format the compact task overview for orchestrator prompts.
+ */
+function formatTaskOverview(
+  overview: DeliveryContext["taskOverview"] | null | undefined,
+  mentionableAgents: MentionableAgent[],
+): string {
+  if (!overview) return "";
+  const agentLabels = new Map(
+    mentionableAgents.map((agent) => [
+      agent.id,
+      (agent.slug ?? "").trim() || agent.name,
+    ]),
+  );
+  const totals = overview.totals
+    .map((entry) => `${entry.status}=${entry.count}`)
+    .join("; ");
+  const lines = [
+    "Task overview (compact):",
+    `Totals (sampled per status): ${totals}`,
+  ];
+  for (const group of overview.topTasks) {
+    if (!group.tasks.length) continue;
+    lines.push(`- ${group.status}:`);
+    for (const task of group.tasks) {
+      const agentMentions = (task.assignedAgentIds ?? [])
+        .map((agentId) => agentLabels.get(agentId) ?? agentId)
+        .map((label) => (label.includes(" ") ? `"${label}"` : label))
+        .join(", ");
+      const assigneeSuffix = agentMentions
+        ? ` (assignees: ${agentMentions})`
+        : "";
+      const userCount = task.assignedUserIds?.length ?? 0;
+      const userSuffix = userCount ? `; users=${userCount}` : "";
+      lines.push(
+        `  - P${task.priority} ${task.title} [${task.taskId}]${assigneeSuffix}${userSuffix}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
  * Build capability labels for HTTP fallback mode (no client-side tools).
  */
 function buildHttpCapabilityLabels(options: {
@@ -893,6 +1038,7 @@ function buildHttpCapabilityLabels(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  isOrchestrator?: boolean;
 }): string[] {
   const labels: string[] = [];
   if (options.hasTaskContext && options.canModifyTaskStatus) {
@@ -903,6 +1049,9 @@ function buildHttpCapabilityLabels(options: {
   }
   if (options.canCreateDocuments) {
     labels.push("create/update documents via HTTP (POST /agent/document)");
+  }
+  if (options.isOrchestrator) {
+    labels.push("assign agents via HTTP (POST /agent/task-assign)");
   }
   return labels;
 }
@@ -928,6 +1077,8 @@ export function formatNotificationMessage(
     message,
     thread,
     repositoryDoc,
+    globalBriefingDoc,
+    taskOverview,
     mentionableAgents = [],
     primaryUserMention = null,
     effectiveBehaviorFlags = {},
@@ -988,10 +1139,18 @@ export function formatNotificationMessage(
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
+  const globalContextSection = globalBriefingDoc?.content?.trim()
+    ? ["Global Context:", globalBriefingDoc.content.trim(), ""].join("\n")
+    : "";
+  const taskOverviewSection = formatTaskOverview(
+    taskOverview,
+    mentionableAgents,
+  );
 
   const hasQaAgent = context.mentionableAgents.some((agent) =>
     isQaAgentProfile(agent),
   );
+  const isOrchestratorChat = isOrchestratorChatTask(task);
   const qaReviewNote = hasQaAgent
     ? " When QA is configured, only QA can mark tasks as done after review passes."
     : "";
@@ -1009,7 +1168,7 @@ export function formatNotificationMessage(
     : "";
   const taskCreateInstructions = canCreateTasks
     ? hasRuntimeTools
-      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
       : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
     : "";
   const documentInstructions = canCreateDocuments
@@ -1017,6 +1176,15 @@ export function formatNotificationMessage(
       ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
       : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
     : "";
+  const orchestratorToolInstructions = isOrchestrator
+    ? hasRuntimeTools
+      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_assign to add agent assignees by slug, and task_message to post updates to other tasks. Include a taskId for task_get, task_thread, task_assign, and task_message. If any tool fails, report BLOCKED and include the error message."
+      : `Orchestrator tools are unavailable. Use the HTTP fallback to assign agents: POST ${runtimeBaseUrl}/agent/task-assign with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<task id>", "assigneeSlugs": ["qa","engineer"] }\`.`
+    : "";
+  const orchestratorChatInstruction =
+    isOrchestrator && isOrchestratorChat
+      ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. If you plan to work on a task yourself, create/assign it to yourself and move the discussion to that task thread."
+      : "";
   const followupTaskInstruction =
     isOrchestrator && task
       ? `\nOrchestrator note: If this task needs follow-up work, create those follow-up tasks before moving this task to done. If any PRs were reopened, merge them before moving this task to done.${canCreateTasks ? (hasRuntimeTools ? " Use the task_create tool." : ` Use the HTTP fallback (${runtimeBaseUrl}/agent/task-create).`) : " If task creation is not permitted, state the follow-ups needed and ask the primary user to create them."}`
@@ -1069,6 +1237,8 @@ ${notification.body}
 ${task ? `Task: ${task.title} (${task.status})\nTask ID: ${task._id}` : ""}
 ${taskDescription}
 ${repositoryDetails}
+${globalContextSection}
+${taskOverviewSection}
 ${messageDetails}
 ${threadDetails}
 ${mentionableSection}
@@ -1081,6 +1251,8 @@ Important: This system captures only one reply per notification. Do not send pro
 ${statusInstructions}
 ${taskCreateInstructions}
 ${documentInstructions}
+${orchestratorToolInstructions}
+${orchestratorChatInstruction}
 ${followupTaskInstruction}
 ${task?.status === "review" && toolCapabilities.canMarkDone ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}

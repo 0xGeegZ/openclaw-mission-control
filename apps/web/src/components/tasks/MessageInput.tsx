@@ -45,6 +45,10 @@ interface MessageInputProps {
   taskId: Id<"tasks">;
   showSuggestions?: boolean;
   onSuggestionClick?: (suggestion: string) => void;
+  /** Enable @mention autocomplete and parsing. */
+  enableMentions?: boolean;
+  /** Enable slash command autocomplete and parsing. */
+  enableSlashCommands?: boolean;
 }
 
 type MentionOption =
@@ -58,6 +62,8 @@ export function MessageInput({
   taskId,
   showSuggestions = false,
   onSuggestionClick,
+  enableMentions = true,
+  enableSlashCommands = true,
 }: MessageInputProps) {
   const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,7 +81,10 @@ export function MessageInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { accountId } = useAccount();
-  const agents = useQuery(api.agents.list, accountId ? { accountId } : "skip");
+  const agents = useQuery(
+    api.agents.list,
+    enableMentions && accountId ? { accountId } : "skip",
+  );
 
   const createMessage = useMutation(api.messages.create);
   const pauseAgentsOnTask = useMutation(api.tasks.pauseAgentsOnTask);
@@ -153,8 +162,10 @@ export function MessageInput({
       setContent(value);
 
       const textBeforeCursor = value.slice(0, cursorPos);
-      const slashMatch = textBeforeCursor.match(/\/(\w*)$/);
-      const atMatch = textBeforeCursor.match(/@(\w*)$/);
+      const slashMatch = enableSlashCommands
+        ? textBeforeCursor.match(/\/(\w*)$/)
+        : null;
+      const atMatch = enableMentions ? textBeforeCursor.match(/@(\w*)$/) : null;
 
       if (slashMatch) {
         setShowSlashDropdown(true);
@@ -164,22 +175,24 @@ export function MessageInput({
         setMentionQuery("");
         setMentionStartIndex(null);
       } else {
-        setShowSlashDropdown(false);
-        setSlashQuery("");
-        setSlashStartIndex(null);
+        if (enableSlashCommands) {
+          setShowSlashDropdown(false);
+          setSlashQuery("");
+          setSlashStartIndex(null);
+        }
 
         if (atMatch) {
           setShowMentionDropdown(true);
           setMentionQuery(atMatch[1]);
           setMentionStartIndex(cursorPos - atMatch[0].length);
-        } else {
+        } else if (enableMentions) {
           setShowMentionDropdown(false);
           setMentionQuery("");
           setMentionStartIndex(null);
         }
       }
     },
-    [],
+    [enableMentions, enableSlashCommands],
   );
 
   const insertMention = useCallback(
@@ -259,7 +272,7 @@ export function MessageInput({
     const trimmed = content.trim();
     if (!trimmed || isSubmitting) return;
 
-    const slashParsed = parseSlashCommand(trimmed);
+    const slashParsed = enableSlashCommands ? parseSlashCommand(trimmed) : null;
     if (slashParsed?.command === "stop") {
       setIsSubmitting(true);
       try {
@@ -351,7 +364,11 @@ export function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showSlashDropdown && filteredSlashCommands.length > 0) {
+    if (
+      enableSlashCommands &&
+      showSlashDropdown &&
+      filteredSlashCommands.length > 0
+    ) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedSlashIndex((prev) =>
@@ -384,7 +401,7 @@ export function MessageInput({
     }
 
     // Handle mention dropdown navigation
-    if (showMentionDropdown && filteredAgents.length > 0) {
+    if (enableMentions && showMentionDropdown && filteredAgents.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedMentionIndex((prev) =>
@@ -554,7 +571,7 @@ export function MessageInput({
         <form onSubmit={handleSubmit} className="p-4">
           <div className="relative">
             {/* Slash command dropdown - positioned above input */}
-            {showSlashDropdown && (
+            {enableSlashCommands && showSlashDropdown && (
               <div
                 ref={slashDropdownRef}
                 className="absolute bottom-full left-0 right-0 mb-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 max-w-sm"
@@ -650,7 +667,7 @@ export function MessageInput({
             )}
 
             {/* Mention Autocomplete Dropdown - positioned above input */}
-            {showMentionDropdown && (
+            {enableMentions && showMentionDropdown && (
               <div
                 ref={dropdownRef}
                 className="absolute bottom-full left-0 right-0 mb-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 max-w-sm"
@@ -855,7 +872,10 @@ export function MessageInput({
                 rows={1}
                 aria-label="Message input"
                 aria-describedby="message-input-hints"
-                aria-expanded={showMentionDropdown || showSlashDropdown}
+                aria-expanded={
+                  (enableMentions && showMentionDropdown) ||
+                  (enableSlashCommands && showSlashDropdown)
+                }
                 aria-haspopup="listbox"
                 aria-autocomplete="list"
                 className={cn(
@@ -943,18 +963,22 @@ export function MessageInput({
                 </kbd>
                 new line
               </span>
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
-                  @
-                </kbd>
-                mention
-              </span>
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
-                  /
-                </kbd>
-                command
-              </span>
+              {enableMentions ? (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
+                    @
+                  </kbd>
+                  mention
+                </span>
+              ) : null}
+              {enableSlashCommands ? (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted/40 rounded border border-border/30">
+                    /
+                  </kbd>
+                  command
+                </span>
+              ) : null}
             </div>
           </div>
         </form>

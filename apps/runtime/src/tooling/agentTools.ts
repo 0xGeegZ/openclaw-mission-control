@@ -58,8 +58,127 @@ export const TASK_CREATE_TOOL_SCHEMA = {
           type: "number",
           description: "Optional due date (Unix timestamp in ms)",
         },
+        assigneeSlugs: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional agent slugs to assign after creation (e.g., ['jarvis','vision'])",
+        },
       },
       required: ["title"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: assign agents to a task */
+export const TASK_ASSIGN_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_assign",
+    description:
+      "Assign one or more agents to an existing task by slug. Use when delegating work to specific agents.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to assign" },
+        assigneeSlugs: {
+          type: "array",
+          items: { type: "string" },
+          description: "Agent slugs to assign",
+        },
+      },
+      required: ["taskId", "assigneeSlugs"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: post message to another task */
+export const TASK_MESSAGE_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_message",
+    description:
+      "Post a message to another task's thread. Use when you need to update or ask a question in a different task.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to post in" },
+        content: { type: "string", description: "Message content (Markdown)" },
+      },
+      required: ["taskId", "content"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: list tasks */
+export const TASK_LIST_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_list",
+    description:
+      "List tasks with optional filters. Use to get a snapshot of work by status or assignee.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: [
+            "inbox",
+            "assigned",
+            "in_progress",
+            "review",
+            "done",
+            "blocked",
+          ],
+          description: "Optional status filter",
+        },
+        assigneeSlug: {
+          type: "string",
+          description: "Optional agent slug to filter assignments",
+        },
+        limit: {
+          type: "number",
+          description: "Optional result limit (default 50, max 200)",
+        },
+      },
+    },
+  },
+};
+
+/** OpenResponses function tool schema: get a task */
+export const TASK_GET_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_get",
+    description:
+      "Fetch details for a single task by ID. Use when you need full task metadata.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to fetch" },
+      },
+      required: ["taskId"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: get a task thread */
+export const TASK_THREAD_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_thread",
+    description:
+      "Fetch recent thread messages for a task. Use when you need context before replying.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to fetch thread for" },
+        limit: {
+          type: "number",
+          description: "Optional message limit (default 50, max 200)",
+        },
+      },
+      required: ["taskId"],
     },
   },
 };
@@ -102,6 +221,8 @@ export type ToolResult = {
   error?: string;
   taskId?: string;
   documentId?: string;
+  messageId?: string;
+  data?: unknown;
 };
 
 /** Result of getToolCapabilitiesAndSchemas: capability labels for the prompt and schemas for OpenClaw. */
@@ -129,10 +250,12 @@ export function getToolCapabilitiesAndSchemas(options: {
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
   canMarkDone?: boolean;
+  isOrchestrator?: boolean;
 }): ToolCapabilitiesAndSchemas {
   const capabilityLabels: string[] = [];
   const schemas: unknown[] = [];
   const canMarkDone = options.canMarkDone === true;
+  const isOrchestrator = options.isOrchestrator === true;
 
   if (options.hasTaskContext && options.canModifyTaskStatus) {
     capabilityLabels.push("change task status (task_status tool)");
@@ -145,6 +268,20 @@ export function getToolCapabilitiesAndSchemas(options: {
   if (options.canCreateDocuments) {
     capabilityLabels.push("create/update documents (document_upsert tool)");
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
+  }
+  if (isOrchestrator) {
+    capabilityLabels.push("assign agents (task_assign tool)");
+    capabilityLabels.push("post to other tasks (task_message tool)");
+    capabilityLabels.push("list tasks (task_list tool)");
+    capabilityLabels.push("get task details (task_get tool)");
+    capabilityLabels.push("read task threads (task_thread tool)");
+    schemas.push(
+      TASK_ASSIGN_TOOL_SCHEMA,
+      TASK_MESSAGE_TOOL_SCHEMA,
+      TASK_LIST_TOOL_SCHEMA,
+      TASK_GET_TOOL_SCHEMA,
+      TASK_THREAD_TOOL_SCHEMA,
+    );
   }
 
   return {
@@ -167,6 +304,7 @@ export function getToolSchemasForCapabilities(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  isOrchestrator?: boolean;
 }): unknown[] {
   return getToolCapabilitiesAndSchemas(options).schemas;
 }
@@ -190,6 +328,33 @@ function normalizeTaskPriority(value: unknown): number | undefined {
 }
 
 /**
+ * Resolve agent slugs to ids for tool calls.
+ */
+async function resolveAgentSlugs(params: {
+  accountId: Id<"accounts">;
+  serviceToken: string;
+  slugs: string[];
+}): Promise<Map<string, string>> {
+  const client = getConvexClient();
+  const agents = await client.action(api.service.actions.listAgents, {
+    accountId: params.accountId,
+    serviceToken: params.serviceToken,
+  });
+  const map = new Map<string, string>();
+  for (const agent of agents) {
+    if (agent?.slug) {
+      map.set(String(agent.slug).toLowerCase(), String(agent._id));
+    }
+  }
+  return new Map(
+    params.slugs
+      .map((slug) => slug.trim().replace(/^@/, "").toLowerCase())
+      .filter((slug) => slug.length > 0)
+      .map((slug) => [slug, map.get(slug) ?? ""]),
+  );
+}
+
+/**
  * Execute a single tool call by name; returns result for function_call_output.
  *
  * @param params - Tool name, JSON arguments string, agent/account/task context, and service token.
@@ -203,11 +368,14 @@ export async function executeAgentTool(params: {
   serviceToken: string;
   taskId?: Id<"tasks">;
   canMarkDone?: boolean;
+  isOrchestrator?: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
   taskId?: string;
   documentId?: string;
+  messageId?: string;
+  data?: unknown;
 }> {
   const {
     name,
@@ -217,6 +385,7 @@ export async function executeAgentTool(params: {
     serviceToken,
     taskId,
     canMarkDone,
+    isOrchestrator,
   } = params;
   const client = getConvexClient();
 
@@ -258,6 +427,7 @@ export async function executeAgentTool(params: {
       status?: string;
       blockedReason?: string;
       dueDate?: number;
+      assigneeSlugs?: string[];
     };
     try {
       args = JSON.parse(argsStr || "{}") as typeof args;
@@ -268,6 +438,13 @@ export async function executeAgentTool(params: {
       return { success: false, error: "title is required" };
     }
     try {
+      if (args.assigneeSlugs?.length && isOrchestrator !== true) {
+        return {
+          success: false,
+          error:
+            "Forbidden: Only the orchestrator can assign agents during task creation",
+        };
+      }
       const normalizedPriority = normalizeTaskPriority(args.priority);
       if (args.priority != null && normalizedPriority == null) {
         return {
@@ -275,6 +452,26 @@ export async function executeAgentTool(params: {
           error:
             "Invalid priority: use 1-5 or one of critical|high|medium|low|lowest",
         };
+      }
+      let assigneeIds: Id<"agents">[] = [];
+      if (args.assigneeSlugs?.length) {
+        const assigneeMap = await resolveAgentSlugs({
+          accountId,
+          serviceToken,
+          slugs: args.assigneeSlugs,
+        });
+        assigneeIds = Array.from(assigneeMap.values()).filter(
+          Boolean,
+        ) as Id<"agents">[];
+        const missing = Array.from(assigneeMap.entries())
+          .filter((entry) => !entry[1])
+          .map((entry) => entry[0]);
+        if (missing.length > 0) {
+          return {
+            success: false,
+            error: `Unknown assignee slugs: ${missing.join(", ")}`,
+          };
+        }
       }
       const { taskId: newTaskId } = await client.action(
         api.service.actions.createTaskFromAgent,
@@ -298,6 +495,15 @@ export async function executeAgentTool(params: {
           dueDate: args.dueDate,
         },
       );
+      if (assigneeIds.length > 0) {
+        await client.action(api.service.actions.assignTaskFromAgent, {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: newTaskId,
+          assignedAgentIds: assigneeIds,
+        });
+      }
       return { success: true, taskId: newTaskId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -346,6 +552,194 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, documentId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_assign") {
+    let args: { taskId?: string; assigneeSlugs?: string[] };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    if (!args.assigneeSlugs?.length) {
+      return { success: false, error: "assigneeSlugs is required" };
+    }
+    try {
+      const assigneeMap = await resolveAgentSlugs({
+        accountId,
+        serviceToken,
+        slugs: args.assigneeSlugs,
+      });
+      const assigneeIds = Array.from(assigneeMap.values()).filter(Boolean);
+      const missing = Array.from(assigneeMap.entries())
+        .filter((entry) => !entry[1])
+        .map((entry) => entry[0]);
+      if (missing.length > 0) {
+        return {
+          success: false,
+          error: `Unknown assignee slugs: ${missing.join(", ")}`,
+        };
+      }
+      const { taskId: assignedTaskId } = await client.action(
+        api.service.actions.assignTaskFromAgent,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+          assignedAgentIds: assigneeIds as Id<"agents">[],
+        },
+      );
+      return { success: true, taskId: assignedTaskId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_message") {
+    let args: { taskId?: string; content?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim() || !args.content?.trim()) {
+      return { success: false, error: "taskId and content are required" };
+    }
+    if (isOrchestrator !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can post task messages",
+      };
+    }
+    try {
+      const { messageId } = await client.action(
+        api.service.actions.createTaskMessageForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+          content: args.content.trim(),
+        },
+      );
+      return { success: true, messageId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_list") {
+    let args: { status?: string; assigneeSlug?: string; limit?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    try {
+      const rawSlug = args.assigneeSlug?.trim();
+      const assigneeSlug = rawSlug
+        ? rawSlug.replace(/^@/, "").toLowerCase()
+        : undefined;
+      let assigneeAgentId: Id<"agents"> | undefined;
+      if (assigneeSlug) {
+        const assigneeMap = await resolveAgentSlugs({
+          accountId,
+          serviceToken,
+          slugs: [assigneeSlug],
+        });
+        const resolvedId = assigneeMap.get(assigneeSlug) ?? "";
+        if (!resolvedId) {
+          return {
+            success: false,
+            error: `Unknown assignee slug: ${assigneeSlug}`,
+          };
+        }
+        assigneeAgentId = resolvedId as Id<"agents">;
+      }
+      const tasks = await client.action(
+        api.service.actions.listTasksForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          status: args.status as
+            | "inbox"
+            | "assigned"
+            | "in_progress"
+            | "review"
+            | "done"
+            | "blocked"
+            | undefined,
+          assigneeAgentId,
+          limit: args.limit,
+        },
+      );
+      return { success: true, data: { tasks } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_get") {
+    let args: { taskId?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    try {
+      const task = await client.action(
+        api.service.actions.getTaskForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+        },
+      );
+      return { success: true, data: { task } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_thread") {
+    let args: { taskId?: string; limit?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    try {
+      const thread = await client.action(
+        api.service.actions.listTaskThreadForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+          limit: args.limit,
+        },
+      );
+      return { success: true, data: { thread } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

@@ -4,6 +4,7 @@ import { MobileNav } from "@/components/dashboard/MobileNav";
 import { SyncAccountTheme } from "@/components/dashboard/SyncAccountTheme";
 import { AccountProvider } from "@/components/providers/AccountProvider";
 import { SidebarProvider } from "@/components/providers/SidebarProvider";
+import { OrchestratorChat } from "@/components/orchestrator/OrchestratorChat";
 
 interface AccountLayoutProps {
   children: ReactNode;
@@ -14,12 +15,12 @@ interface AccountLayoutProps {
  * Layout for account-scoped pages.
  * Provides account context and navigation.
  */
-export default async function AccountLayout({ 
-  children, 
-  params 
+export default async function AccountLayout({
+  children,
+  params,
 }: AccountLayoutProps) {
   const { accountSlug } = await params;
-  
+
   return (
     <AccountProvider accountSlug={accountSlug}>
       <SyncAccountTheme />
@@ -29,18 +30,17 @@ export default async function AccountLayout({
           <aside className="hidden lg:block shrink-0 z-40">
             <Sidebar accountSlug={accountSlug} />
           </aside>
-          
+
           {/* Main content area */}
           <div className="flex flex-1 flex-col overflow-hidden min-w-0">
             {/* Mobile nav */}
             <MobileNav accountSlug={accountSlug} />
-            
+
             {/* Page content */}
-            <main className="flex-1 overflow-hidden">
-              {children}
-            </main>
+            <main className="flex-1 overflow-hidden">{children}</main>
           </div>
         </div>
+        <OrchestratorChat />
       </SidebarProvider>
     </AccountProvider>
   );

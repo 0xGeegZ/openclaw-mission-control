@@ -78,6 +78,22 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(schemaNames(result.schemas)).toContain("document_upsert");
   });
 
+  it("includes orchestrator-only tools when isOrchestrator is true", () => {
+    const result = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+      isOrchestrator: true,
+    });
+    const names = schemaNames(result.schemas);
+    expect(names).toContain("task_assign");
+    expect(names).toContain("task_message");
+    expect(names).toContain("task_list");
+    expect(names).toContain("task_get");
+    expect(names).toContain("task_thread");
+  });
+
   it("keeps capability labels and schemas in sync", () => {
     const options = {
       canCreateTasks: true,

@@ -4,9 +4,11 @@
 FROM node:22
 
 # Install basic tools + Chromium (required for OpenClaw web/browser skills)
+# jq: JSON parsing for scripts and OpenClaw skills
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    jq \
     rsync \
     chromium \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

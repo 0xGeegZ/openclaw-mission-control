@@ -48,6 +48,16 @@ function collectOpenClawContentText(content: unknown, parts: string[]): void {
 }
 
 /**
+ * Check whether a response body likely contains JSON data.
+ */
+function isLikelyJsonPayload(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const firstChar = trimmed.charAt(0);
+  return firstChar === "{" || firstChar === "[";
+}
+
+/**
  * Parse OpenClaw /v1/responses JSON body into text and function_call items.
  * Handles output_text, output[] (message + function_call), and fallbacks.
  */
@@ -55,6 +65,9 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
   const empty: SendToOpenClawResult = { text: null, toolCalls: [] };
   const trimmed = body?.trim();
   if (!trimmed) return empty;
+  if (!isLikelyJsonPayload(trimmed)) {
+    return { text: trimmed, toolCalls: [] };
+  }
   try {
     const data = JSON.parse(trimmed) as Record<string, unknown>;
     const toolCalls: OpenClawToolCall[] = [];
@@ -107,7 +120,7 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
     }
     return { text, toolCalls };
   } catch {
-    return empty;
+    return { text: trimmed, toolCalls: [] };
   }
 }
 

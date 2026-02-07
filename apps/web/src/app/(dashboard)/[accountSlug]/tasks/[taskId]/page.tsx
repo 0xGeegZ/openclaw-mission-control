@@ -79,13 +79,12 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           value="thread"
           className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
         >
-          <ErrorBoundary variant="section">
-            <TaskThread
-              taskId={task._id}
-              accountSlug={accountSlug}
-              accountId={task.accountId}
-            />
-          </ErrorBoundary>
+          <TaskThread
+            taskId={task._id}
+            accountSlug={accountSlug}
+            accountId={task.accountId}
+            useReadByFallback
+          />
         </TabsContent>
 
         <TabsContent

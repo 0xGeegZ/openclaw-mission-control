@@ -47,6 +47,8 @@ function buildContext(
     assignedAgents: [],
     effectiveBehaviorFlags: {},
     repositoryDoc: null,
+    globalBriefingDoc: null,
+    taskOverview: null,
   };
   return { ...base, ...overrides } as DeliveryContext;
 }
@@ -233,6 +235,64 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).toContain("You are replying as: **Agent** (Unknown role).");
+  });
+
+  it("includes global context and task overview when provided", () => {
+    const ctx = buildContext({
+      globalBriefingDoc: {
+        title: "Account Briefing",
+        content: "Briefing content.",
+      },
+      taskOverview: {
+        totals: [
+          { status: "inbox", count: 1 },
+          { status: "in_progress", count: 2 },
+        ],
+        topTasks: [
+          {
+            status: "inbox",
+            tasks: [
+              {
+                taskId: "task-1",
+                title: "Sample task",
+                status: "inbox",
+                priority: 3,
+                assignedAgentIds: [],
+                assignedUserIds: [],
+              },
+            ],
+          },
+          {
+            status: "done",
+            tasks: [
+              {
+                taskId: "task-2",
+                title: "Completed task",
+                status: "done",
+                priority: 2,
+                assignedAgentIds: [],
+                assignedUserIds: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("Global Context:");
+    expect(message).toContain("Briefing content.");
+    expect(message).toContain("Task overview (compact):");
+    expect(message).toContain("Sample task");
   });
 });
 

@@ -814,6 +814,269 @@ export const createTaskFromAgent = action({
 });
 
 /**
+ * Assign agents to a task on behalf of the orchestrator (service-only).
+ */
+export const assignTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    assignedAgentIds: v.array(v.id("agents")),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ taskId: Id<"tasks"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can assign agents");
+    }
+
+    const taskId = await ctx.runMutation(
+      internal.service.tasks.assignFromAgent,
+      {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        assignedAgentIds: args.assignedAgentIds,
+      },
+    );
+
+    return { taskId };
+  },
+});
+
+/**
+ * List tasks for orchestrator tools (service-only).
+ */
+export const listTasksForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    status: v.optional(taskStatusValidator),
+    assigneeAgentId: v.optional(v.id("agents")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Doc<"tasks">[]> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can list tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.listForTool, {
+      accountId: args.accountId,
+      status: args.status,
+      assigneeAgentId: args.assigneeAgentId,
+      limit: args.limit,
+    });
+  },
+});
+
+/**
+ * Get a task for orchestrator tools (service-only).
+ */
+export const getTaskForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args): Promise<Doc<"tasks"> | null> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can get tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.getForTool, {
+      accountId: args.accountId,
+      taskId: args.taskId,
+    });
+  },
+});
+
+/**
+ * List task thread messages for orchestrator tools (service-only).
+ */
+export const listTaskThreadForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      messageId: Id<"messages">;
+      authorType: "user" | "agent";
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can read threads");
+    }
+
+    return await ctx.runQuery(internal.service.messages.listThreadForTool, {
+      accountId: args.accountId,
+      taskId: args.taskId,
+      limit: args.limit,
+    });
+  },
+});
+
+/**
+ * Post a task message for orchestrator tools (service-only).
+ */
+export const createTaskMessageForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    content: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ messageId: Id<"messages"> }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can post task messages",
+      );
+    }
+
+    const task = await ctx.runQuery(internal.service.agents.getTaskInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    const flags = resolveBehaviorFlags(agent, account);
+    const allowAgentMentions = flags.canMentionAgents;
+
+    const messageId: Id<"messages"> = await ctx.runMutation(
+      internal.service.messages.createFromAgent,
+      {
+        agentId: args.agentId,
+        taskId: args.taskId,
+        content: args.content,
+        allowAgentMentions,
+      },
+    );
+
+    return { messageId };
+  },
+});
+
+/**
  * Create or update a document on behalf of an agent (service-only).
  * Gated by canCreateDocuments behavior flag.
  */
