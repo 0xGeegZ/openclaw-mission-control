@@ -93,6 +93,8 @@ export async function createThreadNotifications(
   options?: {
     isOrchestratorChat?: boolean;
     orchestratorAgentId?: Id<"agents"> | null;
+    /** When true, suppress agent thread_update notifications for this message. */
+    suppressAgentNotifications?: boolean;
   },
 ): Promise<Id<"notifications">[]> {
   const shouldSkipAgentThreadUpdates =
@@ -114,7 +116,11 @@ export async function createThreadNotifications(
         continue;
       }
     }
-    if (shouldSkipAgentThreadUpdates && subscription.subscriberType === "agent")
+    if (
+      (shouldSkipAgentThreadUpdates ||
+        options?.suppressAgentNotifications === true) &&
+      subscription.subscriberType === "agent"
+    )
       continue;
     if (hasAgentMentions && subscription.subscriberType === "agent") continue;
     if (

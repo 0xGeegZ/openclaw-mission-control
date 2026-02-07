@@ -20,6 +20,10 @@ import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
+import {
+  DEFAULT_TASK_SEARCH_LIMIT,
+  MAX_TASK_SEARCH_LIMIT,
+} from "../search";
 
 const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
 
@@ -150,6 +154,7 @@ const TOOL_TASK_STATUSES: TaskStatus[] = [
   "review",
   "done",
   "blocked",
+  "archived",
 ];
 
 /**
@@ -590,6 +595,184 @@ export const updateStatusFromAgent = internalMutation({
         },
       });
     }
+
+    return args.taskId;
+  },
+});
+
+/**
+ * Search tasks for an account on behalf of an agent (service-only).
+ * Returns tasks matching the query with relevance scores.
+ */
+export const searchTasksForAgentTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Verify agent belongs to account (for auth; agentId is not used for filtering)
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent does not belong to this account");
+    }
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account", (index) => index.eq("accountId", args.accountId))
+      .collect();
+
+    const q = args.query.trim().toLowerCase();
+    const limit = Math.min(
+      args.limit ?? DEFAULT_TASK_SEARCH_LIMIT,
+      MAX_TASK_SEARCH_LIMIT,
+    );
+
+    if (!q) {
+      return [];
+    }
+
+    /**
+     * Calculate relevance score for a task based on substring matches.
+     * Uses safe substring matching (no regex), weighted by field:
+     * title (3x) > description (2x) > blocker text (1x)
+     */
+    function scoreTask(task: (typeof tasks)[0]): number {
+      let score = 0;
+      const titleLower = task.title.toLowerCase();
+      const descLower = (task.description ?? "").toLowerCase();
+      const blockerLower = (task.blockedReason ?? "").toLowerCase();
+
+      // Count matches: simple presence test for each field
+      if (titleLower.includes(q)) score += 3;
+      if (descLower.includes(q)) score += 2;
+      if (blockerLower.includes(q)) score += 1;
+
+      return score;
+    }
+
+    // Score and filter all tasks
+    const scored = tasks
+      .map((task) => ({
+        task,
+        score: scoreTask(task),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((item) => ({
+        _id: item.task._id,
+        title: item.task.title,
+        status: item.task.status,
+        priority: item.task.priority,
+        blockedReason: item.task.blockedReason,
+        assignedAgentIds: item.task.assignedAgentIds,
+        assignedUserIds: item.task.assignedUserIds,
+        createdAt: item.task.createdAt,
+        updatedAt: item.task.updatedAt,
+        relevanceScore: item.score,
+      }));
+
+    return scored;
+  },
+});
+
+/**
+ * Update task PR metadata (internal, service-only).
+ * Used by task_link_pr tool to store GitHub PR link.
+ */
+export const updateTaskPrMetadata = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    await ctx.db.patch(args.taskId, {
+      metadata: {
+        ...(task.metadata ?? {}),
+        prNumber: args.prNumber,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Delete/archive a task on behalf of an agent (service-only).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; messages and documents are preserved for audit trail.
+ * Logs activity for accountability.
+ */
+export const deleteTaskFromAgent = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    if (task.accountId !== agent.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Check if agent is orchestrator (admin-only operation)
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as
+        | {
+            orchestratorAgentId?: Id<"agents">;
+          }
+        | undefined
+    )?.orchestratorAgentId;
+
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    const now = Date.now();
+
+    // Soft-delete: transition to "archived" status
+    await ctx.db.patch(args.taskId, {
+      status: "archived" as TaskStatus,
+      archivedAt: now,
+      updatedAt: now,
+    });
+
+    // Log activity for audit trail
+    await logActivity({
+      ctx,
+      accountId: task.accountId,
+      type: "task_status_changed",
+      actorType: "agent",
+      actorId: args.agentId,
+      actorName: agent.name,
+      targetType: "task",
+      targetId: args.taskId,
+      targetName: task.title,
+      meta: {
+        oldStatus: task.status,
+        newStatus: "archived",
+        reason: args.reason,
+        action: "task_deleted",
+      },
+    });
 
     return args.taskId;
   },

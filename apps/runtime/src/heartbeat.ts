@@ -277,8 +277,8 @@ function runHeartbeatCycle(
         assignedTasks,
         orchestratorTasks,
       ]);
-      const filteredTasks = mergedTasks.filter(
-        (task) => task.status !== "review",
+      const filteredTasks = mergedTasks.filter((task) =>
+        HEARTBEAT_STATUS_PRIORITY.includes(task.status),
       );
       const sortedTasks = sortHeartbeatTasks(filteredTasks);
       const focusTask = selectHeartbeatFocusTask(sortedTasks);

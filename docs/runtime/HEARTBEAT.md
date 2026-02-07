@@ -32,6 +32,13 @@ Pick one action that can be completed quickly:
 - update a task status with explanation
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
+ 
+Action scope rules:
+
+- Only do work that is strictly required by the current task
+- Do not add cleanup, refactors, or "nice-to-have" changes
+- If you discover out-of-scope improvements, create a follow-up task instead
+- Use your available skills as much as possible while working.
 
 ## 4) Report + persist memory (always)
 

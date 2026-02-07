@@ -16,6 +16,7 @@ import { v } from "convex/values";
  * Task status validator.
  * Canonical workflow: inbox → assigned → in_progress → review → done
  * Special state: blocked (can be entered from assigned or in_progress)
+ * Archived: terminal state for deleted/removed tasks (soft delete with audit trail)
  */
 const taskStatusValidator = v.union(
   v.literal("inbox"),
@@ -24,6 +25,7 @@ const taskStatusValidator = v.union(
   v.literal("review"),
   v.literal("done"),
   v.literal("blocked"),
+  v.literal("archived"),
 );
 
 /**
@@ -77,6 +79,7 @@ const notificationTypeValidator = v.union(
   v.literal("assignment"),
   v.literal("thread_update"),
   v.literal("status_change"),
+  v.literal("response_request"),
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("role_changed"),
@@ -205,13 +208,15 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
-        /** Task ID for the system orchestrator chat thread. */
+        /** Task ID used for the orchestrator chat thread (PM task). */
         orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
     restartRequestedAt: v.optional(v.number()),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_created", ["createdAt"]),
 
   // ==========================================================================
   // MEMBERSHIPS
@@ -369,7 +374,7 @@ export default defineSchema({
      */
     openclawConfig: v.optional(
       v.object({
-        /** LLM model identifier (e.g., "gpt-5-nano", "claude-haiku-4.5") */
+        /** LLM model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o") */
         model: v.string(),
 
         /** Temperature for response generation (0.0 - 2.0) */
@@ -478,6 +483,22 @@ export default defineSchema({
      */
     blockedReason: v.optional(v.string()),
 
+    /**
+     * Timestamp when task was archived (soft delete).
+     * Set only when status is "archived"; used for audit trail.
+     */
+    archivedAt: v.optional(v.number()),
+
+    /**
+     * Metadata for external integrations.
+     * Currently used for GitHub PR links: { prNumber: 65 }
+     */
+    metadata: v.optional(
+      v.object({
+        prNumber: v.optional(v.number()),
+      }),
+    ),
+
     /** Creator user ID */
     createdBy: v.string(),
 
@@ -529,7 +550,7 @@ export default defineSchema({
         id: v.string(),
         /** Display name at time of mention */
         name: v.string(),
-        /** Agent slug when type is agent; lets UI match @slug in content */
+        /** Agent slug at time of mention (for @slug rendering). */
         slug: v.optional(v.string()),
       }),
     ),
@@ -560,6 +581,12 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_author_created", [
+      "taskId",
+      "authorType",
+      "authorId",
+      "createdAt",
+    ])
     .index("by_account", ["accountId"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
@@ -642,11 +669,10 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
-    .index("by_parent_updated", ["accountId", "parentId", "updatedAt"])
+    .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
-    .index("by_account_created", ["accountId", "createdAt"])
-    .index("by_account_updated", ["accountId", "updatedAt"])
-    .index("by_task", ["taskId"]),
+    .index("by_task", ["taskId"])
+    .index("by_account_updated", ["accountId", "updatedAt"]),
 
   // ==========================================================================
   // ACTIVITIES
@@ -776,9 +802,19 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
+    .index("by_recipient_unread", [
+      "recipientType",
+      "recipientId",
+      "readAt",
+    ])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_recipient_id_created", [
+      "taskId",
+      "recipientId",
+      "createdAt",
+    ])
     .index("by_task_recipient_created", [
       "taskId",
       "recipientType",
@@ -811,7 +847,8 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_subscriber", ["subscriberType", "subscriberId"])
-    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"]),
+    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"])
+    .index("by_account_created", ["accountId", "subscribedAt"]),
 
   // ==========================================================================
   // INVITATIONS

@@ -3,19 +3,20 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "dev": "npm run seed-skills:ensure && convex dev",
+    "dev": "convex dev",
     "setup": "convex dev --until-success",
-    "seed": "npm run seed-skills:ensure && convex run seed:runInternal",
-    "seed:refresh": "npm run seed-skills:sync && npm run seed-skills:ensure && convex run seed:runInternal",
-    "deploy": "npm run seed-skills:ensure && convex deploy",
-    "seed-skills:copy-cursor": "npx tsx scripts/seed-skills-copy-cursor.ts",
-    "seed-skills:download": "npx tsx scripts/seed-skills-download.ts",
-    "seed-skills:ensure": "npx tsx scripts/seed-skills-ensure.ts",
-    "seed-skills:generate": "npx tsx scripts/seed-skills-generate.ts",
+    "seed": "convex run seed:runInternal",
+    "seed:refresh": "npm run seed-skills:sync && npm run seed",
+    "seed-skills:copy-cursor": "tsx scripts/seed-skills-copy-cursor.ts",
+    "seed-skills:download": "tsx scripts/seed-skills-download.ts",
+    "seed-skills:ensure": "tsx scripts/seed-skills-ensure.ts",
+    "seed-skills:generate": "tsx scripts/seed-skills-generate.ts",
     "seed-skills:sync": "npm run seed-skills:download && npm run seed-skills:copy-cursor && npm run seed-skills:generate",
-    "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN) process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
+    "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN === 'true') process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
     "typecheck": "tsc --noEmit -p convex",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "author": "",
   "license": "ISC",
@@ -25,7 +26,9 @@
     "openai": "^6.9.1"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^3.0.0",
     "typescript": "5.9.3",
-    "vitest": "^4.0.18"
+    "tsx": "^4.7.0",
+    "vitest": "^3.0.0"
   }
 }

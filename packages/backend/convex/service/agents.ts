@@ -190,6 +190,54 @@ export const listForRuntime = internalQuery({
 });
 
 /**
+ * List agents with resolved skill slugs (audit-friendly, no contentMarkdown).
+ */
+export const listSkillSlugsForAccount = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+
+    return await Promise.all(
+      agents.map(async (agent) => {
+        const rawSkillIds = agent.openclawConfig?.skillIds ?? [];
+        const skillIds: Id<"skills">[] = rawSkillIds.filter(
+          (id): id is Id<"skills"> =>
+            typeof id === "string" && id.trim() !== "",
+        );
+        const resolvedSkills: Array<{
+          _id: Id<"skills">;
+          name: string;
+          slug: string;
+        }> = [];
+        for (const skillId of skillIds) {
+          const skill = await ctx.db.get(skillId);
+          if (skill && skill.accountId === args.accountId && skill.isEnabled) {
+            resolvedSkills.push({
+              _id: skill._id,
+              name: skill.name,
+              slug: skill.slug,
+            });
+          }
+        }
+
+        return {
+          _id: agent._id,
+          name: agent.name,
+          slug: agent.slug,
+          role: agent.role,
+          resolvedSkills,
+        };
+      }),
+    );
+  },
+});
+
+/**
  * Get a task by ID (internal, no user auth required).
  * Helper to avoid service/tasks path typing issues.
  */

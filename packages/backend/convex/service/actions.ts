@@ -1077,6 +1077,185 @@ export const createTaskMessageForAgentTool = action({
 });
 
 /**
+ * Search tasks for orchestrator tools (service-only).
+ * Returns matching tasks with relevance scores.
+ */
+export const searchTasksForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      _id: Id<"tasks">;
+      title: string;
+      status: string;
+      priority: number;
+      blockedReason?: string;
+      assignedAgentIds: Id<"agents">[];
+      assignedUserIds: string[];
+      createdAt: number;
+      updatedAt: number;
+      relevanceScore: number;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can search tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.searchTasksForAgentTool, {
+      accountId: args.accountId,
+      agentId: args.agentId,
+      query: args.query,
+      limit: args.limit,
+    });
+  },
+});
+
+/**
+ * Create response_request notifications from an agent (service-only).
+ * Used by runtime response_request tool to explicitly ask other agents for replies.
+ */
+export const createResponseRequestNotifications = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    requesterAgentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    recipientSlugs: v.array(v.string()),
+    message: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ notificationIds: Array<Id<"notifications">> }> => {
+    const maxRecipients = 10;
+    const maxMessageChars = 1000;
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const requester = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.requesterAgentId,
+    });
+    if (!requester) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (requester.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const task = await ctx.runQuery(internal.service.agents.getTaskInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(requester, account);
+    if (!flags.canMentionAgents) {
+      throw new Error("Forbidden: Agent may not request responses");
+    }
+
+    if (args.recipientSlugs.length > maxRecipients) {
+      throw new Error(
+        `Too many recipients: max ${maxRecipients} allowed per request`,
+      );
+    }
+    if (!args.message.trim()) {
+      throw new Error("Message is required");
+    }
+    if (args.message.trim().length > maxMessageChars) {
+      throw new Error(
+        `Message too long: max ${maxMessageChars} characters allowed`,
+      );
+    }
+
+    const slugMap = new Map(
+      args.recipientSlugs.map((slug) => [slug.trim().toLowerCase(), slug]),
+    );
+    const uniqueSlugs = Array.from(slugMap.keys()).filter((slug) => slug);
+    if (uniqueSlugs.length === 0) {
+      throw new Error("Invalid recipient slugs: none provided");
+    }
+
+    const agents = await ctx.runQuery(internal.service.agents.listInternal, {
+      accountId: args.accountId,
+    });
+    const agentsBySlug = new Map(
+      agents
+        .filter((agent) => (agent.slug ?? "").trim())
+        .map((agent) => [agent.slug.trim().toLowerCase(), agent]),
+    );
+    const missingSlugs: string[] = [];
+    const recipientAgentIds: Array<Id<"agents">> = [];
+    for (const slug of uniqueSlugs) {
+      const agent = agentsBySlug.get(slug);
+      if (!agent) {
+        missingSlugs.push(slugMap.get(slug) ?? slug);
+        continue;
+      }
+      if (agent._id === requester._id) continue;
+      recipientAgentIds.push(agent._id);
+    }
+
+    if (missingSlugs.length > 0) {
+      throw new Error(`Unknown recipient slugs: ${missingSlugs.join(", ")}`);
+    }
+    if (recipientAgentIds.length === 0) {
+      throw new Error("No valid recipients after filtering");
+    }
+
+    const notificationIds = await ctx.runMutation(
+      internal.service.notifications.createResponseRequestNotificationsInternal,
+      {
+        accountId: args.accountId,
+        requesterAgentId: args.requesterAgentId,
+        taskId: args.taskId,
+        recipientAgentIds,
+        message: args.message,
+      },
+    );
+
+    return { notificationIds };
+  },
+});
+
+/**
  * Create or update a document on behalf of an agent (service-only).
  * Gated by canCreateDocuments behavior flag.
  */
@@ -1349,5 +1528,340 @@ export const recordUpgradeResult = action({
       initiatedBy,
     });
     return { success: true };
+  },
+});
+
+/**
+ * Load full task details with thread summary for agents (service-only).
+ * Returns task metadata plus recent thread messages in one call.
+ */
+export const loadTaskDetailsForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    messageLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    task: Doc<"tasks">;
+    thread: Array<{
+      messageId: Id<"messages">;
+      authorType: "user" | "agent";
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>;
+  }> => {
+    // Validate service token
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify agent belongs to this account
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify task belongs to this account
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Fetch thread messages with validated limit (1-200, default 10)
+    const messageLimit =
+      args.messageLimit != null
+        ? Math.min(Math.max(1, args.messageLimit), 200)
+        : 10;
+    const thread = await ctx.runQuery(
+      internal.service.messages.listThreadForTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: messageLimit,
+      },
+    );
+
+    return { task, thread };
+  },
+});
+
+/**
+ * Delete/archive a task on behalf of an agent (service action).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; enforces that agent is the account orchestrator.
+ * Messages and documents are preserved for audit trail.
+ * Called by the task_delete runtime tool.
+ */
+export const deleteTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify orchestrator status
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    // Perform soft-delete via internal mutation
+    await ctx.runMutation(internal.service.tasks.deleteTaskFromAgent, {
+      taskId: args.taskId,
+      agentId: args.agentId,
+      reason: args.reason,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Link a task to a GitHub PR bidirectionally.
+ * Updates task metadata with prNumber and attempts to add task reference to PR description.
+ * Orchestrator-only access.
+ */
+export const linkTaskToPrForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    serviceToken: v.string(),
+    taskId: v.id("tasks"),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can link tasks to PRs");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Update task metadata with PR number
+    await ctx.runMutation(internal.service.tasks.updateTaskPrMetadata, {
+      taskId: args.taskId,
+      prNumber: args.prNumber,
+    });
+
+    // Attempt to update PR description with task reference via GitHub API
+    // Note: This requires GITHUB_TOKEN and GITHUB_REPO in environment; graceful degradation if missing
+    const ghToken = process.env.GITHUB_TOKEN;
+    const repo = process.env.GITHUB_REPO;
+    if (!ghToken) {
+      console.warn("GitHub API call skipped: GITHUB_TOKEN not set");
+      return { success: true };
+    }
+    if (!repo) {
+      console.warn("GitHub API call skipped: GITHUB_REPO not set");
+      return { success: true };
+    }
+    const [owner, repoName] = repo.split("/");
+    if (!owner || !repoName) {
+      console.warn(
+        "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+      );
+      return { success: true };
+    }
+    if (ghToken) {
+      try {
+        const taskMarker = `<!-- task: ${task._id} -->`;
+
+        // Fetch current PR details
+        const prResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}/pulls/${args.prNumber}`,
+          {
+            headers: {
+              Authorization: `Bearer ${ghToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          },
+        );
+
+        if (!prResponse.ok) {
+          console.warn(
+            `Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`,
+          );
+          return { success: true };
+        }
+
+        const pr = (await prResponse.json()) as { body?: string };
+        let currentBody = pr.body || "";
+
+        // Remove old task marker if present
+        currentBody = currentBody.replace(/\n*<!-- task: [\w]+ -->/g, "");
+
+        // Append new task marker
+        const newBody = currentBody.trim() + "\n\n" + taskMarker;
+
+        // Update PR description
+        const updateResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}/pulls/${args.prNumber}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${ghToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+            body: JSON.stringify({ body: newBody }),
+          },
+        );
+
+        if (!updateResponse.ok) {
+          console.warn(
+            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`,
+          );
+        }
+      } catch (err) {
+        // Log warning but don't fail the mutation; task side is already updated
+        console.warn("Error updating PR description:", err);
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Get agent skills for query tool.
+ * All agents can query any agent's skills or all agents (not orchestrator-only).
+ */
+export const getAgentSkillsForTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    serviceToken: v.string(),
+    queryAgentId: v.optional(v.id("agents")), // Which agent to query; undefined = all agents
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      agentId: string;
+      skillIds: string[];
+      skillCount: number;
+      lastUpdated: string;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify requesting agent exists and belongs to account
+    const requestingAgent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!requestingAgent) {
+      throw new Error("Not found: Requesting agent does not exist");
+    }
+    if (requestingAgent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const toIso = (ts: number) => new Date(ts).toISOString();
+
+    // If queryAgentId specified, return that agent's skills (any agent may query any other)
+    if (args.queryAgentId) {
+      const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
+        agentId: args.queryAgentId,
+      });
+      if (!targetAgent) {
+        throw new Error("Not found: Target agent does not exist");
+      }
+      if (targetAgent.accountId !== args.accountId) {
+        throw new Error("Forbidden: Target agent belongs to different account");
+      }
+
+      return [
+        {
+          agentId: targetAgent.slug || String(targetAgent._id),
+          skillIds: targetAgent.openclawConfig?.skillIds || [],
+          skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+          lastUpdated: toIso(
+            targetAgent.lastHeartbeat || targetAgent._creationTime,
+          ),
+        },
+      ];
+    }
+
+    // No queryAgentId: return all agents' skills
+    const allAgents = await ctx.runQuery(internal.service.agents.listInternal, {
+      accountId: args.accountId,
+    });
+
+    return allAgents.map((agent) => ({
+      agentId: agent.slug || String(agent._id),
+      skillIds: agent.openclawConfig?.skillIds || [],
+      skillCount: agent.openclawConfig?.skillIds?.length || 0,
+      lastUpdated: toIso(agent.lastHeartbeat || agent._creationTime),
+    }));
   },
 });

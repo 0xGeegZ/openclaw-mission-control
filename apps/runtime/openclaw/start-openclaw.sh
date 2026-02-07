@@ -336,6 +336,10 @@ try {
         console.log('Merged agents from', openclawConfigPath);
       }
       // load (extraDirs) is written by runtime but not accepted by current clawdbot schema; skip to avoid config invalid.
+      if (generated.skills && Array.isArray(generated.skills.allowBundled)) {
+        config.skills.allowBundled = generated.skills.allowBundled;
+        console.log('Merged skills.allowBundled from', openclawConfigPath);
+      }
       if (generated.skills && generated.skills.entries && typeof generated.skills.entries === 'object') {
         config.skills.entries = Object.assign(config.skills.entries || {}, generated.skills.entries);
         console.log('Merged skills.entries from', openclawConfigPath);

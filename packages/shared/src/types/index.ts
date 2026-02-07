@@ -1,7 +1,8 @@
 /**
  * Task status values for Kanban workflow.
  * Canonical states: inbox → assigned → in_progress → review → done
- * Special state: blocked (can be entered from assigned or in_progress)
+ * Special states: blocked (can be entered from assigned or in_progress),
+ * archived (terminal state for soft-deleted tasks)
  */
 export type TaskStatus =
   | "inbox"
@@ -9,7 +10,8 @@ export type TaskStatus =
   | "in_progress"
   | "review"
   | "done"
-  | "blocked";
+  | "blocked"
+  | "archived";
 
 /**
  * Agent status indicating current operational state.
@@ -55,6 +57,7 @@ export type NotificationType =
   | "assignment"
   | "thread_update"
   | "status_change"
+  | "response_request"
   | "member_added"
   | "member_removed"
   | "role_changed";
