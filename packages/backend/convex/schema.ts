@@ -481,6 +481,16 @@ export default defineSchema({
      */
     blockedReason: v.optional(v.string()),
 
+    /**
+     * Metadata for external integrations.
+     * Currently used for GitHub PR links: { prNumber: 65 }
+     */
+    metadata: v.optional(
+      v.object({
+        prNumber: v.optional(v.number()),
+      }),
+    ),
+
     /** Creator user ID */
     createdBy: v.string(),
 

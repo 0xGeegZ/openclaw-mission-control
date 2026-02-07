@@ -1467,3 +1467,115 @@ export const recordUpgradeResult = action({
     return { success: true };
   },
 });
+
+/**
+ * Link a task to a GitHub PR bidirectionally.
+ * Updates task metadata with prNumber and attempts to add task reference to PR description.
+ * Orchestrator-only access.
+ */
+export const linkTaskToPrForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    serviceToken: v.string(),
+    taskId: v.id("tasks"),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Only orchestrator agents can link tasks to PRs
+    if (agent.slug !== "orchestrator") {
+      throw new Error("Forbidden: Only orchestrator can link tasks to PRs");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Update task metadata with PR number
+    await ctx.runMutation(internal.service.tasks.updateTaskPrMetadata, {
+      taskId: args.taskId,
+      prNumber: args.prNumber,
+    });
+
+    // Attempt to update PR description with task reference via GitHub API
+    // Note: This requires GITHUB_TOKEN in environment; graceful degradation if missing
+    const ghToken = process.env.GITHUB_TOKEN;
+    if (ghToken) {
+      try {
+        const taskMarker = `<!-- task: ${task._id} -->`;
+        const repo = process.env.GITHUB_REPO || "0xGeegZ/openclaw-mission-control";
+        const [owner, repoName] = repo.split("/");
+
+        // Fetch current PR details
+        const prResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}/pulls/${args.prNumber}`,
+          {
+            headers: {
+              Authorization: `Bearer ${ghToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          }
+        );
+
+        if (!prResponse.ok) {
+          console.warn(`Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`);
+          return { success: true };
+        }
+
+        const pr = (await prResponse.json()) as { body?: string };
+        let currentBody = pr.body || "";
+
+        // Remove old task marker if present
+        currentBody = currentBody.replace(/\n*<!-- task: [\w]+ -->/g, "");
+
+        // Append new task marker
+        const newBody = currentBody.trim() + "\n\n" + taskMarker;
+
+        // Update PR description
+        const updateResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}/pulls/${args.prNumber}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${ghToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+            body: JSON.stringify({ body: newBody }),
+          }
+        );
+
+        if (!updateResponse.ok) {
+          console.warn(
+            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`
+          );
+        }
+      } catch (err) {
+        // Log warning but don't fail the mutation; task side is already updated
+        console.warn("Error updating PR description:", err);
+      }
+    }
+
+    return { success: true };
+  },
+});

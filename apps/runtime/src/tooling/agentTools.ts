@@ -183,6 +183,27 @@ export const TASK_THREAD_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: link a task to a GitHub PR bidirectionally */
+export const TASK_LINK_PR_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_link_pr",
+    description:
+      "Link a task to a GitHub PR bidirectionally. Updates task with PR metadata and adds task reference to PR description.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to link" },
+        prNumber: {
+          type: "number",
+          description: "GitHub PR number (e.g., 65 for PR #65)",
+        },
+      },
+      required: ["taskId", "prNumber"],
+    },
+  },
+};
+
 /** OpenResponses function tool schema: request a response from other agents */
 export const RESPONSE_REQUEST_TOOL_SCHEMA = {
   type: "function" as const,
@@ -306,12 +327,14 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("list tasks (task_list tool)");
     capabilityLabels.push("get task details (task_get tool)");
     capabilityLabels.push("read task threads (task_thread tool)");
+    capabilityLabels.push("link tasks to PRs (task_link_pr tool)");
     schemas.push(
       TASK_ASSIGN_TOOL_SCHEMA,
       TASK_MESSAGE_TOOL_SCHEMA,
       TASK_LIST_TOOL_SCHEMA,
       TASK_GET_TOOL_SCHEMA,
       TASK_THREAD_TOOL_SCHEMA,
+      TASK_LINK_PR_TOOL_SCHEMA,
     );
   }
 
@@ -817,6 +840,40 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: { thread } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_link_pr") {
+    let args: { taskId?: string; prNumber?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    if (args.prNumber == null || !Number.isFinite(args.prNumber)) {
+      return { success: false, error: "prNumber is required and must be numeric" };
+    }
+    if (!isOrchestrator) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can link tasks to PRs",
+      };
+    }
+    try {
+      await client.action(api.service.actions.linkTaskToPrForAgentTool, {
+        accountId,
+        serviceToken,
+        agentId,
+        taskId: args.taskId as Id<"tasks">,
+        prNumber: args.prNumber,
+      });
+      return { success: true, data: { taskId: args.taskId, prNumber: args.prNumber } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };
