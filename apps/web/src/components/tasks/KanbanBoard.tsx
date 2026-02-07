@@ -24,7 +24,13 @@ import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-const VALID_STATUSES: readonly TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+/** All known task statuses for validation and DnD resolution. */
+const VALID_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER;
+
+/** Statuses shown on the main Kanban board (archive is hidden by default). */
+const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
+  (status) => status !== "archived",
+);
 
 function isValidStatus(value: string): value is TaskStatus {
   return (VALID_STATUSES as readonly string[]).includes(value);
@@ -111,14 +117,13 @@ export function KanbanBoard({
   const filteredTasksData = useMemo(() => {
     if (!tasksData?.tasks || !filterByAgentId) return tasksData?.tasks;
 
-    const filtered: Record<TaskStatus, Doc<"tasks">[]> = {
-      inbox: [],
-      assigned: [],
-      in_progress: [],
-      review: [],
-      done: [],
-      blocked: [],
-    };
+    const filtered = TASK_STATUS_ORDER.reduce(
+      (acc, status) => {
+        acc[status] = [];
+        return acc;
+      },
+      {} as Record<TaskStatus, Doc<"tasks">[]>,
+    );
 
     for (const [status, tasks] of Object.entries(tasksData.tasks)) {
       filtered[status as TaskStatus] = tasks.filter((task) =>
@@ -249,9 +254,7 @@ export function KanbanBoard({
   const displayTasks = filteredTasksData ?? tasksData.tasks;
 
   // Determine which statuses to show based on filter
-  const statusesToShow = statusFilter
-    ? [statusFilter]
-    : [...TASK_STATUS_ORDER, "blocked" as TaskStatus];
+  const statusesToShow = statusFilter ? [statusFilter] : BOARD_STATUSES;
 
   return (
     <>
