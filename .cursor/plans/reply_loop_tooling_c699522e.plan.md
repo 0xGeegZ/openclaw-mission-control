@@ -90,6 +90,19 @@ sequenceDiagram
     - Extend tests to assert the new tool is listed only when permitted.
   - [apps/runtime/src/health.ts](apps/runtime/src/health.ts)
     - Add `/agent/response-request` endpoint mirroring other tool fallbacks.
+- Removable code (safe deletion list)
+  - [apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)
+    - Auto-mention injection at message write-back (the `applyAutoMentionFallback(...)` call and the added-tokens debug block).
+    - `applyAutoMentionFallback(...)` and its dependencies:
+      - `MENTION_PATTERN`
+      - `stripQuotedContent(...)`
+      - `extractMentionTokens(...)`
+      - `hasAgentMention(...)`
+      - `hasPrimaryUserMention(...)`
+      - `shouldAutoMentionUser(...)`
+      - `buildUserMentionPrefix(...)`
+      - `buildAutoMentionPrefix(...)`
+    - Prompt capability label that advertises “mention other agents” (to enforce tool-only follow-ups).
 - Backend (Convex)
   - [packages/backend/convex/schema.ts](packages/backend/convex/schema.ts)
     - Add `response_request` to `notificationTypeValidator`.
