@@ -1,3 +1,4 @@
+# E2E only (unit tests run in CI). On push to master/dev, vars/secrets required; on PR, placeholders allowed.
 name: E2E Tests
 
 on:
@@ -11,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e-tests:
-    name: Playwright E2E Tests
+  e2e:
+    name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -39,9 +40,10 @@ jobs:
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: http://localhost:3000
-          # Use Variables or Secrets (Settings → Actions); fallback so app starts when unset (e.g. fork PRs)
-          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL || secrets.NEXT_PUBLIC_CONVEX_URL || 'https://e2e-placeholder.convex.cloud' }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_e2e_placeholder' }}
+          # Repository secrets (or Variables). On PR, placeholders allowed when unset.
+          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL || vars.NEXT_PUBLIC_CONVEX_URL || (github.event_name == 'pull_request' && 'https://e2e-placeholder.convex.cloud') || '' }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || (github.event_name == 'pull_request' && 'pk_test_e2e_placeholder') || '' }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || vars.CLERK_SECRET_KEY || (github.event_name == 'pull_request' && 'sk_test_e2e_placeholder') || '' }}
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
