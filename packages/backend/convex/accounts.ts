@@ -76,6 +76,23 @@ export const get = query({
 });
 
 /**
+ * Get account by ID and throw if not found.
+ * Requires membership.
+ */
+export const getByIdOrThrow = query({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const { account } = await requireAccountMember(ctx, args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+    return account;
+  },
+});
+
+/**
  * Get account by ID (internal query).
  * No auth required - for use in service actions.
  */
@@ -182,6 +199,8 @@ const accountSettingsValidator = v.object({
   agentDefaults: v.optional(agentDefaultsValidator),
   /** Pass null to clear the orchestrator. */
   orchestratorAgentId: v.optional(v.union(v.id("agents"), v.null())),
+  /** Task ID for orchestrator chat thread. Pass null to clear. */
+  orchestratorChatTaskId: v.optional(v.union(v.id("tasks"), v.null())),
 });
 
 /**
@@ -230,6 +249,17 @@ export const update = mutation({
           );
         }
       }
+      if (
+        "orchestratorChatTaskId" in args.settings &&
+        args.settings.orchestratorChatTaskId != null
+      ) {
+        const task = await ctx.db.get(args.settings.orchestratorChatTaskId);
+        if (!task || task.accountId !== args.accountId) {
+          throw new Error(
+            "Orchestrator chat task not found or does not belong to this account",
+          );
+        }
+      }
       const validModelValues: string[] = AVAILABLE_MODELS.map((m) => m.value);
       if (args.settings.agentDefaults?.model != null) {
         const model = String(args.settings.agentDefaults.model).trim();
@@ -252,6 +282,7 @@ export const update = mutation({
               };
               agentDefaults?: Record<string, unknown>;
               orchestratorAgentId?: string;
+              orchestratorChatTaskId?: string;
             };
           }
         ).settings ?? {};
@@ -274,6 +305,12 @@ export const update = mutation({
             args.settings.orchestratorAgentId === null
               ? undefined
               : args.settings.orchestratorAgentId,
+        }),
+        ...("orchestratorChatTaskId" in args.settings && {
+          orchestratorChatTaskId:
+            args.settings.orchestratorChatTaskId === null
+              ? undefined
+              : args.settings.orchestratorChatTaskId,
         }),
       };
     }
