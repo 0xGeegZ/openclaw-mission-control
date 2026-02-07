@@ -29,17 +29,17 @@ OpenClaw Mission Control is an open-source **multi-agent coordination SaaS** bui
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Runtime** | Node.js 24 (via nvm) |
-| **Package Manager** | npm |
-| **Frontend** | Next.js 16, React 19, TypeScript |
-| **UI Components** | shadcn/ui, Tailwind CSS v4, Radix UI |
-| **Backend** | Convex (real-time database + server functions) |
-| **Authentication** | Clerk |
-| **Agent Runtime** | OpenClaw (Clawdbot) |
-| **Infrastructure** | DigitalOcean Droplets (per-account runtime) |
-| **Monorepo** | Turborepo |
+| Layer               | Technology                                     |
+| ------------------- | ---------------------------------------------- |
+| **Runtime**         | Node.js 24 (via nvm)                           |
+| **Package Manager** | npm                                            |
+| **Frontend**        | Next.js 16, React 19, TypeScript               |
+| **UI Components**   | shadcn/ui, Tailwind CSS v4, Radix UI           |
+| **Backend**         | Convex (real-time database + server functions) |
+| **Authentication**  | Clerk                                          |
+| **Agent Runtime**   | OpenClaw (Clawdbot)                            |
+| **Infrastructure**  | DigitalOcean Droplets (per-account runtime)    |
+| **Monorepo**        | Turborepo                                      |
 
 ---
 
@@ -75,7 +75,7 @@ cp apps/web/.env.example apps/web/.env.local
 
 # 5. Start Convex backend (in a separate terminal)
 cd packages/backend
-npx convex dev
+npm run dev
 
 # 6. Start the web app
 npm run dev
@@ -155,10 +155,10 @@ npm run format
 ```bash
 # Start Convex dev server (watches for changes)
 cd packages/backend
-npx convex dev
+npm run dev
 
 # Deploy to production
-npx convex deploy
+npm run deploy
 
 # Generate types after schema changes
 npx convex dev --once
