@@ -527,8 +527,6 @@ export default defineSchema({
         id: v.string(),
         /** Display name at time of mention */
         name: v.string(),
-        /** Agent slug when type is agent; lets UI match @slug in content */
-        slug: v.optional(v.string()),
       }),
     ),
 
