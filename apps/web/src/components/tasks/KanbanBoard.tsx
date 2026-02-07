@@ -22,6 +22,7 @@ import { TaskDetailSheet } from "./TaskDetailSheet";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const VALID_STATUSES: readonly TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
 
@@ -58,16 +59,38 @@ export function KanbanBoard({
   filterByAgentId,
   statusFilter,
 }: KanbanBoardProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { accountId, isLoading: isAccountLoading } = useAccount();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
   const [pendingBlockedTask, setPendingBlockedTask] =
     useState<Doc<"tasks"> | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(
-    null,
+
+  const selectedTaskId = useMemo(() => {
+    const taskId = searchParams.get("taskId");
+    return taskId ? (taskId as Id<"tasks">) : null;
+  }, [searchParams]);
+
+  /**
+   * Updates the taskId query param to control the task detail sheet.
+   */
+  const updateTaskIdParam = useCallback(
+    (taskId: Id<"tasks"> | null) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (taskId) {
+        nextParams.set("taskId", String(taskId));
+      } else {
+        nextParams.delete("taskId");
+      }
+      const queryString = nextParams.toString();
+      const nextUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      router.replace(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams],
   );
-  const [showTaskSheet, setShowTaskSheet] = useState(false);
 
   const tasksData = useQuery(
     api.tasks.listByStatus,
@@ -106,10 +129,22 @@ export function KanbanBoard({
     return filtered;
   }, [tasksData, filterByAgentId]);
 
-  const handleTaskClick = useCallback((taskId: Id<"tasks">) => {
-    setSelectedTaskId(taskId);
-    setShowTaskSheet(true);
-  }, []);
+  const handleTaskClick = useCallback(
+    (taskId: Id<"tasks">) => {
+      updateTaskIdParam(taskId);
+    },
+    [updateTaskIdParam],
+  );
+
+  /**
+   * Sync sheet close actions back into the URL.
+   */
+  const handleTaskSheetOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) updateTaskIdParam(null);
+    },
+    [updateTaskIdParam],
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -274,8 +309,8 @@ export function KanbanBoard({
       <TaskDetailSheet
         taskId={selectedTaskId}
         accountSlug={accountSlug}
-        open={showTaskSheet}
-        onOpenChange={setShowTaskSheet}
+        open={selectedTaskId !== null}
+        onOpenChange={handleTaskSheetOpenChange}
       />
     </>
   );

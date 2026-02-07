@@ -63,7 +63,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
 
       <Tabs defaultValue="thread" className="flex-1 flex flex-col min-h-0">
         <div className="shrink-0 border-b bg-card px-4">
-          <TabsList variant="line" className="h-10">
+          <TabsList variant="line" className="h-9">
             <TabsTrigger value="thread" className="px-4 gap-2">
               <MessageSquare className="h-4 w-4" />
               Thread

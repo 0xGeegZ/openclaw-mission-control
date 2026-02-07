@@ -38,6 +38,7 @@ import { TaskEditDialog } from "./TaskEditDialog";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { TaskSubscription } from "./TaskSubscription";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { getTaskDetailSheetHref } from "@/lib/utils";
 
 interface TaskHeaderProps {
   task: Doc<"tasks">;
@@ -106,10 +107,10 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
 
   return (
     <div className="border-b bg-card">
-      <div className="px-6 py-4 space-y-4">
+      <div className="px-6 py-3 space-y-3">
         <div className="flex items-center gap-2 text-sm">
           <Button variant="ghost" size="sm" className="h-8 px-2" asChild>
-            <Link href={`/${accountSlug}/tasks`}>
+            <Link href={getTaskDetailSheetHref(accountSlug, task._id)}>
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back to Tasks
             </Link>
@@ -205,7 +206,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         </div>
 
         {task.description && (
-          <div className="max-h-60 overflow-y-auto pr-3 text-sm leading-relaxed text-muted-foreground">
+          <div className="max-h-32 overflow-y-auto pr-3 text-sm leading-relaxed text-muted-foreground">
             <MarkdownRenderer content={task.description} compact />
           </div>
         )}
@@ -228,7 +229,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         )}
 
         {/* Metadata row: priority, due date, assignees, labels */}
-        <div className="flex flex-wrap items-center gap-4 pt-2">
+        <div className="flex flex-wrap items-center gap-3 pt-1">
           {/* Priority */}
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${priorityInfo.color}`} />

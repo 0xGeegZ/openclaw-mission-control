@@ -147,7 +147,7 @@ export function TaskDetailSheet({
           </div>
         ) : (
           <>
-            <SheetHeader className="p-5 pb-4 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
+            <SheetHeader className="p-4 pb-3 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
               <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-2">
                 <div
                   className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
@@ -162,7 +162,7 @@ export function TaskDetailSheet({
               </SheetTitle>
             </SheetHeader>
 
-            <div className="p-5 space-y-4 shrink-0 border-b border-border/50">
+            <div className="p-4 space-y-3 shrink-0 border-b border-border/50">
               {/* Status and priority */}
               <div
                 className="flex items-center gap-2 flex-wrap"
@@ -186,7 +186,7 @@ export function TaskDetailSheet({
 
               {/* Description */}
               {task.description && (
-                <div className="max-h-60 overflow-y-auto pr-3 text-sm leading-relaxed">
+                <div className="max-h-32 overflow-y-auto pr-3 text-sm leading-relaxed">
                   <MarkdownRenderer content={task.description} compact />
                 </div>
               )}
@@ -208,11 +208,11 @@ export function TaskDetailSheet({
                 </div>
               )}
 
-              {/* Metadata grid */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              {/* Metadata grid - 4 cards in one row */}
+              <div className="grid grid-cols-4 gap-3 text-sm">
                 {/* Assignees */}
                 <div
-                  className="space-y-2 p-3 rounded-xl bg-muted/30"
+                  className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0"
                   role="group"
                   aria-label="Task assignees"
                 >
@@ -225,7 +225,7 @@ export function TaskDetailSheet({
                 </div>
 
                 {/* Due date */}
-                <div className="space-y-2 p-3 rounded-xl bg-muted/30">
+                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
                   <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
                     Due Date
                   </span>
@@ -244,7 +244,7 @@ export function TaskDetailSheet({
                 </div>
 
                 {/* Created */}
-                <div className="space-y-2 p-3 rounded-xl bg-muted/30">
+                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
                   <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
                     Created
                   </span>
@@ -257,7 +257,7 @@ export function TaskDetailSheet({
                 </div>
 
                 {/* Updated */}
-                <div className="space-y-2 p-3 rounded-xl bg-muted/30">
+                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
                   <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
                     Updated
                   </span>
@@ -272,7 +272,7 @@ export function TaskDetailSheet({
 
               {/* Labels */}
               {task.labels.length > 0 && (
-                <div className="space-y-2 p-3 rounded-xl bg-muted/30">
+                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30">
                   <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium flex items-center gap-1.5">
                     <Tag className="h-3 w-3" />
                     Labels
@@ -298,7 +298,7 @@ export function TaskDetailSheet({
               className="flex-1 flex flex-col min-h-0"
             >
               <div className="shrink-0 border-b px-4">
-                <TabsList variant="line" className="h-10">
+                <TabsList variant="line" className="h-9">
                   <TabsTrigger value="thread" className="px-4 gap-2 text-sm">
                     <MessageSquare className="h-3.5 w-3.5" />
                     Thread
