@@ -362,7 +362,7 @@ export const createFromAgent = internalMutation({
     // Create thread update notifications
     const mentionedIds = new Set(mentionsForNotifications.map((m) => m.id));
     const hasAgentMentions =
-      suppressAgentNotifications ||
+      allowAgentMentionsForNotifications &&
       mentions.some((mention) => mention.type === "agent");
     await createThreadNotifications(
       ctx,
@@ -376,7 +376,11 @@ export const createFromAgent = internalMutation({
       mentionedIds,
       hasAgentMentions,
       task.status,
-      { isOrchestratorChat, orchestratorAgentId },
+      {
+        isOrchestratorChat,
+        orchestratorAgentId,
+        suppressAgentNotifications,
+      },
     );
 
     return messageId;

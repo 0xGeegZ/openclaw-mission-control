@@ -49,9 +49,12 @@ export default function DocumentDetailPage({
     const resolvedKind = document.kind ?? "file";
     const title = document.title ?? document.name ?? "";
     const content = resolvedKind === "file" ? (document.content ?? "") : "";
-    setEditTitle(title);
-    setEditContent(content);
-    setIsEditMode(resolvedKind === "file" && !content.trim());
+    const nextEditMode = resolvedKind === "file" && !content.trim();
+    queueMicrotask(() => {
+      setEditTitle(title);
+      setEditContent(content);
+      setIsEditMode(nextEditMode);
+    });
   }, [document]);
 
   /**

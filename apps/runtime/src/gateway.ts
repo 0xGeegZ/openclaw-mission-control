@@ -634,6 +634,8 @@ export async function receiveFromOpenClaw(
   const client = getConvexClient();
 
   if (taskId) {
+    /** Prevent agent reply loops when OpenClaw returns a placeholder. */
+    const suppressAgentNotifications = placeholder.isPlaceholder;
     // Note: Types will be available after running `npx convex dev`
     await client.action(api.service.actions.createMessageFromAgent, {
       agentId: session.agentId,
@@ -641,6 +643,7 @@ export async function receiveFromOpenClaw(
       content: messageContent,
       serviceToken: config.serviceToken,
       accountId: config.accountId,
+      suppressAgentNotifications,
     });
   }
 }

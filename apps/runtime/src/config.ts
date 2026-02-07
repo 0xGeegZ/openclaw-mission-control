@@ -272,8 +272,10 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     normalizeEnvValue(process.env.OPENCLAW_HEARTBEAT_MD_PATH)?.trim() ||
     defaultHeartbeatMdPath;
 
-  const openclawProfileSyncEnabled =
-    normalizeEnvValue(process.env.OPENCLAW_PROFILE_SYNC) !== "false";
+  const openclawProfileSyncEnabled = parseBooleanEnv(
+    normalizeEnvValue(process.env.OPENCLAW_PROFILE_SYNC),
+    false,
+  );
   const openclawClientToolsEnabled = parseBooleanEnv(
     normalizeEnvValue(process.env.OPENCLAW_CLIENT_TOOLS_ENABLED),
     true,
@@ -285,14 +287,14 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     serviceToken,
     healthPort,
     healthHost,
-    deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 5000),
+    deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 15000),
     healthCheckInterval: parseIntOrDefault(
       process.env.HEALTH_CHECK_INTERVAL,
-      60000,
+      300000,
     ),
     agentSyncInterval: parseIntOrDefault(
       process.env.AGENT_SYNC_INTERVAL,
-      60000,
+      300000,
     ),
     logLevel,
     deliveryBackoffBaseMs: parseIntOrDefault(

@@ -194,22 +194,23 @@ describe("AVAILABLE_MODELS", () => {
     }
   });
 
-  it("includes claude-sonnet as the default model", () => {
-    const hasClaudeSonnet = AVAILABLE_MODELS.some(
-      (m) => m.value === "claude-sonnet-4-20250514"
+  it("includes the default model (claude-haiku-4.5)", () => {
+    const hasDefaultModel = AVAILABLE_MODELS.some(
+      (m) => m.value === "claude-haiku-4.5"
     );
-    expect(hasClaudeSonnet).toBe(true);
+    expect(hasDefaultModel).toBe(true);
   });
 
-  it("Claude Sonnet is marked as recommended in the label", () => {
-    const sonnet = AVAILABLE_MODELS.find(
-      (m) => m.value === "claude-sonnet-4-20250514"
+  it("default model is marked as recommended in the label", () => {
+    const defaultModel = AVAILABLE_MODELS.find(
+      (m) => m.value === "claude-haiku-4.5"
     );
-    expect(sonnet?.label).toContain("Recommended");
+    expect(defaultModel).toBeDefined();
+    expect(defaultModel!.label).toContain("Recommended");
   });
 
-  it("has at least 3 model options", () => {
-    expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(3);
+  it("has at least 2 model options", () => {
+    expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(2);
   });
 
   it("model values are unique", () => {

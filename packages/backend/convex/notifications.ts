@@ -29,6 +29,7 @@ const notificationTypeValidator = v.union(
   v.literal("assignment"),
   v.literal("thread_update"),
   v.literal("status_change"),
+  v.literal("response_request"),
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("role_changed"),

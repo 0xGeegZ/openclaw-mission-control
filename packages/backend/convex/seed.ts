@@ -487,12 +487,13 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_status** — Update the current task's status. Call **before** posting your reply when you change status. Available only when you have a task context and the account allows it.
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
+- **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
-### Mention gating
+### Agent follow-ups (tool-only)
 
-If your capabilities do **not** include "mention other agents", then @mentions of agents (including @all for agents) are ignored by the system: no agent will be notified. User mentions still work. Do not assume agent mentions were delivered; report that you cannot mention agents if asked.
+Agent @mentions do **not** notify other agents. To request a follow-up, you must use the **response_request** tool (or the HTTP fallback below). If the tool is unavailable and HTTP is unreachable, report **BLOCKED** and state that you cannot request agent responses.
 
 ## How to update task status (required)
 
@@ -531,6 +532,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 - **Task status:** \`POST {TASK_STATUS_BASE_URL}/agent/task-status\` with body \`{ "taskId", "status", "blockedReason?" }\`.
 - **Task create:** \`POST {TASK_STATUS_BASE_URL}/agent/task-create\` with body \`{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }\`.
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
+- **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.
 
 All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
 
@@ -547,24 +549,9 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
   - the activity feed
   - your WORKING.md and recent daily notes
 
-### Mentions (Orchestrator)
+### Orchestrator follow-ups (tool-only)
 
-When you are the orchestrator (squad lead), use @mentions to request follow-ups from specific agents:
-
-- Use @mentions to request follow-ups from specific agents.
-- Choose agents from the roster list shown in your notification prompt (by slug, e.g. \`@researcher\`).
-- Mention only agents who can add value to the discussion; avoid @all unless necessary.
-- If you are blocked or need confirmation, @mention the primary user shown in your prompt.
-- **When a task is DONE:** only @mention agents to start or continue work on **other existing tasks** (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this done task thread — that causes reply loops.
-
-Example: to ask the researcher to dig deeper and the writer to draft a summary, you might post:
-
-\`\`\`
-**Summary** - Reviewing latest findings; requesting follow-up from research and writer.
-
-@researcher Please add 2-3 concrete sources for the claim in the last message.
-@writer Once that’s in, draft a one-paragraph summary for the doc.
-\`\`\`
+When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
 
 ## Document rules
 

@@ -7,7 +7,8 @@
  * 3. Data consistency checks - prevent orphaned records and integrity violations
  */
 
-import { DatabaseReader, DatabaseWriter, GenericId } from "convex/server";
+import type { DatabaseReader, DatabaseWriter } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * Validate that an agent belongs to the given account.
@@ -15,8 +16,8 @@ import { DatabaseReader, DatabaseWriter, GenericId } from "convex/server";
  */
 export async function validateAgentBelongsToAccount(
   db: DatabaseReader,
-  accountId: GenericId<"accounts">,
-  agentId: GenericId<"agents">,
+  accountId: Id<"accounts">,
+  agentId: Id<"agents">,
 ): Promise<void> {
   const agent = await db.get(agentId);
   if (!agent || agent.accountId !== accountId) {
@@ -30,8 +31,8 @@ export async function validateAgentBelongsToAccount(
  */
 export async function validateTaskBelongsToAccount(
   db: DatabaseReader,
-  accountId: GenericId<"accounts">,
-  taskId: GenericId<"tasks">,
+  accountId: Id<"accounts">,
+  taskId: Id<"tasks">,
 ): Promise<void> {
   const task = await db.get(taskId);
   if (!task || task.accountId !== accountId) {
@@ -45,8 +46,8 @@ export async function validateTaskBelongsToAccount(
  */
 export async function validateDocumentBelongsToAccount(
   db: DatabaseReader,
-  accountId: GenericId<"accounts">,
-  documentId: GenericId<"documents">,
+  accountId: Id<"accounts">,
+  documentId: Id<"documents">,
 ): Promise<void> {
   const doc = await db.get(documentId);
   if (!doc || doc.accountId !== accountId) {
@@ -60,8 +61,8 @@ export async function validateDocumentBelongsToAccount(
  */
 export async function validateDocumentParent(
   db: DatabaseReader,
-  accountId: GenericId<"accounts">,
-  parentId: GenericId<"documents">,
+  accountId: Id<"accounts">,
+  parentId: Id<"documents">,
 ): Promise<void> {
   const parent = await db.get(parentId);
   if (!parent || parent.accountId !== accountId) {
@@ -81,11 +82,11 @@ export async function validateDocumentParent(
 export async function cascadeDeleteDocumentChildren(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  parentId: GenericId<"documents">,
+  parentId: Id<"documents">,
 ): Promise<void> {
   const children = await db
     .query("documents")
-    .withIndex("by_parent", (q) => q.eq("parentId", parentId))
+    .withIndex("by_parent_name", (q) => q.eq("parentId", parentId))
     .collect();
 
   for (const child of children) {
@@ -103,7 +104,7 @@ export async function cascadeDeleteDocumentChildren(
 export async function cascadeDeleteTaskMessages(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  taskId: GenericId<"tasks">,
+  taskId: Id<"tasks">,
 ): Promise<void> {
   const messages = await db
     .query("messages")
@@ -121,7 +122,7 @@ export async function cascadeDeleteTaskMessages(
 export async function cascadeDeleteTaskSubscriptions(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  taskId: GenericId<"tasks">,
+  taskId: Id<"tasks">,
 ): Promise<void> {
   const subscriptions = await db
     .query("subscriptions")
@@ -139,7 +140,7 @@ export async function cascadeDeleteTaskSubscriptions(
 export async function cascadeDeleteTaskNotifications(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  taskId: GenericId<"tasks">,
+  taskId: Id<"tasks">,
 ): Promise<void> {
   const notifications = await db
     .query("notifications")
@@ -158,7 +159,7 @@ export async function cascadeDeleteTaskNotifications(
 export async function cascadeDeleteTask(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  taskId: GenericId<"tasks">,
+  taskId: Id<"tasks">,
 ): Promise<void> {
   // Delete messages (with any attached uploads)
   await cascadeDeleteTaskMessages(db, writer, taskId);
@@ -192,7 +193,7 @@ export async function cascadeDeleteTask(
 export async function cascadeDeleteAccountAgents(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   const agents = await db
     .query("agents")
@@ -203,7 +204,9 @@ export async function cascadeDeleteAccountAgents(
     // Clean up agent-related activities
     const activities = await db
       .query("activities")
-      .withIndex("by_actor", (q) => q.eq("actorId", agent._id))
+      .withIndex("by_actor", (q) =>
+        q.eq("actorType", "agent").eq("actorId", agent._id),
+      )
       .collect();
 
     for (const activity of activities) {
@@ -220,7 +223,7 @@ export async function cascadeDeleteAccountAgents(
 export async function cascadeDeleteAccountTasks(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   const tasks = await db
     .query("tasks")
@@ -238,7 +241,7 @@ export async function cascadeDeleteAccountTasks(
 export async function cascadeDeleteAccountDocuments(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   // Delete all documents at root level (this will recursively delete nested docs)
   const rootDocs = await db
@@ -262,7 +265,7 @@ export async function cascadeDeleteAccountDocuments(
 export async function cascadeDeleteAccountMembershipsAndInvitations(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   // Delete memberships
   const memberships = await db
@@ -291,12 +294,12 @@ export async function cascadeDeleteAccountMembershipsAndInvitations(
 export async function cascadeDeleteAccountMetadata(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   // Delete subscriptions
   const subscriptions = await db
     .query("subscriptions")
-    .withIndex("by_task", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
     .collect();
 
   for (const sub of subscriptions) {
@@ -379,7 +382,7 @@ export async function cascadeDeleteAccountMetadata(
 export async function cascadeDeleteAccount(
   db: DatabaseReader,
   writer: DatabaseWriter,
-  accountId: GenericId<"accounts">,
+  accountId: Id<"accounts">,
 ): Promise<void> {
   // Delete tasks first (which cascades to messages, subscriptions, notifications)
   await cascadeDeleteAccountTasks(db, writer, accountId);
@@ -410,18 +413,24 @@ export async function validateTaskReferences(
 ): Promise<string[]> {
   const issues: string[] = [];
 
+  const taskAccountId = task.accountId as Id<"accounts"> | undefined;
+  if (!taskAccountId) return issues;
+
   // Validate assigned agents exist and belong to account
   for (const agentId of task.assignedAgentIds || []) {
-    const agent = await db.get(agentId);
-    if (!agent || agent.accountId !== task.accountId) {
+    const agent = await db.get(agentId as Id<"agents">);
+    if (!agent || (agent as { accountId?: Id<"accounts"> }).accountId !== taskAccountId) {
       issues.push(`Agent ${agentId} not found or belongs to different account`);
     }
   }
 
   // Validate current task assignment (if any)
   if (task.currentTaskId) {
-    const currentTask = await db.get(task.currentTaskId);
-    if (!currentTask || currentTask.accountId !== task.accountId) {
+    const currentTask = await db.get(task.currentTaskId as Id<"tasks">);
+    if (
+      !currentTask ||
+      (currentTask as { accountId?: Id<"accounts"> }).accountId !== taskAccountId
+    ) {
       issues.push(`Current task ${task.currentTaskId} is invalid`);
     }
   }
@@ -439,18 +448,27 @@ export async function validateDocumentReferences(
 ): Promise<string[]> {
   const issues: string[] = [];
 
+  const docAccountId = doc.accountId as Id<"accounts"> | undefined;
+  if (!docAccountId) return issues;
+
   // Validate parent exists and belongs to account
   if (doc.parentId) {
-    const parent = await db.get(doc.parentId);
-    if (!parent || parent.accountId !== doc.accountId) {
+    const parent = await db.get(doc.parentId as Id<"documents">);
+    if (
+      !parent ||
+      (parent as { accountId?: Id<"accounts"> }).accountId !== docAccountId
+    ) {
       issues.push(`Document parent ${doc.parentId} is invalid`);
     }
   }
 
   // Validate associated task exists
   if (doc.taskId) {
-    const task = await db.get(doc.taskId);
-    if (!task || task.accountId !== doc.accountId) {
+    const task = await db.get(doc.taskId as Id<"tasks">);
+    if (
+      !task ||
+      (task as { accountId?: Id<"accounts"> }).accountId !== docAccountId
+    ) {
       issues.push(`Document task reference ${doc.taskId} is invalid`);
     }
   }

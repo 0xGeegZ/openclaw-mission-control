@@ -77,6 +77,7 @@ const notificationTypeValidator = v.union(
   v.literal("assignment"),
   v.literal("thread_update"),
   v.literal("status_change"),
+  v.literal("response_request"),
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("role_changed"),
@@ -205,13 +206,14 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
+        /** Task ID used for the orchestrator chat thread (PM task). */
+        orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
     restartRequestedAt: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
-    .unique()
     .index("by_created", ["createdAt"]),
 
   // ==========================================================================
@@ -242,7 +244,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_user", ["userId"])
-    .index("by_account_user", ["accountId", "userId"]).unique(),
+    .index("by_account_user", ["accountId", "userId"]),
 
   // ==========================================================================
   // SKILLS
@@ -433,7 +435,7 @@ export default defineSchema({
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
     .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]).unique(),
+    .index("by_session_key", ["sessionKey"]),
 
   // ==========================================================================
   // TASKS
@@ -530,6 +532,8 @@ export default defineSchema({
         id: v.string(),
         /** Display name at time of mention */
         name: v.string(),
+        /** Agent slug at time of mention (for @slug rendering). */
+        slug: v.optional(v.string()),
       }),
     ),
 
@@ -559,6 +563,12 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_author_created", [
+      "taskId",
+      "authorType",
+      "authorId",
+      "createdAt",
+    ])
     .index("by_account", ["accountId"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
@@ -782,6 +792,11 @@ export default defineSchema({
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_recipient_id_created", [
+      "taskId",
+      "recipientId",
+      "createdAt",
+    ])
     .index("by_task_recipient_created", [
       "taskId",
       "recipientType",

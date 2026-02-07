@@ -47,6 +47,7 @@ const notificationIcons: Record<NotificationType, typeof Bell> = {
   assignment: CheckSquare,
   thread_update: MessageSquare,
   status_change: ArrowRightLeft,
+  response_request: Bell,
   member_added: UserPlus,
   member_removed: UserMinus,
   role_changed: Shield,
@@ -72,6 +73,10 @@ const notificationIconStyles: Record<
   status_change: {
     bg: "bg-green-500/10 dark:bg-green-500/15",
     text: "text-green-600 dark:text-green-400",
+  },
+  response_request: {
+    bg: "bg-sky-500/10 dark:bg-sky-500/15",
+    text: "text-sky-600 dark:text-sky-400",
   },
   member_added: {
     bg: "bg-emerald-500/10 dark:bg-emerald-500/15",

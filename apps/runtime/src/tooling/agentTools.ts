@@ -183,6 +183,32 @@ export const TASK_THREAD_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: request a response from other agents */
+export const RESPONSE_REQUEST_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "response_request",
+    description:
+      "Request a response from other agents on the current task. Use this instead of @mentions to ask for follow-ups.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to request on" },
+        recipientSlugs: {
+          type: "array",
+          items: { type: "string" },
+          description: "Agent slugs to request a response from",
+        },
+        message: {
+          type: "string",
+          description: "Message to include in the response request",
+        },
+      },
+      required: ["recipientSlugs", "message"],
+    },
+  },
+};
+
 /** OpenResponses function tool schema: create or update a document */
 export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   type: "function" as const,
@@ -249,6 +275,7 @@ export function getToolCapabilitiesAndSchemas(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMentionAgents?: boolean;
   canMarkDone?: boolean;
   isOrchestrator?: boolean;
 }): ToolCapabilitiesAndSchemas {
@@ -268,6 +295,10 @@ export function getToolCapabilitiesAndSchemas(options: {
   if (options.canCreateDocuments) {
     capabilityLabels.push("create/update documents (document_upsert tool)");
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
+  }
+  if (options.hasTaskContext && options.canMentionAgents === true) {
+    capabilityLabels.push("request agent responses (response_request tool)");
+    schemas.push(RESPONSE_REQUEST_TOOL_SCHEMA);
   }
   if (isOrchestrator) {
     capabilityLabels.push("assign agents (task_assign tool)");
@@ -304,6 +335,7 @@ export function getToolSchemasForCapabilities(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMentionAgents?: boolean;
   isOrchestrator?: boolean;
 }): unknown[] {
   return getToolCapabilitiesAndSchemas(options).schemas;
@@ -507,6 +539,51 @@ export async function executeAgentTool(params: {
       return { success: true, taskId: newTaskId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "response_request") {
+    let args: {
+      taskId?: string;
+      recipientSlugs?: string[];
+      message?: string;
+    };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    const resolvedTaskId = args.taskId ?? taskId;
+    if (!resolvedTaskId) {
+      return { success: false, error: "taskId is required" };
+    }
+    const normalizedSlugs = Array.isArray(args.recipientSlugs)
+      ? args.recipientSlugs
+          .map((slug) => slug.trim().replace(/^@/, ""))
+          .filter((slug) => slug.length > 0)
+      : [];
+    if (normalizedSlugs.length === 0) {
+      return { success: false, error: "recipientSlugs is required" };
+    }
+    if (!args.message?.trim()) {
+      return { success: false, error: "message is required" };
+    }
+    try {
+      const result = await client.action(
+        api.service.actions.createResponseRequestNotifications,
+        {
+          accountId,
+          serviceToken,
+          requesterAgentId: agentId,
+          taskId: resolvedTaskId as Id<"tasks">,
+          recipientSlugs: normalizedSlugs,
+          message: args.message.trim(),
+        },
+      );
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }
   }

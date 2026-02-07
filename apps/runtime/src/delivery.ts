@@ -295,6 +295,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
             const canCreateTasks = flags.canCreateTasks === true;
             const canCreateDocuments = flags.canCreateDocuments === true;
+            const canMentionAgents = flags.canMentionAgents === true;
             const hasQaAgent = context.mentionableAgents.some((agent) =>
               isQaAgentProfile(agent),
             );
@@ -316,6 +317,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               canModifyTaskStatus,
               canCreateDocuments,
               hasTaskContext: hasTask,
+              canMentionAgents,
               canMarkDone,
               isOrchestrator,
             });
@@ -328,6 +330,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                     canModifyTaskStatus,
                     canCreateDocuments,
                     hasTaskContext: hasTask,
+                    canMentionAgents,
                     isOrchestrator,
                   }),
                   schemas: [],
@@ -485,28 +488,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               );
             }
             if (taskId && textToPost && shouldPostMessage) {
-              const trimmed = textToPost.trim();
-              const finalContent = applyAutoMentionFallback(
-                trimmed,
-                context as DeliveryContext,
-              );
-              if (finalContent !== trimmed) {
-                const originalTokens = extractMentionTokens(trimmed);
-                const finalTokens = extractMentionTokens(finalContent);
-                const addedTokens = finalTokens.filter(
-                  (token) => !originalTokens.includes(token),
-                );
-                log.debug(
-                  "Auto-mention fallback applied",
-                  taskId,
-                  "added mentions:",
-                  addedTokens,
-                );
-              }
               await client.action(api.service.actions.createMessageFromAgent, {
                 agentId: context.agent._id,
                 taskId,
-                content: finalContent,
+                content: textToPost.trim(),
                 serviceToken: config.serviceToken,
                 accountId: config.accountId,
                 sourceNotificationId: notification._id,
@@ -764,21 +749,6 @@ export function canAgentMarkDone(options: {
   return options.isOrchestrator;
 }
 
-/** Same pattern as backend extractMentionStrings (slug or quoted name). */
-const MENTION_PATTERN = /@(\w+(?:-\w+)*|"[^"]+")/g;
-
-/**
- * Strips block quotes and code sections to avoid treating citations as mentions.
- */
-function stripQuotedContent(content: string): string {
-  const withoutFences = content.replace(/```[\s\S]*?```/g, "");
-  const withoutInlineCode = withoutFences.replace(/`[^`]*`/g, "");
-  return withoutInlineCode
-    .split("\n")
-    .filter((line) => !line.trim().startsWith(">"))
-    .join("\n");
-}
-
 interface MentionableAgent {
   id: string;
   slug: string;
@@ -790,158 +760,6 @@ interface PrimaryUserMention {
   id: string;
   name: string;
   email: string | null;
-}
-
-/**
- * Extracts normalized mention tokens from content.
- * Uses the same regex as backend lib/mentions.ts so behavior stays in sync.
- */
-function extractMentionTokens(content: string): string[] {
-  const sanitized = stripQuotedContent(content);
-  const results: string[] = [];
-  const matches = sanitized.matchAll(MENTION_PATTERN);
-  for (const match of matches) {
-    const index = match.index ?? -1;
-    if (index < 0) continue;
-    const matchText = match[0] ?? "";
-    const afterToken = sanitized.slice(index + matchText.length);
-    const emailDomainMatch = /^\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(afterToken);
-    if (emailDomainMatch) {
-      continue;
-    }
-    let token = match[1] ?? "";
-    if (token.startsWith('"') && token.endsWith('"')) {
-      token = token.slice(1, -1);
-    }
-    results.push(token.toLowerCase());
-  }
-  return results;
-}
-
-/**
- * Returns true if tokens include a mention matching a known agent slug or name.
- */
-function hasAgentMention(
-  tokens: string[],
-  mentionableAgents: MentionableAgent[],
-): boolean {
-  if (!mentionableAgents.length || tokens.length === 0) return false;
-  const agentTokens = new Set<string>();
-  for (const agent of mentionableAgents) {
-    if (agent.slug) agentTokens.add(agent.slug.toLowerCase());
-    if (agent.name) agentTokens.add(agent.name.toLowerCase());
-  }
-  return tokens.some((token) => agentTokens.has(token));
-}
-
-/**
- * Returns true if the primary user is already mentioned in content.
- */
-function hasPrimaryUserMention(
-  tokens: string[],
-  primaryUser: PrimaryUserMention,
-): boolean {
-  const nameToken = primaryUser.name.toLowerCase();
-  const emailPrefix = primaryUser.email
-    ? primaryUser.email.toLowerCase().split("@")[0]
-    : null;
-  if (tokens.includes(nameToken)) return true;
-  if (emailPrefix && tokens.includes(emailPrefix)) return true;
-  return false;
-}
-
-/**
- * Returns true if the content suggests we need user confirmation or are blocked.
- */
-function shouldAutoMentionUser(content: string): boolean {
-  const sanitized = stripQuotedContent(content).toLowerCase();
-  const blockedPattern = /\bblocked|blocker|blocking\b/;
-  const confirmationPattern =
-    /\b(need|needs|awaiting|waiting for|require|requires|please)\b.*\b(confirm|confirmation|approval|review)\b/;
-  const inputPattern =
-    /\b(need|needs|awaiting|waiting for|require|requires|please)\b.*\b(input|decision|sign[- ]?off)\b/;
-  const directConfirmPattern = /\b(can you|could you)\s+confirm\b/;
-  return (
-    blockedPattern.test(sanitized) ||
-    confirmationPattern.test(sanitized) ||
-    inputPattern.test(sanitized) ||
-    directConfirmPattern.test(sanitized)
-  );
-}
-
-/**
- * Builds a mention prefix for the primary user.
- * Uses quoted form to support full names with spaces.
- */
-function buildUserMentionPrefix(primaryUser: PrimaryUserMention): string {
-  const name = primaryUser.name.replace(/"/g, "").trim();
-  if (!name) return "";
-  return `@\"${name}\"\n\n`;
-}
-
-/**
- * Builds a mention prefix for assigned agents excluding the orchestrator.
- * Prefers @slug; falls back to @"Name" when slug is missing. Returns empty string if no one to mention.
- */
-function buildAutoMentionPrefix(
-  assignedAgents: MentionableAgent[],
-  orchestratorAgentId: string | null,
-): string {
-  const filtered =
-    orchestratorAgentId != null
-      ? assignedAgents.filter((a) => a.id !== orchestratorAgentId)
-      : assignedAgents;
-  if (filtered.length === 0) return "";
-  const parts = filtered
-    .map((a) => {
-      const slug = (a.slug || "").trim();
-      if (slug) return `@${slug}`;
-      const name = (a.name || "").replace(/"/g, "");
-      return name ? `@"${name}"` : "";
-    })
-    .filter(Boolean);
-  return parts.join(" ") + "\n\n";
-}
-
-/**
- * Applies auto-mention fallback only when: notification is thread_update, message author is agent,
- * recipient is orchestrator, reply has no @mentions, and there is at least one assigned agent (excluding orchestrator).
- * Otherwise returns content unchanged.
- */
-function applyAutoMentionFallback(
-  content: string,
-  context: DeliveryContext,
-): string {
-  if (!content.trim()) return content;
-  const type = context.notification?.type;
-  const messageAuthorType = context.message?.authorType;
-  const recipientId = context.notification?.recipientId;
-  const orchestratorAgentId = context.orchestratorAgentId;
-  const assignedAgents: MentionableAgent[] = context.assignedAgents ?? [];
-  const mentionableAgents: MentionableAgent[] = context.mentionableAgents ?? [];
-  const primaryUser: PrimaryUserMention | null =
-    context.primaryUserMention ?? null;
-  const canMentionAgents =
-    context.effectiveBehaviorFlags?.canMentionAgents === true;
-  if (type !== "thread_update" || messageAuthorType !== "agent") return content;
-  if (orchestratorAgentId == null || recipientId !== orchestratorAgentId)
-    return content;
-  const tokens = extractMentionTokens(content);
-  const hasAgentMentions = hasAgentMention(tokens, mentionableAgents);
-  const hasUserMentions =
-    primaryUser != null && hasPrimaryUserMention(tokens, primaryUser);
-  const hasAllMention = tokens.includes("all");
-  const hasAnyMentions = hasAgentMentions || hasUserMentions;
-  const needsUserMention =
-    primaryUser != null && shouldAutoMentionUser(content) && !hasUserMentions;
-  const userPrefix =
-    primaryUser && needsUserMention ? buildUserMentionPrefix(primaryUser) : "";
-  const agentPrefix =
-    canMentionAgents && !hasAnyMentions && !hasAllMention
-      ? buildAutoMentionPrefix(assignedAgents, orchestratorAgentId)
-      : "";
-  if (!userPrefix && !agentPrefix) return content;
-  return userPrefix + agentPrefix + content;
 }
 
 /**
@@ -968,11 +786,11 @@ function formatMentionableAgentsSection(
       ? `\n- ... and ${mentionableAgents.length - cap} more`
       : "";
   return [
-    "Mentionable agents (use @slug to request follow-up):",
+    "Agents available for response_request:",
     ...lines,
     more,
     "",
-    "If you want another agent to act, @mention them by slug from the list above.",
+    "If you need another agent to respond, use the response_request tool with their slug. @mentions do not notify agents.",
   ].join("\n");
 }
 
@@ -1084,6 +902,7 @@ function buildHttpCapabilityLabels(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMentionAgents: boolean;
   isOrchestrator?: boolean;
 }): string[] {
   const labels: string[] = [];
@@ -1095,6 +914,9 @@ function buildHttpCapabilityLabels(options: {
   }
   if (options.canCreateDocuments) {
     labels.push("create/update documents via HTTP (POST /agent/document)");
+  }
+  if (options.hasTaskContext && options.canMentionAgents) {
+    labels.push("request agent responses via HTTP (POST /agent/response-request)");
   }
   if (options.isOrchestrator) {
     labels.push("assign agents via HTTP (POST /agent/task-assign)");
@@ -1161,7 +983,6 @@ export function formatNotificationMessage(
   const sessionKey = context.agent?.sessionKey ?? "<session-key>";
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
-  if (canMentionAgents) capabilityLabels.push("mention other agents");
   const capabilitiesBlock =
     capabilityLabels.length > 0
       ? `Runtime capabilities: ${capabilityLabels.join("; ")}. Use only the runtime capabilities listed here. If a runtime tool or HTTP fallback fails, report BLOCKED with the error message.\n\n`
@@ -1251,6 +1072,11 @@ export function formatNotificationMessage(
       ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
       : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`.`
     : "";
+  const responseRequestInstructions = canMentionAgents
+    ? hasRuntimeTools
+      ? "If you need another agent to respond, use the **response_request** tool (see Capabilities). Provide recipientSlugs and a clear message."
+      : `If you need another agent to respond, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/response-request with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "recipientSlugs": ["agent-slug"], "message": "..." }\`.`
+    : "";
   const orchestratorToolInstructions = isOrchestrator
     ? hasRuntimeTools
       ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_assign to add agent assignees by slug, and task_message to post updates to other tasks. Include a taskId for task_get, task_thread, task_assign, and task_message. If any tool fails, report BLOCKED and include the error message."
@@ -1274,7 +1100,7 @@ export function formatNotificationMessage(
     ? formatMentionableAgentsSection(mentionableAgents)
     : "";
 
-  /** For assignment notifications: who to @mention for clarification (orchestrator if allowed, else primary user). */
+  /** For assignment notifications: how to ask for clarification (orchestrator if available, else primary user). */
   const assignmentClarificationTarget =
     notification?.type === "assignment"
       ? canMentionAgents &&
@@ -1286,10 +1112,9 @@ export function formatNotificationMessage(
             );
             if (!orch)
               return "For clarification questions, @mention the primary user (shown above).";
-            const orchMention = (orch.slug ?? "").trim()
-              ? `@${(orch.slug ?? "").trim()}`
-              : `@"${(orch.name ?? "").replace(/"/g, "").trim()}"`;
-            return `For clarification questions, @mention the orchestrator (${orchMention}).`;
+            const orchLabel =
+              (orch.slug ?? "").trim() || orch.name || "orchestrator";
+            return `For clarification questions, ask in the thread and use response_request to the orchestrator (${orchLabel}) if you need an explicit response.`;
           })()
         : primaryUserMention
           ? "For clarification questions, @mention the primary user (shown above)."
@@ -1333,6 +1158,7 @@ Important: This system captures only one reply per notification. Do not send pro
 ${statusInstructions}
 ${taskCreateInstructions}
 ${documentInstructions}
+${responseRequestInstructions}
 ${orchestratorToolInstructions}
 ${orchestratorChatInstruction}
 ${followupTaskInstruction}
