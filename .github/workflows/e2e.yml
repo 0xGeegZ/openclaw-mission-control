@@ -39,9 +39,9 @@ jobs:
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: http://localhost:3000
-          # Set these in GitHub: Settings → Secrets and variables → Actions → Variables
-          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          # Use Variables or Secrets (Settings → Actions); fallback so app starts when unset (e.g. fork PRs)
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL || secrets.NEXT_PUBLIC_CONVEX_URL || 'https://e2e-placeholder.convex.cloud' }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_e2e_placeholder' }}
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
