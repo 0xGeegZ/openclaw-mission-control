@@ -282,8 +282,9 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
       <PopoverContent
         className="w-[400px] p-0 rounded-2xl overflow-hidden"
         align="end"
-        side="bottom"
-        sideOffset={8}
+        side="right"
+        sideOffset={12}
+        collisionPadding={16}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col max-h-[min(75vh,480px)]">
