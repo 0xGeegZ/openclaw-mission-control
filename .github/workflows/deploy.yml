@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -47,17 +47,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
-
-      # Ensure lightningcss native binary is present on Linux (optional dep)
-      - name: Install LightningCSS Linux binary
-        run: |
-          LIGHTNINGCSS_VERSION="$(node -e "const fs=require('fs');const path=require('path');const pkg=path.join(path.dirname(require.resolve('lightningcss')), '..', 'package.json');console.log(JSON.parse(fs.readFileSync(pkg,'utf8')).version);")"
-          npm install --no-save "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}"
 
       - name: Build web app
         run: npm run build
