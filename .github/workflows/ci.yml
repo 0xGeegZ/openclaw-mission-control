@@ -56,8 +56,10 @@ jobs:
         run: npm ci
 
       # Workaround for npm optional deps bug (rollup platform binary); see https://github.com/npm/cli/issues/4828
-      - name: Install optional dependencies
-        run: npm install
+      - name: Install Rollup Linux binary
+        run: |
+          ROLLUP_VERSION="$(node -p "require('rollup/package.json').version")"
+          npm install --no-save "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
 
       - name: Run tests
         run: npm run test:all
