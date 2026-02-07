@@ -37,11 +37,9 @@ jobs:
         run: npm run test:e2e
         working-directory: apps/web
         env:
-          # Set CI flag for Playwright config
           CI: true
-          # Base URL for tests (adjust if needed)
           PLAYWRIGHT_BASE_URL: http://localhost:3000
-          # Required client env vars for Next.js app boot
+          # Set these in GitHub: Settings → Secrets and variables → Actions → Variables
           NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
 

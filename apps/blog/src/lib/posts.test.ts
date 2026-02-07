@@ -1,6 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { promises as fs } from "fs";
-import path from "path";
+import { describe, it, expect } from "vitest";
 import { getPosts, getPostBySlug, getPostSlugs } from "./posts";
 
 describe("posts utilities", () => {
@@ -11,7 +9,7 @@ describe("posts utilities", () => {
       expect(await getPostBySlug("..")).toBeNull();
       expect(await getPostBySlug(".")).toBeNull();
       expect(await getPostBySlug("/etc/passwd")).toBeNull();
-      
+
       // Invalid characters
       expect(await getPostBySlug("hello world")).toBeNull(); // Space
       expect(await getPostBySlug("hello/world")).toBeNull(); // Slash
@@ -47,7 +45,7 @@ describe("posts utilities", () => {
       // This test assumes getting-started.mdx exists in production
       // In test environment, we'll mock or skip if file doesn't exist
       const result = await getPostBySlug("getting-started");
-      
+
       if (result) {
         expect(result).toHaveProperty("metadata");
         expect(result).toHaveProperty("content");
@@ -67,7 +65,7 @@ describe("posts utilities", () => {
     it("should return array of posts", async () => {
       const posts = await getPosts();
       expect(Array.isArray(posts)).toBe(true);
-      
+
       // If posts exist, validate structure
       if (posts.length > 0) {
         const post = posts[0];
@@ -82,12 +80,14 @@ describe("posts utilities", () => {
 
     it("should sort posts by date (newest first)", async () => {
       const posts = await getPosts();
-      
+
       if (posts.length > 1) {
         for (let i = 0; i < posts.length - 1; i++) {
           const currentDate = new Date(posts[i].date);
           const nextDate = new Date(posts[i + 1].date);
-          expect(currentDate.getTime()).toBeGreaterThanOrEqual(nextDate.getTime());
+          expect(currentDate.getTime()).toBeGreaterThanOrEqual(
+            nextDate.getTime(),
+          );
         }
       }
     });
@@ -97,7 +97,7 @@ describe("posts utilities", () => {
     it("should return array of slugs", async () => {
       const slugs = await getPostSlugs();
       expect(Array.isArray(slugs)).toBe(true);
-      
+
       // All slugs should be valid (alphanumeric, hyphens, underscores)
       for (const slug of slugs) {
         expect(slug).toMatch(/^[a-zA-Z0-9_-]+$/);
@@ -106,7 +106,7 @@ describe("posts utilities", () => {
 
     it("should not include .mdx extension in slugs", async () => {
       const slugs = await getPostSlugs();
-      
+
       for (const slug of slugs) {
         expect(slug).not.toContain(".mdx");
         expect(slug).not.toContain(".");
