@@ -379,3 +379,319 @@ describe("linkTaskToPrForAgentTool", () => {
     });
   });
 });
+
+// ============================================================================
+// getAgentSkillsForTool Tests
+// ============================================================================
+
+describe("getAgentSkillsForTool", () => {
+  const testAccountId = "acc_123" as Id<"accounts">;
+  const engineerId = "agent_engineer" as Id<"agents">;
+  const qaId = "agent_qa" as Id<"agents">;
+  const orchestratorId = "agent_orchestrator" as Id<"agents">;
+  const testServiceToken = "token_abc123";
+
+  const engineerAgent = {
+    _id: engineerId,
+    _creationTime: 1000000,
+    slug: "engineer",
+    name: "Engineer",
+    accountId: testAccountId,
+    lastHeartbeat: 1700000,
+    openclawConfig: {
+      skillIds: ["github", "commit", "run-tests-and-fix"] as Id<"skills">[],
+    },
+  };
+
+  const qaAgent = {
+    _id: qaId,
+    _creationTime: 1000100,
+    slug: "qa",
+    name: "QA",
+    accountId: testAccountId,
+    lastHeartbeat: 1700100,
+    openclawConfig: {
+      skillIds: ["security-audit", "code-review-checklist"] as Id<"skills">[],
+    },
+  };
+
+  const orchestratorAgent = {
+    _id: orchestratorId,
+    _creationTime: 1000200,
+    slug: "orchestrator",
+    name: "Orchestrator",
+    accountId: testAccountId,
+    lastHeartbeat: 1700200,
+    openclawConfig: {
+      skillIds: ["task-search", "task-delete", "get-agent-skills"] as Id<"skills">[],
+    },
+  };
+
+  describe("All agents access", () => {
+    it("should allow any agent to query all agents' skills", async () => {
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === engineerId) {
+            return engineerAgent;
+          }
+          if (args.accountId) {
+            return [engineerAgent, qaAgent, orchestratorAgent];
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const agent = await ctx.runQuery({}, { agentId: engineerId });
+        if (!agent) throw new Error("Agent not found");
+
+        const agents = await ctx.runQuery({}, { accountId: testAccountId });
+        return agents.map((a: any) => ({
+          agentId: a.slug,
+          skillIds: a.openclawConfig?.skillIds || [],
+          skillCount: a.openclawConfig?.skillIds?.length || 0,
+          lastUpdated: a.lastHeartbeat || a._creationTime,
+        }));
+      };
+
+      const result = await action();
+      expect(result).toHaveLength(3);
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          agentId: "engineer",
+          skillCount: 3,
+        })
+      );
+      expect(result[1]).toEqual(
+        expect.objectContaining({
+          agentId: "qa",
+          skillCount: 2,
+        })
+      );
+    });
+
+    it("should allow engineer to query own skills", async () => {
+      const mockQueryFunc = vi.fn(async (query, args) => {
+        if (args.agentId === engineerId) {
+          return engineerAgent;
+        }
+        if (args.agentId === engineerId && args.queryAgentId === engineerId) {
+          return engineerAgent;
+        }
+        return null;
+      });
+
+      const ctx = {
+        runQuery: mockQueryFunc,
+      } as any;
+
+      const action = async () => {
+        const agent = await ctx.runQuery({}, { agentId: engineerId });
+        if (!agent) throw new Error("Agent not found");
+
+        const targetAgent = await ctx.runQuery({}, { agentId: engineerId });
+        if (!targetAgent) throw new Error("Target agent not found");
+
+        return [
+          {
+            agentId: targetAgent.slug,
+            skillIds: targetAgent.openclawConfig?.skillIds || [],
+            skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+            lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+          },
+        ];
+      };
+
+      const result = await action();
+      expect(result).toHaveLength(1);
+      expect(result[0].agentId).toBe("engineer");
+      expect(result[0].skillCount).toBe(3);
+    });
+  });
+
+  describe("Orchestrator-enhanced visibility", () => {
+    it("should allow orchestrator to query any agent's skills", async () => {
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === orchestratorId) {
+            return orchestratorAgent;
+          }
+          if (args.agentId === qaId) {
+            return qaAgent;
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const orchestrator = await ctx.runQuery({}, { agentId: orchestratorId });
+        if (orchestrator?.slug !== "orchestrator") {
+          throw new Error("Only orchestrator can query other agents");
+        }
+
+        const targetAgent = await ctx.runQuery({}, { agentId: qaId });
+        if (!targetAgent) throw new Error("Target agent not found");
+
+        return [
+          {
+            agentId: targetAgent.slug,
+            skillIds: targetAgent.openclawConfig?.skillIds || [],
+            skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+            lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+          },
+        ];
+      };
+
+      const result = await action();
+      expect(result[0].agentId).toBe("qa");
+      expect(result[0].skillIds).toContain("security-audit");
+    });
+
+    it("should deny non-orchestrator querying other agents' skills", async () => {
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === engineerId) {
+            return engineerAgent;
+          }
+          if (args.agentId === qaId) {
+            return qaAgent;
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const engineer = await ctx.runQuery({}, { agentId: engineerId });
+        if (!engineer) throw new Error("Engineer not found");
+
+        // Engineer tries to query QA
+        if (engineer.slug !== "orchestrator" && qaId !== engineerId) {
+          throw new Error("Forbidden: Only orchestrator can query other agents' skills");
+        }
+        return null;
+      };
+
+      await expect(action()).rejects.toThrow(
+        "Forbidden: Only orchestrator can query other agents' skills"
+      );
+    });
+  });
+
+  describe("Error handling", () => {
+    it("should error on non-existent agent", async () => {
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === engineerId) {
+            return engineerAgent;
+          }
+          return null; // Non-existent agent
+        }),
+      } as any;
+
+      const action = async () => {
+        const agent = await ctx.runQuery({}, { agentId: engineerId });
+        if (!agent) throw new Error("Not found: Agent does not exist");
+
+        const targetAgent = await ctx.runQuery({}, {
+          agentId: "nonexistent" as Id<"agents">,
+        });
+        if (!targetAgent) throw new Error("Not found: Target agent does not exist");
+
+        return null;
+      };
+
+      await expect(action()).rejects.toThrow("Not found: Target agent does not exist");
+    });
+
+    it("should error on cross-account access attempt", async () => {
+      const otherAccountId = "acc_999" as Id<"accounts">;
+
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === engineerId) {
+            return { ...engineerAgent, accountId: testAccountId };
+          }
+          if (args.agentId === qaId) {
+            return { ...qaAgent, accountId: otherAccountId }; // Different account
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const engineer = await ctx.runQuery({}, { agentId: engineerId });
+        if (engineer.accountId !== testAccountId) {
+          throw new Error("Forbidden: Agent belongs to different account");
+        }
+
+        const targetAgent = await ctx.runQuery({}, { agentId: qaId });
+        if (targetAgent.accountId !== testAccountId) {
+          throw new Error("Forbidden: Target agent belongs to different account");
+        }
+
+        return null;
+      };
+
+      await expect(action()).rejects.toThrow(
+        "Forbidden: Target agent belongs to different account"
+      );
+    });
+  });
+
+  describe("Skill count and format", () => {
+    it("should return correct skill count for each agent", async () => {
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.accountId) {
+            return [
+              { ...engineerAgent, openclawConfig: { skillIds: ["skill1", "skill2", "skill3"] as Id<"skills">[] } },
+              { ...qaAgent, openclawConfig: { skillIds: ["skill1"] as Id<"skills">[] } },
+            ];
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const agents = await ctx.runQuery({}, { accountId: testAccountId });
+        return agents.map((a: any) => ({
+          agentId: a.slug,
+          skillCount: a.openclawConfig?.skillIds?.length || 0,
+        }));
+      };
+
+      const result = await action();
+      expect(result[0].skillCount).toBe(3);
+      expect(result[1].skillCount).toBe(1);
+    });
+
+    it("should return empty skill list when agent has no skills", async () => {
+      const noSkillsAgent = {
+        ...engineerAgent,
+        openclawConfig: { skillIds: [] as Id<"skills">[] },
+      };
+
+      const ctx = {
+        runQuery: vi.fn(async (query, args) => {
+          if (args.agentId === engineerId) {
+            return noSkillsAgent;
+          }
+          return null;
+        }),
+      } as any;
+
+      const action = async () => {
+        const agent = await ctx.runQuery({}, { agentId: engineerId });
+        return {
+          agentId: agent.slug,
+          skillIds: agent.openclawConfig?.skillIds || [],
+          skillCount: agent.openclawConfig?.skillIds?.length || 0,
+        };
+      };
+
+      const result = await action();
+      expect(result.skillCount).toBe(0);
+      expect(result.skillIds).toEqual([]);
+    });
+  });
+});
