@@ -16,6 +16,9 @@ COPY apps/runtime ./apps/runtime
 COPY packages/shared ./packages/shared
 COPY packages/backend ./packages/backend
 
+# Generate backend seed_skills_content.generated.ts so backend/convex/seed.ts type-checks when building runtime
+RUN cd /app/packages/backend && npm run seed-skills:generate
+
 # Build
 WORKDIR /app/apps/runtime
 RUN npm run build

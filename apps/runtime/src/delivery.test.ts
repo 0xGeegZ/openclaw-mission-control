@@ -365,9 +365,10 @@ describe("formatNotificationMessage", () => {
   it("truncates thread history and long messages", () => {
     const longContent = "x".repeat(1601);
     const thread = Array.from({ length: 30 }, (_, index) => ({
-      _id: `m${index}`,
+      messageId: `m${index}`,
       authorType: "user",
       authorId: `user-${index}`,
+      authorName: null,
       content: index === 29 ? longContent : `msg-${index}`,
       createdAt: 1700000000000 + index,
     }));
