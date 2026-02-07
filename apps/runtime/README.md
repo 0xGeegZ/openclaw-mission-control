@@ -60,6 +60,18 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                      |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                            |
 
+### Applying updates to agent prompts (AGENTS.md, HEARTBEAT.md)
+
+Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “use skills as much as possible”):
+
+1. **Restart the runtime** so profile sync runs again. Sync writes the current AGENTS.md and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
+
+2. **Where does the content come from?**
+   - **If you set file paths:** Set `OPENCLAW_AGENTS_MD_PATH` and/or `OPENCLAW_HEARTBEAT_MD_PATH` to the repo files (e.g. mount the repo in Docker and use `/path/in/container/docs/runtime/AGENTS.md`). After updating the docs and restarting the runtime, agents get the new content on next sync.
+   - **If you do not set paths:** The runtime uses embedded defaults in code. After a code change that updates those defaults (or a new runtime image deploy), restart the runtime so sync rewrites the workspace files.
+
+3. **Optional:** Re-run seed so the Convex reference document “AGENTS.md — Operating Manual” stays in sync for the dashboard; agents themselves are driven by the runtime workspace files, not by that document.
+
 ## Running locally
 
 From repo root or from `apps/runtime`:
