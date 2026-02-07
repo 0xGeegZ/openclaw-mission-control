@@ -918,8 +918,16 @@ function buildHttpCapabilityLabels(options: {
   if (options.hasTaskContext && options.canMentionAgents) {
     labels.push("request agent responses via HTTP (POST /agent/response-request)");
   }
+  labels.push("load task details via HTTP (POST /agent/task-load)");
   if (options.isOrchestrator) {
     labels.push("assign agents via HTTP (POST /agent/task-assign)");
+    labels.push("list tasks via HTTP (POST /agent/task-list)");
+    labels.push("get task details via HTTP (POST /agent/task-get)");
+    labels.push("read task threads via HTTP (POST /agent/task-thread)");
+    labels.push("search tasks via HTTP (POST /agent/task-search)");
+    labels.push("post task messages via HTTP (POST /agent/task-message)");
+    labels.push("archive tasks via HTTP (POST /agent/task-delete)");
+    labels.push("link tasks to PRs via HTTP (POST /agent/task-link-pr)");
   }
   return labels;
 }
@@ -1064,8 +1072,8 @@ export function formatNotificationMessage(
     : "";
   const taskCreateInstructions = canCreateTasks
     ? hasRuntimeTools
-      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
-      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
+      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
     : "";
   const documentInstructions = canCreateDocuments
     ? hasRuntimeTools
@@ -1079,8 +1087,8 @@ export function formatNotificationMessage(
     : "";
   const orchestratorToolInstructions = isOrchestrator
     ? hasRuntimeTools
-      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_assign to add agent assignees by slug, and task_message to post updates to other tasks. Include a taskId for task_get, task_thread, task_assign, and task_message. If any tool fails, report BLOCKED and include the error message."
-      : `Orchestrator tools are unavailable. Use the HTTP fallback to assign agents: POST ${runtimeBaseUrl}/agent/task-assign with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<task id>", "assigneeSlugs": ["qa","engineer"] }\`.`
+      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_search to find related work, task_assign to add agent assignees by slug, task_message to post updates to other tasks, task_delete to archive tasks, and task_link_pr to connect tasks to PRs. Include a taskId for task_get, task_thread, task_assign, task_message, task_delete, and task_link_pr. If any tool fails, report BLOCKED and include the error message."
+      : `Orchestrator tools are unavailable. Use the HTTP fallback endpoints: task_list (POST ${runtimeBaseUrl}/agent/task-list), task_get (POST ${runtimeBaseUrl}/agent/task-get), task_thread (POST ${runtimeBaseUrl}/agent/task-thread), task_search (POST ${runtimeBaseUrl}/agent/task-search), task_assign (POST ${runtimeBaseUrl}/agent/task-assign), task_message (POST ${runtimeBaseUrl}/agent/task-message), task_delete (POST ${runtimeBaseUrl}/agent/task-delete), and task_link_pr (POST ${runtimeBaseUrl}/agent/task-link-pr). Include header \`x-openclaw-session-key: ${sessionKey}\` and the JSON body described in the tool schemas.`
     : "";
   const orchestratorChatInstruction =
     isOrchestrator && isOrchestratorChat

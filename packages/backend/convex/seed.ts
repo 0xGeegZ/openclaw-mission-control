@@ -488,6 +488,16 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
 - **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
+- **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
+- **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
+- **task_assign** (orchestrator only) — Assign agents to a task by slug.
+- **task_message** (orchestrator only) — Post a message to another task's thread.
+- **task_list** (orchestrator only) — List tasks with optional filters (status, assignee, limit).
+- **task_get** (orchestrator only) — Fetch details for a single task by ID.
+- **task_thread** (orchestrator only) — Fetch recent thread messages for a task.
+- **task_search** (orchestrator only) — Search tasks by title/description/blockers.
+- **task_delete** (orchestrator only) — Archive a task with a required reason (soft delete).
+- **task_link_pr** (orchestrator only) — Link a task to a GitHub PR bidirectionally.
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 

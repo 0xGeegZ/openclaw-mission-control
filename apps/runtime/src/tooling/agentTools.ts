@@ -1,6 +1,7 @@
 /**
  * OpenResponses client-side tools for agents.
- * Schemas and execution for task_create, task_status, document_upsert.
+ * Schemas and execution for task_status, task_create, document_upsert, response_request,
+ * task_load, get_agent_skills, and orchestrator-only task tools.
  * Tools are attached only when the agent's effective behavior flags allow them.
  */
 
@@ -439,7 +440,7 @@ export function getToolCapabilitiesAndSchemas(options: {
  * Prefer getToolCapabilitiesAndSchemas when building both prompt and payload so they stay in sync.
  *
  * @param options - Capability flags and task context from delivery.
- * @returns Array of OpenResponses tool schemas (task_status, task_create, document_upsert as allowed).
+ * @returns Array of OpenResponses tool schemas allowed for the agent.
  */
 export function getToolSchemasForCapabilities(options: {
   canCreateTasks: boolean;
