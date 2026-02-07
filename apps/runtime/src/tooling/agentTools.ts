@@ -183,6 +183,31 @@ export const TASK_THREAD_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: load full task details with thread */
+export const TASK_LOAD_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_load",
+    description:
+      "Load complete task details with thread summary: title, description, status, blockers, assignees, linked PRs/issues, thread history, and timestamps. Use instead of separate task_get + task_thread calls for efficient context loading.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Task ID to load",
+        },
+        messageLimit: {
+          type: "number",
+          description:
+            "Optional thread message limit (default 10, max 200). Set higher to load more conversation context.",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+};
+
 /** OpenResponses function tool schema: create or update a document */
 export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   type: "function" as const,
@@ -269,6 +294,11 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("create/update documents (document_upsert tool)");
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
   }
+
+  // Utility tools available to all agents
+  capabilityLabels.push("load task details with thread (task_load tool)");
+  schemas.push(TASK_LOAD_TOOL_SCHEMA);
+
   if (isOrchestrator) {
     capabilityLabels.push("assign agents (task_assign tool)");
     capabilityLabels.push("post to other tasks (task_message tool)");
@@ -740,6 +770,34 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: { thread } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_load") {
+    let args: { taskId?: string; messageLimit?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    try {
+      const result = await client.action(
+        api.service.actions.loadTaskDetailsForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+          messageLimit: args.messageLimit,
+        },
+      );
+      return { success: true, data: result };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };
