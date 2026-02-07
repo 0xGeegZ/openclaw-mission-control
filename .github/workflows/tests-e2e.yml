@@ -1,4 +1,4 @@
-# E2E only (unit tests run in CI). On push to master/dev, vars/secrets required; on PR, placeholders allowed.
+# E2E only (unit tests run in CI). Repository secrets required.
 name: E2E Tests
 
 on:
@@ -40,10 +40,10 @@ jobs:
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: http://localhost:3000
-          # Repository secrets; on PR, placeholders when unset
-          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL || (github.event_name == 'pull_request' && 'https://e2e-placeholder.convex.cloud') || '' }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || (github.event_name == 'pull_request' && 'pk_test_e2e_placeholder') || '' }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || (github.event_name == 'pull_request' && 'sk_test_e2e_placeholder') || '' }}
+          # Repository secrets
+          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
