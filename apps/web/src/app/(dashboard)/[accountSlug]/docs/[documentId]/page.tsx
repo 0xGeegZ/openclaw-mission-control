@@ -55,15 +55,11 @@ export default function DocumentDetailPage({
   }, [document]);
 
   /**
-   * Copy document URL to clipboard for sharing.
+   * Copy document content to clipboard.
    */
-  const handleCopyLink = () => {
-    const url =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/${accountSlug}/docs/${documentId}`
-        : "";
-    copyToClipboard(url)
-      .then(() => toast.success("Link copied"))
+  const handleCopyContent = () => {
+    copyToClipboard(editContent)
+      .then(() => toast.success("Content copied"))
       .catch(() => toast.error("Failed to copy"));
   };
 
@@ -155,8 +151,8 @@ export default function DocumentDetailPage({
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={handleCopyLink}
-              aria-label="Copy link"
+              onClick={handleCopyContent}
+              aria-label="Copy content"
             >
               <Copy className="h-4 w-4" />
             </Button>
