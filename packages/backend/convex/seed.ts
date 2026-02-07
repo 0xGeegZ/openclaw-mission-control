@@ -4,6 +4,7 @@ import { requireAuth } from "./lib/auth";
 import { validateContentMarkdown } from "./lib/skills_validation";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 const DEMO_SLUG = "demo";
 const DEMO_NAME = "Demo";
@@ -676,20 +677,12 @@ function defaultOpenclawConfig(
   behaviorFlags: { canCreateTasks: boolean },
 ) {
   return {
-    model: "claude-sonnet-4-20250514",
-    temperature: 0.7,
-    maxTokens: 4096,
+    ...DEFAULT_OPENCLAW_CONFIG,
     skillIds,
-    contextConfig: {
-      maxHistoryMessages: 50,
-      includeTaskContext: true,
-      includeTeamContext: true,
-    },
+    contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
     behaviorFlags: {
+      ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
-      canModifyTaskStatus: true,
-      canCreateDocuments: true,
-      canMentionAgents: true,
     },
   };
 }
@@ -1284,8 +1277,27 @@ async function runSeedWithOwner(
       string,
       unknown
     >;
+    const currentAgentDefaults =
+      (currentSettings.agentDefaults as Record<string, unknown> | undefined) ??
+      {};
+    const currentModel =
+      typeof currentAgentDefaults.model === "string"
+        ? currentAgentDefaults.model.trim()
+        : "";
+    const validModelValues: string[] = AVAILABLE_MODELS.map(
+      (model) => model.value,
+    );
+    const shouldUpdateModel =
+      !currentModel || !validModelValues.includes(currentModel);
+    const nextAgentDefaults = shouldUpdateModel
+      ? { ...currentAgentDefaults, model: DEFAULT_OPENCLAW_CONFIG.model }
+      : currentAgentDefaults;
     await ctx.db.patch(accountId, {
-      settings: { ...currentSettings, orchestratorAgentId: squadLeadAgent._id },
+      settings: {
+        ...currentSettings,
+        ...(shouldUpdateModel && { agentDefaults: nextAgentDefaults }),
+        orchestratorAgentId: squadLeadAgent._id,
+      },
     });
   }
 

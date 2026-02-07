@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
-import { documentTypeValidator, documentKindValidator, recipientTypeValidator } from "./lib/validators";
+import { documentTypeValidator, documentKindValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 
 /**
@@ -21,9 +21,9 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     let documents;
-    
+
     if (args.taskId) {
       // Validate that task exists and caller has access to its account
       const task = await ctx.db.get(args.taskId);
@@ -31,7 +31,7 @@ export const list = query({
         return [];
       }
       await requireAccountMember(ctx, task.accountId);
-      
+
       documents = await ctx.db
         .query("documents")
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
@@ -39,23 +39,22 @@ export const list = query({
     } else {
       documents = await ctx.db
         .query("documents")
-        .withIndex("by_parent", (q) =>
-          q.eq("accountId", args.accountId).eq("parentId", args.folderId)
+        .withIndex("by_parent_updated", (q) =>
+          q.eq("accountId", args.accountId).eq("parentId", args.folderId),
         )
+        .order("desc")
         .collect();
     }
-    
+
     if (args.type) {
-      documents = documents.filter(d => d.type === args.type);
+      documents = documents.filter((d) => d.type === args.type);
     }
-    
-    documents.sort((a, b) => b.updatedAt - a.updatedAt);
-    
+
     if (args.limit) {
       documents = documents.slice(0, args.limit);
     }
-    
-    return documents.map(d => ({
+
+    return documents.map((d) => ({
       ...d,
       name: d.name ?? d.title ?? "Untitled",
       type: d.kind ?? "file",
@@ -73,11 +72,11 @@ export const listByType = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     return ctx.db
       .query("documents")
-      .withIndex("by_account_type", (q) => 
-        q.eq("accountId", args.accountId).eq("type", args.type)
+      .withIndex("by_account_type", (q) =>
+        q.eq("accountId", args.accountId).eq("type", args.type),
       )
       .collect();
   },
@@ -95,9 +94,9 @@ export const listByTask = query({
     if (!task) {
       return [];
     }
-    
+
     await requireAccountMember(ctx, task.accountId);
-    
+
     return ctx.db
       .query("documents")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
@@ -117,7 +116,7 @@ export const get = query({
     if (!document) {
       return null;
     }
-    
+
     await requireAccountMember(ctx, document.accountId);
     return document;
   },
@@ -135,33 +134,40 @@ export const search = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
-    
+
     const documents = await ctx.db
       .query("documents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
-    
+
     const searchLower = args.query.toLowerCase();
-    let results = documents.filter(d => {
+    let results = documents.filter((d) => {
       const title = d.title ?? d.name ?? "";
       const content = d.content ?? "";
-      return title.toLowerCase().includes(searchLower) || content.toLowerCase().includes(searchLower);
+      return (
+        title.toLowerCase().includes(searchLower) ||
+        content.toLowerCase().includes(searchLower)
+      );
     });
 
     results.sort((a, b) => {
-      const aTitle = (a.title ?? a.name ?? "").toLowerCase().includes(searchLower);
-      const bTitle = (b.title ?? b.name ?? "").toLowerCase().includes(searchLower);
-      
+      const aTitle = (a.title ?? a.name ?? "")
+        .toLowerCase()
+        .includes(searchLower);
+      const bTitle = (b.title ?? b.name ?? "")
+        .toLowerCase()
+        .includes(searchLower);
+
       if (aTitle && !bTitle) return -1;
       if (!aTitle && bTitle) return 1;
-      
+
       return b.updatedAt - a.updatedAt;
     });
-    
+
     if (args.limit) {
       results = results.slice(0, args.limit);
     }
-    
+
     return results;
   },
 });
@@ -182,9 +188,13 @@ export const create = mutation({
     taskId: v.optional(v.id("tasks")),
   },
   handler: async (ctx, args) => {
-    const { userId, userName } = await requireAccountMember(ctx, args.accountId);
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      args.accountId,
+    );
     const isFolder = args.kind === "folder";
-    const displayName = args.name ?? args.title ?? (isFolder ? "New Folder" : "Untitled");
+    const displayName =
+      args.name ?? args.title ?? (isFolder ? "New Folder" : "Untitled");
 
     if (isFolder) {
       if (!args.name && !args.title) {
@@ -195,14 +205,18 @@ export const create = mutation({
         throw new Error("File requires title and content");
       }
       if (!args.type) {
-        throw new Error("File requires type (deliverable, note, template, or reference)");
+        throw new Error(
+          "File requires type (deliverable, note, template, or reference)",
+        );
       }
     }
 
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
       if (!parent || parent.accountId !== args.accountId) {
-        throw new Error("Invalid parent: Folder does not exist or belongs to different account");
+        throw new Error(
+          "Invalid parent: Folder does not exist or belongs to different account",
+        );
       }
       if (parent.kind !== "folder") {
         throw new Error("Parent must be a folder");
@@ -212,7 +226,9 @@ export const create = mutation({
     if (args.taskId) {
       const task = await ctx.db.get(args.taskId);
       if (!task || task.accountId !== args.accountId) {
-        throw new Error("Invalid task: Task does not exist or belongs to different account");
+        throw new Error(
+          "Invalid task: Task does not exist or belongs to different account",
+        );
       }
     }
 
@@ -273,13 +289,18 @@ export const update = mutation({
       throw new Error("Not found: Document does not exist");
     }
 
-    const { userId, userName } = await requireAccountMember(ctx, document.accountId);
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      document.accountId,
+    );
 
     if (args.parentId !== undefined) {
       if (args.parentId !== null) {
         const parent = await ctx.db.get(args.parentId);
         if (!parent || parent.accountId !== document.accountId) {
-          throw new Error("Invalid parent: Folder does not exist or belongs to different account");
+          throw new Error(
+            "Invalid parent: Folder does not exist or belongs to different account",
+          );
         }
         if (parent.kind !== "folder") {
           throw new Error("Parent must be a folder");
@@ -317,7 +338,8 @@ export const update = mutation({
 
     await ctx.db.patch(args.documentId, updates);
 
-    const targetName = args.title ?? args.name ?? document.title ?? document.name ?? "Document";
+    const targetName =
+      args.title ?? args.name ?? document.title ?? document.name ?? "Document";
     await logActivity({
       ctx,
       accountId: document.accountId,
@@ -330,8 +352,10 @@ export const update = mutation({
       targetName,
       meta: {
         versionIncrement,
-        newVersion: versionIncrement ? (document.version ?? 0) + 1 : document.version,
-        fields: Object.keys(updates).filter(k => k !== "updatedAt"),
+        newVersion: versionIncrement
+          ? (document.version ?? 0) + 1
+          : document.version,
+        fields: Object.keys(updates).filter((k) => k !== "updatedAt"),
       },
     });
 
@@ -352,9 +376,12 @@ export const linkToTask = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
-    
-    const { userId, userName } = await requireAccountMember(ctx, document.accountId);
-    
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      document.accountId,
+    );
+
     // Validate task if linking
     if (args.taskId) {
       const task = await ctx.db.get(args.taskId);
@@ -362,12 +389,12 @@ export const linkToTask = mutation({
         throw new Error("Invalid task");
       }
     }
-    
+
     await ctx.db.patch(args.documentId, {
       taskId: args.taskId,
       updatedAt: Date.now(),
     });
-    
+
     // Log activity
     await logActivity({
       ctx,
@@ -379,7 +406,10 @@ export const linkToTask = mutation({
       targetType: "document",
       targetId: args.documentId,
       targetName: document.title ?? document.name ?? "Document",
-      meta: { action: args.taskId ? "linked" : "unlinked", taskId: args.taskId },
+      meta: {
+        action: args.taskId ? "linked" : "unlinked",
+        taskId: args.taskId,
+      },
     });
 
     return args.documentId;
@@ -393,11 +423,13 @@ async function collectDescendantIds(
   ctx: MutationCtx,
   accountId: Id<"accounts">,
   parentId: Id<"documents">,
-  out: Id<"documents">[]
+  out: Id<"documents">[],
 ): Promise<void> {
   const children = await ctx.db
     .query("documents")
-    .withIndex("by_parent", (q) => q.eq("accountId", accountId).eq("parentId", parentId))
+    .withIndex("by_parent", (q) =>
+      q.eq("accountId", accountId).eq("parentId", parentId),
+    )
     .collect();
   for (const child of children) {
     out.push(child._id);
@@ -425,7 +457,12 @@ export const remove = mutation({
 
     if (document.kind === "folder") {
       const toDelete: Id<"documents">[] = [args.documentId];
-      await collectDescendantIds(ctx, document.accountId, args.documentId, toDelete);
+      await collectDescendantIds(
+        ctx,
+        document.accountId,
+        args.documentId,
+        toDelete,
+      );
       for (let i = toDelete.length - 1; i >= 0; i--) {
         await ctx.db.delete(toDelete[i]!);
       }
@@ -453,7 +490,10 @@ export const duplicate = mutation({
       throw new Error("Cannot duplicate a folder");
     }
 
-    const { userId, userName } = await requireAccountMember(ctx, document.accountId);
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      document.accountId,
+    );
     const title = document.title ?? document.name ?? "Untitled";
     const now = Date.now();
 

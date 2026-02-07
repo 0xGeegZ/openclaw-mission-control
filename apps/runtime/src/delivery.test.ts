@@ -294,6 +294,35 @@ describe("formatNotificationMessage", () => {
     expect(message).toContain("Task overview (compact):");
     expect(message).toContain("Sample task");
   });
+
+  it("truncates thread history and long messages", () => {
+    const longContent = "x".repeat(1601);
+    const thread = Array.from({ length: 30 }, (_, index) => ({
+      _id: `m${index}`,
+      authorType: "user",
+      authorId: `user-${index}`,
+      content: index === 29 ? longContent : `msg-${index}`,
+      createdAt: 1700000000000 + index,
+    }));
+    const ctx = buildContext({ thread });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    const expectedTruncated = `${longContent.slice(0, 1499)}…`;
+    expect(message).toContain("Thread history (recent):");
+    expect(message).toContain("(... 5 older messages omitted)");
+    expect(message).toContain("msg-5");
+    expect(message).not.toContain("msg-0");
+    expect(message).toContain(expectedTruncated);
+  });
 });
 
 describe("no response retry decision", () => {

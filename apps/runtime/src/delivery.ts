@@ -14,6 +14,7 @@ import {
   type ToolCapabilitiesAndSchemas,
 } from "./tooling/agentTools";
 import { recordSuccess, recordFailure } from "./metrics";
+import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
 
 const log = createLogger("[Delivery]");
 
@@ -123,7 +124,12 @@ const FALLBACK_NO_REPLY_AFTER_TOOLS = [
 
 const NO_RESPONSE_RETRY_LIMIT = 3;
 const NO_RESPONSE_RETRY_RESET_MS = 10 * 60 * 1000;
-const NO_REPLY_SIGNAL_VALUES = new Set(["NO_REPLY", "NO", "NO_"]);
+const NO_REPLY_SIGNAL_VALUES = new Set([
+  "NO_REPLY",
+  "NO",
+  "NO_",
+  HEARTBEAT_OK_RESPONSE,
+]);
 
 /**
  * Detect explicit "no reply" signals from OpenClaw output.
@@ -355,9 +361,12 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               ? parseNoResponsePlaceholder(textToPost)
               : null;
             const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
-            if (isNoReply && result.toolCalls.length === 0) {
+            const isHeartbeatOk = textToPost?.trim() === HEARTBEAT_OK_RESPONSE;
+            if ((isNoReply || isHeartbeatOk) && result.toolCalls.length === 0) {
               log.info(
-                "OpenClaw returned NO_REPLY; skipping notification",
+                isHeartbeatOk
+                  ? "OpenClaw returned HEARTBEAT_OK; skipping notification"
+                  : "OpenClaw returned NO_REPLY; skipping notification",
                 notification._id,
                 context.agent.name,
               );
@@ -978,20 +987,38 @@ function formatPrimaryUserMentionSection(
 }
 
 /**
- * Format full thread context lines for delivery.
+ * Format thread context for delivery. Keeps only the last THREAD_MAX_MESSAGES messages
+ * and truncates each message to THREAD_MAX_CHARS_PER_MESSAGE to avoid context overflow.
  */
 function formatThreadContext(
   thread: DeliveryContext["thread"] | undefined,
 ): string {
   if (!thread || thread.length === 0) return "";
-  const lines = ["Thread history (full):"];
-  for (const item of thread) {
+  const take =
+    thread.length > THREAD_MAX_MESSAGES
+      ? thread.slice(-THREAD_MAX_MESSAGES)
+      : thread;
+  const omitted = thread.length - take.length;
+  const lines = [
+    "Thread history (recent):",
+    ...(omitted > 0
+      ? [
+          `(... ${omitted} older message${omitted === 1 ? "" : "s"} omitted)`,
+          "",
+        ]
+      : []),
+  ];
+  for (const item of take) {
     const authorLabel =
       item.authorName ?? `${item.authorType}:${item.authorId}`;
     const timestamp = item.createdAt
       ? new Date(item.createdAt).toISOString()
       : "unknown_time";
-    const content = item.content?.trim() || "(empty)";
+    const raw = item.content?.trim() || "(empty)";
+    const content =
+      raw.length <= THREAD_MAX_CHARS_PER_MESSAGE
+        ? raw
+        : truncateForContext(raw, THREAD_MAX_CHARS_PER_MESSAGE);
     lines.push(`- [${timestamp}] ${authorLabel}: ${content}`);
   }
   return lines.join("\n");
@@ -1067,6 +1094,25 @@ function buildHttpCapabilityLabels(options: {
 
 const MENTIONABLE_AGENTS_CAP = 25;
 
+/** Max thread messages to include in notification prompt (oldest dropped) to avoid context overflow. */
+const THREAD_MAX_MESSAGES = 25;
+/** Max characters per thread message; longer content is truncated with "…". */
+const THREAD_MAX_CHARS_PER_MESSAGE = 1500;
+/** Max characters for task description block. */
+const TASK_DESCRIPTION_MAX_CHARS = 4000;
+/** Max characters for repository context body. */
+const REPOSITORY_CONTEXT_MAX_CHARS = 12000;
+/** Max characters for global context section. */
+const GLOBAL_CONTEXT_MAX_CHARS = 4000;
+
+/**
+ * Truncate text to maxChars, appending "…" when trimmed. Returns unchanged if within limit.
+ */
+function truncateForContext(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return value.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "…";
+}
+
 /**
  * Format notification message for OpenClaw (identity line, capabilities, task context, status instructions).
  * Exported for unit tests.
@@ -1116,7 +1162,7 @@ export function formatNotificationMessage(
   const identityLine = `You are replying as: **${agentName}** (${agentRole}). Reply only as this agent; do not speak as or ask whether you are another role.\n\n`;
 
   const taskDescription = task?.description?.trim()
-    ? `Task description:\n${task.description.trim()}`
+    ? `Task description:\n${truncateForContext(task.description.trim(), TASK_DESCRIPTION_MAX_CHARS)}`
     : "";
   const messageDetails = message
     ? [
@@ -1133,7 +1179,10 @@ export function formatNotificationMessage(
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
-        repositoryDoc.content.trim(),
+        truncateForContext(
+          repositoryDoc.content.trim(),
+          REPOSITORY_CONTEXT_MAX_CHARS,
+        ),
         localRepoHint,
         "",
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
@@ -1149,7 +1198,14 @@ export function formatNotificationMessage(
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");
   const globalContextSection = globalBriefingDoc?.content?.trim()
-    ? ["Global Context:", globalBriefingDoc.content.trim(), ""].join("\n")
+    ? [
+        "Global Context:",
+        truncateForContext(
+          globalBriefingDoc.content.trim(),
+          GLOBAL_CONTEXT_MAX_CHARS,
+        ),
+        "",
+      ].join("\n")
     : "";
   const taskOverviewSection = formatTaskOverview(
     taskOverview,
@@ -1235,9 +1291,15 @@ export function formatNotificationMessage(
       ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
       : "";
 
+  // Disambiguate from other tasks in this agent's session: one session is shared across all tasks,
+  // so the model must respond only to this notification's task/thread, not to older turns in history.
+  const thisTaskAnchor = task
+    ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${task.title} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
+    : "\n**Respond only to this notification.** Ignore any other task or thread in the conversation history.\n";
+
   // Status-specific instructions: done (brief reply once), blocked (reply-loop fix — do not continue substantive work until unblocked).
   return `
-${identityLine}${capabilitiesBlock}## Notification: ${notification.type}
+${identityLine}${capabilitiesBlock}${thisTaskAnchor}## Notification: ${notification.type}
 
 **${notification.title}**
 
@@ -1253,7 +1315,8 @@ ${threadDetails}
 ${mentionableSection}
 ${formatPrimaryUserMentionSection(primaryUserMention)}
 
-Use the thread history above before asking for missing info. Do not request items already present there.
+Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.
+If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
 
 Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 

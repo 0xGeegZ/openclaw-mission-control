@@ -81,10 +81,8 @@ export const listByTask = query({
     let messages = await ctx.db
       .query("messages")
       .withIndex("by_task_created", (q) => q.eq("taskId", args.taskId))
+      .order("asc")
       .collect();
-
-    // Sort by created (oldest first for chat)
-    messages.sort((a, b) => a.createdAt - b.createdAt);
 
     // Apply limit (from end for most recent)
     if (args.limit && messages.length > args.limit) {

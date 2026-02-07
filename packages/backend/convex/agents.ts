@@ -5,6 +5,7 @@ import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
 import { Id } from "./_generated/dataModel";
+import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 /**
  * Generate a session key for an agent.
@@ -19,21 +20,10 @@ function generateSessionKey(slug: string, accountId: Id<"accounts">): string {
  */
 function getDefaultOpenclawConfig() {
   return {
-    model: "claude-sonnet-4-20250514",
-    temperature: 0.7,
-    maxTokens: 4096,
+    ...DEFAULT_OPENCLAW_CONFIG,
     skillIds: [],
-    contextConfig: {
-      maxHistoryMessages: 50,
-      includeTaskContext: true,
-      includeTeamContext: true,
-    },
-    behaviorFlags: {
-      canCreateTasks: false,
-      canModifyTaskStatus: true,
-      canCreateDocuments: true,
-      canMentionAgents: true,
-    },
+    contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
+    behaviorFlags: { ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags },
   };
 }
 
@@ -539,6 +529,16 @@ export const updateOpenclawConfig = mutation({
       agent.accountId,
     );
 
+    const normalizedModel = args.config.model.trim();
+    const validModelValues: string[] = AVAILABLE_MODELS.map(
+      (model) => model.value,
+    );
+    if (!validModelValues.includes(normalizedModel)) {
+      throw new Error(
+        `Invalid model: "${normalizedModel}". Must be one of: ${validModelValues.join(", ")}`,
+      );
+    }
+
     // Validate all skillIds exist and belong to same account
     for (const skillId of args.config.skillIds) {
       const skill = await ctx.db.get(skillId);
@@ -551,7 +551,10 @@ export const updateOpenclawConfig = mutation({
     }
 
     await ctx.db.patch(args.agentId, {
-      openclawConfig: args.config,
+      openclawConfig: {
+        ...args.config,
+        model: normalizedModel,
+      },
     });
 
     // Log activity

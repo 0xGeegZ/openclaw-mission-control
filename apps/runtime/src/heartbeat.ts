@@ -4,6 +4,7 @@ import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
+import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
 
 const log = createLogger("[Heartbeat]");
 
@@ -20,7 +21,7 @@ const state: HeartbeatState = {
   intervals: new Map(),
 };
 
-const HEARTBEAT_OK_RESPONSE = "HEARTBEAT_OK";
+export { HEARTBEAT_OK_RESPONSE };
 const HEARTBEAT_TASK_LIMIT = 12;
 const HEARTBEAT_DESCRIPTION_MAX_CHARS = 240;
 const HEARTBEAT_STATUS_PRIORITY = ["review", "in_progress", "assigned"];
@@ -318,7 +319,7 @@ function runHeartbeatCycle(
         accountId: config.accountId,
         currentTaskId: responseTaskId ?? undefined,
       });
-      
+
       const duration = Date.now() - heartbeatStart;
       recordSuccess("heartbeat.execute", duration);
     } catch (error) {

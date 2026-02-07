@@ -45,7 +45,7 @@ else
   echo "Using existing config"
 fi
 
-# Merge env into config (enforced each boot: Vercel gateway, Haiku/Sonnet, skills, browser)
+# Merge env into config (enforced each boot: Vercel gateway, Haiku/Nano, skills, browser)
 node << 'EOFNODE'
 const fs = require('fs');
 const path = require('path');
@@ -79,6 +79,11 @@ if (rawModels && typeof rawModels === 'object' && !Array.isArray(rawModels)) {
 } else {
   config.agents.defaults.models = {};
 }
+
+// Always enable context pruning to limit tool-result bloat in long sessions.
+config.agents.defaults.contextPruning = config.agents.defaults.contextPruning || {};
+config.agents.defaults.contextPruning.mode = 'cache-ttl';
+config.agents.defaults.contextPruning.ttl = '5m';
 config.gateway = config.gateway || {};
 config.channels = config.channels || {};
 config.auth = config.auth || {};
@@ -123,7 +128,7 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
   config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
-// Vercel AI Gateway: auth profile + model defaults (Haiku primary, Sonnet fallback)
+// Vercel AI Gateway: auth profile + model defaults (Haiku primary, GPT-5 Nano fallback)
 if (hasVercelKey) {
   config.auth.profiles['vercel-ai-gateway:default'] = {
     provider: 'vercel-ai-gateway',
@@ -135,10 +140,11 @@ if (hasVercelKey) {
     config.env.AI_GATEWAY_API_KEY = gatewayKey;
   }
   config.agents.defaults.model.primary = 'vercel-ai-gateway/anthropic/claude-haiku-4.5';
-  config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
+  config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/openai/gpt-5-nano'];
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
-  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'] = { alias: 'Claude Sonnet 4.5' };
-  config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'] = { alias: 'Claude Opus 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/openai/gpt-5-nano'] = { alias: 'GPT-5 Nano' };
+  delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
+  delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'];
 } else {
   // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
   const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -149,23 +155,28 @@ if (hasVercelKey) {
     config.models.providers.anthropic = {
       apiKey: process.env.ANTHROPIC_API_KEY,
       api: 'anthropic-messages',
-      models: [{ id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 }],
+      models: [{ id: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', contextWindow: 200000 }],
     };
-    config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-5-20250929';
-    config.agents.defaults.model.fallbacks = config.agents.defaults.model.fallbacks || [];
+    config.agents.defaults.models['anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
   }
   if (hasOpenAI) {
     config.models = config.models || {};
     config.models.providers = config.models.providers || {};
     config.models.providers.openai = config.models.providers.openai || {
       api: 'openai-responses',
-      models: [{ id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 }],
+      models: [{ id: 'gpt-5-nano', name: 'GPT-5 Nano', contextWindow: 128000 }],
     };
-    config.agents.defaults.models['openai/gpt-4o'] = { alias: 'GPT-4o' };
-    if (!hasAnthropic) {
-      config.agents.defaults.model.primary = 'openai/gpt-4o';
-      config.agents.defaults.model.fallbacks = config.agents.defaults.model.fallbacks || [];
+    config.agents.defaults.models['openai/gpt-5-nano'] = { alias: 'GPT-5 Nano' };
+  }
+  if (hasAnthropic) {
+    config.agents.defaults.model.primary = 'anthropic/claude-haiku-4.5';
+    config.agents.defaults.model.fallbacks = [];
+    if (hasOpenAI) {
+      config.agents.defaults.model.fallbacks.push('openai/gpt-5-nano');
     }
+  } else if (hasOpenAI) {
+    config.agents.defaults.model.primary = 'openai/gpt-5-nano';
+    config.agents.defaults.model.fallbacks = [];
   }
 }
 

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { createLogger } from "./logger";
+import { MODEL_TO_OPENCLAW, type LLMModel } from "@packages/shared";
 
 const log = createLogger("[OpenClawProfiles]");
 
@@ -122,12 +123,17 @@ If you did not act:
 - Otherwise stay silent to avoid noise
 `;
 
-const MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4.5",
-  "claude-opus-4-20250514": "anthropic/claude-opus-4.5",
-  "gpt-4o": "openai/gpt-4o",
-  "gpt-4o-mini": "openai/gpt-4o-mini",
-};
+const VERCEL_GATEWAY_MODEL_PREFIX = "vercel-ai-gateway/";
+
+/**
+ * Check if the OpenClaw gateway should route models through Vercel AI Gateway.
+ */
+function isVercelGatewayEnabled(): boolean {
+  return Boolean(
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    process.env.VERCEL_AI_GATEWAY_API_KEY?.trim(),
+  );
+}
 
 /**
  * Maps Convex model identifier to OpenClaw provider/model string.
@@ -138,7 +144,11 @@ export function mapModelToOpenClaw(
 ): string | undefined {
   if (!model || !model.trim()) return undefined;
   const trimmed = model.trim();
-  return MODEL_MAP[trimmed];
+  const mapped = MODEL_TO_OPENCLAW[trimmed as LLMModel];
+  if (!mapped) return undefined;
+  return isVercelGatewayEnabled()
+    ? `${VERCEL_GATEWAY_MODEL_PREFIX}${mapped}`
+    : mapped;
 }
 
 /**
@@ -575,7 +585,7 @@ interface AgentWithWorkspacePath extends AgentForProfile {
 
 /**
  * Build openclaw.json structure: agents.list[], load.extraDirs, skills.entries.
- * agents.defaults.skipBootstrap: true; per-agent model from mapModelToOpenClaw when mapped.
+ * agents.defaults.skipBootstrap: true; per-agent model from mapModelToOpenClaw when configured.
  * skills.entries keys must match the frontmatter `name` in each SKILL.md (OpenClaw convention).
  */
 function buildOpenClawConfig(

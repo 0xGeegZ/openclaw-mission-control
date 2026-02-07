@@ -3,6 +3,7 @@ import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
+import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
 
 const log = createLogger("[Gateway]");
 
@@ -601,6 +602,13 @@ export async function receiveFromOpenClaw(
   const trimmedResponse = response.trim();
   if (!trimmedResponse) {
     log.warn("OpenClaw returned empty response; skipping message", sessionKey);
+    return;
+  }
+  if (trimmedResponse === HEARTBEAT_OK_RESPONSE) {
+    log.debug(
+      "OpenClaw returned HEARTBEAT_OK; not posting to thread",
+      sessionKey,
+    );
     return;
   }
 

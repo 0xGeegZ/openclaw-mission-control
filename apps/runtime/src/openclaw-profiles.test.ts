@@ -14,16 +14,57 @@ import {
   type AgentForProfile,
 } from "./openclaw-profiles";
 
+/**
+ * Temporarily set environment variables for a single test.
+ */
+function withTempEnv(
+  updates: Record<string, string | undefined>,
+  fn: () => void,
+): void {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(updates)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  try {
+    fn();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 describe("mapModelToOpenClaw", () => {
   it("maps known Convex model ids to OpenClaw provider/model strings", () => {
-    expect(mapModelToOpenClaw("claude-sonnet-4-20250514")).toBe(
-      "anthropic/claude-sonnet-4.5",
+    withTempEnv(
+      { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
+      () => {
+        expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
+          "anthropic/claude-haiku-4.5",
+        );
+        expect(mapModelToOpenClaw("gpt-5-nano")).toBe("openai/gpt-5-nano");
+      },
     );
-    expect(mapModelToOpenClaw("claude-opus-4-20250514")).toBe(
-      "anthropic/claude-opus-4.5",
-    );
-    expect(mapModelToOpenClaw("gpt-4o")).toBe("openai/gpt-4o");
-    expect(mapModelToOpenClaw("gpt-4o-mini")).toBe("openai/gpt-4o-mini");
+  });
+
+  it("maps models through Vercel AI Gateway when configured", () => {
+    withTempEnv({ VERCEL_AI_GATEWAY_API_KEY: "test-key" }, () => {
+      expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
+        "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+      );
+      expect(mapModelToOpenClaw("gpt-5-nano")).toBe(
+        "vercel-ai-gateway/openai/gpt-5-nano",
+      );
+    });
   });
 
   it("returns undefined for unknown model", () => {
@@ -38,7 +79,12 @@ describe("mapModelToOpenClaw", () => {
   });
 
   it("trims input before lookup", () => {
-    expect(mapModelToOpenClaw("  gpt-4o  ")).toBe("openai/gpt-4o");
+    withTempEnv(
+      { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
+      () => {
+        expect(mapModelToOpenClaw("  gpt-5-nano  ")).toBe("openai/gpt-5-nano");
+      },
+    );
   });
 });
 
@@ -200,11 +246,11 @@ describe("syncOpenClawProfiles", () => {
     const agents: AgentForProfile[] = [
       {
         _id: "a1",
-        name: "Sonnet",
-        slug: "sonnet",
+        name: "GPT-5 Nano",
+        slug: "gpt-5-nano",
         role: "R",
-        sessionKey: "agent:sonnet:acc1",
-        openclawConfig: { model: "claude-sonnet-4-20250514" },
+        sessionKey: "agent:gpt-5-nano:acc1",
+        openclawConfig: { model: "gpt-5-nano" },
         effectiveSoulContent: "# SOUL",
         resolvedSkills: [],
       },
@@ -214,7 +260,7 @@ describe("syncOpenClawProfiles", () => {
       configPath,
     });
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    expect(config.agents.list[0].model).toBe("anthropic/claude-sonnet-4.5");
+    expect(config.agents.list[0].model).toBe("openai/gpt-5-nano");
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
