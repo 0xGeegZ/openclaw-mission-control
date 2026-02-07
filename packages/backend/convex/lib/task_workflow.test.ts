@@ -19,10 +19,11 @@ describe("task_workflow", () => {
       expect(isPauseAllowedStatus("review")).toBe(true);
     });
 
-    it("returns false for inbox, done, blocked", () => {
+    it("returns false for inbox, done, blocked, archived", () => {
       expect(isPauseAllowedStatus("inbox")).toBe(false);
       expect(isPauseAllowedStatus("done")).toBe(false);
       expect(isPauseAllowedStatus("blocked")).toBe(false);
+      expect(isPauseAllowedStatus("archived")).toBe(false);
     });
 
     it("matches PAUSE_ALLOWED_STATUSES", () => {
@@ -33,6 +34,7 @@ describe("task_workflow", () => {
         "review",
         "done",
         "blocked",
+        "archived",
       ];
       for (const s of statuses) {
         expect(isPauseAllowedStatus(s)).toBe(

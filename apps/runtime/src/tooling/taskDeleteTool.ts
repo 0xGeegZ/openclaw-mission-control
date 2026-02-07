@@ -1,7 +1,7 @@
 /**
  * Task delete tool for orchestrator-only operations.
  * Schema and execution for task_delete; archives/removes tasks from backlog.
- * Input: { taskId, reason? }
+ * Input: { taskId, reason }
  * Use: clean up stale tasks, remove mistaken creates, archive done tasks.
  * Orchestrator-only; soft-delete with audit trail (messages/documents preserved).
  */
