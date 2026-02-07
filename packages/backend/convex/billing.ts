@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import type Stripe from "stripe";
 import { mutation, query, internalMutation, action } from "./_generated/server";
-import { requireAuth, requireAccountMember, requireAccountAdmin } from "./lib/auth";
+import { requireAccountMember } from "./lib/auth";
 import { api, internal } from "./_generated/api";
 
 /**
@@ -137,6 +138,8 @@ export const incrementUsage = mutation({
     storageBytes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccountMember(ctx, args.accountId);
+
     // Get current period (YYYY-MM)
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -204,11 +207,7 @@ export const upsertSubscriptionInternal = internalMutation({
     stripeCustomerId: v.string(),
     stripeSubscriptionId: v.string(),
     stripePriceId: v.string(),
-    plan: v.union(
-      v.literal("free"),
-      v.literal("pro"),
-      v.literal("enterprise"),
-    ),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
     status: v.union(
       v.literal("active"),
       v.literal("past_due"),
@@ -339,11 +338,7 @@ export const recordInvoiceInternal = internalMutation({
 export const updateAccountPlanInternal = internalMutation({
   args: {
     accountId: v.id("accounts"),
-    plan: v.union(
-      v.literal("free"),
-      v.literal("pro"),
-      v.literal("enterprise"),
-    ),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.accountId, {
@@ -359,6 +354,214 @@ export const updateAccountPlanInternal = internalMutation({
 // ============================================================================
 
 /**
+ * Map Stripe price ID to a plan tier.
+ */
+function getPlanFromPriceId(priceId: string): "free" | "pro" | "enterprise" {
+  const proPrice =
+    process.env.STRIPE_PRICE_PRO ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO;
+  const enterprisePrice =
+    process.env.STRIPE_PRICE_ENTERPRISE ??
+    process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE;
+
+  if (priceId === proPrice) {
+    return "pro";
+  }
+  if (priceId === enterprisePrice) {
+    return "enterprise";
+  }
+  return "free";
+}
+
+/**
+ * Handle Stripe webhook events inside Convex.
+ * Validates webhook signature and updates billing records.
+ */
+export const handleStripeWebhook = action({
+  args: {
+    payload: v.string(),
+    signature: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const proPriceId =
+      process.env.STRIPE_PRICE_PRO ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO;
+
+    if (!stripeSecretKey) {
+      throw new Error(
+        "STRIPE_SECRET_KEY is not configured in environment variables",
+      );
+    }
+    if (!webhookSecret) {
+      throw new Error(
+        "STRIPE_WEBHOOK_SECRET is not configured in environment variables",
+      );
+    }
+    if (!proPriceId) {
+      throw new Error(
+        "STRIPE_PRICE_PRO is not configured in environment variables",
+      );
+    }
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2024-12-18.acacia",
+    });
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        args.payload,
+        args.signature,
+        webhookSecret,
+      );
+    } catch (error) {
+      throw new Error("Invalid Stripe webhook signature");
+    }
+
+    switch (event.type) {
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const priceId = subscription.items.data[0]?.price.id;
+        if (!priceId) {
+          throw new Error("Missing price in subscription");
+        }
+
+        let accountId = subscription.metadata.accountId;
+        if (!accountId && typeof subscription.customer === "string") {
+          const customer = await stripe.customers.retrieve(
+            subscription.customer,
+          );
+          if ("metadata" in customer) {
+            accountId = customer.metadata?.accountId;
+          }
+        }
+
+        if (!accountId) {
+          throw new Error("Missing accountId in subscription metadata");
+        }
+
+        const plan = getPlanFromPriceId(priceId);
+        const status =
+          subscription.status === "active" ||
+          subscription.status === "trialing" ||
+          subscription.status === "past_due" ||
+          subscription.status === "incomplete" ||
+          subscription.status === "unpaid"
+            ? subscription.status
+            : "canceled";
+
+        await ctx.runMutation(internal.billing.upsertSubscriptionInternal, {
+          accountId: accountId as any,
+          stripeCustomerId: subscription.customer as string,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: priceId,
+          plan,
+          status,
+          currentPeriodStart: subscription.current_period_start * 1000,
+          currentPeriodEnd: subscription.current_period_end * 1000,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          trialEnd: subscription.trial_end
+            ? subscription.trial_end * 1000
+            : undefined,
+        });
+
+        await ctx.runMutation(internal.billing.updateAccountPlanInternal, {
+          accountId: accountId as any,
+          plan,
+        });
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        let accountId = subscription.metadata.accountId;
+        if (!accountId && typeof subscription.customer === "string") {
+          const customer = await stripe.customers.retrieve(
+            subscription.customer,
+          );
+          if ("metadata" in customer) {
+            accountId = customer.metadata?.accountId;
+          }
+        }
+
+        if (!accountId) {
+          throw new Error("Missing accountId in subscription metadata");
+        }
+
+        await ctx.runMutation(internal.billing.updateAccountPlanInternal, {
+          accountId: accountId as any,
+          plan: "free",
+        });
+
+        const priceId = subscription.items.data[0]?.price.id || "";
+        await ctx.runMutation(internal.billing.upsertSubscriptionInternal, {
+          accountId: accountId as any,
+          stripeCustomerId: subscription.customer as string,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: priceId,
+          plan: "free",
+          status: "canceled",
+          currentPeriodStart: subscription.current_period_start * 1000,
+          currentPeriodEnd: subscription.current_period_end * 1000,
+          cancelAtPeriodEnd: true,
+          trialEnd: undefined,
+        });
+        break;
+      }
+
+      case "invoice.payment_succeeded":
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = invoice.subscription;
+        if (typeof subscriptionId !== "string") {
+          return;
+        }
+
+        const fullSubscription =
+          await stripe.subscriptions.retrieve(subscriptionId);
+        let accountId = fullSubscription.metadata.accountId;
+        if (!accountId && typeof fullSubscription.customer === "string") {
+          const customer = await stripe.customers.retrieve(
+            fullSubscription.customer,
+          );
+          if ("metadata" in customer) {
+            accountId = customer.metadata?.accountId;
+          }
+        }
+
+        if (!accountId) {
+          throw new Error(
+            "Missing accountId in subscription metadata for invoice",
+          );
+        }
+
+        const status = invoice.status === "paid" ? "paid" : "open";
+
+        await ctx.runMutation(internal.billing.recordInvoiceInternal, {
+          accountId: accountId as any,
+          stripeInvoiceId: invoice.id,
+          stripeCustomerId: invoice.customer as string,
+          amountDue: invoice.amount_due,
+          amountPaid: invoice.amount_paid,
+          currency: invoice.currency,
+          status,
+          hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
+          invoicePdf: invoice.invoice_pdf || undefined,
+          periodStart: invoice.period_start * 1000,
+          periodEnd: invoice.period_end * 1000,
+        });
+        break;
+      }
+
+      default:
+        break;
+    }
+  },
+});
+
+/**
  * Create a Stripe Checkout session for upgrading to a paid plan.
  * Returns the checkout session URL to redirect the user.
  */
@@ -371,11 +574,15 @@ export const createCheckoutSession = action({
   },
   handler: async (ctx, args): Promise<string> => {
     // Verify account membership
-    await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+    await ctx.runQuery(api.accounts.getByIdOrThrow, {
+      accountId: args.accountId,
+    });
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      throw new Error("STRIPE_SECRET_KEY is not configured in environment variables");
+      throw new Error(
+        "STRIPE_SECRET_KEY is not configured in environment variables",
+      );
     }
 
     // Initialize Stripe (lazy import to avoid bundling in client)
@@ -385,13 +592,18 @@ export const createCheckoutSession = action({
     });
 
     // Get or create Stripe customer for this account
-    const account = await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+    const account = await ctx.runQuery(api.accounts.getByIdOrThrow, {
+      accountId: args.accountId,
+    });
     let customerId: string;
 
     // Check if subscription already exists
-    const existingSubscription = await ctx.runQuery(api.billing.getSubscription, {
-      accountId: args.accountId,
-    });
+    const existingSubscription = await ctx.runQuery(
+      api.billing.getSubscription,
+      {
+        accountId: args.accountId,
+      },
+    );
 
     if (existingSubscription) {
       customerId = existingSubscription.stripeCustomerId;
@@ -417,6 +629,11 @@ export const createCheckoutSession = action({
           quantity: 1,
         },
       ],
+      subscription_data: {
+        metadata: {
+          accountId: args.accountId,
+        },
+      },
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       metadata: {
@@ -443,11 +660,15 @@ export const createCustomerPortalSession = action({
   },
   handler: async (ctx, args): Promise<string> => {
     // Verify account membership
-    await ctx.runQuery(api.accounts.getByIdOrThrow, { accountId: args.accountId });
+    await ctx.runQuery(api.accounts.getByIdOrThrow, {
+      accountId: args.accountId,
+    });
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      throw new Error("STRIPE_SECRET_KEY is not configured in environment variables");
+      throw new Error(
+        "STRIPE_SECRET_KEY is not configured in environment variables",
+      );
     }
 
     // Get subscription to retrieve Stripe customer ID

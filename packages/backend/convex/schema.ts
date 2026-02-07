@@ -205,6 +205,8 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
+        /** Task ID used for orchestrator chat (PM conversation thread). */
+        orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
@@ -952,11 +954,7 @@ export default defineSchema({
     stripePriceId: v.string(),
 
     /** Current subscription plan */
-    plan: v.union(
-      v.literal("free"),
-      v.literal("pro"),
-      v.literal("enterprise"),
-    ),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
 
     /** Subscription status from Stripe */
     status: v.union(
