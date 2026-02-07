@@ -532,6 +532,8 @@ export default defineSchema({
         id: v.string(),
         /** Display name at time of mention */
         name: v.string(),
+        /** Agent slug at time of mention (for @slug rendering). */
+        slug: v.optional(v.string()),
       }),
     ),
 
