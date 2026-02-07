@@ -211,7 +211,7 @@ export default defineSchema({
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
     restartRequestedAt: v.optional(v.number()),
-  }).index("by_slug", ["slug"]),
+  }).index("by_slug", ["slug"]).unique(),
 
   // ==========================================================================
   // MEMBERSHIPS
@@ -241,7 +241,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_user", ["userId"])
-    .index("by_account_user", ["accountId", "userId"]),
+    .index("by_account_user", ["accountId", "userId"]).unique(),
 
   // ==========================================================================
   // SKILLS
@@ -432,7 +432,7 @@ export default defineSchema({
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
     .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]),
+    .index("by_session_key", ["sessionKey"]).unique(),
 
   // ==========================================================================
   // TASKS
