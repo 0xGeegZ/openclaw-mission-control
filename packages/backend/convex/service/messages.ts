@@ -376,7 +376,11 @@ export const createFromAgent = internalMutation({
       mentionedIds,
       hasAgentMentions,
       task.status,
-      { isOrchestratorChat, orchestratorAgentId },
+      {
+        isOrchestratorChat,
+        orchestratorAgentId,
+        suppressAgentNotifications,
+      },
     );
 
     return messageId;
