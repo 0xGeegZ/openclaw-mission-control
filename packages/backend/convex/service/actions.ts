@@ -1547,7 +1547,7 @@ export const linkTaskToPrForAgentTool = action({
         let currentBody = pr.body || "";
 
         // Remove old task marker if present
-        currentBody = currentBody.replace(/\n*<!-- task: [^-]+ -->/g, "");
+        currentBody = currentBody.replace(/\n*<!-- task: [\w]+ -->/g, "");
 
         // Append new task marker
         const newBody = currentBody.trim() + "\n\n" + taskMarker;
