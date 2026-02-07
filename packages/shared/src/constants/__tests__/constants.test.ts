@@ -14,6 +14,7 @@ describe("task status constants", () => {
     "review",
     "done",
     "blocked",
+    "archived",
   ];
 
   it("TASK_STATUS_ORDER contains only valid statuses", () => {
