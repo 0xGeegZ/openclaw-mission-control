@@ -13,6 +13,7 @@ import {
 } from "./lib/auth";
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
+import { seedDefaultTemplates } from "./seed-agent-templates";
 
 /**
  * Create a new account.
@@ -55,6 +56,9 @@ export const create = mutation({
       role: "owner",
       joinedAt: Date.now(),
     });
+
+    // Seed default agent templates for new account
+    await seedDefaultTemplates(ctx, { accountId });
 
     // TODO: Log activity (implemented in Module 08)
 

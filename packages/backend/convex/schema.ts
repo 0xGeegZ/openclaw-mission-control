@@ -934,6 +934,76 @@ export default defineSchema({
     .index("by_account_date", ["accountId", "date"]),
 
   // ==========================================================================
+  // AGENT TEMPLATES
+  // Reusable agent configurations for quick setup and consistency.
+  // ==========================================================================
+  agentTemplates: defineTable({
+    /** Account this template belongs to (or empty for system templates) */
+    accountId: v.optional(v.id("accounts")),
+
+    /** Template display name (e.g., "Squad Lead", "Full-stack Engineer") */
+    name: v.string(),
+
+    /** URL-safe identifier (e.g., "squad-lead", "engineer") */
+    slug: v.string(),
+
+    /** Category for organization (management, engineering, qa, design, content, custom) */
+    category: v.string(),
+
+    /** Detailed description of the template */
+    description: v.string(),
+
+    /** Template version (e.g., "1.0.0") */
+    version: v.string(),
+
+    /** Whether this template is available across all accounts */
+    isPublic: v.boolean(),
+
+    /** Base agent configuration */
+    config: v.object({
+      // Agent properties
+      role: v.string(),
+      avatarUrl: v.optional(v.string()),
+      heartbeatInterval: v.number(),
+
+      // OpenClaw config
+      model: v.string(),
+      temperature: v.number(),
+      maxTokens: v.optional(v.number()),
+
+      // Behavior flags
+      canCreateTasks: v.boolean(),
+      canModifyTaskStatus: v.boolean(),
+      canCreateDocuments: v.boolean(),
+      canMentionAgents: v.boolean(),
+
+      // Context configuration
+      maxHistoryMessages: v.number(),
+      includeTaskContext: v.boolean(),
+      includeTeamContext: v.boolean(),
+    }),
+
+    /** Default skill slugs to assign when creating from template */
+    defaultSkillSlugs: v.array(v.string()),
+
+    /** SOUL template content (supports {{agentName}}, {{role}} placeholders) */
+    soulTemplate: v.string(),
+
+    /** Number of agents created from this template */
+    usageCount: v.number(),
+
+    /** Creation timestamp */
+    createdAt: v.number(),
+
+    /** Last update timestamp */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_category", ["category"])
+    .index("by_slug", ["slug"])
+    .index("by_public", ["isPublic"]),
+
+  // ==========================================================================
   // SYSTEM CONFIG (key-value)
   // Feature flags and orchestration config (e.g. fleet_orchestration_enabled, canary_account_id).
   // ==========================================================================
