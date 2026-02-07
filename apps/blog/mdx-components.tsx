@@ -94,6 +94,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       <td className="px-4 py-2">{children}</td>
     ),
     img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+      // eslint-disable-next-line @next/next/no-img-element -- MDX content; dimensions unknown
       <img
         {...props}
         alt={props.alt ?? ""}

@@ -9,7 +9,7 @@
     "seed-skills:download": "npx tsx scripts/seed-skills-download.ts",
     "seed-skills:generate": "npx tsx scripts/seed-skills-generate.ts",
     "seed-skills:sync": "npm run seed-skills:download && npm run seed-skills:generate",
-    "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN === 'true') process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
+    "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN) process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
     "typecheck": "tsc --noEmit -p convex",
     "test": "vitest run"
   },
