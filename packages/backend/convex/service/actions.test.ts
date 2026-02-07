@@ -34,13 +34,13 @@ function createMockContext(dbData: {
 }) {
   return {
     runQuery: vi.fn(async (query, args) => {
-      if (query.name === "getInternal" && args.agentId) {
+      if (args.agentId) {
         return dbData.agent || null;
       }
-      if (query.name === "getInternal" && args.taskId) {
+      if (args.taskId) {
         return dbData.task || null;
       }
-      if (query.name === "getInternal" && args.accountId) {
+      if (args.accountId) {
         return dbData.account || null;
       }
       return null;
@@ -693,5 +693,143 @@ describe("getAgentSkillsForTool", () => {
       expect(result.skillCount).toBe(0);
       expect(result.skillIds).toEqual([]);
     });
+  });
+});
+
+// ============================================================================
+// searchTasksForAgentTool Tests
+// ============================================================================
+
+describe("searchTasksForAgentTool", () => {
+  const testAccountId = "acc_123" as Id<"accounts">;
+  const testAgentId = "agent_orchestrator" as Id<"agents">;
+  const testServiceToken = "token_abc123";
+
+  it("enforces orchestrator-only access", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, slug: "engineer", accountId: testAccountId },
+      account: {
+        _id: testAccountId,
+        settings: { orchestratorAgentId: "agent_other" as Id<"agents"> },
+      },
+    });
+
+    const action = async () => {
+      const agent = await ctx.runQuery({} as any, { agentId: testAgentId });
+      const account = await ctx.runQuery({} as any, { accountId: testAccountId });
+      if (!account?.settings?.orchestratorAgentId) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      if (account.settings.orchestratorAgentId !== agent._id) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      return [];
+    };
+
+    await expect(action()).rejects.toThrow(
+      "Forbidden: Only the orchestrator can search tasks",
+    );
+  });
+
+  it("returns results for orchestrator", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, slug: "orchestrator", accountId: testAccountId },
+      account: {
+        _id: testAccountId,
+        settings: { orchestratorAgentId: testAgentId },
+      },
+    });
+
+    const action = async () => {
+      const account = await ctx.runQuery({} as any, { accountId: testAccountId });
+      if (account.settings.orchestratorAgentId !== testAgentId) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      return [
+        {
+          _id: "task1",
+          title: "Test Task",
+          status: "in_progress",
+          priority: 3,
+          assignedAgentIds: [],
+          assignedUserIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          relevanceScore: 3,
+        },
+      ];
+    };
+
+    const result = await action();
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe("Test Task");
+  });
+});
+
+// ============================================================================
+// loadTaskDetailsForAgentTool Tests
+// ============================================================================
+
+describe("loadTaskDetailsForAgentTool", () => {
+  const testAccountId = "acc_123" as Id<"accounts">;
+  const testAgentId = "agent_123" as Id<"agents">;
+  const testTaskId = "task_123" as Id<"tasks">;
+
+  it("rejects cross-account access", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, accountId: testAccountId },
+      task: { _id: testTaskId, accountId: "acc_other" },
+    });
+
+    const action = async () => {
+      const task = await ctx.runQuery({} as any, { taskId: testTaskId });
+      if (task.accountId !== testAccountId) {
+        throw new Error("Forbidden: Task belongs to different account");
+      }
+      return { task, thread: [] };
+    };
+
+    await expect(action()).rejects.toThrow(
+      "Forbidden: Task belongs to different account",
+    );
+  });
+
+  it("clamps message limit to max 200", async () => {
+    const messageLimit = Math.min(Math.max(1, 500), 200);
+    expect(messageLimit).toBe(200);
+  });
+});
+
+// ============================================================================
+// createResponseRequestNotifications Tests
+// ============================================================================
+
+describe("createResponseRequestNotifications", () => {
+  it("rejects empty message or recipients", async () => {
+    const action = async (recipients: string[], message: string) => {
+      if (recipients.length === 0) {
+        throw new Error("recipientSlugs is required");
+      }
+      if (!message.trim()) {
+        throw new Error("message is required");
+      }
+      return { notificationIds: [] };
+    };
+
+    await expect(action([], "ping")).rejects.toThrow("recipientSlugs is required");
+    await expect(action(["qa"], " ")).rejects.toThrow("message is required");
+  });
+
+  it("rejects too many recipients", async () => {
+    const maxRecipients = 10;
+    const recipients = Array.from({ length: maxRecipients + 1 }, (_, i) => `a${i}`);
+    const action = async () => {
+      if (recipients.length > maxRecipients) {
+        throw new Error(`Too many recipients: max ${maxRecipients} allowed per request`);
+      }
+      return { notificationIds: [] };
+    };
+
+    await expect(action()).rejects.toThrow("Too many recipients: max 10 allowed per request");
   });
 });

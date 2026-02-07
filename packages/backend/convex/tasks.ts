@@ -124,6 +124,7 @@ export const listByStatus = query({
       review: [],
       done: [],
       blocked: [],
+      archived: [],
     };
 
     for (const task of tasks) {

@@ -58,11 +58,13 @@ export async function executeTaskDeleteTool(params: {
   accountId: Id<"accounts">;
 }): Promise<TaskDeleteToolResult> {
   const { agentId, taskId, reason, serviceToken, accountId } = params;
+  const trimmedTaskId = taskId.trim();
+  const trimmedReason = reason.trim();
 
-  if (!taskId.trim()) {
+  if (!trimmedTaskId) {
     return { success: false, error: "taskId is required" };
   }
-  if (!reason?.trim()) {
+  if (!trimmedReason) {
     return { success: false, error: "reason is required for archival" };
   }
 
@@ -72,15 +74,15 @@ export async function executeTaskDeleteTool(params: {
       accountId,
       serviceToken,
       agentId,
-      taskId: taskId as Id<"tasks">,
-      reason: reason.trim(),
+      taskId: trimmedTaskId as Id<"tasks">,
+      reason: trimmedReason,
     });
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn(
       "Task deletion failed (task will not be archived); check Convex connectivity or permissions",
-      { taskId, reason, error: message },
+      { taskId: trimmedTaskId, reason: trimmedReason, error: message },
     );
     return { success: false, error: message };
   }

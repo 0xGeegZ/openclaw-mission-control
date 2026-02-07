@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Id } from "../_generated/dataModel";
+import { isValidTransition } from "../lib/task_workflow";
 
 /**
  * Mock test suite for deleteTaskFromAgent mutation logic.
@@ -173,13 +174,12 @@ describe("deleteTaskFromAgent mutation (service)", () => {
     });
 
     it("task status transitions to archived (terminal state)", () => {
-      const currentStatus = "in_progress" as const;
-      const nextStatus = "archived" as const;
+      const currentStatus = "in_progress";
+      const nextStatus = "archived";
 
       // Verify: valid transition to archived
       // (Per task_workflow.ts: all statuses can transition to archived)
-      const validTransition = currentStatus !== nextStatus;
-      expect(validTransition).toBe(true);
+      expect(isValidTransition(currentStatus, nextStatus)).toBe(true);
     });
   });
 

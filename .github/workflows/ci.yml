@@ -58,6 +58,9 @@ jobs:
       - name: Run tests
         run: npm run test:all
 
+      - name: Run test coverage
+        run: npx turbo run test:coverage
+
   build:
     name: Build
     runs-on: ubuntu-latest
