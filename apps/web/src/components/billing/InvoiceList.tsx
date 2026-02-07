@@ -1,6 +1,12 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
 import { Download, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
@@ -20,6 +26,13 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
       style: "currency",
       currency: currency.toUpperCase(),
     }).format(amount / 100); // Stripe amounts are in cents
+  };
+
+  /**
+   * Choose the amount to display based on invoice status.
+   */
+  const getDisplayAmount = (invoice: InvoiceSummary) => {
+    return invoice.status === "paid" ? invoice.amountPaid : invoice.amountDue;
   };
 
   const getStatusColor = (status: InvoiceSummary["status"]) => {
@@ -46,7 +59,8 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground text-center py-8">
-            Your invoice history will appear here once you have an active subscription.
+            Your invoice history will appear here once you have an active
+            subscription.
           </p>
         </CardContent>
       </Card>
@@ -57,9 +71,7 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
     <Card>
       <CardHeader>
         <CardTitle>Billing History</CardTitle>
-        <CardDescription>
-          View and download your invoices
-        </CardDescription>
+        <CardDescription>View and download your invoices</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -75,7 +87,7 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                   </p>
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${getStatusColor(
-                      invoice.status
+                      invoice.status,
                     )}`}
                   >
                     {invoice.status}
@@ -88,17 +100,12 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
 
               <div className="flex items-center gap-4">
                 <p className="text-sm font-semibold">
-                  {formatCurrency(invoice.amountPaid, invoice.currency)}
+                  {formatCurrency(getDisplayAmount(invoice), invoice.currency)}
                 </p>
 
                 <div className="flex items-center gap-2">
                   {invoice.hostedInvoiceUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      asChild
-                      className="h-8"
-                    >
+                    <Button variant="ghost" size="sm" asChild className="h-8">
                       <a
                         href={invoice.hostedInvoiceUrl}
                         target="_blank"
@@ -110,12 +117,7 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                     </Button>
                   )}
                   {invoice.invoicePdf && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      asChild
-                      className="h-8"
-                    >
+                    <Button variant="ghost" size="sm" asChild className="h-8">
                       <a
                         href={invoice.invoicePdf}
                         download

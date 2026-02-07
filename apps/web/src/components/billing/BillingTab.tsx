@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import { env } from "@packages/env/nextjs-client";
 import { PLAN_PRICING } from "@packages/shared/types/billing";
 import { PlanCard } from "./PlanCard";
 import { SubscriptionCard } from "./SubscriptionCard";
@@ -35,10 +36,13 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
 
   // Actions
   const createCheckoutSession = useAction(api.billing.createCheckoutSession);
-  const createCustomerPortalSession = useAction(api.billing.createCustomerPortalSession);
+  const createCustomerPortalSession = useAction(
+    api.billing.createCustomerPortalSession,
+  );
 
   const currentPlan = account?.plan || "free";
-  const isLoading = subscription === undefined || usage === undefined || invoices === undefined;
+  const isLoading =
+    subscription === undefined || usage === undefined || invoices === undefined;
 
   const handleUpgrade = async (planName: string) => {
     const plan = planName.toLowerCase() as "free" | "pro" | "enterprise";
@@ -53,9 +57,7 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
 
     // Get price ID from environment
     const priceId =
-      plan === "pro"
-        ? process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO
-        : undefined;
+      plan === "pro" ? env.NEXT_PUBLIC_STRIPE_PRICE_PRO : undefined;
 
     if (!priceId) {
       toast.error("Plan pricing not configured", {
@@ -81,7 +83,8 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
     } catch (error) {
       console.error("Failed to create checkout session:", error);
       toast.error("Failed to start checkout", {
-        description: error instanceof Error ? error.message : "Please try again.",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setIsUpgrading(false);
@@ -103,7 +106,8 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
     } catch (error) {
       console.error("Failed to create customer portal session:", error);
       toast.error("Failed to open subscription management", {
-        description: error instanceof Error ? error.message : "Please try again.",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setIsManaging(false);
@@ -165,7 +169,9 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
       {/* Available Plans */}
       <div>
         <div className="mb-6">
-          <h3 className="text-xl font-semibold tracking-tight">Available Plans</h3>
+          <h3 className="text-xl font-semibold tracking-tight">
+            Available Plans
+          </h3>
           <p className="text-sm text-muted-foreground mt-1">
             Choose the plan that fits your needs
           </p>
