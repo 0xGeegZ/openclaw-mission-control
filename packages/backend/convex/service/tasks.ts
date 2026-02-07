@@ -594,3 +594,81 @@ export const updateStatusFromAgent = internalMutation({
     return args.taskId;
   },
 });
+
+/**
+ * Search tasks for an account on behalf of an agent (service-only).
+ * Returns tasks matching the query with relevance scores.
+ */
+export const searchTasksForAgentTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Verify agent belongs to account
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent does not belong to this account");
+    }
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account", (index) => index.eq("accountId", args.accountId))
+      .collect();
+
+    const q = args.query.trim().toLowerCase();
+    const limit = Math.min(args.limit ?? 20, 100);
+
+    if (!q) {
+      return [];
+    }
+
+    /**
+     * Calculate relevance score for a task based on field matches.
+     * Title matches are weighted higher, then description, then blockers.
+     */
+    function scoreTask(task: (typeof tasks)[0]): number {
+      let score = 0;
+      const titleMatches = (task.title.match(new RegExp(q, "gi")) ?? []).length;
+      const descMatches = (
+        (task.description ?? "").match(new RegExp(q, "gi")) ?? []
+      ).length;
+      const blockerMatches = (
+        (task.blockedReason ?? "").match(new RegExp(q, "gi")) ?? []
+      ).length;
+
+      // Weight matches: title (3x) > description (2x) > blocker (1x)
+      score += titleMatches * 3;
+      score += descMatches * 2;
+      score += blockerMatches * 1;
+
+      return score;
+    }
+
+    // Score and filter all tasks
+    const scored = tasks
+      .map((task) => ({
+        task,
+        score: scoreTask(task),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((item) => ({
+        _id: item.task._id,
+        title: item.task.title,
+        status: item.task.status,
+        priority: item.task.priority,
+        blockedReason: item.task.blockedReason,
+        assignedAgentIds: item.task.assignedAgentIds,
+        assignedUserIds: item.task.assignedUserIds,
+        createdAt: item.task.createdAt,
+        updatedAt: item.task.updatedAt,
+        relevanceScore: item.score,
+      }));
+
+    return scored;
+  },
+});

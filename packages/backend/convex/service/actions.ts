@@ -1077,6 +1077,69 @@ export const createTaskMessageForAgentTool = action({
 });
 
 /**
+ * Search tasks for orchestrator tools (service-only).
+ * Returns matching tasks with relevance scores.
+ */
+export const searchTasksForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      _id: Id<"tasks">;
+      title: string;
+      status: string;
+      priority: number;
+      blockedReason?: string;
+      assignedAgentIds: Id<"agents">[];
+      assignedUserIds: string[];
+      createdAt: number;
+      updatedAt: number;
+      relevanceScore: number;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can search tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.searchTasksForAgentTool, {
+      accountId: args.accountId,
+      agentId: args.agentId,
+      query: args.query,
+      limit: args.limit,
+    });
+  },
+});
+
+/**
  * Create or update a document on behalf of an agent (service-only).
  * Gated by canCreateDocuments behavior flag.
  */
