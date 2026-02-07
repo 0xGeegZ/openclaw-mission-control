@@ -239,6 +239,73 @@ export const TASK_LOAD_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: link a task to a GitHub PR bidirectionally */
+export const TASK_LINK_PR_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_link_pr",
+    description:
+      "Link a task to a GitHub PR bidirectionally. Updates task with PR metadata and adds task reference to PR description.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to link" },
+        prNumber: {
+          type: "number",
+          description: "GitHub PR number (e.g., 65 for PR #65)",
+        },
+      },
+      required: ["taskId", "prNumber"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: get agent skills */
+export const GET_AGENT_SKILLS_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "get_agent_skills",
+    description:
+      "Get skills available to agents in the account. Query specific agent or all agents. Orchestrator can query any agent for skill audits.",
+    parameters: {
+      type: "object",
+      properties: {
+        agentId: {
+          type: "string",
+          description:
+            "Optional agent ID to query (defaults to all agents). Orchestrator can query any; non-orchestrator only own.",
+        },
+      },
+    },
+  },
+};
+
+/** OpenResponses function tool schema: request a response from other agents */
+export const RESPONSE_REQUEST_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "response_request",
+    description:
+      "Request a response from other agents on the current task. Use this instead of @mentions to ask for follow-ups.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to request on" },
+        recipientSlugs: {
+          type: "array",
+          items: { type: "string" },
+          description: "Agent slugs to request a response from",
+        },
+        message: {
+          type: "string",
+          description: "Message to include in the response request",
+        },
+      },
+      required: ["recipientSlugs", "message"],
+    },
+  },
+};
+
 /** OpenResponses function tool schema: create or update a document */
 export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   type: "function" as const,
@@ -305,6 +372,7 @@ export function getToolCapabilitiesAndSchemas(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMentionAgents?: boolean;
   canMarkDone?: boolean;
   isOrchestrator?: boolean;
 }): ToolCapabilitiesAndSchemas {
@@ -325,6 +393,13 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("create/update documents (document_upsert tool)");
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
   }
+  if (options.hasTaskContext && options.canMentionAgents === true) {
+    capabilityLabels.push("request agent responses (response_request tool)");
+    schemas.push(RESPONSE_REQUEST_TOOL_SCHEMA);
+  }
+  // Available to all agents (including orchestrator)
+  capabilityLabels.push("query agent skills (get_agent_skills tool)");
+  schemas.push(GET_AGENT_SKILLS_TOOL_SCHEMA);
 
   // Utility tools available to all agents
   capabilityLabels.push("load task details with thread (task_load tool)");
@@ -338,6 +413,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("read task threads (task_thread tool)");
     capabilityLabels.push("search tasks (task_search tool)");
     capabilityLabels.push("archive/delete tasks (task_delete tool)");
+    capabilityLabels.push("link tasks to PRs (task_link_pr tool)");
     schemas.push(
       TASK_ASSIGN_TOOL_SCHEMA,
       TASK_MESSAGE_TOOL_SCHEMA,
@@ -346,6 +422,7 @@ export function getToolCapabilitiesAndSchemas(options: {
       TASK_THREAD_TOOL_SCHEMA,
       TASK_SEARCH_TOOL_SCHEMA,
       TASK_DELETE_TOOL_SCHEMA,
+      TASK_LINK_PR_TOOL_SCHEMA,
     );
   }
 
@@ -369,6 +446,7 @@ export function getToolSchemasForCapabilities(options: {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   hasTaskContext: boolean;
+  canMentionAgents?: boolean;
   isOrchestrator?: boolean;
 }): unknown[] {
   return getToolCapabilitiesAndSchemas(options).schemas;
@@ -573,6 +651,51 @@ export async function executeAgentTool(params: {
       return { success: true, taskId: newTaskId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "response_request") {
+    let args: {
+      taskId?: string;
+      recipientSlugs?: string[];
+      message?: string;
+    };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    const resolvedTaskId = args.taskId ?? taskId;
+    if (!resolvedTaskId) {
+      return { success: false, error: "taskId is required" };
+    }
+    const normalizedSlugs = Array.isArray(args.recipientSlugs)
+      ? args.recipientSlugs
+          .map((slug) => slug.trim().replace(/^@/, ""))
+          .filter((slug) => slug.length > 0)
+      : [];
+    if (normalizedSlugs.length === 0) {
+      return { success: false, error: "recipientSlugs is required" };
+    }
+    if (!args.message?.trim()) {
+      return { success: false, error: "message is required" };
+    }
+    try {
+      const result = await client.action(
+        api.service.actions.createResponseRequestNotifications,
+        {
+          accountId,
+          serviceToken,
+          requesterAgentId: agentId,
+          taskId: resolvedTaskId as Id<"tasks">,
+          recipientSlugs: normalizedSlugs,
+          message: args.message.trim(),
+        },
+      );
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }
   }
@@ -869,6 +992,101 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: result };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_delete") {
+    let args: { taskId?: string; reason?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim() || !args.reason?.trim()) {
+      return { success: false, error: "taskId and reason are required" };
+    }
+    if (isOrchestrator !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can delete/archive tasks",
+      };
+    }
+    try {
+      const result: TaskDeleteToolResult = await executeTaskDeleteTool({
+        agentId,
+        taskId: args.taskId.trim(),
+        reason: args.reason.trim(),
+        serviceToken,
+        accountId,
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_link_pr") {
+    let args: { taskId?: string; prNumber?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    if (args.prNumber == null || !Number.isFinite(args.prNumber)) {
+      return {
+        success: false,
+        error: "prNumber is required and must be numeric",
+      };
+    }
+    if (!isOrchestrator) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can link tasks to PRs",
+      };
+    }
+    try {
+      await client.action(api.service.actions.linkTaskToPrForAgentTool, {
+        accountId,
+        serviceToken,
+        agentId,
+        taskId: args.taskId as Id<"tasks">,
+        prNumber: args.prNumber,
+      });
+      return {
+        success: true,
+        data: { taskId: args.taskId, prNumber: args.prNumber },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "get_agent_skills") {
+    let args: { agentId?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    try {
+      const queryAgentId = args.agentId
+        ? (args.agentId as Id<"agents">)
+        : undefined;
+      const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
+        accountId,
+        agentId,
+        serviceToken,
+        queryAgentId,
+      });
+      return { success: true, data: { agents: skills } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

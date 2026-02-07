@@ -468,3 +468,79 @@ export const batchMarkDelivered = internalMutation({
     return { count: args.notificationIds.length };
   },
 });
+
+/**
+ * Create response_request notifications with per-recipient dedupe.
+ * Dedupe rule: if the latest response_request for (taskId, recipientId) exists
+ * and the recipient has not posted a newer agent message on the task, skip creating.
+ */
+export const createResponseRequestNotificationsInternal = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+    requesterAgentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    recipientAgentIds: v.array(v.id("agents")),
+    message: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"notifications">[]> => {
+    const notificationIds: Id<"notifications">[] = [];
+    const requester = await ctx.db.get(args.requesterAgentId);
+    const task = await ctx.db.get(args.taskId);
+    if (!requester || !task) return notificationIds;
+    if (requester.accountId !== args.accountId) return notificationIds;
+    if (task.accountId !== args.accountId) return notificationIds;
+
+    for (const recipientId of args.recipientAgentIds) {
+      const recipient = await ctx.db.get(recipientId);
+      if (!recipient || recipient.accountId !== args.accountId) continue;
+
+      const latestRequest = await ctx.db
+        .query("notifications")
+        .withIndex("by_task_recipient_id_created", (q) =>
+          q.eq("taskId", args.taskId).eq("recipientId", recipientId),
+        )
+        .order("desc")
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("type"), "response_request"),
+            q.eq(q.field("accountId"), args.accountId),
+            q.eq(q.field("recipientType"), "agent"),
+          ),
+        )
+        .first();
+
+      if (latestRequest) {
+        const latestReply = await ctx.db
+          .query("messages")
+          .withIndex("by_task_author_created", (q) =>
+            q
+              .eq("taskId", args.taskId)
+              .eq("authorType", "agent")
+              .eq("authorId", recipientId),
+          )
+          .order("desc")
+          .first();
+
+        if (latestReply && latestReply.createdAt > latestRequest.createdAt) {
+          // Newer reply exists; allow a fresh request.
+        } else {
+          continue;
+        }
+      }
+
+      const notificationId = await ctx.db.insert("notifications", {
+        accountId: args.accountId,
+        type: "response_request",
+        recipientType: "agent",
+        recipientId,
+        taskId: args.taskId,
+        title: `${requester.name} requested a response`,
+        body: args.message,
+        createdAt: Date.now(),
+      });
+      notificationIds.push(notificationId);
+    }
+
+    return notificationIds;
+  },
+});

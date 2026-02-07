@@ -12,6 +12,7 @@ import {
   requireAccountOwner,
 } from "./lib/auth";
 import { AVAILABLE_MODELS } from "@packages/shared";
+import { cascadeDeleteAccount } from "./lib/reference_validation";
 
 /**
  * Create a new account.
@@ -498,6 +499,15 @@ export const updateServiceTokenHash = internalMutation({
  * Delete account.
  * Requires owner role.
  * WARNING: This deletes all account data.
+ *
+ * Phase 3 Enhancement: Uses cascadeDeleteAccount helper for comprehensive cleanup.
+ * Deletion order:
+ * 1. Tasks (with associated messages, subscriptions, notifications, activities)
+ * 2. Agents (with associated activities)
+ * 3. Documents (with recursive folder deletion)
+ * 4. Memberships and invitations
+ * 5. Metadata (skills, uploads, standup summaries, runtimes, etc)
+ * 6. Account
  */
 export const remove = mutation({
   args: {
@@ -506,85 +516,8 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await requireAccountOwner(ctx, args.accountId);
 
-    // Delete all related data
-    // Order matters for foreign key-like relationships
-
-    // 1. Delete notifications
-    const notifications = await ctx.db
-      .query("notifications")
-      .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const n of notifications) {
-      await ctx.db.delete(n._id);
-    }
-
-    // 2. Delete subscriptions for all account tasks (subscriptions reference taskId)
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const task of tasks) {
-      const subs = await ctx.db
-        .query("subscriptions")
-        .withIndex("by_task", (q) => q.eq("taskId", task._id))
-        .collect();
-      for (const s of subs) {
-        await ctx.db.delete(s._id);
-      }
-    }
-
-    // 3. Delete activities
-    const activities = await ctx.db
-      .query("activities")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const a of activities) {
-      await ctx.db.delete(a._id);
-    }
-
-    // 4. Delete messages
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const m of messages) {
-      await ctx.db.delete(m._id);
-    }
-
-    // 5. Delete documents
-    const documents = await ctx.db
-      .query("documents")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const d of documents) {
-      await ctx.db.delete(d._id);
-    }
-
-    // 6. Delete tasks (subscriptions already deleted above)
-    for (const t of tasks) {
-      await ctx.db.delete(t._id);
-    }
-
-    // 7. Delete agents
-    const agents = await ctx.db
-      .query("agents")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const a of agents) {
-      await ctx.db.delete(a._id);
-    }
-
-    // 8. Delete memberships
-    const memberships = await ctx.db
-      .query("memberships")
-      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-      .collect();
-    for (const m of memberships) {
-      await ctx.db.delete(m._id);
-    }
-
-    // 9. Delete account
-    await ctx.db.delete(args.accountId);
+    // Use cascadeDeleteAccount helper for comprehensive deletion
+    await cascadeDeleteAccount(ctx.db, ctx.db, args.accountId);
 
     return true;
   },

@@ -679,6 +679,31 @@ export const searchTasksForAgentTool = internalQuery({
 });
 
 /**
+ * Update task PR metadata (internal, service-only).
+ * Used by task_link_pr tool to store GitHub PR link.
+ */
+export const updateTaskPrMetadata = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    await ctx.db.patch(args.taskId, {
+      metadata: {
+        ...(task.metadata ?? {}),
+        prNumber: args.prNumber,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Delete/archive a task on behalf of an agent (service-only).
  * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
  * Orchestrator-only; messages and documents are preserved for audit trail.

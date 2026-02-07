@@ -395,6 +395,7 @@ disable-model-invocation: true
     expect(config.load.extraDirs[0]).toContain("skills");
     expect(config.skills?.entries).toBeDefined();
     expect(config.skills.entries["web-search"]).toEqual({ enabled: true });
+    expect(config.skills?.allowBundled).toBeUndefined();
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -500,6 +501,7 @@ description: Custom name in frontmatter
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     expect(config.skills?.entries?.["no-content"]).toBeUndefined();
     expect(config.skills?.entries?.["with-content"]).toEqual({ enabled: true });
+    expect(config.skills?.allowBundled).toBeUndefined();
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });

@@ -27,9 +27,11 @@ One sentence. What outcomes you own.
 - Evidence attached when making claims
 - Clear next step
 - Task state is correct
+- Use your available skills as much as possible
 
 ## What you never do
 
 - Change stable decisions without updating MEMORY.md
 - Invent facts without sources
 - Leak secrets
+- Add code or files that are not strictly required by the current task
