@@ -65,8 +65,8 @@ export function CreateTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-4 overflow-hidden sm:max-w-md">
+        <DialogHeader className="shrink-0">
           <div className="flex items-center gap-3 mb-1">
             <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary/10">
               <Plus className="h-5 w-5 text-primary" />
@@ -79,45 +79,52 @@ export function CreateTaskDialog({
             </div>
           </div>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-sm font-medium">
-              Title
-            </Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="What needs to be done?"
-              required
-              autoFocus
-              className="h-11"
-            />
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <div className="min-h-0 flex-1 overflow-auto pr-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title" className="text-sm font-medium">
+                  Title
+                </Label>
+                <Input
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="What needs to be done?"
+                  required
+                  autoFocus
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="description"
+                  className="text-sm font-medium flex items-center gap-2"
+                >
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                  Description
+                  <span className="text-muted-foreground/60 font-normal text-xs">
+                    (optional)
+                  </span>
+                </Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add more details about this task..."
+                  rows={8}
+                  className="min-h-[10rem] resize-y text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground/60">
+                  Supports Markdown formatting
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label
-              htmlFor="description"
-              className="text-sm font-medium flex items-center gap-2"
-            >
-              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-              Description
-              <span className="text-muted-foreground/60 font-normal text-xs">
-                (optional)
-              </span>
-            </Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add more details about this task..."
-              rows={8}
-              className="min-h-[10rem] resize-y text-sm"
-            />
-            <p className="text-[11px] text-muted-foreground/60">
-              Supports Markdown formatting
-            </p>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-2 pt-2">
+          <DialogFooter className="shrink-0 gap-2 pt-2 sm:gap-2">
             <Button
               type="button"
               variant="ghost"
