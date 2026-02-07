@@ -20,6 +20,10 @@ import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
+import {
+  DEFAULT_TASK_SEARCH_LIMIT,
+  MAX_TASK_SEARCH_LIMIT,
+} from "../search";
 
 const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
 
@@ -607,7 +611,7 @@ export const searchTasksForAgentTool = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Verify agent belongs to account
+    // Verify agent belongs to account (for auth; agentId is not used for filtering)
     const agent = await ctx.db.get(args.agentId);
     if (!agent || agent.accountId !== args.accountId) {
       throw new Error("Forbidden: Agent does not belong to this account");
@@ -619,30 +623,27 @@ export const searchTasksForAgentTool = internalQuery({
       .collect();
 
     const q = args.query.trim().toLowerCase();
-    const limit = Math.min(args.limit ?? 20, 100);
+    const limit = Math.min(args.limit ?? DEFAULT_TASK_SEARCH_LIMIT, MAX_TASK_SEARCH_LIMIT);
 
     if (!q) {
       return [];
     }
 
     /**
-     * Calculate relevance score for a task based on field matches.
-     * Title matches are weighted higher, then description, then blockers.
+     * Calculate relevance score for a task based on substring matches.
+     * Uses safe substring matching (no regex), weighted by field:
+     * title (3x) > description (2x) > blocker text (1x)
      */
     function scoreTask(task: (typeof tasks)[0]): number {
       let score = 0;
-      const titleMatches = (task.title.match(new RegExp(q, "gi")) ?? []).length;
-      const descMatches = (
-        (task.description ?? "").match(new RegExp(q, "gi")) ?? []
-      ).length;
-      const blockerMatches = (
-        (task.blockedReason ?? "").match(new RegExp(q, "gi")) ?? []
-      ).length;
+      const titleLower = task.title.toLowerCase();
+      const descLower = (task.description ?? "").toLowerCase();
+      const blockerLower = (task.blockedReason ?? "").toLowerCase();
 
-      // Weight matches: title (3x) > description (2x) > blocker (1x)
-      score += titleMatches * 3;
-      score += descMatches * 2;
-      score += blockerMatches * 1;
+      // Count matches: simple presence test for each field
+      if (titleLower.includes(q)) score += 3;
+      if (descLower.includes(q)) score += 2;
+      if (blockerLower.includes(q)) score += 1;
 
       return score;
     }
