@@ -174,8 +174,20 @@ export const getRoster = query({
       }),
     );
 
-    // Sort: online first, then by name
+    const account = await ctx.db.get(args.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    // Sort: Orchestrator first, then by status, then by name
     roster.sort((a, b) => {
+      const aIsOrchestrator =
+        orchestratorAgentId != null && a._id === orchestratorAgentId;
+      const bIsOrchestrator =
+        orchestratorAgentId != null && b._id === orchestratorAgentId;
+      if (aIsOrchestrator && !bIsOrchestrator) return -1;
+      if (!aIsOrchestrator && bIsOrchestrator) return 1;
+
       const statusOrder = { online: 0, busy: 1, idle: 2, offline: 3, error: 4 };
       const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 5;
       const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 5;
