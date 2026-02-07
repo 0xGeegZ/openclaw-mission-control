@@ -117,6 +117,73 @@ describe("shouldDeliverToAgent", () => {
     expect(shouldDeliverToAgent(ctx)).toBe(true);
   });
 
+  it("returns false for status_change to agent when task is review and agent is not reviewer", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "agent-a",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      agent: { _id: "agent-a", role: "Writer", name: "Writer" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns true for status_change to agent when task is review and agent is reviewer", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "agent-a",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      agent: { _id: "agent-a", role: "QA Reviewer", name: "QA" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns true for status_change to agent when task is review and recipient is orchestrator", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Engineer", name: "Orchestrator" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["orch"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
   it("returns false for thread_update + agent author when task is done", () => {
     const ctx = buildContext({
       task: {

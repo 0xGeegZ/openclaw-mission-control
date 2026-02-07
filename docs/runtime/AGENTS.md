@@ -92,7 +92,7 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 
 - **task_status** — Update the current task's status. Call **before** posting your reply when you change status. Available only when you have a task context and the account allows it.
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
-- **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
+- **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. This is the document sharing tool — always use it when you produce docs so the primary user can see them. After calling it, include the returned documentId and a Markdown link in your reply: `[Document](/document/<documentId>)`. Available when the account allows agents to create documents.
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
@@ -183,6 +183,7 @@ When creating a doc, always include:
 - Open questions (if any)
 - "How to verify" (when relevant)
 - Last updated timestamp
+- After creating/updating the doc, always share it in your thread update: include the documentId, a one-line summary, and a Markdown link `[Document](/document/<documentId>)`. If you only paste content in the thread, the primary user may not see the document.
 
 ## Safety / secrets
 

@@ -60,6 +60,11 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 5. Prefer small, finished increments over large vague progress.
 6. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
+## Document sharing (critical)
+
+- When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
+- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>).
+
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS.
@@ -80,16 +85,17 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
-- If you are the orchestrator: also review in_progress and review tasks across the account.
+- If you are the orchestrator: also review in_progress tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
-2. A task assigned to me and in REVIEW (needs response)
-3. A task assigned to me and in IN_PROGRESS / ASSIGNED
-4. A thread I'm subscribed to with new messages
-5. If orchestrator: follow up on in_progress/review tasks even if assigned to others.
-6. Otherwise: scan the activity feed for something I can improve
+2. A task assigned to me and in IN_PROGRESS / ASSIGNED
+3. A thread I'm subscribed to with new messages
+4. If orchestrator: follow up on in_progress tasks even if assigned to others.
+5. Otherwise: scan the activity feed for something I can improve
+
+Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1-2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 

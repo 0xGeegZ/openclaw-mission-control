@@ -630,6 +630,8 @@ function isOrchestratorChatTask(
  * mentioned agent can reply once to a direct request (e.g. push PR).
  * Skips status_change notifications to agents when task is DONE or BLOCKED to avoid
  * acknowledgment storms (each agent replying to "task status changed to done").
+ * For REVIEW, only deliver status_change to reviewer roles or the orchestrator to avoid
+ * redundant review confirmations from every assignee.
  * Skips agent-authored thread_update unless the recipient is assigned, or in review
  * as a reviewer; skips thread_update when task is DONE or BLOCKED to avoid reply loops.
  *
@@ -641,6 +643,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const messageAuthorType = context.message?.authorType;
   const taskStatus = context.task?.status;
   const isOrchestratorChat = isOrchestratorChatTask(context.task);
+  const orchestratorAgentId = context.orchestratorAgentId;
 
   if (isOrchestratorChat && context.notification?.recipientType === "agent") {
     return context.notification?.recipientId === context.orchestratorAgentId;
@@ -649,17 +652,24 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   if (
     notificationType === "status_change" &&
     context.notification?.recipientType === "agent" &&
-    taskStatus != null &&
-    TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+    taskStatus != null
   ) {
-    return false;
+    if (TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)) {
+      return false;
+    }
+    if (taskStatus === "review") {
+      const recipientId = context.notification?.recipientId;
+      if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
+        return true;
+      }
+      return isReviewerRole(context.agent?.role);
+    }
   }
 
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
     const recipientId = context.notification?.recipientId;
     const assignedAgentIds = context.task?.assignedAgentIds;
     const sourceNotificationType = context.sourceNotificationType;
-    const orchestratorAgentId = context.orchestratorAgentId;
     const agentRole = context.agent?.role;
     if (
       taskStatus != null &&
@@ -1238,8 +1248,8 @@ export function formatNotificationMessage(
     : "";
   const documentInstructions = canCreateDocuments
     ? hasRuntimeTools
-      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
-      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`.`
     : "";
   const orchestratorToolInstructions = isOrchestrator
     ? hasRuntimeTools
@@ -1256,8 +1266,8 @@ export function formatNotificationMessage(
       : "";
   const largeResultInstruction = canCreateDocuments
     ? hasRuntimeTools
-      ? "If the result is large, create a document (document_upsert) and summarize it here."
-      : "If the result is large, create a document via the HTTP fallback (/agent/document) and summarize it here."
+      ? "If the result is large, create a document with document_upsert (document sharing tool), include the returned documentId and a Markdown link ([Document](/document/<documentId>)) in your reply, and summarize it here."
+      : "If the result is large, create a document via the HTTP fallback (/agent/document), include the returned documentId and a Markdown link ([Document](/document/<documentId>)) in your reply, and summarize it here."
     : "If the result is large, summarize it here (document creation not permitted).";
 
   const mentionableSection = canMentionAgents

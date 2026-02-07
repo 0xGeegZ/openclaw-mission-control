@@ -44,7 +44,7 @@ describe("buildHeartbeatMessage", () => {
     const task = buildTask({
       _id: "task-orch" as TaskDoc["_id"],
       title: "Orchestrator task",
-      status: "review",
+      status: "in_progress",
     });
     const message = buildHeartbeatMessage({
       focusTask: task,
@@ -53,7 +53,7 @@ describe("buildHeartbeatMessage", () => {
     });
     expect(message).toContain("Tracked tasks:");
     expect(message).toContain(
-      "As the orchestrator, follow up on in_progress/review tasks",
+      "As the orchestrator, follow up on in_progress/assigned tasks",
     );
     expect(message).toContain("Task ID: task-orch");
   });

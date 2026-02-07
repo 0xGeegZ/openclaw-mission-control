@@ -597,10 +597,11 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
-2. A task assigned to me and in REVIEW (needs response)
-3. A task assigned to me and in IN_PROGRESS / ASSIGNED
-4. A thread I'm subscribed to with new messages
-5. Otherwise: scan the activity feed for something I can improve
+2. A task assigned to me and in IN_PROGRESS / ASSIGNED
+3. A thread I'm subscribed to with new messages
+4. Otherwise: scan the activity feed for something I can improve
+
+Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 
