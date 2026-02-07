@@ -79,5 +79,7 @@ jobs:
       - name: Build all packages
         run: npm run build
         env:
-          # Skip Convex type generation in CI (requires auth)
           SKIP_CONVEX_TYPEGEN: "true"
+          # Repository secrets; placeholder when unset so build can complete
+          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL || 'https://ci-placeholder.convex.cloud' }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_ci_placeholder' }}
