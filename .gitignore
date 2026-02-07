@@ -40,3 +40,10 @@ yarn-error.log*
 
 # Local runtime / OpenClaw persisted data and workspace
 .runtime/
+
+# Generated seed skills artifacts
+packages/backend/convex/seed_skills_content.generated.ts
+packages/backend/convex/seed-skills/*.md
+!packages/backend/convex/seed-skills/github-issue-triage.md
+!packages/backend/convex/seed-skills/release-management.md
+!packages/backend/convex/seed-skills/backend-convex.md

@@ -13,7 +13,7 @@ anchors so the comments can be posted directly on GitHub.
 
 ## Inputs
 
-- Prefer the **current git branch** diff against `origin/main` unless the user provides a PR base branch.
+- Prefer the **current git branch** diff against `origin/dev` unless the user provides a PR base branch.
 - If the user provides **manual testing notes / logs**, incorporate them as additional comments and map them to likely
   code locations.
 
@@ -21,7 +21,7 @@ anchors so the comments can be posted directly on GitHub.
 
 1. **Collect context**
    - Determine current branch name and whether the working tree is clean.
-   - Identify base branch (default to `origin/main`) and list changed files (`git diff --name-status`).
+   - Identify base branch (default to `origin/dev`) and list changed files (`git diff --name-status`).
    - Skim the highest-impact files (routes, server actions, validation, shared components).
 2. **Find reviewable risks**
    - Security/authZ/authN gaps (server-side enforcement vs UI-only gating).

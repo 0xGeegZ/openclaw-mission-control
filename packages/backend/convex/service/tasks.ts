@@ -12,7 +12,10 @@ import {
   TaskStatus,
 } from "../lib/task_workflow";
 import { logActivity } from "../lib/activity";
-import { createStatusChangeNotification } from "../lib/notifications";
+import {
+  createAssignmentNotification,
+  createStatusChangeNotification,
+} from "../lib/notifications";
 import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
@@ -139,6 +142,98 @@ export const listByStatusForAccount = internalQuery({
   },
 });
 
+const TOOL_ASSIGNEE_SCAN_LIMIT = 200;
+const TOOL_TASK_STATUSES: TaskStatus[] = [
+  "inbox",
+  "assigned",
+  "in_progress",
+  "review",
+  "done",
+  "blocked",
+];
+
+/**
+ * List tasks for agent tools (internal, service-only).
+ * Supports optional status + assignee filtering with capped limits.
+ */
+export const listForTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    status: v.optional(taskStatusValidator),
+    assigneeAgentId: v.optional(v.id("agents")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const fetchLimit = Math.min(limit * 10, 200);
+    const assigneeAgentId = args.assigneeAgentId;
+
+    if (assigneeAgentId && !args.status) {
+      const perStatusLimit = Math.ceil(
+        TOOL_ASSIGNEE_SCAN_LIMIT / TOOL_TASK_STATUSES.length,
+      );
+      const results = await Promise.all(
+        TOOL_TASK_STATUSES.map((status) =>
+          ctx.db
+            .query("tasks")
+            .withIndex("by_account_status", (q) =>
+              q.eq("accountId", args.accountId).eq("status", status),
+            )
+            .order("desc")
+            .take(perStatusLimit),
+        ),
+      );
+      const merged = new Map<Id<"tasks">, Doc<"tasks">>();
+      for (const task of results.flat()) {
+        merged.set(task._id, task);
+      }
+      return Array.from(merged.values())
+        .filter((task) => task.assignedAgentIds.includes(assigneeAgentId))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, limit);
+    }
+
+    const baseTasks = args.status
+      ? await ctx.db
+          .query("tasks")
+          .withIndex("by_account_status", (q) =>
+            q.eq("accountId", args.accountId).eq("status", args.status!),
+          )
+          .order("desc")
+          .take(fetchLimit)
+      : await ctx.db
+          .query("tasks")
+          .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+          .order("desc")
+          .take(fetchLimit);
+
+    const filtered = assigneeAgentId
+      ? baseTasks.filter((task) =>
+          task.assignedAgentIds.includes(assigneeAgentId),
+        )
+      : baseTasks;
+
+    return filtered.slice(0, limit);
+  },
+});
+
+/**
+ * Get a task for agent tools (internal, service-only).
+ */
+export const getForTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.accountId !== args.accountId) {
+      return null;
+    }
+    return task;
+  },
+});
+
 /**
  * Create a task on behalf of an agent (service-only).
  * Enforces status requirements; auto-assigns creating agent when status is assigned/in_progress and no assignees.
@@ -217,6 +312,126 @@ export const createFromAgent = internalMutation({
     }
 
     return taskId;
+  },
+});
+
+/**
+ * Assign agents to a task on behalf of an agent (service-only).
+ * Adds new agent assignees without removing existing ones.
+ */
+export const assignFromAgent = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    assignedAgentIds: v.array(v.id("agents")),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    if (task.accountId !== agent.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    const nextAssignedAgentIds = Array.from(
+      new Set([...task.assignedAgentIds, ...args.assignedAgentIds]),
+    );
+
+    for (const agentId of nextAssignedAgentIds) {
+      const assignedAgent = await ctx.db.get(agentId);
+      if (!assignedAgent || assignedAgent.accountId !== task.accountId) {
+        throw new Error(`Invalid agent: ${agentId}`);
+      }
+    }
+
+    const hasAssignees =
+      task.assignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
+    const shouldAssign = task.status === "inbox" && hasAssignees;
+    const nextStatus: TaskStatus | null =
+      shouldAssign && nextAssignedAgentIds.length > 0
+        ? "in_progress"
+        : shouldAssign
+          ? "assigned"
+          : null;
+
+    const updates: Record<string, unknown> = {
+      assignedAgentIds: nextAssignedAgentIds,
+      updatedAt: Date.now(),
+    };
+    if (nextStatus && nextStatus !== task.status) {
+      updates.status = nextStatus;
+    }
+
+    await ctx.db.patch(args.taskId, updates);
+
+    const previousAgentIds = new Set(task.assignedAgentIds);
+    const newAgentIds = nextAssignedAgentIds.filter(
+      (aid) => !previousAgentIds.has(aid),
+    );
+
+    for (const assignedAgentId of newAgentIds) {
+      await createAssignmentNotification(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "agent",
+        assignedAgentId,
+        agent.name,
+        task.title,
+      );
+      await ensureSubscribed(
+        ctx,
+        task.accountId,
+        args.taskId,
+        "agent",
+        assignedAgentId,
+      );
+    }
+
+    await ensureOrchestratorSubscribed(ctx, task.accountId, args.taskId);
+
+    await logActivity({
+      ctx,
+      accountId: task.accountId,
+      type: "task_updated",
+      actorType: "agent",
+      actorId: args.agentId,
+      actorName: agent.name,
+      targetType: "task",
+      targetId: args.taskId,
+      targetName: task.title,
+      meta: {
+        assignedAgentIds: newAgentIds,
+      },
+    });
+
+    if (nextStatus && nextStatus !== task.status) {
+      await logActivity({
+        ctx,
+        accountId: task.accountId,
+        type: "task_status_changed",
+        actorType: "agent",
+        actorId: args.agentId,
+        actorName: agent.name,
+        targetType: "task",
+        targetId: args.taskId,
+        targetName: task.title,
+        meta: {
+          oldStatus: task.status,
+          newStatus: nextStatus,
+          reason: "auto_assignment",
+        },
+      });
+    }
+
+    return args.taskId;
   },
 });
 

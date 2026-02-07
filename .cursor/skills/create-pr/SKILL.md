@@ -28,13 +28,13 @@ When invoked, execute the following workflow:
 ```bash
 git status
 git diff --stat
-git log --oneline main..HEAD
+git log --oneline dev..HEAD
 ```
 
 **Determine action needed:**
 
 - If uncommitted changes exist → stage and commit them
-- If on main/master → create feature branch
+- If on dev → create feature branch
 - If commits exist on branch → check if PR already exists
 
 ## 2. Handle Uncommitted Changes (if present)
@@ -60,7 +60,7 @@ git commit -m "type(scope): description"
 
 ## 3. Ensure Feature Branch (if needed)
 
-**If currently on main/master, create branch:**
+**If currently on dev, create branch:**
 
 - Format: `<type>/<short-description>`
 - Example: `feat/context-on-failure`, `fix/rule-evaluation`
@@ -75,8 +75,8 @@ git checkout -b <branch-name>
 **Review diff scope:**
 
 ```bash
-git diff main --stat
-git diff main --name-status
+git diff dev --stat
+git diff dev --name-status
 ```
 
 **Group changes by purpose:**
@@ -154,7 +154,7 @@ gh pr list --head $(git branch --show-current)
 gh pr create \
   --title "<PR Title>" \
   --body "<PR Description>" \
-  --base main
+  --base dev
 ```
 
 **Options to consider:**

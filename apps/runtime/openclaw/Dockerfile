@@ -4,9 +4,11 @@
 FROM node:22
 
 # Install basic tools + Chromium (required for OpenClaw web/browser skills)
+# jq: JSON parsing for scripts and OpenClaw skills
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    jq \
     rsync \
     chromium \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -29,8 +31,11 @@ RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
 
 RUN npm install -g pnpm
 
+# Pinned versions for reproducible builds (update periodically).
+ARG OPENCLAW_VERSION=2026.2.6-3
+ARG CLAWBOT_VERSION=2026.1.24-3
 # Install OpenClaw CLI (newer) with clawdbot fallback.
-RUN npm install -g openclaw@latest clawdbot@latest \
+RUN npm install -g "openclaw@${OPENCLAW_VERSION}" "clawdbot@${CLAWBOT_VERSION}" \
     && openclaw --version \
     && clawdbot --version
 

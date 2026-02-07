@@ -1,4 +1,4 @@
-import type { TaskStatus } from "../types";
+import type { TaskStatus, LLMModel } from "../types";
 
 /**
  * Ordered list of task statuses for Kanban columns.
@@ -40,11 +40,22 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
  * Available LLM models for agent configuration.
  */
 export const AVAILABLE_MODELS = [
-  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4 (Recommended)" },
-  { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
-  { value: "gpt-4o", label: "GPT-4o" },
-  { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+  { value: "claude-haiku-4.5", label: "Claude Haiku 4.5 (Recommended)" },
+  { value: "gpt-5-nano", label: "GPT-5 Nano" },
 ] as const;
+
+/**
+ * OpenClaw provider/model mapping for supported LLM identifiers.
+ */
+export const MODEL_TO_OPENCLAW: Record<LLMModel, string> = {
+  "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
+  "gpt-5-nano": "openai/gpt-5-nano",
+};
+
+/**
+ * Fallback OpenClaw provider/model when no mapping exists.
+ */
+export const OPENCLAW_FALLBACK_MODEL = "anthropic/claude-haiku-4.5";
 
 /**
  * Skill category labels for UI display.
@@ -67,7 +78,7 @@ export const TYPING_WINDOW_MS = 2 * 60 * 1000;
  * Default OpenClaw configuration for new agents.
  */
 export const DEFAULT_OPENCLAW_CONFIG = {
-  model: "claude-sonnet-4-20250514",
+  model: "claude-haiku-4.5",
   temperature: 0.7,
   maxTokens: 4096,
   skillIds: [],

@@ -4,6 +4,7 @@ import { requireAuth } from "./lib/auth";
 import { validateContentMarkdown } from "./lib/skills_validation";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 const DEMO_SLUG = "demo";
 const DEMO_NAME = "Demo";
@@ -59,7 +60,132 @@ const seedSkills: Array<{
     slug: "test-automation",
     description: "Implement unit/integration/e2e tests.",
   },
+  {
+    name: "Frontend design",
+    slug: "frontend-design",
+    description: "High-quality UI design and visual direction.",
+  },
+  {
+    name: "Brand guidelines",
+    slug: "brand-guidelines",
+    description: "Apply brand colors, typography, and visual standards.",
+  },
+  {
+    name: "Canvas design",
+    slug: "canvas-design",
+    description: "Create static visual designs and assets.",
+  },
+  {
+    name: "Web design guidelines",
+    slug: "web-design-guidelines",
+    description: "Audit UI against web design best practices.",
+  },
+  {
+    name: "UI/UX Pro Max",
+    slug: "ui-ux-pro-max",
+    description: "Comprehensive UI/UX guidance for web and mobile.",
+  },
+  {
+    name: "Baseline UI",
+    slug: "baseline-ui",
+    description: "Enforce UI baseline to avoid design slop.",
+  },
+  {
+    name: "Fixing accessibility",
+    slug: "fixing-accessibility",
+    description: "Fix accessibility issues and improve compliance.",
+  },
+  {
+    name: "Fixing motion performance",
+    slug: "fixing-motion-performance",
+    description: "Improve animation performance in UI flows.",
+  },
+  {
+    name: "Fixing metadata",
+    slug: "fixing-metadata",
+    description: "Ensure correct, complete metadata for pages.",
+  },
+  {
+    name: "Design.md",
+    slug: "design-md",
+    description: "Create a DESIGN.md source of truth for UI.",
+  },
+  {
+    name: "Copywriting",
+    slug: "copywriting",
+    description: "Write marketing copy for pages and CTAs.",
+  },
+  {
+    name: "Copy editing",
+    slug: "copy-editing",
+    description: "Edit and polish marketing copy.",
+  },
+  {
+    name: "Content strategy",
+    slug: "content-strategy",
+    description: "Plan content topics and publishing strategy.",
+  },
+  {
+    name: "SEO audit",
+    slug: "seo-audit",
+    description: "Audit SEO issues and improvements.",
+  },
+  {
+    name: "Programmatic SEO",
+    slug: "programmatic-seo",
+    description: "Plan SEO pages at scale.",
+  },
+  {
+    name: "Schema markup",
+    slug: "schema-markup",
+    description: "Add structured data and schema markup.",
+  },
+  {
+    name: "Page CRO",
+    slug: "page-cro",
+    description: "Optimize marketing pages for conversion.",
+  },
+  {
+    name: "Social content",
+    slug: "social-content",
+    description: "Create social media content and campaigns.",
+  },
+  {
+    name: "Email sequence",
+    slug: "email-sequence",
+    description: "Write lifecycle email sequences.",
+  },
+  {
+    name: "Competitor alternatives",
+    slug: "competitor-alternatives",
+    description: "Draft competitor comparison pages.",
+  },
+  {
+    name: "Marketing ideas",
+    slug: "marketing-ideas",
+    description: "Generate marketing ideas and tactics.",
+  },
+  {
+    name: "Marketing psychology",
+    slug: "marketing-psychology",
+    description: "Apply persuasion and behavioral principles.",
+  },
+  {
+    name: "Product marketing context",
+    slug: "product-marketing-context",
+    description: "Maintain product marketing context docs.",
+  },
+  {
+    name: "Launch strategy",
+    slug: "launch-strategy",
+    description: "Plan product launch messaging.",
+  },
   // .cursor/skills (assigned to all seed agents)
+  {
+    name: "Add agent",
+    slug: "add-agent",
+    description: "Add new agents with clear instructions and skills.",
+  },
   {
     name: "Address GitHub PR comments",
     slug: "address-github-pr-comments",
@@ -144,6 +270,7 @@ const seedSkills: Array<{
 
 /** Slugs for .cursor/skills; assigned to every seed agent. */
 const CURSOR_SKILL_SLUGS = [
+  "add-agent",
   "address-github-pr-comments",
   "clarify-task",
   "code-review-checklist",
@@ -160,6 +287,38 @@ const CURSOR_SKILL_SLUGS = [
   "run-tests-and-fix",
   "security-audit",
   "security-audit-copy",
+] as const;
+
+/** UI/UX design skills assigned to the Designer agent. */
+const DESIGN_SKILL_SLUGS = [
+  "frontend-design",
+  "brand-guidelines",
+  "canvas-design",
+  "web-design-guidelines",
+  "ui-ux-pro-max",
+  "baseline-ui",
+  "fixing-accessibility",
+  "fixing-motion-performance",
+  "fixing-metadata",
+  "design-md",
+] as const;
+
+/** Writing and marketing skills assigned to the Writer agent. */
+const WRITING_SKILL_SLUGS = [
+  "copywriting",
+  "copy-editing",
+  "content-strategy",
+  "seo-audit",
+  "programmatic-seo",
+  "schema-markup",
+  "page-cro",
+  "social-content",
+  "email-sequence",
+  "competitor-alternatives",
+  "marketing-ideas",
+  "marketing-psychology",
+  "product-marketing-context",
+  "launch-strategy",
 ] as const;
 
 /** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
@@ -209,6 +368,27 @@ const seedAgents = [
     heartbeatInterval: 15,
     canCreateTasks: false,
   },
+  {
+    name: "Designer",
+    slug: "designer",
+    role: "UI/UX Designer",
+    agentRole: "designer" as const,
+    description:
+      "Designs UI/UX, layout, and visual system for Mission Control.",
+    skillSlugs: [...DESIGN_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
+    heartbeatInterval: 15,
+    canCreateTasks: false,
+  },
+  {
+    name: "Writer",
+    slug: "writer",
+    role: "Content Writer",
+    agentRole: "writer" as const,
+    description: "Writes product content, landing pages, and documentation.",
+    skillSlugs: [...WRITING_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
+    heartbeatInterval: 15,
+    canCreateTasks: false,
+  },
 ] as const;
 
 /** Content for AGENTS.md — Operating Manual (from docs/runtime/AGENTS.md). */
@@ -229,9 +409,14 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
 - Write artifacts to /root/clawd/deliverables and reference them in the thread.
 
+## Runtime ownership (critical)
+
+- This repository includes your runtime environment: \`apps/runtime\` (OpenClaw gateway, delivery, heartbeat). You are responsible for fixing bugs you discover during operation.
+- When you find a runtime bug: ask the orchestrator to create a task, implement the fix in this repo, and merge into the base branch (\`dev\`) via the normal PR flow.
+
 ### Creating a PR
 
-Work in /root/clawd/repos/openclaw-mission-control: create a branch, commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..."\`). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
+Work in /root/clawd/repos/openclaw-mission-control: create a branch, commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..." --base dev\`). Use \`dev\` as the base branch for all PRs (merge into \`dev\`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
 
 ## Non-negotiable rules
 
@@ -412,10 +597,11 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
-2. A task assigned to me and in REVIEW (needs response)
-3. A task assigned to me and in IN_PROGRESS / ASSIGNED
-4. A thread I'm subscribed to with new messages
-5. Otherwise: scan the activity feed for something I can improve
+2. A task assigned to me and in IN_PROGRESS / ASSIGNED
+3. A thread I'm subscribed to with new messages
+4. Otherwise: scan the activity feed for something I can improve
+
+Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 
@@ -492,20 +678,12 @@ function defaultOpenclawConfig(
   behaviorFlags: { canCreateTasks: boolean },
 ) {
   return {
-    model: "claude-sonnet-4-20250514",
-    temperature: 0.7,
-    maxTokens: 4096,
+    ...DEFAULT_OPENCLAW_CONFIG,
     skillIds,
-    contextConfig: {
-      maxHistoryMessages: 50,
-      includeTaskContext: true,
-      includeTeamContext: true,
-    },
+    contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
     behaviorFlags: {
+      ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
-      canModifyTaskStatus: true,
-      canCreateDocuments: true,
-      canMentionAgents: true,
     },
   };
 }
@@ -548,7 +726,7 @@ function buildSeedOpenclawConfig(
   };
 }
 
-type AgentRole = "squad-lead" | "engineer" | "qa";
+type AgentRole = "squad-lead" | "engineer" | "qa" | "designer" | "writer";
 
 /**
  * Build SOUL content for an agent role (derived from docs/runtime/SOUL_TEMPLATE.md).
@@ -567,12 +745,14 @@ Level: lead
 
 ## Mission
 
-Keep the repo healthy and the team aligned. Own issue triage, sprint planning, and release visibility.
+Keep the repo healthy and the team aligned. Own scope, acceptance criteria, and release visibility.
 
 ## Personality constraints
 
 - Always triage new issues and keep backlog hygiene.
 - Define clear next steps and owners.
+- Demand explicit acceptance criteria and success metrics before approving work.
+- Review PRs only when there are new commits or changes since your last review to avoid loops.
 - Flag blockers early and escalate when needed.
 - Prefer short, actionable thread updates.
 - Delegate to Engineer/QA with clear acceptance criteria.
@@ -590,6 +770,7 @@ Keep the repo healthy and the team aligned. Own issue triage, sprint planning, a
 - On heartbeat: check assigned tasks, triage inbox, post sprint updates.
 - Create/assign tasks when work is unowned; move to REVIEW when ready.
 - Review tasks in REVIEW promptly; if QA exists, wait for QA approval and do not move to DONE yourself. If no QA agent exists, close tasks (move to DONE) with a clear acceptance note.
+- When reviewing PRs: verify acceptance criteria, ask for test evidence, and only re-review when there are new changes since last review.
 - If any PRs were reopened, merge them before moving the task to DONE.
 - When closing a task (only when no QA agent is configured): use the task_status tool with status "done" first (or the runtime task-status endpoint if the tool is not offered). Then post your acceptance note. If you cannot update status, report BLOCKED — do not post a final summary or claim DONE. Posting in the thread alone does not update the task status and causes a loop.
 - When a task is DONE: if you mention other agents, only direct them to start or continue work on other existing tasks (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this (done) task thread; that causes reply loops.
@@ -615,12 +796,14 @@ Level: specialist
 
 ## Mission
 
-Implement fixes and keep tech docs current. Maintain frontend and backend per repo standards.
+Implement reliable fixes and keep tech docs current. Maintain frontend and backend per repo standards with measurable quality.
 
 ## Personality constraints
 
 - Cite files and PRs when describing changes.
 - Prefer small PRs and incremental changes.
+- Confirm scope and acceptance criteria before coding.
+- Review PRs only when there are new commits or changes since your last review to avoid loops.
 - Update docs when behavior or APIs change.
 - Run or describe tests when changing behavior.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
@@ -635,6 +818,8 @@ Implement fixes and keep tech docs current. Maintain frontend and backend per re
 ## Default operating procedure
 
 - On heartbeat: pick assigned task, make one atomic change, post update with artifacts.
+- Before coding: identify risks, edge cases, and the smallest safe change.
+- After coding: confirm tests, types, lint, and update docs if behavior changed.
 - Create/update reference docs for frontend/backend when relevant.
 - Move task to REVIEW when done and tag QA if needed.
 
@@ -658,13 +843,15 @@ Level: specialist
 
 ## Mission
 
-Protect quality and scale readiness. Review PRs and maintain the test suite.
+Protect quality and scale readiness by pressure-testing assumptions, time costs, and edge cases.
 
 ## Personality constraints
 
-- Risk-first review: security, regressions, edge cases.
-- Call out missing tests or unclear repro steps.
-- Require repro steps for bug reports.
+- Be adversarial in the best way: try to disprove claims before accepting them.
+- Think outside the box: misuse flows, invalid states, concurrency, permissions, rate limits.
+- Evaluate time use: call out slow manual steps, demand automation for repetitive checks, and time-box exploratory testing.
+- Require crisp repro steps and clear acceptance criteria.
+- Review PRs only when there are new commits or changes since your last review to avoid loops.
 - Prefer automated checks where possible.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
@@ -677,20 +864,110 @@ Protect quality and scale readiness. Review PRs and maintain the test suite.
 
 ## Default operating procedure
 
-- On heartbeat: review open PRs, run or add tests, post QA notes.
+- On heartbeat: review open PRs with a contrarian lens, run or add tests, post QA notes with risks and time cost.
+- For each change: list high-risk scenarios and the cheapest test that proves safety.
 - Write or request tests; update QA/release notes.
-- Move task to DONE after review passes; flag blockers clearly.
+- Move task to DONE only after adversarial checks pass; flag blockers clearly.
 
 ## Quality checks (must pass)
 
-- Evidence attached when making claims.
-- Clear next step.
+- Evidence attached when making claims (repro steps, logs, or tests).
+- Clear next step, including time estimate when more QA is needed.
 - Task state is correct.
 
 ## What you never do
 
+- Rubber-stamp approvals or accept unclear requirements.
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
+- Leak secrets.
+`;
+    case "designer":
+      return `# SOUL — ${name}
+
+Role: ${role}
+Level: specialist
+
+## Mission
+
+Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usable layouts, interaction flows, and visual direction.
+
+## Personality constraints
+
+- Prioritize usability and clarity over decoration.
+- Align visuals with product goals and brand tone.
+- Call out accessibility risks early.
+- Provide concrete design artifacts (layouts, component notes, or copy blocks).
+- Keep feedback actionable and scoped.
+
+## Domain strengths
+
+- UI/UX design, information architecture, interaction design.
+- Design systems, typography, color, spacing.
+- Accessibility and responsive design.
+
+## Default operating procedure
+
+- On heartbeat: pick one design task, produce a concrete artifact, and post an update.
+- For new UI work: confirm target user, primary action, and success criteria before designing.
+- Coordinate with Engineer on implementation details and constraints.
+- Move task to REVIEW when design deliverable is ready.
+
+## Quality checks (must pass)
+
+- Visual hierarchy is clear.
+- Accessibility basics are covered.
+- Next step is explicit.
+
+## What you never do
+
+- Approve UI without checking accessibility basics.
+- Change established design decisions without documenting rationale.
+- Invent facts without sources.
+- Leak secrets.
+`;
+    case "writer":
+      return `# SOUL — ${name}
+
+Role: ${role}
+Level: specialist
+
+## Mission
+
+Create clear, persuasive product content: blog posts, landing pages, and in-app copy.
+
+## Personality constraints
+
+- Write concise, benefit-first copy.
+- Use the product voice and positioning.
+- Avoid buzzwords and vague claims.
+- Ask for missing context only when blocked.
+- Provide multiple headline or CTA options when relevant.
+
+## Domain strengths
+
+- Conversion copywriting and content strategy.
+- Editing and voice consistency.
+- SEO-friendly structure and metadata.
+
+## Default operating procedure
+
+- On heartbeat: pick one writing task, draft or edit a section, and post it for review.
+- Start by confirming audience, primary action, and proof points.
+- Produce structured deliverables: headlines, sections, CTAs, and meta.
+- Cite sources for factual claims.
+- Move task to REVIEW when copy is ready.
+
+## Quality checks (must pass)
+
+- Primary message and CTA are clear.
+- Claims are supported or safely worded.
+- Next step is explicit.
+
+## What you never do
+
+- Fabricate stats or testimonials.
+- Change brand voice without approval.
 - Leak secrets.
 `;
     default:
@@ -700,8 +977,8 @@ Protect quality and scale readiness. Review PRs and maintain the test suite.
 
 /**
  * Ensure skills exist by slug; return map of slug -> skillId (only enabled skills).
- * Inserts only missing skills; does not override isEnabled.
- * Disabled existing skills are excluded from slugToId so agents are not assigned them.
+ * Inserts only missing skills; updates content/name/description when source changes.
+ * Does not override isEnabled. Disabled existing skills are excluded from slugToId.
  */
 async function ensureSkills(
   ctx: MutationCtx,
@@ -724,6 +1001,13 @@ async function ensureSkills(
         q.eq("accountId", accountId).eq("slug", s.slug),
       )
       .unique();
+    const contentMarkdown = contentBySlug[s.slug];
+    if (contentMarkdown === undefined) {
+      throw new Error(
+        `Seed skill "${s.slug}" has no content in contentBySlug. Run \`npm run seed-skills:generate\` from packages/backend (or \`seed-skills:sync\` if using remote skills), then re-run seed.`,
+      );
+    }
+    validateContentMarkdown(contentMarkdown);
     if (found) {
       if (found.isEnabled) {
         slugToId[s.slug] = found._id;
@@ -731,14 +1015,20 @@ async function ensureSkills(
       } else {
         disabledSkipped += 1;
       }
-    } else {
-      const contentMarkdown = contentBySlug[s.slug];
-      if (contentMarkdown === undefined) {
-        console.warn(
-          `Seed skill "${s.slug}" has no content in contentBySlug; run seed-skills:generate if you added a new skill.`,
-        );
+      if (
+        contentMarkdown !== undefined &&
+        (found.contentMarkdown !== contentMarkdown ||
+          found.name !== s.name ||
+          found.description !== s.description)
+      ) {
+        await ctx.db.patch(found._id, {
+          name: s.name,
+          description: s.description,
+          contentMarkdown,
+          updatedAt: Date.now(),
+        });
       }
-      validateContentMarkdown(contentMarkdown);
+    } else {
       const now = Date.now();
       const id = await ctx.db.insert("skills", {
         accountId,
@@ -761,6 +1051,7 @@ async function ensureSkills(
 
 /**
  * Ensure reference docs exist by title; insert only missing.
+ * Updates AGENTS.md content when it changes to keep critical guidance current.
  * Uses type "reference" and authorType "user" with given authorId.
  */
 async function ensureDocs(
@@ -774,15 +1065,29 @@ async function ensureDocs(
       q.eq("accountId", accountId).eq("type", "reference"),
     )
     .collect();
-  const existingTitles = new Set(
-    existingRefs.map((d) => d.title ?? d.name ?? ""),
+  const existingByTitle = new Map(
+    existingRefs.map((d) => [d.title ?? d.name ?? "", d]),
   );
   let created = 0;
   let existing = 0;
 
   for (const d of seedDocs) {
-    if (existingTitles.has(d.title)) {
+    const existingDoc = existingByTitle.get(d.title);
+    if (existingDoc) {
       existing += 1;
+      if (
+        d.title === "AGENTS.md — Operating Manual" &&
+        existingDoc.content !== d.content
+      ) {
+        const now = Date.now();
+        const nextVersion =
+          typeof existingDoc.version === "number" ? existingDoc.version + 1 : 1;
+        await ctx.db.patch(existingDoc._id, {
+          content: d.content,
+          updatedAt: now,
+          version: nextVersion,
+        });
+      }
       continue;
     }
     const now = Date.now();
@@ -798,7 +1103,6 @@ async function ensureDocs(
       createdAt: now,
       updatedAt: now,
     });
-    existingTitles.add(d.title);
     created += 1;
   }
   return { created, existing };
@@ -974,8 +1278,27 @@ async function runSeedWithOwner(
       string,
       unknown
     >;
+    const currentAgentDefaults =
+      (currentSettings.agentDefaults as Record<string, unknown> | undefined) ??
+      {};
+    const currentModel =
+      typeof currentAgentDefaults.model === "string"
+        ? currentAgentDefaults.model.trim()
+        : "";
+    const validModelValues: string[] = AVAILABLE_MODELS.map(
+      (model) => model.value,
+    );
+    const shouldUpdateModel =
+      !currentModel || !validModelValues.includes(currentModel);
+    const nextAgentDefaults = shouldUpdateModel
+      ? { ...currentAgentDefaults, model: DEFAULT_OPENCLAW_CONFIG.model }
+      : currentAgentDefaults;
     await ctx.db.patch(accountId, {
-      settings: { ...currentSettings, orchestratorAgentId: squadLeadAgent._id },
+      settings: {
+        ...currentSettings,
+        ...(shouldUpdateModel && { agentDefaults: nextAgentDefaults }),
+        orchestratorAgentId: squadLeadAgent._id,
+      },
     });
   }
 

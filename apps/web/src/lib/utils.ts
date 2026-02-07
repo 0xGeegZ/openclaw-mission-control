@@ -12,3 +12,13 @@ export function getInitials(name: string): string {
     .toUpperCase()
     .slice(0, 2);
 }
+
+/**
+ * Builds a tasks URL that opens the task detail sheet by default.
+ */
+export function getTaskDetailSheetHref(
+  accountSlug: string,
+  taskId: string,
+): string {
+  return `/${accountSlug}/tasks?taskId=${encodeURIComponent(taskId)}`;
+}

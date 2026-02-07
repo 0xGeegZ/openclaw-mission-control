@@ -63,7 +63,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
 
       <Tabs defaultValue="thread" className="flex-1 flex flex-col min-h-0">
         <div className="shrink-0 border-b bg-card px-4">
-          <TabsList variant="line" className="h-10">
+          <TabsList variant="line" className="h-9">
             <TabsTrigger value="thread" className="px-4 gap-2">
               <MessageSquare className="h-4 w-4" />
               Thread
@@ -79,13 +79,12 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           value="thread"
           className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
         >
-          <ErrorBoundary variant="section">
-            <TaskThread
-              taskId={task._id}
-              accountSlug={accountSlug}
-              accountId={task.accountId}
-            />
-          </ErrorBoundary>
+          <TaskThread
+            taskId={task._id}
+            accountSlug={accountSlug}
+            accountId={task.accountId}
+            useReadByFallback
+          />
         </TabsContent>
 
         <TabsContent
@@ -93,7 +92,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden"
         >
           <ErrorBoundary variant="section">
-            <TaskDocuments taskId={task._id} />
+            <TaskDocuments taskId={task._id} accountSlug={accountSlug} />
           </ErrorBoundary>
         </TabsContent>
       </Tabs>

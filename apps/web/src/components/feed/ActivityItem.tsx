@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import Link from "next/link";
+import { getTaskDetailSheetHref } from "@/lib/utils";
 
 interface ActivityItemProps {
   activity: Doc<"activities">;
@@ -66,7 +67,7 @@ function getActivityTaskHref(
 ): string | null {
   if (!accountSlug) return null;
   if (activity.targetType === "task") {
-    return `/${accountSlug}/tasks/${activity.targetId}`;
+    return getTaskDetailSheetHref(accountSlug, activity.targetId);
   }
   if (
     activity.meta &&
@@ -75,7 +76,7 @@ function getActivityTaskHref(
   ) {
     const taskId = (activity.meta as { taskId?: unknown }).taskId;
     if (typeof taskId === "string") {
-      return `/${accountSlug}/tasks/${taskId}`;
+      return getTaskDetailSheetHref(accountSlug, taskId);
     }
   }
   return null;

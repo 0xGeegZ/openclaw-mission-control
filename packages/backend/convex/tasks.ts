@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { taskStatusValidator } from "./lib/validators";
 import {
@@ -18,6 +19,23 @@ import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
 } from "./subscriptions";
+
+const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/**
+ * Check whether a task is the account's orchestrator chat thread.
+ */
+function isOrchestratorChatTask(params: {
+  account: Doc<"accounts"> | null;
+  task: Doc<"tasks">;
+}): boolean {
+  const { account, task } = params;
+  if (task.labels?.includes(ORCHESTRATOR_CHAT_LABEL)) return true;
+  const settings = account?.settings as
+    | { orchestratorChatTaskId?: Id<"tasks"> }
+    | undefined;
+  return settings?.orchestratorChatTaskId === task._id;
+}
 
 /**
  * Internal: list tasks for an account (for standup/cron). No auth.
@@ -46,6 +64,7 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
+    const account = await ctx.db.get(args.accountId);
 
     let tasksQuery = ctx.db
       .query("tasks")
@@ -57,6 +76,9 @@ export const list = query({
     let filteredTasks = args.status
       ? tasks.filter((t) => t.status === args.status)
       : tasks;
+    filteredTasks = filteredTasks.filter(
+      (task) => !isOrchestratorChatTask({ account, task }),
+    );
 
     // Sort by priority (lower = higher priority) then by createdAt
     filteredTasks.sort((a, b) => {
@@ -85,6 +107,7 @@ export const listByStatus = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
+    const account = await ctx.db.get(args.accountId);
 
     const tasks = await ctx.db
       .query("tasks")
@@ -102,6 +125,9 @@ export const listByStatus = query({
     };
 
     for (const task of tasks) {
+      if (isOrchestratorChatTask({ account, task })) {
+        continue;
+      }
       grouped[task.status as TaskStatus].push(task);
     }
 
@@ -137,6 +163,75 @@ export const get = query({
 
     await requireAccountMember(ctx, task.accountId);
     return task;
+  },
+});
+
+/**
+ * Get or create the account-level orchestrator chat task.
+ * Ensures the caller and orchestrator are subscribed to the thread.
+ */
+export const getOrCreateOrchestratorChat = mutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAccountMember(ctx, args.accountId);
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const existingTaskId = (
+      account.settings as { orchestratorChatTaskId?: Id<"tasks"> } | undefined
+    )?.orchestratorChatTaskId;
+    const existingTask =
+      existingTaskId != null ? await ctx.db.get(existingTaskId) : null;
+
+    if (existingTask && existingTask.accountId === args.accountId) {
+      if (!existingTask.labels?.includes(ORCHESTRATOR_CHAT_LABEL)) {
+        await ctx.db.patch(existingTask._id, {
+          labels: [...(existingTask.labels ?? []), ORCHESTRATOR_CHAT_LABEL],
+        });
+      }
+      await ensureSubscribed(
+        ctx,
+        args.accountId,
+        existingTask._id,
+        "user",
+        userId,
+      );
+      await ensureOrchestratorSubscribed(ctx, args.accountId, existingTask._id);
+      return existingTask._id;
+    }
+
+    const now = Date.now();
+    const taskId = await ctx.db.insert("tasks", {
+      accountId: args.accountId,
+      title: "Orchestrator Chat",
+      description: "System thread for orchestrator coordination.",
+      status: "inbox",
+      priority: 3,
+      assignedUserIds: [],
+      assignedAgentIds: [],
+      labels: ["system:orchestrator-chat"],
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const currentSettings =
+      (account.settings as Record<string, unknown> | undefined) ?? {};
+    await ctx.db.patch(args.accountId, {
+      settings: {
+        ...currentSettings,
+        orchestratorChatTaskId: taskId,
+      },
+    });
+
+    await ensureSubscribed(ctx, args.accountId, taskId, "user", userId);
+    await ensureOrchestratorSubscribed(ctx, args.accountId, taskId);
+
+    return taskId;
   },
 });
 
@@ -236,6 +331,10 @@ export const update = mutation({
       ctx,
       task.accountId,
     );
+    const account = await ctx.db.get(task.accountId);
+    if (isOrchestratorChatTask({ account, task })) {
+      throw new Error("Orchestrator chat cannot be paused");
+    }
 
     const updates: Record<string, unknown> = {
       updatedAt: Date.now(),
@@ -289,12 +388,6 @@ export const updateStatus = mutation({
 
     const currentStatus = task.status as TaskStatus;
     const nextStatus = args.status as TaskStatus;
-
-    if (nextStatus === "done") {
-      throw new Error(
-        "Forbidden: Only the orchestrator can mark tasks as done",
-      );
-    }
 
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {

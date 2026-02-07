@@ -32,6 +32,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import type { NotificationType } from "@packages/shared";
+import { getTaskDetailSheetHref } from "@/lib/utils";
 
 interface NotificationBellProps {
   accountSlug: string;
@@ -333,7 +334,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                   const taskId = notification.taskId;
                   const href =
                     accountSlugResolved && taskId
-                      ? `/${accountSlugResolved}/tasks/${taskId}`
+                      ? getTaskDetailSheetHref(accountSlugResolved, taskId)
                       : null;
 
                   const textContent = (

@@ -90,6 +90,10 @@ export async function createThreadNotifications(
   mentionedIds: Set<string>,
   hasAgentMentions: boolean,
   taskStatus?: string,
+  options?: {
+    isOrchestratorChat?: boolean;
+    orchestratorAgentId?: Id<"agents"> | null;
+  },
 ): Promise<Id<"notifications">[]> {
   const shouldSkipAgentThreadUpdates =
     taskStatus === "done" || taskStatus === "blocked";
@@ -99,6 +103,17 @@ export async function createThreadNotifications(
     .collect();
   const notificationIds: Id<"notifications">[] = [];
   for (const subscription of subscriptions) {
+    if (
+      options?.isOrchestratorChat &&
+      subscription.subscriberType === "agent"
+    ) {
+      if (
+        !options.orchestratorAgentId ||
+        subscription.subscriberId !== options.orchestratorAgentId
+      ) {
+        continue;
+      }
+    }
     if (shouldSkipAgentThreadUpdates && subscription.subscriberType === "agent")
       continue;
     if (hasAgentMentions && subscription.subscriberType === "agent") continue;

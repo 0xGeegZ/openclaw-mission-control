@@ -47,6 +47,8 @@ function buildContext(
     assignedAgents: [],
     effectiveBehaviorFlags: {},
     repositoryDoc: null,
+    globalBriefingDoc: null,
+    taskOverview: null,
   };
   return { ...base, ...overrides } as DeliveryContext;
 }
@@ -110,6 +112,73 @@ describe("shouldDeliverToAgent", () => {
         status: "in_progress",
         title: "T",
         assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns false for status_change to agent when task is review and agent is not reviewer", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "agent-a",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      agent: { _id: "agent-a", role: "Writer", name: "Writer" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns true for status_change to agent when task is review and agent is reviewer", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "agent-a",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      agent: { _id: "agent-a", role: "QA Reviewer", name: "QA" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns true for status_change to agent when task is review and recipient is orchestrator", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "status_change",
+        title: "Status changed",
+        body: "Task review",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Engineer", name: "Orchestrator" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["orch"],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
@@ -233,6 +302,93 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).toContain("You are replying as: **Agent** (Unknown role).");
+  });
+
+  it("includes global context and task overview when provided", () => {
+    const ctx = buildContext({
+      globalBriefingDoc: {
+        title: "Account Briefing",
+        content: "Briefing content.",
+      },
+      taskOverview: {
+        totals: [
+          { status: "inbox", count: 1 },
+          { status: "in_progress", count: 2 },
+        ],
+        topTasks: [
+          {
+            status: "inbox",
+            tasks: [
+              {
+                taskId: "task-1",
+                title: "Sample task",
+                status: "inbox",
+                priority: 3,
+                assignedAgentIds: [],
+                assignedUserIds: [],
+              },
+            ],
+          },
+          {
+            status: "done",
+            tasks: [
+              {
+                taskId: "task-2",
+                title: "Completed task",
+                status: "done",
+                priority: 2,
+                assignedAgentIds: [],
+                assignedUserIds: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("Global Context:");
+    expect(message).toContain("Briefing content.");
+    expect(message).toContain("Task overview (compact):");
+    expect(message).toContain("Sample task");
+  });
+
+  it("truncates thread history and long messages", () => {
+    const longContent = "x".repeat(1601);
+    const thread = Array.from({ length: 30 }, (_, index) => ({
+      _id: `m${index}`,
+      authorType: "user",
+      authorId: `user-${index}`,
+      content: index === 29 ? longContent : `msg-${index}`,
+      createdAt: 1700000000000 + index,
+    }));
+    const ctx = buildContext({ thread });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    const expectedTruncated = `${longContent.slice(0, 1499)}…`;
+    expect(message).toContain("Thread history (recent):");
+    expect(message).toContain("(... 5 older messages omitted)");
+    expect(message).toContain("msg-5");
+    expect(message).not.toContain("msg-0");
+    expect(message).toContain(expectedTruncated);
   });
 });
 

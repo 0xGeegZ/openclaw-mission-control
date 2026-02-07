@@ -49,6 +49,10 @@ import {
 } from "@packages/ui/components/tabs";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
+import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
+
+/** Union of allowed model values for the default model selector. */
+type DefaultModelValue = (typeof AVAILABLE_MODELS)[number]["value"];
 
 interface OpenClawPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -58,10 +62,20 @@ interface OpenClawPageProps {
  * Admin page for managing OpenClaw runtime configuration.
  * Only accessible to admin and owner roles.
  */
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
-const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS = 4096;
-const DEFAULT_MAX_HISTORY = 50;
+const DEFAULT_MODEL = DEFAULT_OPENCLAW_CONFIG.model;
+const DEFAULT_TEMPERATURE = DEFAULT_OPENCLAW_CONFIG.temperature;
+const DEFAULT_MAX_TOKENS = DEFAULT_OPENCLAW_CONFIG.maxTokens ?? 4096;
+const DEFAULT_MAX_HISTORY =
+  DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages;
+
+/**
+ * Resolve a provider label for a given model value.
+ */
+function getModelProviderLabel(modelValue: string): string {
+  if (modelValue.startsWith("claude-")) return "Anthropic";
+  if (modelValue.startsWith("gpt-")) return "OpenAI";
+  return "Other";
+}
 
 export default function OpenClawPage({ params }: OpenClawPageProps) {
   use(params);
@@ -95,7 +109,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
     }
   )?.settings?.agentDefaults;
 
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [selectedModel, setSelectedModel] =
+    useState<DefaultModelValue>(DEFAULT_MODEL);
   const [temperature, setTemperature] = useState(String(DEFAULT_TEMPERATURE));
   const [maxTokens, setMaxTokens] = useState(String(DEFAULT_MAX_TOKENS));
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(
@@ -119,7 +134,14 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
 
   useEffect(() => {
     if (!agentDefaults) return;
-    if (agentDefaults.model) setSelectedModel(agentDefaults.model);
+    if (agentDefaults.model) {
+      const normalizedModel = String(agentDefaults.model).trim();
+      if (AVAILABLE_MODELS.some((model) => model.value === normalizedModel)) {
+        setSelectedModel(normalizedModel as DefaultModelValue);
+      } else {
+        setSelectedModel(DEFAULT_MODEL);
+      }
+    }
     if (agentDefaults.temperature != null)
       setTemperature(String(agentDefaults.temperature));
     if (agentDefaults.maxTokens != null)
@@ -339,7 +361,9 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         <Label htmlFor="default-model">Default Model</Label>
                         <Select
                           value={selectedModel}
-                          onValueChange={setSelectedModel}
+                          onValueChange={(value) =>
+                            setSelectedModel(value as DefaultModelValue)
+                          }
                         >
                           <SelectTrigger
                             id="default-model"
@@ -348,19 +372,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                             <SelectValue placeholder="Select model" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="claude-sonnet-4-20250514">
-                              Claude Sonnet 4
-                            </SelectItem>
-                            <SelectItem value="claude-opus-4-20250514">
-                              Claude Opus 4
-                            </SelectItem>
-                            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                            <SelectItem value="gpt-4o-mini">
-                              GPT-4o Mini
-                            </SelectItem>
-                            <SelectItem value="gemini-2.0-flash">
-                              Gemini 2.0 Flash
-                            </SelectItem>
+                            {AVAILABLE_MODELS.map((model) => (
+                              <SelectItem key={model.value} value={model.value}>
+                                {model.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
@@ -617,69 +633,42 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {[
-                        {
-                          name: "Claude Sonnet 4",
-                          provider: "Anthropic",
-                          enabled: true,
-                          recommended: true,
-                        },
-                        {
-                          name: "Claude Opus 4",
-                          provider: "Anthropic",
-                          enabled: true,
-                          recommended: false,
-                        },
-                        {
-                          name: "GPT-4o",
-                          provider: "OpenAI",
-                          enabled: true,
-                          recommended: false,
-                        },
-                        {
-                          name: "GPT-4o Mini",
-                          provider: "OpenAI",
-                          enabled: true,
-                          recommended: false,
-                        },
-                        {
-                          name: "Gemini 2.0 Flash",
-                          provider: "Google",
-                          enabled: false,
-                          recommended: false,
-                        },
-                      ].map((model) => (
-                        <div
-                          key={model.name}
-                          className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/30"
-                        >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              defaultChecked={model.enabled}
-                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                            />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">
-                                  {model.name}
-                                </span>
-                                {model.recommended && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    Recommended
-                                  </Badge>
-                                )}
+                      {AVAILABLE_MODELS.map((model) => {
+                        const provider = getModelProviderLabel(model.value);
+                        const isRecommended = model.value === DEFAULT_MODEL;
+                        return (
+                          <div
+                            key={model.value}
+                            className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/30"
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                defaultChecked
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                              />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">
+                                    {model.label}
+                                  </span>
+                                  {isRecommended && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      Recommended
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {provider}
+                                </p>
                               </div>
-                              <p className="text-xs text-muted-foreground">
-                                {model.provider}
-                              </p>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>

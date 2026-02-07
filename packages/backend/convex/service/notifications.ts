@@ -1,7 +1,14 @@
 import { v } from "convex/values";
-import { internalQuery, internalMutation } from "../_generated/server";
+import {
+  internalQuery,
+  internalMutation,
+  type DatabaseReader,
+} from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
-import { resolveBehaviorFlags, type BehaviorFlags } from "../lib/behavior_flags";
+import {
+  resolveBehaviorFlags,
+  type BehaviorFlags,
+} from "../lib/behavior_flags";
 
 /**
  * Return type of getForDelivery. Used by service actions and runtime for type-safe delivery context.
@@ -36,6 +43,87 @@ export interface GetForDeliveryResult {
   }>;
   effectiveBehaviorFlags: BehaviorFlags;
   repositoryDoc: { title: string; content: string } | null;
+  globalBriefingDoc: { title: string; content: string } | null;
+  taskOverview: {
+    totals: Array<{ status: string; count: number }>;
+    topTasks: Array<{
+      status: string;
+      tasks: Array<{
+        taskId: Id<"tasks">;
+        title: string;
+        status: string;
+        priority: number;
+        assignedAgentIds: Array<Id<"agents">>;
+        assignedUserIds: string[];
+      }>;
+    }>;
+  } | null;
+}
+
+const TASK_OVERVIEW_STATUSES = [
+  "inbox",
+  "assigned",
+  "in_progress",
+  "review",
+  "blocked",
+] as const;
+const TASK_OVERVIEW_LIMIT = 3;
+const TASK_OVERVIEW_SCAN_LIMIT = 100;
+const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/**
+ * Build a compact task overview for orchestrator prompts.
+ */
+async function buildTaskOverview(
+  ctx: { db: DatabaseReader },
+  accountId: Id<"accounts">,
+): Promise<NonNullable<GetForDeliveryResult["taskOverview"]>> {
+  const totals: Array<{ status: string; count: number }> = [];
+  const topTasks: Array<{
+    status: string;
+    tasks: Array<{
+      taskId: Id<"tasks">;
+      title: string;
+      status: string;
+      priority: number;
+      assignedAgentIds: Array<Id<"agents">>;
+      assignedUserIds: string[];
+    }>;
+  }> = [];
+
+  for (const status of TASK_OVERVIEW_STATUSES) {
+    const tasks: Doc<"tasks">[] = await ctx.db
+      .query("tasks")
+      .withIndex("by_account_status", (q) =>
+        q.eq("accountId", accountId).eq("status", status),
+      )
+      .order("desc")
+      .take(TASK_OVERVIEW_SCAN_LIMIT);
+
+    const filteredTasks = tasks.filter(
+      (task) => !task.labels?.includes(ORCHESTRATOR_CHAT_LABEL),
+    );
+
+    filteredTasks.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return b.createdAt - a.createdAt;
+    });
+
+    totals.push({ status, count: filteredTasks.length });
+    topTasks.push({
+      status,
+      tasks: filteredTasks.slice(0, TASK_OVERVIEW_LIMIT).map((task) => ({
+        taskId: task._id,
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+        assignedAgentIds: task.assignedAgentIds,
+        assignedUserIds: task.assignedUserIds,
+      })),
+    });
+  }
+
+  return { totals, topTasks };
 }
 
 /**
@@ -246,11 +334,35 @@ export const getForDelivery = internalQuery({
         doc.title === "Repository — Primary" ||
         doc.name === "Repository — Primary",
     );
+    const briefingDoc = referenceDocs.find(
+      (doc) =>
+        doc.title === "Account Briefing" || doc.name === "Account Briefing",
+    );
 
     const account = await ctx.db.get(notification.accountId);
     const orchestratorAgentId =
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
+    const orchestratorChatTaskId =
+      (
+        account?.settings as
+          | { orchestratorChatTaskId?: Id<"tasks"> }
+          | undefined
+      )?.orchestratorChatTaskId ?? null;
+    const shouldIncludeOrchestratorContext =
+      notification.taskId != null &&
+      orchestratorChatTaskId != null &&
+      notification.taskId === orchestratorChatTaskId;
+    const taskOverview = shouldIncludeOrchestratorContext
+      ? await buildTaskOverview(ctx, notification.accountId)
+      : null;
+    const globalBriefingDoc =
+      shouldIncludeOrchestratorContext && briefingDoc
+        ? {
+            title: briefingDoc.title ?? briefingDoc.name ?? "Account Briefing",
+            content: briefingDoc.content ?? "",
+          }
+        : null;
 
     if (!primaryUserId && task?.createdBy) {
       primaryUserId = task.createdBy;
@@ -330,6 +442,8 @@ export const getForDelivery = internalQuery({
             content: repositoryDoc.content ?? "",
           }
         : null,
+      globalBriefingDoc,
+      taskOverview,
     };
   },
 });

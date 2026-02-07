@@ -205,6 +205,8 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
+        /** Task ID for the system orchestrator chat thread. */
+        orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
@@ -367,7 +369,7 @@ export default defineSchema({
      */
     openclawConfig: v.optional(
       v.object({
-        /** LLM model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o") */
+        /** LLM model identifier (e.g., "gpt-5-nano", "claude-haiku-4.5") */
         model: v.string(),
 
         /** Temperature for response generation (0.0 - 2.0) */
@@ -559,6 +561,7 @@ export default defineSchema({
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
     .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
     .index("by_source_notification", ["sourceNotificationId"]),
 
@@ -639,9 +642,11 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
+    .index("by_parent_updated", ["accountId", "parentId", "updatedAt"])
     .index("by_account_type", ["accountId", "type"])
-    .index("by_task", ["taskId"])
-    .index("by_account_updated", ["accountId", "updatedAt"]),
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_account_updated", ["accountId", "updatedAt"])
+    .index("by_task", ["taskId"]),
 
   // ==========================================================================
   // ACTIVITIES

@@ -11,13 +11,14 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 
 interface TaskDocumentsProps {
   taskId: Id<"tasks">;
+  accountSlug: string;
 }
 
 /**
  * Task documents component.
  * Shows documents linked to this task.
  */
-export function TaskDocuments({ taskId }: TaskDocumentsProps) {
+export function TaskDocuments({ taskId, accountSlug }: TaskDocumentsProps) {
   const documents = useQuery(api.documents.listByTask, { taskId });
 
   if (documents === undefined) {
@@ -62,7 +63,11 @@ export function TaskDocuments({ taskId }: TaskDocumentsProps) {
   return (
     <div className="p-6 space-y-3">
       {documents.map((doc) => (
-        <Link key={doc._id} href={`/docs/${doc._id}`} className="block group">
+        <Link
+          key={doc._id}
+          href={`/${accountSlug}/docs/${doc._id}`}
+          className="block group"
+        >
           <Card className="hover:shadow-md hover:border-primary/20 transition-all">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">

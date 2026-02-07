@@ -4,6 +4,7 @@ import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
+import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
 
 const log = createLogger("[Heartbeat]");
 
@@ -20,13 +21,13 @@ const state: HeartbeatState = {
   intervals: new Map(),
 };
 
-const HEARTBEAT_OK_RESPONSE = "HEARTBEAT_OK";
+export { HEARTBEAT_OK_RESPONSE };
 const HEARTBEAT_TASK_LIMIT = 12;
 const HEARTBEAT_DESCRIPTION_MAX_CHARS = 240;
-const HEARTBEAT_STATUS_PRIORITY = ["review", "in_progress", "assigned"];
+const HEARTBEAT_STATUS_PRIORITY = ["in_progress", "assigned"];
 const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
-  "review",
   "in_progress",
+  "assigned",
 ];
 const TASK_ID_PATTERN = /Task ID:\s*([A-Za-z0-9_-]+)/i;
 
@@ -34,7 +35,7 @@ type HeartbeatTask = Doc<"tasks">;
 type HeartbeatStatus = HeartbeatTask["status"];
 
 /**
- * Sort tasks by heartbeat priority (review > in_progress > assigned) and recency.
+ * Sort tasks by heartbeat priority (in_progress > assigned) and recency.
  */
 function sortHeartbeatTasks(tasks: HeartbeatTask[]): HeartbeatTask[] {
   const statusRank = new Map<string, number>(
@@ -116,7 +117,7 @@ export function buildHeartbeatMessage(options: {
 }): string {
   const { focusTask, tasks, isOrchestrator } = options;
   const orchestratorLine = isOrchestrator
-    ? "- As the orchestrator, follow up on in_progress/review tasks (even if assigned to other agents)."
+    ? "- As the orchestrator, follow up on in_progress/assigned tasks (even if assigned to other agents)."
     : null;
   const taskHeading = isOrchestrator ? "Tracked tasks:" : "Assigned tasks:";
   const taskLines = tasks.map((task) => {
@@ -276,7 +277,10 @@ function runHeartbeatCycle(
         assignedTasks,
         orchestratorTasks,
       ]);
-      const sortedTasks = sortHeartbeatTasks(mergedTasks);
+      const filteredTasks = mergedTasks.filter(
+        (task) => task.status !== "review",
+      );
+      const sortedTasks = sortHeartbeatTasks(filteredTasks);
       const focusTask = selectHeartbeatFocusTask(sortedTasks);
       const heartbeatMessage = buildHeartbeatMessage({
         focusTask,
@@ -318,7 +322,7 @@ function runHeartbeatCycle(
         accountId: config.accountId,
         currentTaskId: responseTaskId ?? undefined,
       });
-      
+
       const duration = Date.now() - heartbeatStart;
       recordSuccess("heartbeat.execute", duration);
     } catch (error) {

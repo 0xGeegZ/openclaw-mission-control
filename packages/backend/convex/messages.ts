@@ -13,6 +13,7 @@ import {
   hasAllMention,
   getAllMentions,
 } from "./lib/mentions";
+import type { ParsedMention } from "./lib/mentions";
 import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
@@ -23,6 +24,23 @@ import {
 } from "./lib/notifications";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+
+const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/**
+ * Check whether a task is the account's orchestrator chat thread.
+ */
+function isOrchestratorChatTask(params: {
+  account: Doc<"accounts"> | null;
+  task: Doc<"tasks">;
+}): boolean {
+  const { account, task } = params;
+  if (task.labels?.includes(ORCHESTRATOR_CHAT_LABEL)) return true;
+  const settings = account?.settings as
+    | { orchestratorChatTaskId?: Id<"tasks"> }
+    | undefined;
+  return settings?.orchestratorChatTaskId === task._id;
+}
 
 /**
  * Resolve attachment URLs at read time so clients always get fresh URLs
@@ -63,10 +81,8 @@ export const listByTask = query({
     let messages = await ctx.db
       .query("messages")
       .withIndex("by_task_created", (q) => q.eq("taskId", args.taskId))
+      .order("asc")
       .collect();
-
-    // Sort by created (oldest first for chat)
-    messages.sort((a, b) => a.createdAt - b.createdAt);
 
     // Apply limit (from end for most recent)
     if (args.limit && messages.length > args.limit) {
@@ -186,6 +202,11 @@ export const create = mutation({
       ctx,
       task.accountId,
     );
+    const account = await ctx.db.get(accountId);
+    const isOrchestratorChat = isOrchestratorChatTask({ account, task });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
 
     // Validate attachments using server-side storage metadata (not client-provided type/size)
     let resolvedAttachments:
@@ -240,10 +261,11 @@ export const create = mutation({
         });
       }
     }
-    // Parse and resolve mentions
-    let mentions;
-
-    if (hasAllMention(args.content)) {
+    // Parse and resolve mentions (disabled for orchestrator chat threads)
+    let mentions: ParsedMention[];
+    if (isOrchestratorChat) {
+      mentions = [];
+    } else if (hasAllMention(args.content)) {
       // @all - mention everyone except author
       mentions = await getAllMentions(ctx, accountId, userId);
     } else {
@@ -328,6 +350,7 @@ export const create = mutation({
       mentionedIds,
       hasAgentMentions,
       task.status,
+      { isOrchestratorChat, orchestratorAgentId },
     );
 
     return messageId;
@@ -349,6 +372,10 @@ export const update = mutation({
     }
 
     const { userId } = await requireAccountMember(ctx, message.accountId);
+    const task = await ctx.db.get(message.taskId);
+    const account = await ctx.db.get(message.accountId);
+    const isOrchestratorChat =
+      task != null ? isOrchestratorChatTask({ account, task }) : false;
 
     // Only author can edit
     if (message.authorType !== "user" || message.authorId !== userId) {
@@ -356,9 +383,11 @@ export const update = mutation({
     }
 
     // Re-parse mentions from new content
-    let mentions;
+    let mentions: ParsedMention[];
 
-    if (hasAllMention(args.content)) {
+    if (isOrchestratorChat) {
+      mentions = [];
+    } else if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, message.accountId, userId);
     } else {
       const mentionStrings = extractMentionStrings(args.content);
