@@ -266,14 +266,14 @@ export const GET_AGENT_SKILLS_TOOL_SCHEMA = {
   function: {
     name: "get_agent_skills",
     description:
-      "Get skills available to agents in the account. Query specific agent or all agents. Orchestrator can query any agent for skill audits.",
+      "Get skills available to agents in the account. Query a specific agent (by ID) or omit agentId to get all agents. Available to all agents.",
     parameters: {
       type: "object",
       properties: {
         agentId: {
           type: "string",
           description:
-            "Optional agent ID to query (defaults to all agents). Orchestrator can query any; non-orchestrator only own.",
+            "Optional agent ID to query; omit to return skills for all agents in the account.",
         },
       },
     },
@@ -1087,37 +1087,6 @@ export async function executeAgentTool(params: {
         queryAgentId,
       });
       return { success: true, data: { agents: skills } };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
-    }
-  }
-
-  if (name === "task_delete") {
-    let args: { taskId?: string; reason?: string };
-    try {
-      args = JSON.parse(argsStr || "{}") as typeof args;
-    } catch {
-      return { success: false, error: "Invalid JSON arguments" };
-    }
-    if (!args.taskId?.trim() || !args.reason?.trim()) {
-      return { success: false, error: "taskId and reason are required" };
-    }
-    if (isOrchestrator !== true) {
-      return {
-        success: false,
-        error: "Forbidden: Only the orchestrator can delete/archive tasks",
-      };
-    }
-    try {
-      const result: TaskDeleteToolResult = await executeTaskDeleteTool({
-        agentId,
-        taskId: args.taskId.trim(),
-        reason: args.reason.trim(),
-        serviceToken,
-        accountId,
-      });
-      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

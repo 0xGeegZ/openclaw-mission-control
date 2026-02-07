@@ -172,8 +172,101 @@ describe("linkTaskToPrForAgentTool", () => {
       expect(ctx.runMutation).toHaveBeenCalled(); // Task mutation was called
     });
 
+    it("should skip GitHub API when GITHUB_REPO missing", async () => {
+      process.env.GITHUB_TOKEN = "ghp_test123";
+      delete process.env.GITHUB_REPO;
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const ctx = createMockContext({
+        agent: {
+          _id: testAgentId,
+          slug: "orchestrator",
+          accountId: testAccountId,
+        },
+        task: {
+          _id: testTaskId,
+          accountId: testAccountId,
+          title: "Test Task",
+          metadata: {},
+        },
+        account: { _id: testAccountId },
+      });
+
+      const action = async () => {
+        const ghToken = process.env.GITHUB_TOKEN;
+        const repo = process.env.GITHUB_REPO;
+
+        await ctx.runMutation({} as any, { taskId: testTaskId, prNumber: testPrNumber });
+
+        if (!ghToken) return { success: true };
+        if (!repo) {
+          console.warn("GitHub API call skipped: GITHUB_REPO not set");
+          return { success: true };
+        }
+
+        return { success: true };
+      };
+
+      const result = await action();
+      expect(result.success).toBe(true);
+      expect(ctx.runMutation).toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "GitHub API call skipped: GITHUB_REPO not set",
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should skip GitHub API when GITHUB_REPO is invalid", async () => {
+      process.env.GITHUB_TOKEN = "ghp_test123";
+      process.env.GITHUB_REPO = "invalid-repo-format";
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const ctx = createMockContext({
+        agent: {
+          _id: testAgentId,
+          slug: "orchestrator",
+          accountId: testAccountId,
+        },
+        task: {
+          _id: testTaskId,
+          accountId: testAccountId,
+          title: "Test Task",
+          metadata: {},
+        },
+        account: { _id: testAccountId },
+      });
+
+      const action = async () => {
+        const ghToken = process.env.GITHUB_TOKEN;
+        const repo = process.env.GITHUB_REPO;
+
+        await ctx.runMutation({} as any, { taskId: testTaskId, prNumber: testPrNumber });
+
+        if (!ghToken) return { success: true };
+        if (!repo) return { success: true };
+        const [owner, repoName] = repo.split("/");
+        if (!owner || !repoName) {
+          console.warn(
+            "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+          );
+          return { success: true };
+        }
+
+        return { success: true };
+      };
+
+      const result = await action();
+      expect(result.success).toBe(true);
+      expect(ctx.runMutation).toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
     it("should log warning when GitHub API returns 404", async () => {
       process.env.GITHUB_TOKEN = "ghp_test123";
+      process.env.GITHUB_REPO = "0xGeegZ/openclaw-mission-control";
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       mockFetch.mockResolvedValueOnce({
@@ -183,11 +276,14 @@ describe("linkTaskToPrForAgentTool", () => {
 
       const action = async () => {
         const ghToken = process.env.GITHUB_TOKEN;
-        if (!ghToken) return { success: true };
+        const repo = process.env.GITHUB_REPO;
+        if (!ghToken || !repo) return { success: true };
+        const [owner, repoName] = repo.split("/");
+        if (!owner || !repoName) return { success: true };
 
         try {
           const response = await global.fetch(
-            `https://api.github.com/repos/0xGeegZ/openclaw-mission-control/pulls/${testPrNumber}`,
+            `https://api.github.com/repos/${owner}/${repoName}/pulls/${testPrNumber}`,
             {
               headers: {
                 Authorization: `Bearer ${ghToken}`,
@@ -509,7 +605,7 @@ describe("getAgentSkillsForTool", () => {
     });
   });
 
-  describe("Orchestrator-enhanced visibility", () => {
+  describe("get_agent_skills available to all agents", () => {
     it("should allow orchestrator to query any agent's skills", async () => {
       const ctx = {
         runQuery: vi.fn(async (query, args) => {
@@ -523,11 +619,11 @@ describe("getAgentSkillsForTool", () => {
         }),
       } as any;
 
+      const toIso = (ts: number) => new Date(ts).toISOString();
+
       const action = async () => {
         const orchestrator = await ctx.runQuery({}, { agentId: orchestratorId });
-        if (orchestrator?.slug !== "orchestrator") {
-          throw new Error("Only orchestrator can query other agents");
-        }
+        if (!orchestrator) throw new Error("Orchestrator not found");
 
         const targetAgent = await ctx.runQuery({}, { agentId: qaId });
         if (!targetAgent) throw new Error("Target agent not found");
@@ -537,7 +633,9 @@ describe("getAgentSkillsForTool", () => {
             agentId: targetAgent.slug,
             skillIds: targetAgent.openclawConfig?.skillIds || [],
             skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
-            lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+            lastUpdated: toIso(
+              targetAgent.lastHeartbeat || targetAgent._creationTime,
+            ),
           },
         ];
       };
@@ -545,9 +643,12 @@ describe("getAgentSkillsForTool", () => {
       const result = await action();
       expect(result[0].agentId).toBe("qa");
       expect(result[0].skillIds).toContain("security-audit");
+      expect(result[0].lastUpdated).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+      );
     });
 
-    it("should deny non-orchestrator querying other agents' skills", async () => {
+    it("should allow non-orchestrator to query other agents' skills", async () => {
       const ctx = {
         runQuery: vi.fn(async (query, args) => {
           if (args.agentId === engineerId) {
@@ -560,20 +661,30 @@ describe("getAgentSkillsForTool", () => {
         }),
       } as any;
 
+      const toIso = (ts: number) => new Date(ts).toISOString();
+
       const action = async () => {
         const engineer = await ctx.runQuery({}, { agentId: engineerId });
         if (!engineer) throw new Error("Engineer not found");
 
-        // Engineer tries to query QA
-        if (engineer.slug !== "orchestrator" && qaId !== engineerId) {
-          throw new Error("Forbidden: Only orchestrator can query other agents' skills");
-        }
-        return null;
+        const targetAgent = await ctx.runQuery({}, { agentId: qaId });
+        if (!targetAgent) throw new Error("Target agent not found");
+
+        return [
+          {
+            agentId: targetAgent.slug,
+            skillIds: targetAgent.openclawConfig?.skillIds || [],
+            skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+            lastUpdated: toIso(
+              targetAgent.lastHeartbeat || targetAgent._creationTime,
+            ),
+          },
+        ];
       };
 
-      await expect(action()).rejects.toThrow(
-        "Forbidden: Only orchestrator can query other agents' skills"
-      );
+      const result = await action();
+      expect(result[0].agentId).toBe("qa");
+      expect(result[0].skillIds).toContain("security-audit");
     });
   });
 

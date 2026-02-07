@@ -425,6 +425,11 @@ export const updateStatus = mutation({
       updates.blockedReason = undefined;
     }
 
+    // Set archivedAt when transitioning to archived (audit trail)
+    if (nextStatus === "archived") {
+      updates.archivedAt = Date.now();
+    }
+
     await ctx.db.patch(args.taskId, updates);
 
     for (const uid of task.assignedUserIds) {

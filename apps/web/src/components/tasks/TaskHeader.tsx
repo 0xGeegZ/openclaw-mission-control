@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   MoreHorizontal,
   Trash2,
+  Archive,
   Settings2,
   Calendar,
   Flag,
@@ -36,6 +37,7 @@ import { TaskAssignees } from "./TaskAssignees";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskEditDialog } from "./TaskEditDialog";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
+import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { TaskSubscription } from "./TaskSubscription";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { getTaskDetailSheetHref } from "@/lib/utils";
@@ -63,6 +65,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const [title, setTitle] = useState(task.title);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
 
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
@@ -192,6 +195,12 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
                   <Settings2 className="mr-2 h-4 w-4" />
                   Edit Details
                 </DropdownMenuItem>
+                {task.status !== "archived" && (
+                  <DropdownMenuItem onClick={() => setShowArchiveDialog(true)}>
+                    <Archive className="mr-2 h-4 w-4" />
+                    Archive Task
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -281,6 +290,13 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
         onDeleted={handleDeleted}
+      />
+      <ArchiveTaskDialog
+        taskId={task._id}
+        taskTitle={task.title}
+        open={showArchiveDialog}
+        onOpenChange={setShowArchiveDialog}
+        onArchived={handleDeleted}
       />
     </div>
   );
