@@ -182,6 +182,8 @@ export const createFromAgent = internalMutation({
     sourceNotificationId: v.optional(v.id("notifications")),
     /** When false, agent mentions are excluded from notifications/subscriptions; message content is unchanged. */
     allowAgentMentions: v.boolean(),
+    /** When true, suppress agent notifications for this message (prevents reply loops). */
+    suppressAgentNotifications: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     // Get agent info
@@ -283,9 +285,12 @@ export const createFromAgent = internalMutation({
       mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
     }
 
+    const suppressAgentNotifications = args.suppressAgentNotifications === true;
+    const allowAgentMentionsForNotifications =
+      args.allowAgentMentions && !suppressAgentNotifications;
     const mentionsForNotifications = isOrchestratorChat
       ? []
-      : args.allowAgentMentions
+      : allowAgentMentionsForNotifications
         ? mentions
         : mentions.filter((m) => m.type === "user");
 
@@ -356,9 +361,9 @@ export const createFromAgent = internalMutation({
 
     // Create thread update notifications
     const mentionedIds = new Set(mentionsForNotifications.map((m) => m.id));
-    const hasAgentMentions = mentionsForNotifications.some(
-      (mention) => mention.type === "agent",
-    );
+    const hasAgentMentions =
+      suppressAgentNotifications ||
+      mentions.some((mention) => mention.type === "agent");
     await createThreadNotifications(
       ctx,
       agent.accountId,

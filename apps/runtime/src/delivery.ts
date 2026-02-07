@@ -348,6 +348,8 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             );
 
             let textToPost: string | null = result.text?.trim() ?? null;
+            let suppressAgentNotifications = false;
+            let shouldPostMessage = true;
             const taskId = context.notification?.taskId;
             const noResponsePlaceholder = textToPost
               ? parseNoResponsePlaceholder(textToPost)
@@ -399,6 +401,8 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 textToPost = buildNoResponseFallbackMessage(
                   noResponsePlaceholder?.mentionPrefix,
                 );
+                suppressAgentNotifications = true;
+                shouldPostMessage = false;
               } else {
                 textToPost = null;
               }
@@ -451,23 +455,27 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               const placeholder = parseNoResponsePlaceholder(textToPost);
               if (placeholder.isPlaceholder) {
                 log.warn(
-                  "OpenClaw placeholder response received; posting fallback",
+                  "OpenClaw placeholder response received; suppressing fallback",
                   notification._id,
                   context.agent.name,
                 );
                 textToPost = buildNoResponseFallbackMessage(
                   placeholder.mentionPrefix,
                 );
+                suppressAgentNotifications = true;
+                shouldPostMessage = false;
               }
             }
             if (taskId && !textToPost && result.toolCalls.length > 0) {
               textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
+              suppressAgentNotifications = true;
+              shouldPostMessage = false;
               log.warn(
-                "No reply after tool execution; posting fallback message",
+                "No reply after tool execution; suppressing fallback message",
                 notification._id,
               );
             }
-            if (taskId && textToPost) {
+            if (taskId && textToPost && shouldPostMessage) {
               const trimmed = textToPost.trim();
               const finalContent = applyAutoMentionFallback(
                 trimmed,
@@ -493,6 +501,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 serviceToken: config.serviceToken,
                 accountId: config.accountId,
                 sourceNotificationId: notification._id,
+                suppressAgentNotifications,
               });
               if (
                 canModifyTaskStatus &&

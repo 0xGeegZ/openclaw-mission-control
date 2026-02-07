@@ -1155,6 +1155,8 @@ export const createMessageFromAgent = action({
     content: v.string(),
     serviceToken: v.string(),
     accountId: v.id("accounts"),
+    /** When true, suppress agent notifications for this message (prevents reply loops). */
+    suppressAgentNotifications: v.optional(v.boolean()),
     attachments: v.optional(
       v.array(
         v.object({
@@ -1208,6 +1210,7 @@ export const createMessageFromAgent = action({
     });
     const flags = resolveBehaviorFlags(agent, account);
     const allowAgentMentions = flags.canMentionAgents;
+    const suppressAgentNotifications = args.suppressAgentNotifications === true;
 
     const messageId: Id<"messages"> = await ctx.runMutation(
       internal.service.messages.createFromAgent,
@@ -1218,6 +1221,7 @@ export const createMessageFromAgent = action({
         attachments: args.attachments,
         sourceNotificationId: args.sourceNotificationId,
         allowAgentMentions,
+        suppressAgentNotifications,
       },
     );
 

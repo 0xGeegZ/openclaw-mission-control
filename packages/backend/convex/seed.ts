@@ -59,7 +59,132 @@ const seedSkills: Array<{
     slug: "test-automation",
     description: "Implement unit/integration/e2e tests.",
   },
+  {
+    name: "Frontend design",
+    slug: "frontend-design",
+    description: "High-quality UI design and visual direction.",
+  },
+  {
+    name: "Brand guidelines",
+    slug: "brand-guidelines",
+    description: "Apply brand colors, typography, and visual standards.",
+  },
+  {
+    name: "Canvas design",
+    slug: "canvas-design",
+    description: "Create static visual designs and assets.",
+  },
+  {
+    name: "Web design guidelines",
+    slug: "web-design-guidelines",
+    description: "Audit UI against web design best practices.",
+  },
+  {
+    name: "UI/UX Pro Max",
+    slug: "ui-ux-pro-max",
+    description: "Comprehensive UI/UX guidance for web and mobile.",
+  },
+  {
+    name: "Baseline UI",
+    slug: "baseline-ui",
+    description: "Enforce UI baseline to avoid design slop.",
+  },
+  {
+    name: "Fixing accessibility",
+    slug: "fixing-accessibility",
+    description: "Fix accessibility issues and improve compliance.",
+  },
+  {
+    name: "Fixing motion performance",
+    slug: "fixing-motion-performance",
+    description: "Improve animation performance in UI flows.",
+  },
+  {
+    name: "Fixing metadata",
+    slug: "fixing-metadata",
+    description: "Ensure correct, complete metadata for pages.",
+  },
+  {
+    name: "Design.md",
+    slug: "design-md",
+    description: "Create a DESIGN.md source of truth for UI.",
+  },
+  {
+    name: "Copywriting",
+    slug: "copywriting",
+    description: "Write marketing copy for pages and CTAs.",
+  },
+  {
+    name: "Copy editing",
+    slug: "copy-editing",
+    description: "Edit and polish marketing copy.",
+  },
+  {
+    name: "Content strategy",
+    slug: "content-strategy",
+    description: "Plan content topics and publishing strategy.",
+  },
+  {
+    name: "SEO audit",
+    slug: "seo-audit",
+    description: "Audit SEO issues and improvements.",
+  },
+  {
+    name: "Programmatic SEO",
+    slug: "programmatic-seo",
+    description: "Plan SEO pages at scale.",
+  },
+  {
+    name: "Schema markup",
+    slug: "schema-markup",
+    description: "Add structured data and schema markup.",
+  },
+  {
+    name: "Page CRO",
+    slug: "page-cro",
+    description: "Optimize marketing pages for conversion.",
+  },
+  {
+    name: "Social content",
+    slug: "social-content",
+    description: "Create social media content and campaigns.",
+  },
+  {
+    name: "Email sequence",
+    slug: "email-sequence",
+    description: "Write lifecycle email sequences.",
+  },
+  {
+    name: "Competitor alternatives",
+    slug: "competitor-alternatives",
+    description: "Draft competitor comparison pages.",
+  },
+  {
+    name: "Marketing ideas",
+    slug: "marketing-ideas",
+    description: "Generate marketing ideas and tactics.",
+  },
+  {
+    name: "Marketing psychology",
+    slug: "marketing-psychology",
+    description: "Apply persuasion and behavioral principles.",
+  },
+  {
+    name: "Product marketing context",
+    slug: "product-marketing-context",
+    description: "Maintain product marketing context docs.",
+  },
+  {
+    name: "Launch strategy",
+    slug: "launch-strategy",
+    description: "Plan product launch messaging.",
+  },
   // .cursor/skills (assigned to all seed agents)
+  {
+    name: "Add agent",
+    slug: "add-agent",
+    description: "Add new agents with clear instructions and skills.",
+  },
   {
     name: "Address GitHub PR comments",
     slug: "address-github-pr-comments",
@@ -144,6 +269,7 @@ const seedSkills: Array<{
 
 /** Slugs for .cursor/skills; assigned to every seed agent. */
 const CURSOR_SKILL_SLUGS = [
+  "add-agent",
   "address-github-pr-comments",
   "clarify-task",
   "code-review-checklist",
@@ -160,6 +286,38 @@ const CURSOR_SKILL_SLUGS = [
   "run-tests-and-fix",
   "security-audit",
   "security-audit-copy",
+] as const;
+
+/** UI/UX design skills assigned to the Designer agent. */
+const DESIGN_SKILL_SLUGS = [
+  "frontend-design",
+  "brand-guidelines",
+  "canvas-design",
+  "web-design-guidelines",
+  "ui-ux-pro-max",
+  "baseline-ui",
+  "fixing-accessibility",
+  "fixing-motion-performance",
+  "fixing-metadata",
+  "design-md",
+] as const;
+
+/** Writing and marketing skills assigned to the Writer agent. */
+const WRITING_SKILL_SLUGS = [
+  "copywriting",
+  "copy-editing",
+  "content-strategy",
+  "seo-audit",
+  "programmatic-seo",
+  "schema-markup",
+  "page-cro",
+  "social-content",
+  "email-sequence",
+  "competitor-alternatives",
+  "marketing-ideas",
+  "marketing-psychology",
+  "product-marketing-context",
+  "launch-strategy",
 ] as const;
 
 /** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
@@ -209,6 +367,27 @@ const seedAgents = [
     heartbeatInterval: 15,
     canCreateTasks: false,
   },
+  {
+    name: "Designer",
+    slug: "designer",
+    role: "UI/UX Designer",
+    agentRole: "designer" as const,
+    description:
+      "Designs UI/UX, layout, and visual system for Mission Control.",
+    skillSlugs: [...DESIGN_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
+    heartbeatInterval: 15,
+    canCreateTasks: false,
+  },
+  {
+    name: "Writer",
+    slug: "writer",
+    role: "Content Writer",
+    agentRole: "writer" as const,
+    description: "Writes product content, landing pages, and documentation.",
+    skillSlugs: [...WRITING_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
+    heartbeatInterval: 15,
+    canCreateTasks: false,
+  },
 ] as const;
 
 /** Content for AGENTS.md — Operating Manual (from docs/runtime/AGENTS.md). */
@@ -228,6 +407,11 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - To inspect directories, use exec (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
 - Write artifacts to /root/clawd/deliverables and reference them in the thread.
+
+## Runtime ownership (critical)
+
+- This repository includes your runtime environment: \`apps/runtime\` (OpenClaw gateway, delivery, heartbeat). You are responsible for fixing bugs you discover during operation.
+- When you find a runtime bug: ask the orchestrator to create a task, implement the fix in this repo, and merge into the base branch (\`dev\`) via the normal PR flow.
 
 ### Creating a PR
 
@@ -548,7 +732,7 @@ function buildSeedOpenclawConfig(
   };
 }
 
-type AgentRole = "squad-lead" | "engineer" | "qa";
+type AgentRole = "squad-lead" | "engineer" | "qa" | "designer" | "writer";
 
 /**
  * Build SOUL content for an agent role (derived from docs/runtime/SOUL_TEMPLATE.md).
@@ -704,6 +888,94 @@ Protect quality and scale readiness by pressure-testing assumptions, time costs,
 - Invent facts without sources.
 - Leak secrets.
 `;
+    case "designer":
+      return `# SOUL — ${name}
+
+Role: ${role}
+Level: specialist
+
+## Mission
+
+Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usable layouts, interaction flows, and visual direction.
+
+## Personality constraints
+
+- Prioritize usability and clarity over decoration.
+- Align visuals with product goals and brand tone.
+- Call out accessibility risks early.
+- Provide concrete design artifacts (layouts, component notes, or copy blocks).
+- Keep feedback actionable and scoped.
+
+## Domain strengths
+
+- UI/UX design, information architecture, interaction design.
+- Design systems, typography, color, spacing.
+- Accessibility and responsive design.
+
+## Default operating procedure
+
+- On heartbeat: pick one design task, produce a concrete artifact, and post an update.
+- For new UI work: confirm target user, primary action, and success criteria before designing.
+- Coordinate with Engineer on implementation details and constraints.
+- Move task to REVIEW when design deliverable is ready.
+
+## Quality checks (must pass)
+
+- Visual hierarchy is clear.
+- Accessibility basics are covered.
+- Next step is explicit.
+
+## What you never do
+
+- Approve UI without checking accessibility basics.
+- Change established design decisions without documenting rationale.
+- Invent facts without sources.
+- Leak secrets.
+`;
+    case "writer":
+      return `# SOUL — ${name}
+
+Role: ${role}
+Level: specialist
+
+## Mission
+
+Create clear, persuasive product content: blog posts, landing pages, and in-app copy.
+
+## Personality constraints
+
+- Write concise, benefit-first copy.
+- Use the product voice and positioning.
+- Avoid buzzwords and vague claims.
+- Ask for missing context only when blocked.
+- Provide multiple headline or CTA options when relevant.
+
+## Domain strengths
+
+- Conversion copywriting and content strategy.
+- Editing and voice consistency.
+- SEO-friendly structure and metadata.
+
+## Default operating procedure
+
+- On heartbeat: pick one writing task, draft or edit a section, and post it for review.
+- Start by confirming audience, primary action, and proof points.
+- Produce structured deliverables: headlines, sections, CTAs, and meta.
+- Cite sources for factual claims.
+- Move task to REVIEW when copy is ready.
+
+## Quality checks (must pass)
+
+- Primary message and CTA are clear.
+- Claims are supported or safely worded.
+- Next step is explicit.
+
+## What you never do
+
+- Fabricate stats or testimonials.
+- Change brand voice without approval.
+- Leak secrets.
+`;
     default:
       return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n`;
   }
@@ -711,8 +983,8 @@ Protect quality and scale readiness by pressure-testing assumptions, time costs,
 
 /**
  * Ensure skills exist by slug; return map of slug -> skillId (only enabled skills).
- * Inserts only missing skills; does not override isEnabled.
- * Disabled existing skills are excluded from slugToId so agents are not assigned them.
+ * Inserts only missing skills; updates content/name/description when source changes.
+ * Does not override isEnabled. Disabled existing skills are excluded from slugToId.
  */
 async function ensureSkills(
   ctx: MutationCtx,
@@ -735,6 +1007,13 @@ async function ensureSkills(
         q.eq("accountId", accountId).eq("slug", s.slug),
       )
       .unique();
+    const contentMarkdown = contentBySlug[s.slug];
+    if (contentMarkdown === undefined) {
+      throw new Error(
+        `Seed skill "${s.slug}" has no content in contentBySlug. Run \`npm run seed-skills:generate\` from packages/backend (or \`seed-skills:sync\` if using remote skills), then re-run seed.`,
+      );
+    }
+    validateContentMarkdown(contentMarkdown);
     if (found) {
       if (found.isEnabled) {
         slugToId[s.slug] = found._id;
@@ -742,14 +1021,20 @@ async function ensureSkills(
       } else {
         disabledSkipped += 1;
       }
-    } else {
-      const contentMarkdown = contentBySlug[s.slug];
-      if (contentMarkdown === undefined) {
-        console.warn(
-          `Seed skill "${s.slug}" has no content in contentBySlug; run seed-skills:generate if you added a new skill.`,
-        );
+      if (
+        contentMarkdown !== undefined &&
+        (found.contentMarkdown !== contentMarkdown ||
+          found.name !== s.name ||
+          found.description !== s.description)
+      ) {
+        await ctx.db.patch(found._id, {
+          name: s.name,
+          description: s.description,
+          contentMarkdown,
+          updatedAt: Date.now(),
+        });
       }
-      validateContentMarkdown(contentMarkdown);
+    } else {
       const now = Date.now();
       const id = await ctx.db.insert("skills", {
         accountId,
@@ -772,6 +1057,7 @@ async function ensureSkills(
 
 /**
  * Ensure reference docs exist by title; insert only missing.
+ * Updates AGENTS.md content when it changes to keep critical guidance current.
  * Uses type "reference" and authorType "user" with given authorId.
  */
 async function ensureDocs(
@@ -785,15 +1071,29 @@ async function ensureDocs(
       q.eq("accountId", accountId).eq("type", "reference"),
     )
     .collect();
-  const existingTitles = new Set(
-    existingRefs.map((d) => d.title ?? d.name ?? ""),
+  const existingByTitle = new Map(
+    existingRefs.map((d) => [d.title ?? d.name ?? "", d]),
   );
   let created = 0;
   let existing = 0;
 
   for (const d of seedDocs) {
-    if (existingTitles.has(d.title)) {
+    const existingDoc = existingByTitle.get(d.title);
+    if (existingDoc) {
       existing += 1;
+      if (
+        d.title === "AGENTS.md — Operating Manual" &&
+        existingDoc.content !== d.content
+      ) {
+        const now = Date.now();
+        const nextVersion =
+          typeof existingDoc.version === "number" ? existingDoc.version + 1 : 1;
+        await ctx.db.patch(existingDoc._id, {
+          content: d.content,
+          updatedAt: now,
+          version: nextVersion,
+        });
+      }
       continue;
     }
     const now = Date.now();
@@ -809,7 +1109,6 @@ async function ensureDocs(
       createdAt: now,
       updatedAt: now,
     });
-    existingTitles.add(d.title);
     created += 1;
   }
   return { created, existing };

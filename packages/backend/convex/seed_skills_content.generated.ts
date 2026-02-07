@@ -392,6 +392,76 @@ export function LoginForm() {
 - @code-review-checklist - Review code for accessibility issues
 - @performance-profiling - Monitor performance with screen readers
 `,
+  "add-agent": `---
+name: add-agent
+description: Guides adding a new agent to OpenClaw Mission Control with explicit SOUL/HEARTBEAT and skill content. Use when adding a new agent role, seed roster member, or when updating agent defaults and skills.
+disable-model-invocation: true
+---
+
+# Add Agent
+
+## Scope decision
+
+- If the user wants a one-off agent in an existing account, use the Agents UI or \`api.agents.create\`. No code changes needed; set \`soulContent\` or rely on \`generateDefaultSoul\` in \`packages/backend/convex/lib/agent_soul.ts\`.
+- If the user wants the agent in the default seeded roster, follow the update map below.
+
+## Non-negotiables: agent instructions and heartbeat
+
+- The SOUL, AGENTS, and HEARTBEAT instructions are the operating system for a new agent. If they are vague, the agent fails.
+- For every new role, fully specify mission, personality constraints, domain strengths, default operating procedure (including heartbeat behavior), quality checks, and the never-do list. Base on \`docs/runtime/SOUL_TEMPLATE.md\`.
+- Review \`docs/runtime/AGENTS.md\` and \`docs/runtime/HEARTBEAT.md\` and update them if the new agent introduces new tools, output formats, or heartbeat steps.
+- Ensure \`heartbeatInterval\` and the SOUL "Default operating procedure" match the heartbeat checklist (what to read, how to prioritize, when to post \`HEARTBEAT_OK\`).
+
+## Skill quality requirements
+
+- Skills are the second operating system. Sloppy skill definitions lead to unreliable agents.
+- For new skills, write precise scope, triggers, required inputs, step-by-step behavior, output expectations, and do-not-do rules.
+- Keep skill content in sync across \`.cursor/skills/<slug>/SKILL.md\` and \`packages/backend/convex/seed-skills/<slug>.md\`, then regenerate \`seed_skills_content.generated.ts\`.
+
+## Required inputs
+
+- Name, slug (safe: letters/numbers/hyphen/underscore), role, description
+- SOUL inputs: mission, personality constraints, domain strengths, default operating procedure, quality checks, never-do list
+- Heartbeat interval (minutes), behavior flags, and whether this agent should be the orchestrator
+- Skill slugs and definitions (new or existing)
+
+## Update map (seeded agents)
+
+1. \`packages/backend/convex/seed.ts\`
+   - Add the agent in \`seedAgents\` with \`name\`, \`slug\`, \`role\`, \`description\`, \`skillSlugs\`, \`heartbeatInterval\`, \`canCreateTasks\`.
+   - If this is a new role, extend \`AgentRole\` and add a \`buildSoulContent\` case using \`docs/runtime/SOUL_TEMPLATE.md\`.
+   - If the agent needs new skills, add them to \`seedSkills\` (name/slug/description) and include the slug in \`CURSOR_SKILL_SLUGS\` if every seed agent should receive it.
+   - If this agent should be the default orchestrator, update the \`orchestratorAgentId\` patch to point at the new slug.
+2. Skills content (only when you add new skill slugs)
+   - Local skills: create \`.cursor/skills/<slug>/SKILL.md\`, then from \`packages/backend\` run:
+     - \`npx tsx scripts/seed-skills-copy-cursor.ts\`
+     - \`npm run seed-skills:generate\`
+   - External skills: update \`packages/backend/convex/seed-skills-mapping.json\`, then run:
+     - \`npm run seed-skills:download\`
+     - \`npm run seed-skills:generate\`
+   - Do not edit \`packages/backend/convex/seed_skills_content.generated.ts\` by hand.
+3. Documentation alignment
+   - Review/update \`docs/runtime/AGENTS.md\` and \`docs/runtime/HEARTBEAT.md\` if the new agent changes tools, output formats, or heartbeat behavior.
+   - Ensure the new SOUL content matches the heartbeat checklist and task-status rules.
+4. Search for hard-coded slugs/roles
+   - Run \`rg "squad-lead|engineer|qa"\` (or your new slug) and update any role-specific behavior or docs.
+   - Most UI/runtime paths are data-driven; update only if you find hard-coded assumptions.
+
+## Runtime + UI behavior
+
+- Runtime picks up new agents via \`service/agents.listForRuntime\` and writes \`SOUL.md\`/\`TOOLS.md\` in \`apps/runtime/src/openclaw-profiles.ts\`. No code changes required.
+- The Agents UI is data-driven; new agents appear automatically. Set an orchestrator via the Agent detail page or \`accounts.update\`.
+
+## Verification
+
+- Re-run seed (\`packages/backend\`): \`npm run seed\` (requires \`CLERK_USER_ID\` env set).
+- Confirm in Convex: agent exists, \`sessionKey\` is \`agent:{slug}:{accountId}\`, \`soulContent\` is present, \`openclawConfig.skillIds\` match.
+- Confirm in UI: roster shows new agent and status.
+
+## Output expectation
+
+- Provide a short checklist of edits made and exact files touched.
+`,
   "address-github-pr-comments": `---
 name: address-github-pr-comments
 description: Address GitHub PR Comments
@@ -1249,6 +1319,296 @@ Good acceptance criteria should be:
 - @metrics-reporting - Track backlog health and velocity trends
 - @sprint-planning - Execute backlog in sprints
 `,
+  "baseline-ui": `---
+name: baseline-ui
+description: Enforces an opinionated UI baseline to prevent AI-generated interface slop.
+---
+
+# Baseline UI
+
+Enforces an opinionated UI baseline to prevent AI-generated interface slop.
+
+## How to use
+
+- \`/baseline-ui\`
+  Apply these constraints to any UI work in this conversation.
+
+- \`/baseline-ui <file>\`
+  Review the file against all constraints below and output:
+  - violations (quote the exact line/snippet)
+  - why it matters (1 short sentence)
+  - a concrete fix (code-level suggestion)
+
+## Stack
+
+- MUST use Tailwind CSS defaults unless custom values already exist or are explicitly requested
+- MUST use \`motion/react\` (formerly \`framer-motion\`) when JavaScript animation is required
+- SHOULD use \`tw-animate-css\` for entrance and micro-animations in Tailwind CSS
+- MUST use \`cn\` utility (\`clsx\` + \`tailwind-merge\`) for class logic
+
+## Components
+
+- MUST use accessible component primitives for anything with keyboard or focus behavior (\`Base UI\`, \`React Aria\`, \`Radix\`)
+- MUST use the project’s existing component primitives first
+- NEVER mix primitive systems within the same interaction surface
+- SHOULD prefer [\`Base UI\`](https://base-ui.com/react/components) for new primitives if compatible with the stack
+- MUST add an \`aria-label\` to icon-only buttons
+- NEVER rebuild keyboard or focus behavior by hand unless explicitly requested
+
+## Interaction
+
+- MUST use an \`AlertDialog\` for destructive or irreversible actions
+- SHOULD use structural skeletons for loading states
+- NEVER use \`h-screen\`, use \`h-dvh\`
+- MUST respect \`safe-area-inset\` for fixed elements
+- MUST show errors next to where the action happens
+- NEVER block paste in \`input\` or \`textarea\` elements
+
+## Animation
+
+- NEVER add animation unless it is explicitly requested
+- MUST animate only compositor props (\`transform\`, \`opacity\`)
+- NEVER animate layout properties (\`width\`, \`height\`, \`top\`, \`left\`, \`margin\`, \`padding\`)
+- SHOULD avoid animating paint properties (\`background\`, \`color\`) except for small, local UI (text, icons)
+- SHOULD use \`ease-out\` on entrance
+- NEVER exceed \`200ms\` for interaction feedback
+- MUST pause looping animations when off-screen
+- SHOULD respect \`prefers-reduced-motion\`
+- NEVER introduce custom easing curves unless explicitly requested
+- SHOULD avoid animating large images or full-screen surfaces
+
+## Typography
+
+- MUST use \`text-balance\` for headings and \`text-pretty\` for body/paragraphs
+- MUST use \`tabular-nums\` for data
+- SHOULD use \`truncate\` or \`line-clamp\` for dense UI
+- NEVER modify \`letter-spacing\` (\`tracking-*\`) unless explicitly requested
+
+## Layout
+
+- MUST use a fixed \`z-index\` scale (no arbitrary \`z-*\`)
+- SHOULD use \`size-*\` for square elements instead of \`w-*\` + \`h-*\`
+
+## Performance
+
+- NEVER animate large \`blur()\` or \`backdrop-filter\` surfaces
+- NEVER apply \`will-change\` outside an active animation
+- NEVER use \`useEffect\` for anything that can be expressed as render logic
+
+## Design
+
+- NEVER use gradients unless explicitly requested
+- NEVER use purple or multicolor gradients
+- NEVER use glow effects as primary affordances
+- SHOULD use Tailwind CSS default shadow scale unless explicitly requested
+- MUST give empty states one clear next action
+- SHOULD limit accent color usage to one per view
+- SHOULD use existing theme or Tailwind CSS color tokens before introducing new ones
+`,
+  "brand-guidelines": `---
+name: brand-guidelines
+description: Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.
+license: Complete terms in LICENSE.txt
+---
+
+# Anthropic Brand Styling
+
+## Overview
+
+To access Anthropic's official brand identity and style resources, use this skill.
+
+**Keywords**: branding, corporate identity, visual identity, post-processing, styling, brand colors, typography, Anthropic brand, visual formatting, visual design
+
+## Brand Guidelines
+
+### Colors
+
+**Main Colors:**
+
+- Dark: \`#141413\` - Primary text and dark backgrounds
+- Light: \`#faf9f5\` - Light backgrounds and text on dark
+- Mid Gray: \`#b0aea5\` - Secondary elements
+- Light Gray: \`#e8e6dc\` - Subtle backgrounds
+
+**Accent Colors:**
+
+- Orange: \`#d97757\` - Primary accent
+- Blue: \`#6a9bcc\` - Secondary accent
+- Green: \`#788c5d\` - Tertiary accent
+
+### Typography
+
+- **Headings**: Poppins (with Arial fallback)
+- **Body Text**: Lora (with Georgia fallback)
+- **Note**: Fonts should be pre-installed in your environment for best results
+
+## Features
+
+### Smart Font Application
+
+- Applies Poppins font to headings (24pt and larger)
+- Applies Lora font to body text
+- Automatically falls back to Arial/Georgia if custom fonts unavailable
+- Preserves readability across all systems
+
+### Text Styling
+
+- Headings (24pt+): Poppins font
+- Body text: Lora font
+- Smart color selection based on background
+- Preserves text hierarchy and formatting
+
+### Shape and Accent Colors
+
+- Non-text shapes use accent colors
+- Cycles through orange, blue, and green accents
+- Maintains visual interest while staying on-brand
+
+## Technical Details
+
+### Font Management
+
+- Uses system-installed Poppins and Lora fonts when available
+- Provides automatic fallback to Arial (headings) and Georgia (body)
+- No font installation required - works with existing system fonts
+- For best results, pre-install Poppins and Lora fonts in your environment
+
+### Color Application
+
+- Uses RGB color values for precise brand matching
+- Applied via python-pptx's RGBColor class
+- Maintains color fidelity across different systems
+`,
+  "canvas-design": `---
+name: canvas-design
+description: Create beautiful visual art in .png and .pdf documents using design philosophy. You should use this skill when the user asks to create a poster, piece of art, design, or other static piece. Create original visual designs, never copying existing artists' work to avoid copyright violations.
+license: Complete terms in LICENSE.txt
+---
+
+These are instructions for creating design philosophies - aesthetic movements that are then EXPRESSED VISUALLY. Output only .md files, .pdf files, and .png files.
+
+Complete this in two steps:
+1. Design Philosophy Creation (.md file)
+2. Express by creating it on a canvas (.pdf file or .png file)
+
+First, undertake this task:
+
+## DESIGN PHILOSOPHY CREATION
+
+To begin, create a VISUAL PHILOSOPHY (not layouts or templates) that will be interpreted through:
+- Form, space, color, composition
+- Images, graphics, shapes, patterns
+- Minimal text as visual accent
+
+### THE CRITICAL UNDERSTANDING
+- What is received: Some subtle input or instructions by the user that should be taken into account, but used as a foundation; it should not constrain creative freedom.
+- What is created: A design philosophy/aesthetic movement.
+- What happens next: Then, the same version receives the philosophy and EXPRESSES IT VISUALLY - creating artifacts that are 90% visual design, 10% essential text.
+
+Consider this approach:
+- Write a manifesto for an art movement
+- The next phase involves making the artwork
+
+The philosophy must emphasize: Visual expression. Spatial communication. Artistic interpretation. Minimal words.
+
+### HOW TO GENERATE A VISUAL PHILOSOPHY
+
+**Name the movement** (1-2 words): "Brutalist Joy" / "Chromatic Silence" / "Metabolist Dreams"
+
+**Articulate the philosophy** (4-6 paragraphs - concise but complete):
+
+To capture the VISUAL essence, express how the philosophy manifests through:
+- Space and form
+- Color and material
+- Scale and rhythm
+- Composition and balance
+- Visual hierarchy
+
+**CRITICAL GUIDELINES:**
+- **Avoid redundancy**: Each design aspect should be mentioned once. Avoid repeating points about color theory, spatial relationships, or typographic principles unless adding new depth.
+- **Emphasize craftsmanship REPEATEDLY**: The philosophy MUST stress multiple times that the final work should appear as though it took countless hours to create, was labored over with care, and comes from someone at the absolute top of their field. This framing is essential - repeat phrases like "meticulously crafted," "the product of deep expertise," "painstaking attention," "master-level execution."
+- **Leave creative space**: Remain specific about the aesthetic direction, but concise enough that the next Claude has room to make interpretive choices also at a extremely high level of craftmanship.
+
+The philosophy must guide the next version to express ideas VISUALLY, not through text. Information lives in design, not paragraphs.
+
+### PHILOSOPHY EXAMPLES
+
+**"Concrete Poetry"**
+Philosophy: Communication through monumental form and bold geometry.
+Visual expression: Massive color blocks, sculptural typography (huge single words, tiny labels), Brutalist spatial divisions, Polish poster energy meets Le Corbusier. Ideas expressed through visual weight and spatial tension, not explanation. Text as rare, powerful gesture - never paragraphs, only essential words integrated into the visual architecture. Every element placed with the precision of a master craftsman.
+
+**"Chromatic Language"**
+Philosophy: Color as the primary information system.
+Visual expression: Geometric precision where color zones create meaning. Typography minimal - small sans-serif labels letting chromatic fields communicate. Think Josef Albers' interaction meets data visualization. Information encoded spatially and chromatically. Words only to anchor what color already shows. The result of painstaking chromatic calibration.
+
+**"Analog Meditation"**
+Philosophy: Quiet visual contemplation through texture and breathing room.
+Visual expression: Paper grain, ink bleeds, vast negative space. Photography and illustration dominate. Typography whispered (small, restrained, serving the visual). Japanese photobook aesthetic. Images breathe across pages. Text appears sparingly - short phrases, never explanatory blocks. Each composition balanced with the care of a meditation practice.
+
+**"Organic Systems"**
+Philosophy: Natural clustering and modular growth patterns.
+Visual expression: Rounded forms, organic arrangements, color from nature through architecture. Information shown through visual diagrams, spatial relationships, iconography. Text only for key labels floating in space. The composition tells the story through expert spatial orchestration.
+
+**"Geometric Silence"**
+Philosophy: Pure order and restraint.
+Visual expression: Grid-based precision, bold photography or stark graphics, dramatic negative space. Typography precise but minimal - small essential text, large quiet zones. Swiss formalism meets Brutalist material honesty. Structure communicates, not words. Every alignment the work of countless refinements.
+
+*These are condensed examples. The actual design philosophy should be 4-6 substantial paragraphs.*
+
+### ESSENTIAL PRINCIPLES
+- **VISUAL PHILOSOPHY**: Create an aesthetic worldview to be expressed through design
+- **MINIMAL TEXT**: Always emphasize that text is sparse, essential-only, integrated as visual element - never lengthy
+- **SPATIAL EXPRESSION**: Ideas communicate through space, form, color, composition - not paragraphs
+- **ARTISTIC FREEDOM**: The next Claude interprets the philosophy visually - provide creative room
+- **PURE DESIGN**: This is about making ART OBJECTS, not documents with decoration
+- **EXPERT CRAFTSMANSHIP**: Repeatedly emphasize the final work must look meticulously crafted, labored over with care, the product of countless hours by someone at the top of their field
+
+**The design philosophy should be 4-6 paragraphs long.** Fill it with poetic design philosophy that brings together the core vision. Avoid repeating the same points. Keep the design philosophy generic without mentioning the intention of the art, as if it can be used wherever. Output the design philosophy as a .md file.
+
+---
+
+## DEDUCING THE SUBTLE REFERENCE
+
+**CRITICAL STEP**: Before creating the canvas, identify the subtle conceptual thread from the original request.
+
+**THE ESSENTIAL PRINCIPLE**:
+The topic is a **subtle, niche reference embedded within the art itself** - not always literal, always sophisticated. Someone familiar with the subject should feel it intuitively, while others simply experience a masterful abstract composition. The design philosophy provides the aesthetic language. The deduced topic provides the soul - the quiet conceptual DNA woven invisibly into form, color, and composition.
+
+This is **VERY IMPORTANT**: The reference must be refined so it enhances the work's depth without announcing itself. Think like a jazz musician quoting another song - only those who know will catch it, but everyone appreciates the music.
+
+---
+
+## CANVAS CREATION
+
+With both the philosophy and the conceptual framework established, express it on a canvas. Take a moment to gather thoughts and clear the mind. Use the design philosophy created and the instructions below to craft a masterpiece, embodying all aspects of the philosophy with expert craftsmanship.
+
+**IMPORTANT**: For any type of content, even if the user requests something for a movie/game/book, the approach should still be sophisticated. Never lose sight of the idea that this should be art, not something that's cartoony or amateur.
+
+To create museum or magazine quality work, use the design philosophy as the foundation. Create one single page, highly visual, design-forward PDF or PNG output (unless asked for more pages). Generally use repeating patterns and perfect shapes. Treat the abstract philosophical design as if it were a scientific bible, borrowing the visual language of systematic observation—dense accumulation of marks, repeated elements, or layered patterns that build meaning through patient repetition and reward sustained viewing. Add sparse, clinical typography and systematic reference markers that suggest this could be a diagram from an imaginary discipline, treating the invisible subject with the same reverence typically reserved for documenting observable phenomena. Anchor the piece with simple phrase(s) or details positioned subtly, using a limited color palette that feels intentional and cohesive. Embrace the paradox of using analytical visual language to express ideas about human experience: the result should feel like an artifact that proves something ephemeral can be studied, mapped, and understood through careful attention. This is true art. 
+
+**Text as a contextual element**: Text is always minimal and visual-first, but let context guide whether that means whisper-quiet labels or bold typographic gestures. A punk venue poster might have larger, more aggressive type than a minimalist ceramics studio identity. Most of the time, font should be thin. All use of fonts must be design-forward and prioritize visual communication. Regardless of text scale, nothing falls off the page and nothing overlaps. Every element must be contained within the canvas boundaries with proper margins. Check carefully that all text, graphics, and visual elements have breathing room and clear separation. This is non-negotiable for professional execution. **IMPORTANT: Use different fonts if writing text. Search the \`./canvas-fonts\` directory. Regardless of approach, sophistication is non-negotiable.**
+
+Download and use whatever fonts are needed to make this a reality. Get creative by making the typography actually part of the art itself -- if the art is abstract, bring the font onto the canvas, not typeset digitally.
+
+To push boundaries, follow design instinct/intuition while using the philosophy as a guiding principle. Embrace ultimate design freedom and choice. Push aesthetics and design to the frontier. 
+
+**CRITICAL**: To achieve human-crafted quality (not AI-generated), create work that looks like it took countless hours. Make it appear as though someone at the absolute top of their field labored over every detail with painstaking care. Ensure the composition, spacing, color choices, typography - everything screams expert-level craftsmanship. Double-check that nothing overlaps, formatting is flawless, every detail perfect. Create something that could be shown to people to prove expertise and rank as undeniably impressive.
+
+Output the final result as a single, downloadable .pdf or .png file, alongside the design philosophy used as a .md file.
+
+---
+
+## FINAL STEP
+
+**IMPORTANT**: The user ALREADY said "It isn't perfect enough. It must be pristine, a masterpiece if craftsmanship, as if it were about to be displayed in a museum."
+
+**CRITICAL**: To refine the work, avoid adding more graphics; instead refine what has been created and make it extremely crisp, respecting the design philosophy and the principles of minimalism entirely. Rather than adding a fun filter or refactoring a font, consider how to make the existing composition more cohesive with the art. If the instinct is to call a new function or draw a new shape, STOP and instead ask: "How can I make what's already here more of a piece of art?"
+
+Take a second pass. Go back to the code and refine/polish further to make this a philosophically designed masterpiece.
+
+## MULTI-PAGE OPTION
+
+To create additional pages when requested, create more creative pages along the same lines as the design philosophy but distinctly different as well. Bundle those pages in the same .pdf or many .pngs. Treat the first page as just a single page in a whole coffee table book waiting to be filled. Make the next pages unique twists and memories of the original. Have them almost tell a story in a very tasteful way. Exercise full creative freedom.`,
   "capacity-planning": `---
 name: capacity-planning
 description: Team velocity forecasting, resource allocation, sprint capacity planning, estimation techniques, and workload balancing
@@ -1581,7 +1941,7 @@ performance implications, and provide actionable suggestions for improvement.
 Provide constructive feedback with concrete examples and actionable guidance for
 the author.
 `,
-  "commit": `---
+  commit: `---
 name: commit
 description: Commit current work
 disable-model-invocation: true
@@ -1608,6 +1968,618 @@ Review each file individually to make sure they're related to the work you just 
 - You should only commit work when instructed. Do not keep committing subsquent work unless explicitly told so
 
 Optional: ask me if I would like to push the commit. (Only if I'm not on main)
+`,
+  "competitor-alternatives": `---
+name: competitor-alternatives
+version: 1.0.0
+description: "When the user wants to create competitor comparison or alternative pages for SEO and sales enablement. Also use when the user mentions 'alternative page,' 'vs page,' 'competitor comparison,' 'comparison page,' '[Product] vs [Product],' '[Product] alternative,' or 'competitive landing pages.' Covers four formats: singular alternative, plural alternatives, you vs competitor, and competitor vs competitor. Emphasizes deep research, modular content architecture, and varied section types beyond feature tables."
+---
+
+# Competitor & Alternative Pages
+
+You are an expert in creating competitor comparison and alternative pages. Your goal is to build pages that rank for competitive search terms, provide genuine value to evaluators, and position your product effectively.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before creating competitor pages, understand:
+
+1. **Your Product**
+   - Core value proposition
+   - Key differentiators
+   - Ideal customer profile
+   - Pricing model
+   - Strengths and honest weaknesses
+
+2. **Competitive Landscape**
+   - Direct competitors
+   - Indirect/adjacent competitors
+   - Market positioning of each
+   - Search volume for competitor terms
+
+3. **Goals**
+   - SEO traffic capture
+   - Sales enablement
+   - Conversion from competitor users
+   - Brand positioning
+
+---
+
+## Core Principles
+
+### 1. Honesty Builds Trust
+- Acknowledge competitor strengths
+- Be accurate about your limitations
+- Don't misrepresent competitor features
+- Readers are comparing—they'll verify claims
+
+### 2. Depth Over Surface
+- Go beyond feature checklists
+- Explain *why* differences matter
+- Include use cases and scenarios
+- Show, don't just tell
+
+### 3. Help Them Decide
+- Different tools fit different needs
+- Be clear about who you're best for
+- Be clear about who competitor is best for
+- Reduce evaluation friction
+
+### 4. Modular Content Architecture
+- Competitor data should be centralized
+- Updates propagate to all pages
+- Single source of truth per competitor
+
+---
+
+## Page Formats
+
+### Format 1: [Competitor] Alternative (Singular)
+
+**Search intent**: User is actively looking to switch from a specific competitor
+
+**URL pattern**: \`/alternatives/[competitor]\` or \`/[competitor]-alternative\`
+
+**Target keywords**: "[Competitor] alternative", "alternative to [Competitor]", "switch from [Competitor]"
+
+**Page structure**:
+1. Why people look for alternatives (validate their pain)
+2. Summary: You as the alternative (quick positioning)
+3. Detailed comparison (features, service, pricing)
+4. Who should switch (and who shouldn't)
+5. Migration path
+6. Social proof from switchers
+7. CTA
+
+---
+
+### Format 2: [Competitor] Alternatives (Plural)
+
+**Search intent**: User is researching options, earlier in journey
+
+**URL pattern**: \`/alternatives/[competitor]-alternatives\`
+
+**Target keywords**: "[Competitor] alternatives", "best [Competitor] alternatives", "tools like [Competitor]"
+
+**Page structure**:
+1. Why people look for alternatives (common pain points)
+2. What to look for in an alternative (criteria framework)
+3. List of alternatives (you first, but include real options)
+4. Comparison table (summary)
+5. Detailed breakdown of each alternative
+6. Recommendation by use case
+7. CTA
+
+**Important**: Include 4-7 real alternatives. Being genuinely helpful builds trust and ranks better.
+
+---
+
+### Format 3: You vs [Competitor]
+
+**Search intent**: User is directly comparing you to a specific competitor
+
+**URL pattern**: \`/vs/[competitor]\` or \`/compare/[you]-vs-[competitor]\`
+
+**Target keywords**: "[You] vs [Competitor]", "[Competitor] vs [You]"
+
+**Page structure**:
+1. TL;DR summary (key differences in 2-3 sentences)
+2. At-a-glance comparison table
+3. Detailed comparison by category (Features, Pricing, Support, Ease of use, Integrations)
+4. Who [You] is best for
+5. Who [Competitor] is best for (be honest)
+6. What customers say (testimonials from switchers)
+7. Migration support
+8. CTA
+
+---
+
+### Format 4: [Competitor A] vs [Competitor B]
+
+**Search intent**: User comparing two competitors (not you directly)
+
+**URL pattern**: \`/compare/[competitor-a]-vs-[competitor-b]\`
+
+**Page structure**:
+1. Overview of both products
+2. Comparison by category
+3. Who each is best for
+4. The third option (introduce yourself)
+5. Comparison table (all three)
+6. CTA
+
+**Why this works**: Captures search traffic for competitor terms, positions you as knowledgeable.
+
+---
+
+## Essential Sections
+
+### TL;DR Summary
+Start every page with a quick summary for scanners—key differences in 2-3 sentences.
+
+### Paragraph Comparisons
+Go beyond tables. For each dimension, write a paragraph explaining the differences and when each matters.
+
+### Feature Comparison
+For each category: describe how each handles it, list strengths and limitations, give bottom line recommendation.
+
+### Pricing Comparison
+Include tier-by-tier comparison, what's included, hidden costs, and total cost calculation for sample team size.
+
+### Who It's For
+Be explicit about ideal customer for each option. Honest recommendations build trust.
+
+### Migration Section
+Cover what transfers, what needs reconfiguration, support offered, and quotes from customers who switched.
+
+**For detailed templates**: See [references/templates.md](references/templates.md)
+
+---
+
+## Content Architecture
+
+### Centralized Competitor Data
+Create a single source of truth for each competitor with:
+- Positioning and target audience
+- Pricing (all tiers)
+- Feature ratings
+- Strengths and weaknesses
+- Best for / not ideal for
+- Common complaints (from reviews)
+- Migration notes
+
+**For data structure and examples**: See [references/content-architecture.md](references/content-architecture.md)
+
+---
+
+## Research Process
+
+### Deep Competitor Research
+
+For each competitor, gather:
+
+1. **Product research**: Sign up, use it, document features/UX/limitations
+2. **Pricing research**: Current pricing, what's included, hidden costs
+3. **Review mining**: G2, Capterra, TrustRadius for common praise/complaint themes
+4. **Customer feedback**: Talk to customers who switched (both directions)
+5. **Content research**: Their positioning, their comparison pages, their changelog
+
+### Ongoing Updates
+
+- **Quarterly**: Verify pricing, check for major feature changes
+- **When notified**: Customer mentions competitor change
+- **Annually**: Full refresh of all competitor data
+
+---
+
+## SEO Considerations
+
+### Keyword Targeting
+
+| Format | Primary Keywords |
+|--------|-----------------|
+| Alternative (singular) | [Competitor] alternative, alternative to [Competitor] |
+| Alternatives (plural) | [Competitor] alternatives, best [Competitor] alternatives |
+| You vs Competitor | [You] vs [Competitor], [Competitor] vs [You] |
+| Competitor vs Competitor | [A] vs [B], [B] vs [A] |
+
+### Internal Linking
+- Link between related competitor pages
+- Link from feature pages to relevant comparisons
+- Create hub page linking to all competitor content
+
+### Schema Markup
+Consider FAQ schema for common questions like "What is the best alternative to [Competitor]?"
+
+---
+
+## Output Format
+
+### Competitor Data File
+Complete competitor profile in YAML format for use across all comparison pages.
+
+### Page Content
+For each page: URL, meta tags, full page copy organized by section, comparison tables, CTAs.
+
+### Page Set Plan
+Recommended pages to create with priority order based on search volume.
+
+---
+
+## Task-Specific Questions
+
+1. What are common reasons people switch to you?
+2. Do you have customer quotes about switching?
+3. What's your pricing vs. competitors?
+4. Do you offer migration support?
+
+---
+
+## Related Skills
+
+- **programmatic-seo**: For building competitor pages at scale
+- **copywriting**: For writing compelling comparison copy
+- **seo-audit**: For optimizing competitor pages
+- **schema-markup**: For FAQ and comparison schema
+`,
+  "content-strategy": `---
+name: content-strategy
+version: 1.0.0
+description: When the user wants to plan a content strategy, decide what content to create, or figure out what topics to cover. Also use when the user mentions "content strategy," "what should I write about," "content ideas," "blog strategy," "topic clusters," or "content planning." For writing individual pieces, see copywriting. For SEO-specific audits, see seo-audit.
+---
+
+# Content Strategy
+
+You are a content strategist. Your goal is to help plan content that drives traffic, builds authority, and generates leads by being either searchable, shareable, or both.
+
+## Before Planning
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Gather this context (ask if not provided):
+
+### 1. Business Context
+- What does the company do?
+- Who is the ideal customer?
+- What's the primary goal for content? (traffic, leads, brand awareness, thought leadership)
+- What problems does your product solve?
+
+### 2. Customer Research
+- What questions do customers ask before buying?
+- What objections come up in sales calls?
+- What topics appear repeatedly in support tickets?
+- What language do customers use to describe their problems?
+
+### 3. Current State
+- Do you have existing content? What's working?
+- What resources do you have? (writers, budget, time)
+- What content formats can you produce? (written, video, audio)
+
+### 4. Competitive Landscape
+- Who are your main competitors?
+- What content gaps exist in your market?
+
+---
+
+## Searchable vs Shareable
+
+Every piece of content must be searchable, shareable, or both. Prioritize in that order—search traffic is the foundation.
+
+**Searchable content** captures existing demand. Optimized for people actively looking for answers.
+
+**Shareable content** creates demand. Spreads ideas and gets people talking.
+
+### When Writing Searchable Content
+
+- Target a specific keyword or question
+- Match search intent exactly—answer what the searcher wants
+- Use clear titles that match search queries
+- Structure with headings that mirror search patterns
+- Place keywords in title, headings, first paragraph, URL
+- Provide comprehensive coverage (don't leave questions unanswered)
+- Include data, examples, and links to authoritative sources
+- Optimize for AI/LLM discovery: clear positioning, structured content, brand consistency across the web
+
+### When Writing Shareable Content
+
+- Lead with a novel insight, original data, or counterintuitive take
+- Challenge conventional wisdom with well-reasoned arguments
+- Tell stories that make people feel something
+- Create content people want to share to look smart or help others
+- Connect to current trends or emerging problems
+- Share vulnerable, honest experiences others can learn from
+
+---
+
+## Content Types
+
+### Searchable Content Types
+
+**Use-Case Content**
+Formula: [persona] + [use-case]. Targets long-tail keywords.
+- "Project management for designers"
+- "Task tracking for developers"
+- "Client collaboration for freelancers"
+
+**Hub and Spoke**
+Hub = comprehensive overview. Spokes = related subtopics.
+\`\`\`
+/topic (hub)
+├── /topic/subtopic-1 (spoke)
+├── /topic/subtopic-2 (spoke)
+└── /topic/subtopic-3 (spoke)
+\`\`\`
+Create hub first, then build spokes. Interlink strategically.
+
+**Note:** Most content works fine under \`/blog\`. Only use dedicated hub/spoke URL structures for major topics with layered depth (e.g., Atlassian's \`/agile\` guide). For typical blog posts, \`/blog/post-title\` is sufficient.
+
+**Template Libraries**
+High-intent keywords + product adoption.
+- Target searches like "marketing plan template"
+- Provide immediate standalone value
+- Show how product enhances the template
+
+### Shareable Content Types
+
+**Thought Leadership**
+- Articulate concepts everyone feels but hasn't named
+- Challenge conventional wisdom with evidence
+- Share vulnerable, honest experiences
+
+**Data-Driven Content**
+- Product data analysis (anonymized insights)
+- Public data analysis (uncover patterns)
+- Original research (run experiments, share results)
+
+**Expert Roundups**
+15-30 experts answering one specific question. Built-in distribution.
+
+**Case Studies**
+Structure: Challenge → Solution → Results → Key learnings
+
+**Meta Content**
+Behind-the-scenes transparency. "How We Got Our First \$5k MRR," "Why We Chose Debt Over VC."
+
+For programmatic content at scale, see **programmatic-seo** skill.
+
+---
+
+## Content Pillars and Topic Clusters
+
+Content pillars are the 3-5 core topics your brand will own. Each pillar spawns a cluster of related content.
+
+Most of the time, all content can live under \`/blog\` with good internal linking between related posts. Dedicated pillar pages with custom URL structures (like \`/guides/topic\`) are only needed when you're building comprehensive resources with multiple layers of depth.
+
+### How to Identify Pillars
+
+1. **Product-led**: What problems does your product solve?
+2. **Audience-led**: What does your ICP need to learn?
+3. **Search-led**: What topics have volume in your space?
+4. **Competitor-led**: What are competitors ranking for?
+
+### Pillar Structure
+
+\`\`\`
+Pillar Topic (Hub)
+├── Subtopic Cluster 1
+│   ├── Article A
+│   ├── Article B
+│   └── Article C
+├── Subtopic Cluster 2
+│   ├── Article D
+│   ├── Article E
+│   └── Article F
+└── Subtopic Cluster 3
+    ├── Article G
+    ├── Article H
+    └── Article I
+\`\`\`
+
+### Pillar Criteria
+
+Good pillars should:
+- Align with your product/service
+- Match what your audience cares about
+- Have search volume and/or social interest
+- Be broad enough for many subtopics
+
+---
+
+## Keyword Research by Buyer Stage
+
+Map topics to the buyer's journey using proven keyword modifiers:
+
+### Awareness Stage
+Modifiers: "what is," "how to," "guide to," "introduction to"
+
+Example: If customers ask about project management basics:
+- "What is Agile Project Management"
+- "Guide to Sprint Planning"
+- "How to Run a Standup Meeting"
+
+### Consideration Stage
+Modifiers: "best," "top," "vs," "alternatives," "comparison"
+
+Example: If customers evaluate multiple tools:
+- "Best Project Management Tools for Remote Teams"
+- "Asana vs Trello vs Monday"
+- "Basecamp Alternatives"
+
+### Decision Stage
+Modifiers: "pricing," "reviews," "demo," "trial," "buy"
+
+Example: If pricing comes up in sales calls:
+- "Project Management Tool Pricing Comparison"
+- "How to Choose the Right Plan"
+- "[Product] Reviews"
+
+### Implementation Stage
+Modifiers: "templates," "examples," "tutorial," "how to use," "setup"
+
+Example: If support tickets show implementation struggles:
+- "Project Template Library"
+- "Step-by-Step Setup Tutorial"
+- "How to Use [Feature]"
+
+---
+
+## Content Ideation Sources
+
+### 1. Keyword Data
+
+If user provides keyword exports (Ahrefs, SEMrush, GSC), analyze for:
+- Topic clusters (group related keywords)
+- Buyer stage (awareness/consideration/decision/implementation)
+- Search intent (informational, commercial, transactional)
+- Quick wins (low competition + decent volume + high relevance)
+- Content gaps (keywords competitors rank for that you don't)
+
+Output as prioritized table:
+| Keyword | Volume | Difficulty | Buyer Stage | Content Type | Priority |
+
+### 2. Call Transcripts
+
+If user provides sales or customer call transcripts, extract:
+- Questions asked → FAQ content or blog posts
+- Pain points → problems in their own words
+- Objections → content to address proactively
+- Language patterns → exact phrases to use (voice of customer)
+- Competitor mentions → what they compared you to
+
+Output content ideas with supporting quotes.
+
+### 3. Survey Responses
+
+If user provides survey data, mine for:
+- Open-ended responses (topics and language)
+- Common themes (30%+ mention = high priority)
+- Resource requests (what they wish existed)
+- Content preferences (formats they want)
+
+### 4. Forum Research
+
+Use web search to find content ideas:
+
+**Reddit:** \`site:reddit.com [topic]\`
+- Top posts in relevant subreddits
+- Questions and frustrations in comments
+- Upvoted answers (validates what resonates)
+
+**Quora:** \`site:quora.com [topic]\`
+- Most-followed questions
+- Highly upvoted answers
+
+**Other:** Indie Hackers, Hacker News, Product Hunt, industry Slack/Discord
+
+Extract: FAQs, misconceptions, debates, problems being solved, terminology used.
+
+### 5. Competitor Analysis
+
+Use web search to analyze competitor content:
+
+**Find their content:** \`site:competitor.com/blog\`
+
+**Analyze:**
+- Top-performing posts (comments, shares)
+- Topics covered repeatedly
+- Gaps they haven't covered
+- Case studies (customer problems, use cases, results)
+- Content structure (pillars, categories, formats)
+
+**Identify opportunities:**
+- Topics you can cover better
+- Angles they're missing
+- Outdated content to improve on
+
+### 6. Sales and Support Input
+
+Extract from customer-facing teams:
+- Common objections
+- Repeated questions
+- Support ticket patterns
+- Success stories
+- Feature requests and underlying problems
+
+---
+
+## Prioritizing Content Ideas
+
+Score each idea on four factors:
+
+### 1. Customer Impact (40%)
+- How frequently did this topic come up in research?
+- What percentage of customers face this challenge?
+- How emotionally charged was this pain point?
+- What's the potential LTV of customers with this need?
+
+### 2. Content-Market Fit (30%)
+- Does this align with problems your product solves?
+- Can you offer unique insights from customer research?
+- Do you have customer stories to support this?
+- Will this naturally lead to product interest?
+
+### 3. Search Potential (20%)
+- What's the monthly search volume?
+- How competitive is this topic?
+- Are there related long-tail opportunities?
+- Is search interest growing or declining?
+
+### 4. Resource Requirements (10%)
+- Do you have expertise to create authoritative content?
+- What additional research is needed?
+- What assets (graphics, data, examples) will you need?
+
+### Scoring Template
+
+| Idea | Customer Impact (40%) | Content-Market Fit (30%) | Search Potential (20%) | Resources (10%) | Total |
+|------|----------------------|-------------------------|----------------------|-----------------|-------|
+| Topic A | 8 | 9 | 7 | 6 | 8.0 |
+| Topic B | 6 | 7 | 9 | 8 | 7.1 |
+
+---
+
+## Output Format
+
+When creating a content strategy, provide:
+
+### 1. Content Pillars
+- 3-5 pillars with rationale
+- Subtopic clusters for each pillar
+- How pillars connect to product
+
+### 2. Priority Topics
+For each recommended piece:
+- Topic/title
+- Searchable, shareable, or both
+- Content type (use-case, hub/spoke, thought leadership, etc.)
+- Target keyword and buyer stage
+- Why this topic (customer research backing)
+
+### 3. Topic Cluster Map
+Visual or structured representation of how content interconnects.
+
+---
+
+## Task-Specific Questions
+
+1. What patterns emerge from your last 10 customer conversations?
+2. What questions keep coming up in sales calls?
+3. Where are competitors' content efforts falling short?
+4. What unique insights from customer research aren't being shared elsewhere?
+5. Which existing content drives the most conversions, and why?
+
+---
+
+## Related Skills
+
+- **copywriting**: For writing individual content pieces
+- **seo-audit**: For technical SEO and on-page optimization
+- **programmatic-seo**: For scaled content generation
+- **email-sequence**: For email-based content
+- **social-content**: For social media content
 `,
   "contract-testing-openapi": `---
 name: contract-testing-openapi
@@ -2079,6 +3051,705 @@ jobs:
 - @test-coverage-analysis - Coverage for contract test paths
 - @api-design - Define contracts before implementation
 - @regression-testing - Detect contract regressions
+`,
+  "copy-editing": `---
+name: copy-editing
+version: 1.0.0
+description: "When the user wants to edit, review, or improve existing marketing copy. Also use when the user mentions 'edit this copy,' 'review my copy,' 'copy feedback,' 'proofread,' 'polish this,' 'make this better,' or 'copy sweep.' This skill provides a systematic approach to editing marketing copy through multiple focused passes."
+---
+
+# Copy Editing
+
+You are an expert copy editor specializing in marketing and conversion copy. Your goal is to systematically improve existing copy through focused editing passes while preserving the core message.
+
+## Core Philosophy
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before editing. Use brand voice and customer language from that context to guide your edits.
+
+Good copy editing isn't about rewriting—it's about enhancing. Each pass focuses on one dimension, catching issues that get missed when you try to fix everything at once.
+
+**Key principles:**
+- Don't change the core message; focus on enhancing it
+- Multiple focused passes beat one unfocused review
+- Each edit should have a clear reason
+- Preserve the author's voice while improving clarity
+
+---
+
+## The Seven Sweeps Framework
+
+Edit copy through seven sequential passes, each focusing on one dimension. After each sweep, loop back to check previous sweeps aren't compromised.
+
+### Sweep 1: Clarity
+
+**Focus:** Can the reader understand what you're saying?
+
+**What to check:**
+- Confusing sentence structures
+- Unclear pronoun references
+- Jargon or insider language
+- Ambiguous statements
+- Missing context
+
+**Common clarity killers:**
+- Sentences trying to say too much
+- Abstract language instead of concrete
+- Assuming reader knowledge they don't have
+- Burying the point in qualifications
+
+**Process:**
+1. Read through quickly, highlighting unclear parts
+2. Don't correct yet—just note problem areas
+3. After marking issues, recommend specific edits
+4. Verify edits maintain the original intent
+
+**After this sweep:** Confirm the "Rule of One" (one main idea per section) and "You Rule" (copy speaks to the reader) are intact.
+
+---
+
+### Sweep 2: Voice and Tone
+
+**Focus:** Is the copy consistent in how it sounds?
+
+**What to check:**
+- Shifts between formal and casual
+- Inconsistent brand personality
+- Mood changes that feel jarring
+- Word choices that don't match the brand
+
+**Common voice issues:**
+- Starting casual, becoming corporate
+- Mixing "we" and "the company" references
+- Humor in some places, serious in others (unintentionally)
+- Technical language appearing randomly
+
+**Process:**
+1. Read aloud to hear inconsistencies
+2. Mark where tone shifts unexpectedly
+3. Recommend edits that smooth transitions
+4. Ensure personality remains throughout
+
+**After this sweep:** Return to Clarity Sweep to ensure voice edits didn't introduce confusion.
+
+---
+
+### Sweep 3: So What
+
+**Focus:** Does every claim answer "why should I care?"
+
+**What to check:**
+- Features without benefits
+- Claims without consequences
+- Statements that don't connect to reader's life
+- Missing "which means..." bridges
+
+**The So What test:**
+For every statement, ask "Okay, so what?" If the copy doesn't answer that question with a deeper benefit, it needs work.
+
+❌ "Our platform uses AI-powered analytics"
+*So what?*
+✅ "Our AI-powered analytics surface insights you'd miss manually—so you can make better decisions in half the time"
+
+**Common So What failures:**
+- Feature lists without benefit connections
+- Impressive-sounding claims that don't land
+- Technical capabilities without outcomes
+- Company achievements that don't help the reader
+
+**Process:**
+1. Read each claim and literally ask "so what?"
+2. Highlight claims missing the answer
+3. Add the benefit bridge or deeper meaning
+4. Ensure benefits connect to real reader desires
+
+**After this sweep:** Return to Voice and Tone, then Clarity.
+
+---
+
+### Sweep 4: Prove It
+
+**Focus:** Is every claim supported with evidence?
+
+**What to check:**
+- Unsubstantiated claims
+- Missing social proof
+- Assertions without backup
+- "Best" or "leading" without evidence
+
+**Types of proof to look for:**
+- Testimonials with names and specifics
+- Case study references
+- Statistics and data
+- Third-party validation
+- Guarantees and risk reversals
+- Customer logos
+- Review scores
+
+**Common proof gaps:**
+- "Trusted by thousands" (which thousands?)
+- "Industry-leading" (according to whom?)
+- "Customers love us" (show them saying it)
+- Results claims without specifics
+
+**Process:**
+1. Identify every claim that needs proof
+2. Check if proof exists nearby
+3. Flag unsupported assertions
+4. Recommend adding proof or softening claims
+
+**After this sweep:** Return to So What, Voice and Tone, then Clarity.
+
+---
+
+### Sweep 5: Specificity
+
+**Focus:** Is the copy concrete enough to be compelling?
+
+**What to check:**
+- Vague language ("improve," "enhance," "optimize")
+- Generic statements that could apply to anyone
+- Round numbers that feel made up
+- Missing details that would make it real
+
+**Specificity upgrades:**
+
+| Vague | Specific |
+|-------|----------|
+| Save time | Save 4 hours every week |
+| Many customers | 2,847 teams |
+| Fast results | Results in 14 days |
+| Improve your workflow | Cut your reporting time in half |
+| Great support | Response within 2 hours |
+
+**Common specificity issues:**
+- Adjectives doing the work nouns should do
+- Benefits without quantification
+- Outcomes without timeframes
+- Claims without concrete examples
+
+**Process:**
+1. Highlight vague words and phrases
+2. Ask "Can this be more specific?"
+3. Add numbers, timeframes, or examples
+4. Remove content that can't be made specific (it's probably filler)
+
+**After this sweep:** Return to Prove It, So What, Voice and Tone, then Clarity.
+
+---
+
+### Sweep 6: Heightened Emotion
+
+**Focus:** Does the copy make the reader feel something?
+
+**What to check:**
+- Flat, informational language
+- Missing emotional triggers
+- Pain points mentioned but not felt
+- Aspirations stated but not evoked
+
+**Emotional dimensions to consider:**
+- Pain of the current state
+- Frustration with alternatives
+- Fear of missing out
+- Desire for transformation
+- Pride in making smart choices
+- Relief from solving the problem
+
+**Techniques for heightening emotion:**
+- Paint the "before" state vividly
+- Use sensory language
+- Tell micro-stories
+- Reference shared experiences
+- Ask questions that prompt reflection
+
+**Process:**
+1. Read for emotional impact—does it move you?
+2. Identify flat sections that should resonate
+3. Add emotional texture while staying authentic
+4. Ensure emotion serves the message (not manipulation)
+
+**After this sweep:** Return to Specificity, Prove It, So What, Voice and Tone, then Clarity.
+
+---
+
+### Sweep 7: Zero Risk
+
+**Focus:** Have we removed every barrier to action?
+
+**What to check:**
+- Friction near CTAs
+- Unanswered objections
+- Missing trust signals
+- Unclear next steps
+- Hidden costs or surprises
+
+**Risk reducers to look for:**
+- Money-back guarantees
+- Free trials
+- "No credit card required"
+- "Cancel anytime"
+- Social proof near CTA
+- Clear expectations of what happens next
+- Privacy assurances
+
+**Common risk issues:**
+- CTA asks for commitment without earning trust
+- Objections raised but not addressed
+- Fine print that creates doubt
+- Vague "Contact us" instead of clear next step
+
+**Process:**
+1. Focus on sections near CTAs
+2. List every reason someone might hesitate
+3. Check if the copy addresses each concern
+4. Add risk reversals or trust signals as needed
+
+**After this sweep:** Return through all previous sweeps one final time: Heightened Emotion, Specificity, Prove It, So What, Voice and Tone, Clarity.
+
+---
+
+## Quick-Pass Editing Checks
+
+Use these for faster reviews when a full seven-sweep process isn't needed.
+
+### Word-Level Checks
+
+**Cut these words:**
+- Very, really, extremely, incredibly (weak intensifiers)
+- Just, actually, basically (filler)
+- In order to (use "to")
+- That (often unnecessary)
+- Things, stuff (vague)
+
+**Replace these:**
+
+| Weak | Strong |
+|------|--------|
+| Utilize | Use |
+| Implement | Set up |
+| Leverage | Use |
+| Facilitate | Help |
+| Innovative | New |
+| Robust | Strong |
+| Seamless | Smooth |
+| Cutting-edge | New/Modern |
+
+**Watch for:**
+- Adverbs (usually unnecessary)
+- Passive voice (switch to active)
+- Nominalizations (verb → noun: "make a decision" → "decide")
+
+### Sentence-Level Checks
+
+- One idea per sentence
+- Vary sentence length (mix short and long)
+- Front-load important information
+- Max 3 conjunctions per sentence
+- No more than 25 words (usually)
+
+### Paragraph-Level Checks
+
+- One topic per paragraph
+- Short paragraphs (2-4 sentences for web)
+- Strong opening sentences
+- Logical flow between paragraphs
+- White space for scannability
+
+---
+
+## Copy Editing Checklist
+
+### Before You Start
+- [ ] Understand the goal of this copy
+- [ ] Know the target audience
+- [ ] Identify the desired action
+- [ ] Read through once without editing
+
+### Clarity (Sweep 1)
+- [ ] Every sentence is immediately understandable
+- [ ] No jargon without explanation
+- [ ] Pronouns have clear references
+- [ ] No sentences trying to do too much
+
+### Voice & Tone (Sweep 2)
+- [ ] Consistent formality level throughout
+- [ ] Brand personality maintained
+- [ ] No jarring shifts in mood
+- [ ] Reads well aloud
+
+### So What (Sweep 3)
+- [ ] Every feature connects to a benefit
+- [ ] Claims answer "why should I care?"
+- [ ] Benefits connect to real desires
+- [ ] No impressive-but-empty statements
+
+### Prove It (Sweep 4)
+- [ ] Claims are substantiated
+- [ ] Social proof is specific and attributed
+- [ ] Numbers and stats have sources
+- [ ] No unearned superlatives
+
+### Specificity (Sweep 5)
+- [ ] Vague words replaced with concrete ones
+- [ ] Numbers and timeframes included
+- [ ] Generic statements made specific
+- [ ] Filler content removed
+
+### Heightened Emotion (Sweep 6)
+- [ ] Copy evokes feeling, not just information
+- [ ] Pain points feel real
+- [ ] Aspirations feel achievable
+- [ ] Emotion serves the message authentically
+
+### Zero Risk (Sweep 7)
+- [ ] Objections addressed near CTA
+- [ ] Trust signals present
+- [ ] Next steps are crystal clear
+- [ ] Risk reversals stated (guarantee, trial, etc.)
+
+### Final Checks
+- [ ] No typos or grammatical errors
+- [ ] Consistent formatting
+- [ ] Links work (if applicable)
+- [ ] Core message preserved through all edits
+
+---
+
+## Common Copy Problems & Fixes
+
+### Problem: Wall of Features
+**Symptom:** List of what the product does without why it matters
+**Fix:** Add "which means..." after each feature to bridge to benefits
+
+### Problem: Corporate Speak
+**Symptom:** "Leverage synergies to optimize outcomes"
+**Fix:** Ask "How would a human say this?" and use those words
+
+### Problem: Weak Opening
+**Symptom:** Starting with company history or vague statements
+**Fix:** Lead with the reader's problem or desired outcome
+
+### Problem: Buried CTA
+**Symptom:** The ask comes after too much buildup, or isn't clear
+**Fix:** Make the CTA obvious, early, and repeated
+
+### Problem: No Proof
+**Symptom:** "Customers love us" with no evidence
+**Fix:** Add specific testimonials, numbers, or case references
+
+### Problem: Generic Claims
+**Symptom:** "We help businesses grow"
+**Fix:** Specify who, how, and by how much
+
+### Problem: Mixed Audiences
+**Symptom:** Copy tries to speak to everyone, resonates with no one
+**Fix:** Pick one audience and write directly to them
+
+### Problem: Feature Overload
+**Symptom:** Listing every capability, overwhelming the reader
+**Fix:** Focus on 3-5 key benefits that matter most to the audience
+
+---
+
+## Working with Copy Sweeps
+
+When editing collaboratively:
+
+1. **Run a sweep and present findings** - Show what you found, why it's an issue
+2. **Recommend specific edits** - Don't just identify problems; propose solutions
+3. **Request the updated copy** - Let the author make final decisions
+4. **Verify previous sweeps** - After each round of edits, re-check earlier sweeps
+5. **Repeat until clean** - Continue until a full sweep finds no new issues
+
+This iterative process ensures each edit doesn't create new problems while respecting the author's ownership of the copy.
+
+---
+
+## References
+
+- [Plain English Alternatives](references/plain-english-alternatives.md): Replace complex words with simpler alternatives
+
+---
+
+## Task-Specific Questions
+
+1. What's the goal of this copy? (Awareness, conversion, retention)
+2. What action should readers take?
+3. Are there specific concerns or known issues?
+4. What proof/evidence do you have available?
+
+---
+
+## Related Skills
+
+- **copywriting**: For writing new copy from scratch (use this skill to edit after your first draft is complete)
+- **page-cro**: For broader page optimization beyond copy
+- **marketing-psychology**: For understanding why certain edits improve conversion
+- **ab-test-setup**: For testing copy variations
+
+---
+
+## When to Use Each Skill
+
+| Task | Skill to Use |
+|------|--------------|
+| Writing new page copy from scratch | copywriting |
+| Reviewing and improving existing copy | copy-editing (this skill) |
+| Editing copy you just wrote | copy-editing (this skill) |
+| Structural or strategic page changes | page-cro |
+`,
+  copywriting: `---
+name: copywriting
+version: 1.0.0
+description: When the user wants to write, rewrite, or improve marketing copy for any page — including homepage, landing pages, pricing pages, feature pages, about pages, or product pages. Also use when the user says "write copy for," "improve this copy," "rewrite this page," "marketing copy," "headline help," or "CTA copy." For email copy, see email-sequence. For popup copy, see popup-cro.
+---
+
+# Copywriting
+
+You are an expert conversion copywriter. Your goal is to write marketing copy that is clear, compelling, and drives action.
+
+## Before Writing
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Gather this context (ask if not provided):
+
+### 1. Page Purpose
+- What type of page? (homepage, landing page, pricing, feature, about)
+- What is the ONE primary action you want visitors to take?
+
+### 2. Audience
+- Who is the ideal customer?
+- What problem are they trying to solve?
+- What objections or hesitations do they have?
+- What language do they use to describe their problem?
+
+### 3. Product/Offer
+- What are you selling or offering?
+- What makes it different from alternatives?
+- What's the key transformation or outcome?
+- Any proof points (numbers, testimonials, case studies)?
+
+### 4. Context
+- Where is traffic coming from? (ads, organic, email)
+- What do visitors already know before arriving?
+
+---
+
+## Copywriting Principles
+
+### Clarity Over Cleverness
+If you have to choose between clear and creative, choose clear.
+
+### Benefits Over Features
+Features: What it does. Benefits: What that means for the customer.
+
+### Specificity Over Vagueness
+- Vague: "Save time on your workflow"
+- Specific: "Cut your weekly reporting from 4 hours to 15 minutes"
+
+### Customer Language Over Company Language
+Use words your customers use. Mirror voice-of-customer from reviews, interviews, support tickets.
+
+### One Idea Per Section
+Each section should advance one argument. Build a logical flow down the page.
+
+---
+
+## Writing Style Rules
+
+### Core Principles
+
+1. **Simple over complex** — "Use" not "utilize," "help" not "facilitate"
+2. **Specific over vague** — Avoid "streamline," "optimize," "innovative"
+3. **Active over passive** — "We generate reports" not "Reports are generated"
+4. **Confident over qualified** — Remove "almost," "very," "really"
+5. **Show over tell** — Describe the outcome instead of using adverbs
+6. **Honest over sensational** — Never fabricate statistics or testimonials
+
+### Quick Quality Check
+
+- Jargon that could confuse outsiders?
+- Sentences trying to do too much?
+- Passive voice constructions?
+- Exclamation points? (remove them)
+- Marketing buzzwords without substance?
+
+For thorough line-by-line review, use the **copy-editing** skill after your draft.
+
+---
+
+## Best Practices
+
+### Be Direct
+Get to the point. Don't bury the value in qualifications.
+
+❌ Slack lets you share files instantly, from documents to images, directly in your conversations
+
+✅ Need to share a screenshot? Send as many documents, images, and audio files as your heart desires.
+
+### Use Rhetorical Questions
+Questions engage readers and make them think about their own situation.
+- "Hate returning stuff to Amazon?"
+- "Tired of chasing approvals?"
+
+### Use Analogies When Helpful
+Analogies make abstract concepts concrete and memorable.
+
+### Pepper in Humor (When Appropriate)
+Puns and wit make copy memorable—but only if it fits the brand and doesn't undermine clarity.
+
+---
+
+## Page Structure Framework
+
+### Above the Fold
+
+**Headline**
+- Your single most important message
+- Communicate core value proposition
+- Specific > generic
+
+**Example formulas:**
+- "{Achieve outcome} without {pain point}"
+- "The {category} for {audience}"
+- "Never {unpleasant event} again"
+- "{Question highlighting main pain point}"
+
+**For comprehensive headline formulas**: See [references/copy-frameworks.md](references/copy-frameworks.md)
+
+**For natural transition phrases**: See [references/natural-transitions.md](references/natural-transitions.md)
+
+**Subheadline**
+- Expands on headline
+- Adds specificity
+- 1-2 sentences max
+
+**Primary CTA**
+- Action-oriented button text
+- Communicate what they get: "Start Free Trial" > "Sign Up"
+
+### Core Sections
+
+| Section | Purpose |
+|---------|---------|
+| Social Proof | Build credibility (logos, stats, testimonials) |
+| Problem/Pain | Show you understand their situation |
+| Solution/Benefits | Connect to outcomes (3-5 key benefits) |
+| How It Works | Reduce perceived complexity (3-4 steps) |
+| Objection Handling | FAQ, comparisons, guarantees |
+| Final CTA | Recap value, repeat CTA, risk reversal |
+
+**For detailed section types and page templates**: See [references/copy-frameworks.md](references/copy-frameworks.md)
+
+---
+
+## CTA Copy Guidelines
+
+**Weak CTAs (avoid):**
+- Submit, Sign Up, Learn More, Click Here, Get Started
+
+**Strong CTAs (use):**
+- Start Free Trial
+- Get [Specific Thing]
+- See [Product] in Action
+- Create Your First [Thing]
+- Download the Guide
+
+**Formula:** [Action Verb] + [What They Get] + [Qualifier if needed]
+
+Examples:
+- "Start My Free Trial"
+- "Get the Complete Checklist"
+- "See Pricing for My Team"
+
+---
+
+## Page-Specific Guidance
+
+### Homepage
+- Serve multiple audiences without being generic
+- Lead with broadest value proposition
+- Provide clear paths for different visitor intents
+
+### Landing Page
+- Single message, single CTA
+- Match headline to ad/traffic source
+- Complete argument on one page
+
+### Pricing Page
+- Help visitors choose the right plan
+- Address "which is right for me?" anxiety
+- Make recommended plan obvious
+
+### Feature Page
+- Connect feature → benefit → outcome
+- Show use cases and examples
+- Clear path to try or buy
+
+### About Page
+- Tell the story of why you exist
+- Connect mission to customer benefit
+- Still include a CTA
+
+---
+
+## Voice and Tone
+
+Before writing, establish:
+
+**Formality level:**
+- Casual/conversational
+- Professional but friendly
+- Formal/enterprise
+
+**Brand personality:**
+- Playful or serious?
+- Bold or understated?
+- Technical or accessible?
+
+Maintain consistency, but adjust intensity:
+- Headlines can be bolder
+- Body copy should be clearer
+- CTAs should be action-oriented
+
+---
+
+## Output Format
+
+When writing copy, provide:
+
+### Page Copy
+Organized by section:
+- Headline, Subheadline, CTA
+- Section headers and body copy
+- Secondary CTAs
+
+### Annotations
+For key elements, explain:
+- Why you made this choice
+- What principle it applies
+
+### Alternatives
+For headlines and CTAs, provide 2-3 options:
+- Option A: [copy] — [rationale]
+- Option B: [copy] — [rationale]
+
+### Meta Content (if relevant)
+- Page title (for SEO)
+- Meta description
+
+---
+
+## Related Skills
+
+- **copy-editing**: For polishing existing copy (use after your draft)
+- **page-cro**: If page structure/strategy needs work, not just copy
+- **email-sequence**: For email copywriting
+- **popup-cro**: For popup and modal copy
+- **ab-test-setup**: To test copy variations
 `,
   "create-pr": `---
 name: create-pr
@@ -2886,7 +4557,180 @@ legacy-peer-deps=false
 **Last Updated:** 2026-02-06
 **Phase:** 3 (Medium Priority)
 `,
-  "deslop": `---
+  "design-md": `---
+name: design-md
+description: Analyze Stitch projects and synthesize a semantic design system into DESIGN.md files
+allowed-tools:
+  - "stitch*:*"
+  - "Read"
+  - "Write"
+  - "web_fetch"
+---
+
+# Stitch DESIGN.md Skill
+
+You are an expert Design Systems Lead. Your goal is to analyze the provided technical assets and synthesize a "Semantic Design System" into a file named \`DESIGN.md\`.
+
+## Overview
+
+This skill helps you create \`DESIGN.md\` files that serve as the "source of truth" for prompting Stitch to generate new screens that align perfectly with existing design language. Stitch interprets design through "Visual Descriptions" supported by specific color values.
+
+## Prerequisites
+
+- Access to the Stitch MCP Server
+- A Stitch project with at least one designed screen
+- Access to the Stitch Effective Prompting Guide: https://stitch.withgoogle.com/docs/learn/prompting/
+
+## The Goal
+
+The \`DESIGN.md\` file will serve as the "source of truth" for prompting Stitch to generate new screens that align perfectly with the existing design language. Stitch interprets design through "Visual Descriptions" supported by specific color values.
+
+## Retrieval and Networking
+
+To analyze a Stitch project, you must retrieve screen metadata and design assets using the Stitch MCP Server tools:
+
+1. **Namespace discovery**: Run \`list_tools\` to find the Stitch MCP prefix. Use this prefix (e.g., \`mcp_stitch:\`) for all subsequent calls.
+
+2. **Project lookup** (if Project ID is not provided):
+   - Call \`[prefix]:list_projects\` with \`filter: "view=owned"\` to retrieve all user projects
+   - Identify the target project by title or URL pattern
+   - Extract the Project ID from the \`name\` field (e.g., \`projects/13534454087919359824\`)
+
+3. **Screen lookup** (if Screen ID is not provided):
+   - Call \`[prefix]:list_screens\` with the \`projectId\` (just the numeric ID, not the full path)
+   - Review screen titles to identify the target screen (e.g., "Home", "Landing Page")
+   - Extract the Screen ID from the screen's \`name\` field
+
+4. **Metadata fetch**: 
+   - Call \`[prefix]:get_screen\` with both \`projectId\` and \`screenId\` (both as numeric IDs only)
+   - This returns the complete screen object including:
+     - \`screenshot.downloadUrl\` - Visual reference of the design
+     - \`htmlCode.downloadUrl\` - Full HTML/CSS source code
+     - \`width\`, \`height\`, \`deviceType\` - Screen dimensions and target platform
+     - Project metadata including \`designTheme\` with color and style information
+
+5. **Asset download**:
+   - Use \`web_fetch\` or \`read_url_content\` to download the HTML code from \`htmlCode.downloadUrl\`
+   - Optionally download the screenshot from \`screenshot.downloadUrl\` for visual reference
+   - Parse the HTML to extract Tailwind classes, custom CSS, and component patterns
+
+6. **Project metadata extraction**:
+   - Call \`[prefix]:get_project\` with the project \`name\` (full path: \`projects/{id}\`) to get:
+     - \`designTheme\` object with color mode, fonts, roundness, custom colors
+     - Project-level design guidelines and descriptions
+     - Device type preferences and layout principles
+
+## Analysis & Synthesis Instructions
+
+### 1. Extract Project Identity (JSON)
+- Locate the Project Title
+- Locate the specific Project ID (e.g., from the \`name\` field in the JSON)
+
+### 2. Define the Atmosphere (Image/HTML)
+Evaluate the screenshot and HTML structure to capture the overall "vibe." Use evocative adjectives to describe the mood (e.g., "Airy," "Dense," "Minimalist," "Utilitarian").
+
+### 3. Map the Color Palette (Tailwind Config/JSON)
+Identify the key colors in the system. For each color, provide:
+- A descriptive, natural language name that conveys its character (e.g., "Deep Muted Teal-Navy")
+- The specific hex code in parentheses for precision (e.g., "#294056")
+- Its specific functional role (e.g., "Used for primary actions")
+
+### 4. Translate Geometry & Shape (CSS/Tailwind)
+Convert technical \`border-radius\` and layout values into physical descriptions:
+- Describe \`rounded-full\` as "Pill-shaped"
+- Describe \`rounded-lg\` as "Subtly rounded corners"
+- Describe \`rounded-none\` as "Sharp, squared-off edges"
+
+### 5. Describe Depth & Elevation
+Explain how the UI handles layers. Describe the presence and quality of shadows (e.g., "Flat," "Whisper-soft diffused shadows," or "Heavy, high-contrast drop shadows").
+
+## Output Guidelines
+
+- **Language:** Use descriptive design terminology and natural language exclusively
+- **Format:** Generate a clean Markdown file following the structure below
+- **Precision:** Include exact hex codes for colors while using descriptive names
+- **Context:** Explain the "why" behind design decisions, not just the "what"
+
+## Output Format (DESIGN.md Structure)
+
+\`\`\`markdown
+# Design System: [Project Title]
+**Project ID:** [Insert Project ID Here]
+
+## 1. Visual Theme & Atmosphere
+(Description of the mood, density, and aesthetic philosophy.)
+
+## 2. Color Palette & Roles
+(List colors by Descriptive Name + Hex Code + Functional Role.)
+
+## 3. Typography Rules
+(Description of font family, weight usage for headers vs. body, and letter-spacing character.)
+
+## 4. Component Stylings
+* **Buttons:** (Shape description, color assignment, behavior).
+* **Cards/Containers:** (Corner roundness description, background color, shadow depth).
+* **Inputs/Forms:** (Stroke style, background).
+
+## 5. Layout Principles
+(Description of whitespace strategy, margins, and grid alignment.)
+\`\`\`
+
+## Usage Example
+
+To use this skill for the Furniture Collection project:
+
+1. **Retrieve project information:**
+   \`\`\`
+   Use the Stitch MCP Server to get the Furniture Collection project
+   \`\`\`
+
+2. **Get the Home page screen details:**
+   \`\`\`
+   Retrieve the Home page screen's code, image, and screen object information
+   \`\`\`
+
+3. **Reference best practices:**
+   \`\`\`
+   Review the Stitch Effective Prompting Guide at:
+   https://stitch.withgoogle.com/docs/learn/prompting/
+   \`\`\`
+
+4. **Analyze and synthesize:**
+   - Extract all relevant design tokens from the screen
+   - Translate technical values into descriptive language
+   - Organize information according to the DESIGN.md structure
+
+5. **Generate the file:**
+   - Create \`DESIGN.md\` in the project directory
+   - Follow the prescribed format exactly
+   - Ensure all color codes are accurate
+   - Use evocative, designer-friendly language
+
+## Best Practices
+
+- **Be Descriptive:** Avoid generic terms like "blue" or "rounded." Use "Ocean-deep Cerulean (#0077B6)" or "Gently curved edges"
+- **Be Functional:** Always explain what each design element is used for
+- **Be Consistent:** Use the same terminology throughout the document
+- **Be Visual:** Help readers visualize the design through your descriptions
+- **Be Precise:** Include exact values (hex codes, pixel values) in parentheses after natural language descriptions
+
+## Tips for Success
+
+1. **Start with the big picture:** Understand the overall aesthetic before diving into details
+2. **Look for patterns:** Identify consistent spacing, sizing, and styling patterns
+3. **Think semantically:** Name colors by their purpose, not just their appearance
+4. **Consider hierarchy:** Document how visual weight and importance are communicated
+5. **Reference the guide:** Use language and patterns from the Stitch Effective Prompting Guide
+
+## Common Pitfalls to Avoid
+
+- ❌ Using technical jargon without translation (e.g., "rounded-xl" instead of "generously rounded corners")
+- ❌ Omitting color codes or using only descriptive names
+- ❌ Forgetting to explain functional roles of design elements
+- ❌ Being too vague in atmosphere descriptions
+- ❌ Ignoring subtle design details like shadows or spacing patterns
+`,
+  deslop: `---
 name: deslop
 description: Remove AI code slop
 disable-model-invocation: true
@@ -3489,6 +5333,313 @@ const validateJSDoc = (filePath: string) => {
 - [JSDoc Documentation](https://jsdoc.app/)
 - [OpenAPI Specification](https://spec.openapis.org/)
 - [Mermaid Diagrams](https://mermaid.js.org/)
+`,
+  "email-sequence": `---
+name: email-sequence
+version: 1.0.0
+description: When the user wants to create or optimize an email sequence, drip campaign, automated email flow, or lifecycle email program. Also use when the user mentions "email sequence," "drip campaign," "nurture sequence," "onboarding emails," "welcome sequence," "re-engagement emails," "email automation," or "lifecycle emails." For in-app onboarding, see onboarding-cro.
+---
+
+# Email Sequence Design
+
+You are an expert in email marketing and automation. Your goal is to create email sequences that nurture relationships, drive action, and move people toward conversion.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before creating a sequence, understand:
+
+1. **Sequence Type**
+   - Welcome/onboarding sequence
+   - Lead nurture sequence
+   - Re-engagement sequence
+   - Post-purchase sequence
+   - Event-based sequence
+   - Educational sequence
+   - Sales sequence
+
+2. **Audience Context**
+   - Who are they?
+   - What triggered them into this sequence?
+   - What do they already know/believe?
+   - What's their current relationship with you?
+
+3. **Goals**
+   - Primary conversion goal
+   - Relationship-building goals
+   - Segmentation goals
+   - What defines success?
+
+---
+
+## Core Principles
+
+### 1. One Email, One Job
+- Each email has one primary purpose
+- One main CTA per email
+- Don't try to do everything
+
+### 2. Value Before Ask
+- Lead with usefulness
+- Build trust through content
+- Earn the right to sell
+
+### 3. Relevance Over Volume
+- Fewer, better emails win
+- Segment for relevance
+- Quality > frequency
+
+### 4. Clear Path Forward
+- Every email moves them somewhere
+- Links should do something useful
+- Make next steps obvious
+
+---
+
+## Email Sequence Strategy
+
+### Sequence Length
+- Welcome: 3-7 emails
+- Lead nurture: 5-10 emails
+- Onboarding: 5-10 emails
+- Re-engagement: 3-5 emails
+
+Depends on:
+- Sales cycle length
+- Product complexity
+- Relationship stage
+
+### Timing/Delays
+- Welcome email: Immediately
+- Early sequence: 1-2 days apart
+- Nurture: 2-4 days apart
+- Long-term: Weekly or bi-weekly
+
+Consider:
+- B2B: Avoid weekends
+- B2C: Test weekends
+- Time zones: Send at local time
+
+### Subject Line Strategy
+- Clear > Clever
+- Specific > Vague
+- Benefit or curiosity-driven
+- 40-60 characters ideal
+- Test emoji (they're polarizing)
+
+**Patterns that work:**
+- Question: "Still struggling with X?"
+- How-to: "How to [achieve outcome] in [timeframe]"
+- Number: "3 ways to [benefit]"
+- Direct: "[First name], your [thing] is ready"
+- Story tease: "The mistake I made with [topic]"
+
+### Preview Text
+- Extends the subject line
+- ~90-140 characters
+- Don't repeat subject line
+- Complete the thought or add intrigue
+
+---
+
+## Sequence Types Overview
+
+### Welcome Sequence (Post-Signup)
+**Length**: 5-7 emails over 12-14 days
+**Goal**: Activate, build trust, convert
+
+Key emails:
+1. Welcome + deliver promised value (immediate)
+2. Quick win (day 1-2)
+3. Story/Why (day 3-4)
+4. Social proof (day 5-6)
+5. Overcome objection (day 7-8)
+6. Core feature highlight (day 9-11)
+7. Conversion (day 12-14)
+
+### Lead Nurture Sequence (Pre-Sale)
+**Length**: 6-8 emails over 2-3 weeks
+**Goal**: Build trust, demonstrate expertise, convert
+
+Key emails:
+1. Deliver lead magnet + intro (immediate)
+2. Expand on topic (day 2-3)
+3. Problem deep-dive (day 4-5)
+4. Solution framework (day 6-8)
+5. Case study (day 9-11)
+6. Differentiation (day 12-14)
+7. Objection handler (day 15-18)
+8. Direct offer (day 19-21)
+
+### Re-Engagement Sequence
+**Length**: 3-4 emails over 2 weeks
+**Trigger**: 30-60 days of inactivity
+**Goal**: Win back or clean list
+
+Key emails:
+1. Check-in (genuine concern)
+2. Value reminder (what's new)
+3. Incentive (special offer)
+4. Last chance (stay or unsubscribe)
+
+### Onboarding Sequence (Product Users)
+**Length**: 5-7 emails over 14 days
+**Goal**: Activate, drive to aha moment, upgrade
+**Note**: Coordinate with in-app onboarding—email supports, doesn't duplicate
+
+Key emails:
+1. Welcome + first step (immediate)
+2. Getting started help (day 1)
+3. Feature highlight (day 2-3)
+4. Success story (day 4-5)
+5. Check-in (day 7)
+6. Advanced tip (day 10-12)
+7. Upgrade/expand (day 14+)
+
+**For detailed templates**: See [references/sequence-templates.md](references/sequence-templates.md)
+
+---
+
+## Email Types by Category
+
+### Onboarding Emails
+- New users series
+- New customers series
+- Key onboarding step reminders
+- New user invites
+
+### Retention Emails
+- Upgrade to paid
+- Upgrade to higher plan
+- Ask for review
+- Proactive support offers
+- Product usage reports
+- NPS survey
+- Referral program
+
+### Billing Emails
+- Switch to annual
+- Failed payment recovery
+- Cancellation survey
+- Upcoming renewal reminders
+
+### Usage Emails
+- Daily/weekly/monthly summaries
+- Key event notifications
+- Milestone celebrations
+
+### Win-Back Emails
+- Expired trials
+- Cancelled customers
+
+### Campaign Emails
+- Monthly roundup / newsletter
+- Seasonal promotions
+- Product updates
+- Industry news roundup
+- Pricing updates
+
+**For detailed email type reference**: See [references/email-types.md](references/email-types.md)
+
+---
+
+## Email Copy Guidelines
+
+### Structure
+1. **Hook**: First line grabs attention
+2. **Context**: Why this matters to them
+3. **Value**: The useful content
+4. **CTA**: What to do next
+5. **Sign-off**: Human, warm close
+
+### Formatting
+- Short paragraphs (1-3 sentences)
+- White space between sections
+- Bullet points for scanability
+- Bold for emphasis (sparingly)
+- Mobile-first (most read on phone)
+
+### Tone
+- Conversational, not formal
+- First-person (I/we) and second-person (you)
+- Active voice
+- Read it out loud—does it sound human?
+
+### Length
+- 50-125 words for transactional
+- 150-300 words for educational
+- 300-500 words for story-driven
+
+### CTA Guidelines
+- Buttons for primary actions
+- Links for secondary actions
+- One clear primary CTA per email
+- Button text: Action + outcome
+
+**For detailed copy, personalization, and testing guidelines**: See [references/copy-guidelines.md](references/copy-guidelines.md)
+
+---
+
+## Output Format
+
+### Sequence Overview
+\`\`\`
+Sequence Name: [Name]
+Trigger: [What starts the sequence]
+Goal: [Primary conversion goal]
+Length: [Number of emails]
+Timing: [Delay between emails]
+Exit Conditions: [When they leave the sequence]
+\`\`\`
+
+### For Each Email
+\`\`\`
+Email [#]: [Name/Purpose]
+Send: [Timing]
+Subject: [Subject line]
+Preview: [Preview text]
+Body: [Full copy]
+CTA: [Button text] → [Link destination]
+Segment/Conditions: [If applicable]
+\`\`\`
+
+### Metrics Plan
+What to measure and benchmarks
+
+---
+
+## Task-Specific Questions
+
+1. What triggers entry to this sequence?
+2. What's the primary goal/conversion action?
+3. What do they already know about you?
+4. What other emails are they receiving?
+5. What's your current email performance?
+
+---
+
+## Tool Integrations
+
+For implementation, see the [tools registry](../../tools/REGISTRY.md). Key email tools:
+
+| Tool | Best For | MCP | Guide |
+|------|----------|:---:|-------|
+| **Customer.io** | Behavior-based automation | - | [customer-io.md](../../tools/integrations/customer-io.md) |
+| **Mailchimp** | SMB email marketing | ✓ | [mailchimp.md](../../tools/integrations/mailchimp.md) |
+| **Resend** | Developer-friendly transactional | ✓ | [resend.md](../../tools/integrations/resend.md) |
+| **SendGrid** | Transactional email at scale | - | [sendgrid.md](../../tools/integrations/sendgrid.md) |
+| **Kit** | Creator/newsletter focused | - | [kit.md](../../tools/integrations/kit.md) |
+
+---
+
+## Related Skills
+
+- **onboarding-cro**: For in-app onboarding (email supports this)
+- **copywriting**: For landing pages emails link to
+- **ab-test-setup**: For testing email elements
+- **popup-cro**: For email capture popups
 `,
   "environment-configuration": `# environment-configuration
 
@@ -4375,6 +6526,413 @@ Deliverables:
 - Successful build/tests where applicable.
 - One local commit containing the resolutions.
 `,
+  "fixing-accessibility": `---
+name: fixing-accessibility
+description: Fix accessibility issues.
+---
+
+# fixing-accessibility
+
+Fix accessibility issues.
+
+## how to use
+
+- \`/fixing-accessibility\`
+  Apply these constraints to any UI work in this conversation.
+
+- \`/fixing-accessibility <file>\`
+  Review the file against all rules below and report:
+  - violations (quote the exact line or snippet)
+  - why it matters (one short sentence)
+  - a concrete fix (code-level suggestion)
+
+Do not rewrite large parts of the UI. Prefer minimal, targeted fixes.
+
+## when to apply
+
+Reference these guidelines when:
+- adding or changing buttons, links, inputs, menus, dialogs, tabs, dropdowns
+- building forms, validation, error states, helper text
+- implementing keyboard shortcuts or custom interactions
+- working on focus states, focus trapping, or modal behavior
+- rendering icon-only controls
+- adding hover-only interactions or hidden content
+
+## rule categories by priority
+
+| priority | category | impact |
+|----------|----------|--------|
+| 1 | accessible names | critical |
+| 2 | keyboard access | critical |
+| 3 | focus and dialogs | critical |
+| 4 | semantics | high |
+| 5 | forms and errors | high |
+| 6 | announcements | medium-high |
+| 7 | contrast and states | medium |
+| 8 | media and motion | low-medium |
+| 9 | tool boundaries | critical |
+
+## quick reference
+
+### 1. accessible names (critical)
+
+- every interactive control must have an accessible name
+- icon-only buttons must have aria-label or aria-labelledby
+- every input, select, and textarea must be labeled
+- links must have meaningful text (no “click here”)
+- decorative icons must be aria-hidden
+
+### 2. keyboard access (critical)
+
+- do not use div or span as buttons without full keyboard support
+- all interactive elements must be reachable by Tab
+- focus must be visible for keyboard users
+- do not use tabindex greater than 0
+- Escape must close dialogs or overlays when applicable
+
+### 3. focus and dialogs (critical)
+
+- modals must trap focus while open
+- restore focus to the trigger on close
+- set initial focus inside dialogs
+- opening a dialog should not scroll the page unexpectedly
+
+### 4. semantics (high)
+
+- prefer native elements (button, a, input) over role-based hacks
+- if a role is used, required aria attributes must be present
+- lists must use ul or ol with li
+- do not skip heading levels
+- tables must use th for headers when applicable
+
+### 5. forms and errors (high)
+
+- errors must be linked to fields using aria-describedby
+- required fields must be announced
+- invalid fields must set aria-invalid
+- helper text must be associated with inputs
+- disabled submit actions must explain why
+
+### 6. announcements (medium-high)
+
+- critical form errors should use aria-live
+- loading states should use aria-busy or status text
+- toasts must not be the only way to convey critical information
+- expandable controls must use aria-expanded and aria-controls
+
+### 7. contrast and states (medium)
+
+- ensure sufficient contrast for text and icons
+- hover-only interactions must have keyboard equivalents
+- disabled states must not rely on color alone
+- do not remove focus outlines without a visible replacement
+
+### 8. media and motion (low-medium)
+
+- images must have correct alt text (meaningful or empty)
+- videos with speech should provide captions when relevant
+- respect prefers-reduced-motion for non-essential motion
+- avoid autoplaying media with sound
+
+### 9. tool boundaries (critical)
+
+- prefer minimal changes, do not refactor unrelated code
+- do not add aria when native semantics already solve the problem
+- do not migrate UI libraries unless requested
+
+## review guidance
+
+- fix critical issues first (names, keyboard, focus, tool boundaries)
+- prefer native HTML before adding aria
+- quote the exact snippet, state the failure, propose a small fix
+- for complex widgets (menu, dialog, combobox), prefer established accessible primitives over custom behavior`,
+  "fixing-metadata": `---
+name: fixing-metadata
+description: Ship correct, complete metadata.
+---
+
+# fixing-metadata
+
+Ship correct, complete metadata.
+
+## how to use
+
+- \`/fixing-metadata\`
+  Apply these constraints to any metadata work in this conversation.
+
+- \`/fixing-metadata <file>\`
+  Review the file against all rules below and report:
+  - violations (quote the exact line or snippet)
+  - why it matters (one short sentence)
+  - a concrete fix (code-level suggestion)
+
+Do not introduce new frameworks or SEO libraries unless explicitly requested. Prefer minimal diffs.
+
+## when to apply
+
+Reference these guidelines when:
+- adding or changing page titles, descriptions, canonical, robots
+- implementing Open Graph or Twitter card metadata
+- setting favicons, app icons, manifest, theme-color
+- building shared SEO components or layout metadata defaults
+- adding structured data (JSON-LD)
+- changing locale, alternate languages, or canonical routing
+- shipping new pages, marketing pages, or shareable links
+
+## rule categories by priority
+
+| priority | category | impact |
+|----------|----------|--------|
+| 1 | correctness and duplication | critical |
+| 2 | title and description | high |
+| 3 | canonical and indexing | high |
+| 4 | social cards | high |
+| 5 | icons and manifest | medium |
+| 6 | structured data | medium |
+| 7 | locale and alternates | low-medium |
+| 8 | tool boundaries | critical |
+
+## quick reference
+
+### 1. correctness and duplication (critical)
+
+- define metadata in one place per page, avoid competing systems
+- do not emit duplicate title, description, canonical, or robots tags
+- metadata must be deterministic, no random or unstable values
+- escape and sanitize any user-generated or dynamic strings
+- every page must have safe defaults for title and description
+
+### 2. title and description (high)
+
+- every page must have a title
+- use a consistent title format across the site
+- keep titles short and readable, avoid stuffing
+- shareable or searchable pages should have a meta description
+- descriptions must be plain text, no markdown or quote spam
+
+### 3. canonical and indexing (high)
+
+- canonical must point to the preferred URL for the page
+- use noindex only for private, duplicate, or non-public pages
+- robots meta must match actual access intent
+- previews or staging pages should be noindex by default when possible
+- paginated pages must have correct canonical behavior
+
+### 4. social cards (high)
+
+- shareable pages must set Open Graph title, description, and image
+- Open Graph and Twitter images must use absolute URLs
+- prefer correct image dimensions and stable aspect ratios
+- og:url must match the canonical URL
+- use a sensible og:type, usually website or article
+- set twitter:card appropriately, summary_large_image by default
+
+### 5. icons and manifest (medium)
+
+- include at least one favicon that works across browsers
+- include apple-touch-icon when relevant
+- manifest must be valid and referenced when used
+- set theme-color intentionally to avoid mismatched UI chrome
+- icon paths should be stable and cacheable
+
+### 6. structured data (medium)
+
+- do not add JSON-LD unless it clearly maps to real page content
+- JSON-LD must be valid and reflect what is actually rendered
+- do not invent ratings, reviews, prices, or organization details
+- prefer one structured data block per page unless required
+
+### 7. locale and alternates (low-medium)
+
+- set the html lang attribute correctly
+- set og:locale when localization exists
+- add hreflang alternates only when pages truly exist
+- localized pages must canonicalize correctly per locale
+
+### 8. tool boundaries (critical)
+
+- prefer minimal changes, do not refactor unrelated code
+- do not migrate frameworks or SEO libraries unless requested
+- follow the project’s existing metadata pattern (Next.js metadata API, react-helmet, manual head, etc.)
+
+## review guidance
+
+- fix critical issues first (duplicates, canonical, indexing)
+- ensure title, description, canonical, and og:url agree
+- verify social cards on a real URL, not localhost
+- prefer stable, boring metadata over clever or dynamic
+- keep diffs minimal and scoped to metadata only`,
+  "fixing-motion-performance": `---
+name: fixing-motion-performance
+description: Fix animation performance issues.
+---
+
+# fixing-motion-performance
+
+Fix animation performance issues.
+
+## how to use
+
+- \`/fixing-motion-performance\`
+  Apply these constraints to any UI animation work in this conversation.
+
+- \`/fixing-motion-performance <file>\`
+  Review the file against all rules below and report:
+  - violations (quote the exact line or snippet)
+  - why it matters (one short sentence)
+  - a concrete fix (code-level suggestion)
+
+Do not migrate animation libraries unless explicitly requested. Apply rules within the existing stack.
+
+## when to apply
+
+Reference these guidelines when:
+- adding or changing UI animations (CSS, WAAPI, Motion, rAF, GSAP)
+- refactoring janky interactions or transitions
+- implementing scroll-linked motion or reveal-on-scroll
+- animating layout, filters, masks, gradients, or CSS variables
+- reviewing components that use will-change, transforms, or measurement
+
+## rendering steps glossary
+
+- composite: transform, opacity
+- paint: color, borders, gradients, masks, images, filters
+- layout: size, position, flow, grid, flex
+
+## rule categories by priority
+
+| priority | category | impact |
+|----------|----------|--------|
+| 1 | never patterns | critical |
+| 2 | choose the mechanism | critical |
+| 3 | measurement | high |
+| 4 | scroll | high |
+| 5 | paint | medium-high |
+| 6 | layers | medium |
+| 7 | blur and filters | medium |
+| 8 | view transitions | low |
+| 9 | tool boundaries | critical |
+
+## quick reference
+
+### 1. never patterns (critical)
+
+- do not interleave layout reads and writes in the same frame
+- do not animate layout continuously on large or meaningful surfaces
+- do not drive animation from scrollTop, scrollY, or scroll events
+- no requestAnimationFrame loops without a stop condition
+- do not mix multiple animation systems that each measure or mutate layout
+
+### 2. choose the mechanism (critical)
+
+- default to transform and opacity for motion
+- use JS-driven animation only when interaction requires it
+- paint or layout animation is acceptable only on small, isolated surfaces
+- one-shot effects are acceptable more often than continuous motion
+- prefer downgrading technique over removing motion entirely
+
+### 3. measurement (high)
+
+- measure once, then animate via transform or opacity
+- batch all DOM reads before writes
+- do not read layout repeatedly during an animation
+- prefer FLIP-style transitions for layout-like effects
+- prefer approaches that batch measurement and writes
+
+### 4. scroll (high)
+
+- prefer Scroll or View Timelines for scroll-linked motion when available
+- use IntersectionObserver for visibility and pausing
+- do not poll scroll position for animation
+- pause or stop animations when off-screen
+- scroll-linked motion must not trigger continuous layout or paint on large surfaces
+
+### 5. paint (medium-high)
+
+- paint-triggering animation is allowed only on small, isolated elements
+- do not animate paint-heavy properties on large containers
+- do not animate CSS variables for transform, opacity, or position
+- do not animate inherited CSS variables
+- scope animated CSS variables locally and avoid inheritance
+
+### 6. layers (medium)
+
+- compositor motion requires layer promotion, never assume it
+- use will-change temporarily and surgically
+- avoid many or large promoted layers
+- validate layer behavior with tooling when performance matters
+
+### 7. blur and filters (medium)
+
+- keep blur animation small (<=8px)
+- use blur only for short, one-time effects
+- never animate blur continuously
+- never animate blur on large surfaces
+- prefer opacity and translate before blur
+
+### 8. view transitions (low)
+
+- use view transitions only for navigation-level changes
+- avoid view transitions for interaction-heavy UI
+- avoid view transitions when interruption or cancellation is required
+- treat size changes as potentially layout-triggering
+
+### 9. tool boundaries (critical)
+
+- do not migrate or rewrite animation libraries unless explicitly requested
+- apply these rules within the existing animation system
+- never partially migrate APIs or mix styles within the same component
+
+## review guidance
+
+- enforce critical rules first (never patterns, tool boundaries)
+- choose the least expensive rendering work that matches the intent
+- for any non-default choice, state the constraint that justifies it (surface size, duration, or interaction requirement)
+- when reviewing, prefer actionable notes and concrete alternatives over theory
+`,
+  "frontend-design": `---
+name: frontend-design
+description: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.
+license: Complete terms in LICENSE.txt
+---
+
+This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
+
+The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
+
+## Design Thinking
+
+Before coding, understand the context and commit to a BOLD aesthetic direction:
+- **Purpose**: What problem does this interface solve? Who uses it?
+- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
+- **Constraints**: Technical requirements (framework, performance, accessibility).
+- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
+
+**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
+
+Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
+- Production-grade and functional
+- Visually striking and memorable
+- Cohesive with a clear aesthetic point-of-view
+- Meticulously refined in every detail
+
+## Frontend Aesthetics Guidelines
+
+Focus on:
+- **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
+- **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
+- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
+- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
+- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
+
+NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
+
+Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
+
+**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
+
+Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+`,
   "frontend-nextjs": `---
 name: vercel-react-best-practices
 description: React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.
@@ -4984,6 +7542,358 @@ describe('Message Queue Integration', () => {
 - @api-design - Test API contracts and schemas
 - @security-hardening - Test security in integrations
 `,
+  "launch-strategy": `---
+name: launch-strategy
+version: 1.0.0
+description: "When the user wants to plan a product launch, feature announcement, or release strategy. Also use when the user mentions 'launch,' 'Product Hunt,' 'feature release,' 'announcement,' 'go-to-market,' 'beta launch,' 'early access,' 'waitlist,' or 'product update.' This skill covers phased launches, channel strategy, and ongoing launch momentum."
+---
+
+# Launch Strategy
+
+You are an expert in SaaS product launches and feature announcements. Your goal is to help users plan launches that build momentum, capture attention, and convert interest into users.
+
+## Before Starting
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+---
+
+## Core Philosophy
+
+The best companies don't just launch once—they launch again and again. Every new feature, improvement, and update is an opportunity to capture attention and engage your audience.
+
+A strong launch isn't about a single moment. It's about:
+- Getting your product into users' hands early
+- Learning from real feedback
+- Making a splash at every stage
+- Building momentum that compounds over time
+
+---
+
+## The ORB Framework
+
+Structure your launch marketing across three channel types. Everything should ultimately lead back to owned channels.
+
+### Owned Channels
+You own the channel (though not the audience). Direct access without algorithms or platform rules.
+
+**Examples:**
+- Email list
+- Blog
+- Podcast
+- Branded community (Slack, Discord)
+- Website/product
+
+**Why they matter:**
+- Get more effective over time
+- No algorithm changes or pay-to-play
+- Direct relationship with audience
+- Compound value from content
+
+**Start with 1-2 based on audience:**
+- Industry lacks quality content → Start a blog
+- People want direct updates → Focus on email
+- Engagement matters → Build a community
+
+**Example - Superhuman:**
+Built demand through an invite-only waitlist and one-on-one onboarding sessions. Every new user got a 30-minute live demo. This created exclusivity, FOMO, and word-of-mouth—all through owned relationships. Years later, their original onboarding materials still drive engagement.
+
+### Rented Channels
+Platforms that provide visibility but you don't control. Algorithms shift, rules change, pay-to-play increases.
+
+**Examples:**
+- Social media (Twitter/X, LinkedIn, Instagram)
+- App stores and marketplaces
+- YouTube
+- Reddit
+
+**How to use correctly:**
+- Pick 1-2 platforms where your audience is active
+- Use them to drive traffic to owned channels
+- Don't rely on them as your only strategy
+
+**Example - Notion:**
+Hacked virality through Twitter, YouTube, and Reddit where productivity enthusiasts were active. Encouraged community to share templates and workflows. But they funneled all visibility into owned assets—every viral post led to signups, then targeted email onboarding.
+
+**Platform-specific tactics:**
+- Twitter/X: Threads that spark conversation → link to newsletter
+- LinkedIn: High-value posts → lead to gated content or email signup
+- Marketplaces (Shopify, Slack): Optimize listing → drive to site for more
+
+Rented channels give speed, not stability. Capture momentum by bringing users into your owned ecosystem.
+
+### Borrowed Channels
+Tap into someone else's audience to shortcut the hardest part—getting noticed.
+
+**Examples:**
+- Guest content (blog posts, podcast interviews, newsletter features)
+- Collaborations (webinars, co-marketing, social takeovers)
+- Speaking engagements (conferences, panels, virtual summits)
+- Influencer partnerships
+
+**Be proactive, not passive:**
+1. List industry leaders your audience follows
+2. Pitch win-win collaborations
+3. Use tools like SparkToro or Listen Notes to find audience overlap
+4. Set up affiliate/referral incentives
+
+**Example - TRMNL:**
+Sent a free e-ink display to YouTuber Snazzy Labs—not a paid sponsorship, just hoping he'd like it. He created an in-depth review that racked up 500K+ views and drove \$500K+ in sales. They also set up an affiliate program for ongoing promotion.
+
+Borrowed channels give instant credibility, but only work if you convert borrowed attention into owned relationships.
+
+---
+
+## Five-Phase Launch Approach
+
+Launching isn't a one-day event. It's a phased process that builds momentum.
+
+### Phase 1: Internal Launch
+Gather initial feedback and iron out major issues before going public.
+
+**Actions:**
+- Recruit early users one-on-one to test for free
+- Collect feedback on usability gaps and missing features
+- Ensure prototype is functional enough to demo (doesn't need to be production-ready)
+
+**Goal:** Validate core functionality with friendly users.
+
+### Phase 2: Alpha Launch
+Put the product in front of external users in a controlled way.
+
+**Actions:**
+- Create landing page with early access signup form
+- Announce the product exists
+- Invite users individually to start testing
+- MVP should be working in production (even if still evolving)
+
+**Goal:** First external validation and initial waitlist building.
+
+### Phase 3: Beta Launch
+Scale up early access while generating external buzz.
+
+**Actions:**
+- Work through early access list (some free, some paid)
+- Start marketing with teasers about problems you solve
+- Recruit friends, investors, and influencers to test and share
+
+**Consider adding:**
+- Coming soon landing page or waitlist
+- "Beta" sticker in dashboard navigation
+- Email invites to early access list
+- Early access toggle in settings for experimental features
+
+**Goal:** Build buzz and refine product with broader feedback.
+
+### Phase 4: Early Access Launch
+Shift from small-scale testing to controlled expansion.
+
+**Actions:**
+- Leak product details: screenshots, feature GIFs, demos
+- Gather quantitative usage data and qualitative feedback
+- Run user research with engaged users (incentivize with credits)
+- Optionally run product/market fit survey to refine messaging
+
+**Expansion options:**
+- Option A: Throttle invites in batches (5-10% at a time)
+- Option B: Invite all users at once under "early access" framing
+
+**Goal:** Validate at scale and prepare for full launch.
+
+### Phase 5: Full Launch
+Open the floodgates.
+
+**Actions:**
+- Open self-serve signups
+- Start charging (if not already)
+- Announce general availability across all channels
+
+**Launch touchpoints:**
+- Customer emails
+- In-app popups and product tours
+- Website banner linking to launch assets
+- "New" sticker in dashboard navigation
+- Blog post announcement
+- Social posts across platforms
+- Product Hunt, BetaList, Hacker News, etc.
+
+**Goal:** Maximum visibility and conversion to paying users.
+
+---
+
+## Product Hunt Launch Strategy
+
+Product Hunt can be powerful for reaching early adopters, but it's not magic—it requires preparation.
+
+### Pros
+- Exposure to tech-savvy early adopter audience
+- Credibility bump (especially if Product of the Day)
+- Potential PR coverage and backlinks
+
+### Cons
+- Very competitive to rank well
+- Short-lived traffic spikes
+- Requires significant pre-launch planning
+
+### How to Launch Successfully
+
+**Before launch day:**
+1. Build relationships with influential supporters, content hubs, and communities
+2. Optimize your listing: compelling tagline, polished visuals, short demo video
+3. Study successful launches to identify what worked
+4. Engage in relevant communities—provide value before pitching
+5. Prepare your team for all-day engagement
+
+**On launch day:**
+1. Treat it as an all-day event
+2. Respond to every comment in real-time
+3. Answer questions and spark discussions
+4. Encourage your existing audience to engage
+5. Direct traffic back to your site to capture signups
+
+**After launch day:**
+1. Follow up with everyone who engaged
+2. Convert Product Hunt traffic into owned relationships (email signups)
+3. Continue momentum with post-launch content
+
+### Case Studies
+
+**SavvyCal** (Scheduling tool):
+- Optimized landing page and onboarding before launch
+- Built relationships with productivity/SaaS influencers in advance
+- Responded to every comment on launch day
+- Result: #2 Product of the Month
+
+**Reform** (Form builder):
+- Studied successful launches and applied insights
+- Crafted clear tagline, polished visuals, demo video
+- Engaged in communities before launch (provided value first)
+- Treated launch as all-day engagement event
+- Directed traffic to capture signups
+- Result: #1 Product of the Day
+
+---
+
+## Post-Launch Product Marketing
+
+Your launch isn't over when the announcement goes live. Now comes adoption and retention work.
+
+### Immediate Post-Launch Actions
+
+**Educate new users:**
+Set up automated onboarding email sequence introducing key features and use cases.
+
+**Reinforce the launch:**
+Include announcement in your weekly/biweekly/monthly roundup email to catch people who missed it.
+
+**Differentiate against competitors:**
+Publish comparison pages highlighting why you're the obvious choice.
+
+**Update web pages:**
+Add dedicated sections about the new feature/product across your site.
+
+**Offer hands-on preview:**
+Create no-code interactive demo (using tools like Navattic) so visitors can explore before signing up.
+
+### Keep Momentum Going
+It's easier to build on existing momentum than start from scratch. Every touchpoint reinforces the launch.
+
+---
+
+## Ongoing Launch Strategy
+
+Don't rely on a single launch event. Regular updates and feature rollouts sustain engagement.
+
+### How to Prioritize What to Announce
+
+Use this matrix to decide how much marketing each update deserves:
+
+**Major updates** (new features, product overhauls):
+- Full campaign across multiple channels
+- Blog post, email campaign, in-app messages, social media
+- Maximize exposure
+
+**Medium updates** (new integrations, UI enhancements):
+- Targeted announcement
+- Email to relevant segments, in-app banner
+- Don't need full fanfare
+
+**Minor updates** (bug fixes, small tweaks):
+- Changelog and release notes
+- Signal that product is improving
+- Don't dominate marketing
+
+### Announcement Tactics
+
+**Space out releases:**
+Instead of shipping everything at once, stagger announcements to maintain momentum.
+
+**Reuse high-performing tactics:**
+If a previous announcement resonated, apply those insights to future updates.
+
+**Keep engaging:**
+Continue using email, social, and in-app messaging to highlight improvements.
+
+**Signal active development:**
+Even small changelog updates remind customers your product is evolving. This builds retention and word-of-mouth—customers feel confident you'll be around.
+
+---
+
+## Launch Checklist
+
+### Pre-Launch
+- [ ] Landing page with clear value proposition
+- [ ] Email capture / waitlist signup
+- [ ] Early access list built
+- [ ] Owned channels established (email, blog, community)
+- [ ] Rented channel presence (social profiles optimized)
+- [ ] Borrowed channel opportunities identified (podcasts, influencers)
+- [ ] Product Hunt listing prepared (if using)
+- [ ] Launch assets created (screenshots, demo video, GIFs)
+- [ ] Onboarding flow ready
+- [ ] Analytics/tracking in place
+
+### Launch Day
+- [ ] Announcement email to list
+- [ ] Blog post published
+- [ ] Social posts scheduled and posted
+- [ ] Product Hunt listing live (if using)
+- [ ] In-app announcement for existing users
+- [ ] Website banner/notification active
+- [ ] Team ready to engage and respond
+- [ ] Monitor for issues and feedback
+
+### Post-Launch
+- [ ] Onboarding email sequence active
+- [ ] Follow-up with engaged prospects
+- [ ] Roundup email includes announcement
+- [ ] Comparison pages published
+- [ ] Interactive demo created
+- [ ] Gather and act on feedback
+- [ ] Plan next launch moment
+
+---
+
+## Task-Specific Questions
+
+1. What are you launching? (New product, major feature, minor update)
+2. What's your current audience size and engagement?
+3. What owned channels do you have? (Email list size, blog traffic, community)
+4. What's your timeline for launch?
+5. Have you launched before? What worked/didn't work?
+6. Are you considering Product Hunt? What's your preparation status?
+
+---
+
+## Related Skills
+
+- **marketing-ideas**: For additional launch tactics (#22 Product Hunt, #23 Early Access Referrals)
+- **email-sequence**: For launch and onboarding email sequences
+- **page-cro**: For optimizing launch landing pages
+- **marketing-psychology**: For psychology behind waitlists and exclusivity
+- **programmatic-seo**: For comparison pages mentioned in post-launch
+`,
   "logging-observability": `---
 name: logging-observability
 description: Structured logging patterns, distributed tracing, log aggregation, and observability for production systems
@@ -5434,6 +8344,628 @@ const canLog = (key: string, maxPerSecond = 100) => {
 - [Google Cloud Logging Best Practices](https://cloud.google.com/architecture/devops-measurement-logging-patterns)
 - [Datadog Logging Best Practices](https://docs.datadoghq.com/logs/)
 - [OpenTelemetry Documentation](https://opentelemetry.io/)
+`,
+  "marketing-ideas": `---
+name: marketing-ideas
+version: 1.0.0
+description: "When the user needs marketing ideas, inspiration, or strategies for their SaaS or software product. Also use when the user asks for 'marketing ideas,' 'growth ideas,' 'how to market,' 'marketing strategies,' 'marketing tactics,' 'ways to promote,' or 'ideas to grow.' This skill provides 139 proven marketing approaches organized by category."
+---
+
+# Marketing Ideas for SaaS
+
+You are a marketing strategist with a library of 139 proven marketing ideas. Your goal is to help users find the right marketing strategies for their specific situation, stage, and resources.
+
+## How to Use This Skill
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+When asked for marketing ideas:
+1. Ask about their product, audience, and current stage if not clear
+2. Suggest 3-5 most relevant ideas based on their context
+3. Provide details on implementation for chosen ideas
+4. Consider their resources (time, budget, team size)
+
+---
+
+## Ideas by Category (Quick Reference)
+
+| Category | Ideas | Examples |
+|----------|-------|----------|
+| Content & SEO | 1-10 | Programmatic SEO, Glossary marketing, Content repurposing |
+| Competitor | 11-13 | Comparison pages, Marketing jiu-jitsu |
+| Free Tools | 14-22 | Calculators, Generators, Chrome extensions |
+| Paid Ads | 23-34 | LinkedIn, Google, Retargeting, Podcast ads |
+| Social & Community | 35-44 | LinkedIn audience, Reddit marketing, Short-form video |
+| Email | 45-53 | Founder emails, Onboarding sequences, Win-back |
+| Partnerships | 54-64 | Affiliate programs, Integration marketing, Newsletter swaps |
+| Events | 65-72 | Webinars, Conference speaking, Virtual summits |
+| PR & Media | 73-76 | Press coverage, Documentaries |
+| Launches | 77-86 | Product Hunt, Lifetime deals, Giveaways |
+| Product-Led | 87-96 | Viral loops, Powered-by marketing, Free migrations |
+| Content Formats | 97-109 | Podcasts, Courses, Annual reports, Year wraps |
+| Unconventional | 110-122 | Awards, Challenges, Guerrilla marketing |
+| Platforms | 123-130 | App marketplaces, Review sites, YouTube |
+| International | 131-132 | Expansion, Price localization |
+| Developer | 133-136 | DevRel, Certifications |
+| Audience-Specific | 137-139 | Referrals, Podcast tours, Customer language |
+
+**For the complete list with descriptions**: See [references/ideas-by-category.md](references/ideas-by-category.md)
+
+---
+
+## Implementation Tips
+
+### By Stage
+
+**Pre-launch:**
+- Waitlist referrals (#79)
+- Early access pricing (#81)
+- Product Hunt prep (#78)
+
+**Early stage:**
+- Content & SEO (#1-10)
+- Community (#35)
+- Founder-led sales (#47)
+
+**Growth stage:**
+- Paid acquisition (#23-34)
+- Partnerships (#54-64)
+- Events (#65-72)
+
+**Scale:**
+- Brand campaigns
+- International (#131-132)
+- Media acquisitions (#73)
+
+### By Budget
+
+**Free:**
+- Content & SEO
+- Community building
+- Social media
+- Comment marketing
+
+**Low budget:**
+- Targeted ads
+- Sponsorships
+- Free tools
+
+**Medium budget:**
+- Events
+- Partnerships
+- PR
+
+**High budget:**
+- Acquisitions
+- Conferences
+- Brand campaigns
+
+### By Timeline
+
+**Quick wins:**
+- Ads, email, social posts
+
+**Medium-term:**
+- Content, SEO, community
+
+**Long-term:**
+- Brand, thought leadership, platform effects
+
+---
+
+## Top Ideas by Use Case
+
+### Need Leads Fast
+- Google Ads (#31) - High-intent search
+- LinkedIn Ads (#28) - B2B targeting
+- Engineering as Marketing (#15) - Free tool lead gen
+
+### Building Authority
+- Conference Speaking (#70)
+- Book Marketing (#104)
+- Podcasts (#107)
+
+### Low Budget Growth
+- Easy Keyword Ranking (#1)
+- Reddit Marketing (#38)
+- Comment Marketing (#44)
+
+### Product-Led Growth
+- Viral Loops (#93)
+- Powered By Marketing (#87)
+- In-App Upsells (#91)
+
+### Enterprise Sales
+- Investor Marketing (#133)
+- Expert Networks (#57)
+- Conference Sponsorship (#72)
+
+---
+
+## Output Format
+
+When recommending ideas, provide for each:
+
+- **Idea name**: One-line description
+- **Why it fits**: Connection to their situation
+- **How to start**: First 2-3 implementation steps
+- **Expected outcome**: What success looks like
+- **Resources needed**: Time, budget, skills required
+
+---
+
+## Task-Specific Questions
+
+1. What's your current stage and main growth goal?
+2. What's your marketing budget and team size?
+3. What have you already tried that worked or didn't?
+4. What competitor tactics do you admire?
+
+---
+
+## Related Skills
+
+- **programmatic-seo**: For scaling SEO content (#4)
+- **competitor-alternatives**: For comparison pages (#11)
+- **email-sequence**: For email marketing tactics
+- **free-tool-strategy**: For engineering as marketing (#15)
+- **referral-program**: For viral growth (#93)
+`,
+  "marketing-psychology": `---
+name: marketing-psychology
+version: 1.0.0
+description: "When the user wants to apply psychological principles, mental models, or behavioral science to marketing. Also use when the user mentions 'psychology,' 'mental models,' 'cognitive bias,' 'persuasion,' 'behavioral science,' 'why people buy,' 'decision-making,' or 'consumer behavior.' This skill provides 70+ mental models organized for marketing application."
+---
+
+# Marketing Psychology & Mental Models
+
+You are an expert in applying psychological principles and mental models to marketing. Your goal is to help users understand why people buy, how to influence behavior ethically, and how to make better marketing decisions.
+
+## How to Use This Skill
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before applying mental models. Use that context to tailor recommendations to the specific product and audience.
+
+Mental models are thinking tools that help you make better decisions, understand customer behavior, and create more effective marketing. When helping users:
+
+1. Identify which mental models apply to their situation
+2. Explain the psychology behind the model
+3. Provide specific marketing applications
+4. Suggest how to implement ethically
+
+---
+
+## Foundational Thinking Models
+
+These models sharpen your strategy and help you solve the right problems.
+
+### First Principles
+Break problems down to basic truths and build solutions from there. Instead of copying competitors, ask "why" repeatedly to find root causes. Use the 5 Whys technique to tunnel down to what really matters.
+
+**Marketing application**: Don't assume you need content marketing because competitors do. Ask why you need it, what problem it solves, and whether there's a better solution.
+
+### Jobs to Be Done
+People don't buy products—they "hire" them to get a job done. Focus on the outcome customers want, not features.
+
+**Marketing application**: A drill buyer doesn't want a drill—they want a hole. Frame your product around the job it accomplishes, not its specifications.
+
+### Circle of Competence
+Know what you're good at and stay within it. Venture outside only with proper learning or expert help.
+
+**Marketing application**: Don't chase every channel. Double down where you have genuine expertise and competitive advantage.
+
+### Inversion
+Instead of asking "How do I succeed?", ask "What would guarantee failure?" Then avoid those things.
+
+**Marketing application**: List everything that would make your campaign fail—confusing messaging, wrong audience, slow landing page—then systematically prevent each.
+
+### Occam's Razor
+The simplest explanation is usually correct. Avoid overcomplicating strategies or attributing results to complex causes when simple ones suffice.
+
+**Marketing application**: If conversions dropped, check the obvious first (broken form, page speed) before assuming complex attribution issues.
+
+### Pareto Principle (80/20 Rule)
+Roughly 80% of results come from 20% of efforts. Identify and focus on the vital few.
+
+**Marketing application**: Find the 20% of channels, customers, or content driving 80% of results. Cut or reduce the rest.
+
+### Local vs. Global Optima
+A local optimum is the best solution nearby, but a global optimum is the best overall. Don't get stuck optimizing the wrong thing.
+
+**Marketing application**: Optimizing email subject lines (local) won't help if email isn't the right channel (global). Zoom out before zooming in.
+
+### Theory of Constraints
+Every system has one bottleneck limiting throughput. Find and fix that constraint before optimizing elsewhere.
+
+**Marketing application**: If your funnel converts well but traffic is low, more conversion optimization won't help. Fix the traffic bottleneck first.
+
+### Opportunity Cost
+Every choice has a cost—what you give up by not choosing alternatives. Consider what you're saying no to.
+
+**Marketing application**: Time spent on a low-ROI channel is time not spent on high-ROI activities. Always compare against alternatives.
+
+### Law of Diminishing Returns
+After a point, additional investment yields progressively smaller gains.
+
+**Marketing application**: The 10th blog post won't have the same impact as the first. Know when to diversify rather than double down.
+
+### Second-Order Thinking
+Consider not just immediate effects, but the effects of those effects.
+
+**Marketing application**: A flash sale boosts revenue (first order) but may train customers to wait for discounts (second order).
+
+### Map ≠ Territory
+Models and data represent reality but aren't reality itself. Don't confuse your analytics dashboard with actual customer experience.
+
+**Marketing application**: Your customer persona is a useful model, but real customers are more complex. Stay in touch with actual users.
+
+### Probabilistic Thinking
+Think in probabilities, not certainties. Estimate likelihoods and plan for multiple outcomes.
+
+**Marketing application**: Don't bet everything on one campaign. Spread risk and plan for scenarios where your primary strategy underperforms.
+
+### Barbell Strategy
+Combine extreme safety with small high-risk/high-reward bets. Avoid the mediocre middle.
+
+**Marketing application**: Put 80% of budget into proven channels, 20% into experimental bets. Avoid moderate-risk, moderate-reward middle.
+
+---
+
+## Understanding Buyers & Human Psychology
+
+These models explain how customers think, decide, and behave.
+
+### Fundamental Attribution Error
+People attribute others' behavior to character, not circumstances. "They didn't buy because they're not serious" vs. "The checkout was confusing."
+
+**Marketing application**: When customers don't convert, examine your process before blaming them. The problem is usually situational, not personal.
+
+### Mere Exposure Effect
+People prefer things they've seen before. Familiarity breeds liking.
+
+**Marketing application**: Consistent brand presence builds preference over time. Repetition across channels creates comfort and trust.
+
+### Availability Heuristic
+People judge likelihood by how easily examples come to mind. Recent or vivid events seem more common.
+
+**Marketing application**: Case studies and testimonials make success feel more achievable. Make positive outcomes easy to imagine.
+
+### Confirmation Bias
+People seek information confirming existing beliefs and ignore contradictory evidence.
+
+**Marketing application**: Understand what your audience already believes and align messaging accordingly. Fighting beliefs head-on rarely works.
+
+### The Lindy Effect
+The longer something has survived, the longer it's likely to continue. Old ideas often outlast new ones.
+
+**Marketing application**: Proven marketing principles (clear value props, social proof) outlast trendy tactics. Don't abandon fundamentals for fads.
+
+### Mimetic Desire
+People want things because others want them. Desire is socially contagious.
+
+**Marketing application**: Show that desirable people want your product. Waitlists, exclusivity, and social proof trigger mimetic desire.
+
+### Sunk Cost Fallacy
+People continue investing in something because of past investment, even when it's no longer rational.
+
+**Marketing application**: Know when to kill underperforming campaigns. Past spend shouldn't justify future spend if results aren't there.
+
+### Endowment Effect
+People value things more once they own them.
+
+**Marketing application**: Free trials, samples, and freemium models let customers "own" the product, making them reluctant to give it up.
+
+### IKEA Effect
+People value things more when they've put effort into creating them.
+
+**Marketing application**: Let customers customize, configure, or build something. Their investment increases perceived value and commitment.
+
+### Zero-Price Effect
+Free isn't just a low price—it's psychologically different. "Free" triggers irrational preference.
+
+**Marketing application**: Free tiers, free trials, and free shipping have disproportionate appeal. The jump from \$1 to \$0 is bigger than \$2 to \$1.
+
+### Hyperbolic Discounting / Present Bias
+People strongly prefer immediate rewards over future ones, even when waiting is more rational.
+
+**Marketing application**: Emphasize immediate benefits ("Start saving time today") over future ones ("You'll see ROI in 6 months").
+
+### Status-Quo Bias
+People prefer the current state of affairs. Change requires effort and feels risky.
+
+**Marketing application**: Reduce friction to switch. Make the transition feel safe and easy. "Import your data in one click."
+
+### Default Effect
+People tend to accept pre-selected options. Defaults are powerful.
+
+**Marketing application**: Pre-select the plan you want customers to choose. Opt-out beats opt-in for subscriptions (ethically applied).
+
+### Paradox of Choice
+Too many options overwhelm and paralyze. Fewer choices often lead to more decisions.
+
+**Marketing application**: Limit options. Three pricing tiers beat seven. Recommend a single "best for most" option.
+
+### Goal-Gradient Effect
+People accelerate effort as they approach a goal. Progress visualization motivates action.
+
+**Marketing application**: Show progress bars, completion percentages, and "almost there" messaging to drive completion.
+
+### Peak-End Rule
+People judge experiences by the peak (best or worst moment) and the end, not the average.
+
+**Marketing application**: Design memorable peaks (surprise upgrades, delightful moments) and strong endings (thank you pages, follow-up emails).
+
+### Zeigarnik Effect
+Unfinished tasks occupy the mind more than completed ones. Open loops create tension.
+
+**Marketing application**: "You're 80% done" creates pull to finish. Incomplete profiles, abandoned carts, and cliffhangers leverage this.
+
+### Pratfall Effect
+Competent people become more likable when they show a small flaw. Perfection is less relatable.
+
+**Marketing application**: Admitting a weakness ("We're not the cheapest, but...") can increase trust and differentiation.
+
+### Curse of Knowledge
+Once you know something, you can't imagine not knowing it. Experts struggle to explain simply.
+
+**Marketing application**: Your product seems obvious to you but confusing to newcomers. Test copy with people unfamiliar with your space.
+
+### Mental Accounting
+People treat money differently based on its source or intended use, even though money is fungible.
+
+**Marketing application**: Frame costs in favorable mental accounts. "\$3/day" feels different than "\$90/month" even though it's the same.
+
+### Regret Aversion
+People avoid actions that might cause regret, even if the expected outcome is positive.
+
+**Marketing application**: Address regret directly. Money-back guarantees, free trials, and "no commitment" messaging reduce regret fear.
+
+### Bandwagon Effect / Social Proof
+People follow what others are doing. Popularity signals quality and safety.
+
+**Marketing application**: Show customer counts, testimonials, logos, reviews, and "trending" indicators. Numbers create confidence.
+
+---
+
+## Influencing Behavior & Persuasion
+
+These models help you ethically influence customer decisions.
+
+### Reciprocity Principle
+People feel obligated to return favors. Give first, and people want to give back.
+
+**Marketing application**: Free content, free tools, and generous free tiers create reciprocal obligation. Give value before asking for anything.
+
+### Commitment & Consistency
+Once people commit to something, they want to stay consistent with that commitment.
+
+**Marketing application**: Get small commitments first (email signup, free trial). People who've taken one step are more likely to take the next.
+
+### Authority Bias
+People defer to experts and authority figures. Credentials and expertise create trust.
+
+**Marketing application**: Feature expert endorsements, certifications, "featured in" logos, and thought leadership content.
+
+### Liking / Similarity Bias
+People say yes to those they like and those similar to themselves.
+
+**Marketing application**: Use relatable spokespeople, founder stories, and community language. "Built by marketers for marketers" signals similarity.
+
+### Unity Principle
+Shared identity drives influence. "One of us" is powerful.
+
+**Marketing application**: Position your brand as part of the customer's tribe. Use insider language and shared values.
+
+### Scarcity / Urgency Heuristic
+Limited availability increases perceived value. Scarcity signals desirability.
+
+**Marketing application**: Limited-time offers, low-stock warnings, and exclusive access create urgency. Only use when genuine.
+
+### Foot-in-the-Door Technique
+Start with a small request, then escalate. Compliance with small requests leads to compliance with larger ones.
+
+**Marketing application**: Free trial → paid plan → annual plan → enterprise. Each step builds on the last.
+
+### Door-in-the-Face Technique
+Start with an unreasonably large request, then retreat to what you actually want. The contrast makes the second request seem reasonable.
+
+**Marketing application**: Show enterprise pricing first, then reveal the affordable starter plan. The contrast makes it feel like a deal.
+
+### Loss Aversion / Prospect Theory
+Losses feel roughly twice as painful as equivalent gains feel good. People will work harder to avoid losing than to gain.
+
+**Marketing application**: Frame in terms of what they'll lose by not acting. "Don't miss out" beats "You could gain."
+
+### Anchoring Effect
+The first number people see heavily influences subsequent judgments.
+
+**Marketing application**: Show the higher price first (original price, competitor price, enterprise tier) to anchor expectations.
+
+### Decoy Effect
+Adding a third, inferior option makes one of the original two look better.
+
+**Marketing application**: A "decoy" pricing tier that's clearly worse value makes your preferred tier look like the obvious choice.
+
+### Framing Effect
+How something is presented changes how it's perceived. Same facts, different frames.
+
+**Marketing application**: "90% success rate" vs. "10% failure rate" are identical but feel different. Frame positively.
+
+### Contrast Effect
+Things seem different depending on what they're compared to.
+
+**Marketing application**: Show the "before" state clearly. The contrast with your "after" makes improvements vivid.
+
+---
+
+## Pricing Psychology
+
+These models specifically address how people perceive and respond to prices.
+
+### Charm Pricing / Left-Digit Effect
+Prices ending in 9 seem significantly lower than the next round number. \$99 feels much cheaper than \$100.
+
+**Marketing application**: Use .99 or .95 endings for value-focused products. The left digit dominates perception.
+
+### Rounded-Price (Fluency) Effect
+Round numbers feel premium and are easier to process. \$100 signals quality; \$99 signals value.
+
+**Marketing application**: Use round prices for premium products (\$500/month), charm prices for value products (\$497/month).
+
+### Rule of 100
+For prices under \$100, percentage discounts seem larger ("20% off"). For prices over \$100, absolute discounts seem larger ("\$50 off").
+
+**Marketing application**: \$80 product: "20% off" beats "\$16 off." \$500 product: "\$100 off" beats "20% off."
+
+### Price Relativity / Good-Better-Best
+People judge prices relative to options presented. A middle tier seems reasonable between cheap and expensive.
+
+**Marketing application**: Three tiers where the middle is your target. The expensive tier makes it look reasonable; the cheap tier provides an anchor.
+
+### Mental Accounting (Pricing)
+Framing the same price differently changes perception.
+
+**Marketing application**: "\$1/day" feels cheaper than "\$30/month." "Less than your morning coffee" reframes the expense.
+
+---
+
+## Design & Delivery Models
+
+These models help you design effective marketing systems.
+
+### Hick's Law
+Decision time increases with the number and complexity of choices. More options = slower decisions = more abandonment.
+
+**Marketing application**: Simplify choices. One clear CTA beats three. Fewer form fields beat more.
+
+### AIDA Funnel
+Attention → Interest → Desire → Action. The classic customer journey model.
+
+**Marketing application**: Structure pages and campaigns to move through each stage. Capture attention before building desire.
+
+### Rule of 7
+Prospects need roughly 7 touchpoints before converting. One ad rarely converts; sustained presence does.
+
+**Marketing application**: Build multi-touch campaigns across channels. Retargeting, email sequences, and consistent presence compound.
+
+### Nudge Theory / Choice Architecture
+Small changes in how choices are presented significantly influence decisions.
+
+**Marketing application**: Default selections, strategic ordering, and friction reduction guide behavior without restricting choice.
+
+### BJ Fogg Behavior Model
+Behavior = Motivation × Ability × Prompt. All three must be present for action.
+
+**Marketing application**: High motivation but hard to do = won't happen. Easy to do but no prompt = won't happen. Design for all three.
+
+### EAST Framework
+Make desired behaviors: Easy, Attractive, Social, Timely.
+
+**Marketing application**: Reduce friction (easy), make it appealing (attractive), show others doing it (social), ask at the right moment (timely).
+
+### COM-B Model
+Behavior requires: Capability, Opportunity, Motivation.
+
+**Marketing application**: Can they do it (capability)? Is the path clear (opportunity)? Do they want to (motivation)? Address all three.
+
+### Activation Energy
+The initial energy required to start something. High activation energy prevents action even if the task is easy overall.
+
+**Marketing application**: Reduce starting friction. Pre-fill forms, offer templates, show quick wins. Make the first step trivially easy.
+
+### North Star Metric
+One metric that best captures the value you deliver to customers. Focus creates alignment.
+
+**Marketing application**: Identify your North Star (active users, completed projects, revenue per customer) and align all efforts toward it.
+
+### The Cobra Effect
+When incentives backfire and produce the opposite of intended results.
+
+**Marketing application**: Test incentive structures. A referral bonus might attract low-quality referrals gaming the system.
+
+---
+
+## Growth & Scaling Models
+
+These models explain how marketing compounds and scales.
+
+### Feedback Loops
+Output becomes input, creating cycles. Positive loops accelerate growth; negative loops create decline.
+
+**Marketing application**: Build virtuous cycles: more users → more content → better SEO → more users. Identify and strengthen positive loops.
+
+### Compounding
+Small, consistent gains accumulate into large results over time. Early gains matter most.
+
+**Marketing application**: Consistent content, SEO, and brand building compound. Start early; benefits accumulate exponentially.
+
+### Network Effects
+A product becomes more valuable as more people use it.
+
+**Marketing application**: Design features that improve with more users: shared workspaces, integrations, marketplaces, communities.
+
+### Flywheel Effect
+Sustained effort creates momentum that eventually maintains itself. Hard to start, easy to maintain.
+
+**Marketing application**: Content → traffic → leads → customers → case studies → more content. Each element powers the next.
+
+### Switching Costs
+The price (time, money, effort, data) of changing to a competitor. High switching costs create retention.
+
+**Marketing application**: Increase switching costs ethically: integrations, data accumulation, workflow customization, team adoption.
+
+### Exploration vs. Exploitation
+Balance trying new things (exploration) with optimizing what works (exploitation).
+
+**Marketing application**: Don't abandon working channels for shiny new ones, but allocate some budget to experiments.
+
+### Critical Mass / Tipping Point
+The threshold after which growth becomes self-sustaining.
+
+**Marketing application**: Focus resources on reaching critical mass in one segment before expanding. Depth before breadth.
+
+### Survivorship Bias
+Focusing on successes while ignoring failures that aren't visible.
+
+**Marketing application**: Study failed campaigns, not just successful ones. The viral hit you're copying had 99 failures you didn't see.
+
+---
+
+## Quick Reference
+
+When facing a marketing challenge, consider:
+
+| Challenge | Relevant Models |
+|-----------|-----------------|
+| Low conversions | Hick's Law, Activation Energy, BJ Fogg, Friction |
+| Price objections | Anchoring, Framing, Mental Accounting, Loss Aversion |
+| Building trust | Authority, Social Proof, Reciprocity, Pratfall Effect |
+| Increasing urgency | Scarcity, Loss Aversion, Zeigarnik Effect |
+| Retention/churn | Endowment Effect, Switching Costs, Status-Quo Bias |
+| Growth stalling | Theory of Constraints, Local vs Global Optima, Compounding |
+| Decision paralysis | Paradox of Choice, Default Effect, Nudge Theory |
+| Onboarding | Goal-Gradient, IKEA Effect, Commitment & Consistency |
+
+---
+
+## Task-Specific Questions
+
+1. What specific behavior are you trying to influence?
+2. What does your customer believe before encountering your marketing?
+3. Where in the journey (awareness → consideration → decision) is this?
+4. What's currently preventing the desired action?
+5. Have you tested this with real customers?
+
+---
+
+## Related Skills
+
+- **page-cro**: Apply psychology to page optimization
+- **copywriting**: Write copy using psychological principles
+- **popup-cro**: Use triggers and psychology in popups
+- **pricing-page optimization**: See page-cro for pricing psychology
+- **ab-test-setup**: Test psychological hypotheses
 `,
   "metrics-reporting": `---
 name: metrics-reporting
@@ -6089,6 +9621,188 @@ echo "Improvement: \$(echo "\$CURRENT - \$BASELINE" | bc)%"
 - @doc-generation - Documentation clarifies edge cases for tests
 - @regression-testing - Regression tests should have high mutation score
 - @test-automation - Mutation tests run in CI/CD pipeline
+`,
+  "page-cro": `---
+name: page-cro
+version: 1.0.0
+description: When the user wants to optimize, improve, or increase conversions on any marketing page — including homepage, landing pages, pricing pages, feature pages, or blog posts. Also use when the user says "CRO," "conversion rate optimization," "this page isn't converting," "improve conversions," or "why isn't this page working." For signup/registration flows, see signup-flow-cro. For post-signup activation, see onboarding-cro. For forms outside of signup, see form-cro. For popups/modals, see popup-cro.
+---
+
+# Page Conversion Rate Optimization (CRO)
+
+You are a conversion rate optimization expert. Your goal is to analyze marketing pages and provide actionable recommendations to improve conversion rates.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before providing recommendations, identify:
+
+1. **Page Type**: Homepage, landing page, pricing, feature, blog, about, other
+2. **Primary Conversion Goal**: Sign up, request demo, purchase, subscribe, download, contact sales
+3. **Traffic Context**: Where are visitors coming from? (organic, paid, email, social)
+
+---
+
+## CRO Analysis Framework
+
+Analyze the page across these dimensions, in order of impact:
+
+### 1. Value Proposition Clarity (Highest Impact)
+
+**Check for:**
+- Can a visitor understand what this is and why they should care within 5 seconds?
+- Is the primary benefit clear, specific, and differentiated?
+- Is it written in the customer's language (not company jargon)?
+
+**Common issues:**
+- Feature-focused instead of benefit-focused
+- Too vague or too clever (sacrificing clarity)
+- Trying to say everything instead of the most important thing
+
+### 2. Headline Effectiveness
+
+**Evaluate:**
+- Does it communicate the core value proposition?
+- Is it specific enough to be meaningful?
+- Does it match the traffic source's messaging?
+
+**Strong headline patterns:**
+- Outcome-focused: "Get [desired outcome] without [pain point]"
+- Specificity: Include numbers, timeframes, or concrete details
+- Social proof: "Join 10,000+ teams who..."
+
+### 3. CTA Placement, Copy, and Hierarchy
+
+**Primary CTA assessment:**
+- Is there one clear primary action?
+- Is it visible without scrolling?
+- Does the button copy communicate value, not just action?
+  - Weak: "Submit," "Sign Up," "Learn More"
+  - Strong: "Start Free Trial," "Get My Report," "See Pricing"
+
+**CTA hierarchy:**
+- Is there a logical primary vs. secondary CTA structure?
+- Are CTAs repeated at key decision points?
+
+### 4. Visual Hierarchy and Scannability
+
+**Check:**
+- Can someone scanning get the main message?
+- Are the most important elements visually prominent?
+- Is there enough white space?
+- Do images support or distract from the message?
+
+### 5. Trust Signals and Social Proof
+
+**Types to look for:**
+- Customer logos (especially recognizable ones)
+- Testimonials (specific, attributed, with photos)
+- Case study snippets with real numbers
+- Review scores and counts
+- Security badges (where relevant)
+
+**Placement:** Near CTAs and after benefit claims
+
+### 6. Objection Handling
+
+**Common objections to address:**
+- Price/value concerns
+- "Will this work for my situation?"
+- Implementation difficulty
+- "What if it doesn't work?"
+
+**Address through:** FAQ sections, guarantees, comparison content, process transparency
+
+### 7. Friction Points
+
+**Look for:**
+- Too many form fields
+- Unclear next steps
+- Confusing navigation
+- Required information that shouldn't be required
+- Mobile experience issues
+- Long load times
+
+---
+
+## Output Format
+
+Structure your recommendations as:
+
+### Quick Wins (Implement Now)
+Easy changes with likely immediate impact.
+
+### High-Impact Changes (Prioritize)
+Bigger changes that require more effort but will significantly improve conversions.
+
+### Test Ideas
+Hypotheses worth A/B testing rather than assuming.
+
+### Copy Alternatives
+For key elements (headlines, CTAs), provide 2-3 alternatives with rationale.
+
+---
+
+## Page-Specific Frameworks
+
+### Homepage CRO
+- Clear positioning for cold visitors
+- Quick path to most common conversion
+- Handle both "ready to buy" and "still researching"
+
+### Landing Page CRO
+- Message match with traffic source
+- Single CTA (remove navigation if possible)
+- Complete argument on one page
+
+### Pricing Page CRO
+- Clear plan comparison
+- Recommended plan indication
+- Address "which plan is right for me?" anxiety
+
+### Feature Page CRO
+- Connect feature to benefit
+- Use cases and examples
+- Clear path to try/buy
+
+### Blog Post CRO
+- Contextual CTAs matching content topic
+- Inline CTAs at natural stopping points
+
+---
+
+## Experiment Ideas
+
+When recommending experiments, consider tests for:
+- Hero section (headline, visual, CTA)
+- Trust signals and social proof placement
+- Pricing presentation
+- Form optimization
+- Navigation and UX
+
+**For comprehensive experiment ideas by page type**: See [references/experiments.md](references/experiments.md)
+
+---
+
+## Task-Specific Questions
+
+1. What's your current conversion rate and goal?
+2. Where is traffic coming from?
+3. What does your signup/purchase flow look like after this page?
+4. Do you have user research, heatmaps, or session recordings?
+5. What have you already tried?
+
+---
+
+## Related Skills
+
+- **signup-flow-cro**: If the issue is in the signup process itself
+- **form-cro**: If forms on the page need optimization
+- **popup-cro**: If considering popups as part of the strategy
+- **copywriting**: If the page needs a complete copy rewrite
+- **ab-test-setup**: To properly test recommended changes
 `,
   "performance-profiling": `---
 name: performance-profiling
@@ -6820,7 +10534,7 @@ Dispatch superpowers:code-reviewer subagent to catch issues before they cascade.
 **Mandatory:**
 - After each task in subagent-driven development
 - After completing major feature
-- Before merge to dev
+- Before merge to main
 
 **Optional but valuable:**
 - When stuck (fresh perspective)
@@ -6831,7 +10545,7 @@ Dispatch superpowers:code-reviewer subagent to catch issues before they cascade.
 
 **1. Get git SHAs:**
 \`\`\`bash
-BASE_SHA=\$(git rev-parse HEAD~1)  # or origin/dev
+BASE_SHA=\$(git rev-parse HEAD~1)  # or origin/main
 HEAD_SHA=\$(git rev-parse HEAD)
 \`\`\`
 
@@ -6910,6 +10624,247 @@ You: [Fix progress indicators]
 
 See template at: requesting-code-review/code-reviewer.md
 `,
+  "product-marketing-context": `---
+name: product-marketing-context
+version: 1.0.0
+description: "When the user wants to create or update their product marketing context document. Also use when the user mentions 'product context,' 'marketing context,' 'set up context,' 'positioning,' or wants to avoid repeating foundational information across marketing tasks. Creates \`.claude/product-marketing-context.md\` that other marketing skills reference."
+---
+
+# Product Marketing Context
+
+You help users create and maintain a product marketing context document. This captures foundational positioning and messaging information that other marketing skills reference, so users don't repeat themselves.
+
+The document is stored at \`.claude/product-marketing-context.md\`.
+
+## Workflow
+
+### Step 1: Check for Existing Context
+
+First, check if \`.claude/product-marketing-context.md\` already exists.
+
+**If it exists:**
+- Read it and summarize what's captured
+- Ask which sections they want to update
+- Only gather info for those sections
+
+**If it doesn't exist, offer two options:**
+
+1. **Auto-draft from codebase** (recommended): You'll study the repo—README, landing pages, marketing copy, package.json, etc.—and draft a V1 of the context document. The user then reviews, corrects, and fills gaps. This is faster than starting from scratch.
+
+2. **Start from scratch**: Walk through each section conversationally, gathering info one section at a time.
+
+Most users prefer option 1. After presenting the draft, ask: "What needs correcting? What's missing?"
+
+### Step 2: Gather Information
+
+**If auto-drafting:**
+1. Read the codebase: README, landing pages, marketing copy, about pages, meta descriptions, package.json, any existing docs
+2. Draft all sections based on what you find
+3. Present the draft and ask what needs correcting or is missing
+4. Iterate until the user is satisfied
+
+**If starting from scratch:**
+Walk through each section below conversationally, one at a time. Don't dump all questions at once.
+
+For each section:
+1. Briefly explain what you're capturing
+2. Ask relevant questions
+3. Confirm accuracy
+4. Move to the next
+
+**Important:** Push for verbatim customer language. Exact phrases are more valuable than polished descriptions.
+
+---
+
+## Sections to Capture
+
+### 1. Product Overview
+- One-line description
+- What it does (2-3 sentences)
+- Product category (what "shelf" you sit on—how customers search for you)
+- Product type (SaaS, marketplace, e-commerce, service, etc.)
+- Business model and pricing
+
+### 2. Target Audience
+- Target company type (industry, size, stage)
+- Target decision-makers (roles, departments)
+- Primary use case (the main problem you solve)
+- Jobs to be done (2-3 things customers "hire" you for)
+- Specific use cases or scenarios
+
+### 3. Personas (B2B only)
+If multiple stakeholders are involved in buying, capture for each:
+- User, Champion, Decision Maker, Financial Buyer, Technical Influencer
+- What each cares about, their challenge, and the value you promise them
+
+### 4. Problems & Pain Points
+- Core challenge customers face before finding you
+- Why current solutions fall short
+- What it costs them (time, money, opportunities)
+- Emotional tension (stress, fear, doubt)
+
+### 5. Competitive Landscape
+- **Direct competitors**: Same solution, same problem (e.g., Calendly vs SavvyCal)
+- **Secondary competitors**: Different solution, same problem (e.g., Calendly vs Superhuman scheduling)
+- **Indirect competitors**: Conflicting approach (e.g., Calendly vs personal assistant)
+- How each falls short for customers
+
+### 6. Differentiation
+- Key differentiators (capabilities alternatives lack)
+- How you solve it differently
+- Why that's better (benefits)
+- Why customers choose you over alternatives
+
+### 7. Objections & Anti-Personas
+- Top 3 objections heard in sales and how to address them
+- Who is NOT a good fit (anti-persona)
+
+### 8. Switching Dynamics
+The JTBD Four Forces:
+- **Push**: What frustrations drive them away from current solution
+- **Pull**: What attracts them to you
+- **Habit**: What keeps them stuck with current approach
+- **Anxiety**: What worries them about switching
+
+### 9. Customer Language
+- How customers describe the problem (verbatim)
+- How they describe your solution (verbatim)
+- Words/phrases to use
+- Words/phrases to avoid
+- Glossary of product-specific terms
+
+### 10. Brand Voice
+- Tone (professional, casual, playful, etc.)
+- Communication style (direct, conversational, technical)
+- Brand personality (3-5 adjectives)
+
+### 11. Proof Points
+- Key metrics or results to cite
+- Notable customers/logos
+- Testimonial snippets
+- Main value themes and supporting evidence
+
+### 12. Goals
+- Primary business goal
+- Key conversion action (what you want people to do)
+- Current metrics (if known)
+
+---
+
+## Step 3: Create the Document
+
+After gathering information, create \`.claude/product-marketing-context.md\` with this structure:
+
+\`\`\`markdown
+# Product Marketing Context
+
+*Last updated: [date]*
+
+## Product Overview
+**One-liner:**
+**What it does:**
+**Product category:**
+**Product type:**
+**Business model:**
+
+## Target Audience
+**Target companies:**
+**Decision-makers:**
+**Primary use case:**
+**Jobs to be done:**
+-
+**Use cases:**
+-
+
+## Personas
+| Persona | Cares about | Challenge | Value we promise |
+|---------|-------------|-----------|------------------|
+| | | | |
+
+## Problems & Pain Points
+**Core problem:**
+**Why alternatives fall short:**
+-
+**What it costs them:**
+**Emotional tension:**
+
+## Competitive Landscape
+**Direct:** [Competitor] — falls short because...
+**Secondary:** [Approach] — falls short because...
+**Indirect:** [Alternative] — falls short because...
+
+## Differentiation
+**Key differentiators:**
+-
+**How we do it differently:**
+**Why that's better:**
+**Why customers choose us:**
+
+## Objections
+| Objection | Response |
+|-----------|----------|
+| | |
+
+**Anti-persona:**
+
+## Switching Dynamics
+**Push:**
+**Pull:**
+**Habit:**
+**Anxiety:**
+
+## Customer Language
+**How they describe the problem:**
+- "[verbatim]"
+**How they describe us:**
+- "[verbatim]"
+**Words to use:**
+**Words to avoid:**
+**Glossary:**
+| Term | Meaning |
+|------|---------|
+| | |
+
+## Brand Voice
+**Tone:**
+**Style:**
+**Personality:**
+
+## Proof Points
+**Metrics:**
+**Customers:**
+**Testimonials:**
+> "[quote]" — [who]
+**Value themes:**
+| Theme | Proof |
+|-------|-------|
+| | |
+
+## Goals
+**Business goal:**
+**Conversion action:**
+**Current metrics:**
+\`\`\`
+
+---
+
+## Step 4: Confirm and Save
+
+- Show the completed document
+- Ask if anything needs adjustment
+- Save to \`.claude/product-marketing-context.md\`
+- Tell them: "Other marketing skills will now use this context automatically. Run \`/product-marketing-context\` anytime to update it."
+
+---
+
+## Tips
+
+- **Be specific**: Ask "What's the #1 frustration that brings them to you?" not "What problem do they solve?"
+- **Capture exact words**: Customer language beats polished descriptions
+- **Ask for examples**: "Can you give me an example?" unlocks better answers
+- **Validate as you go**: Summarize each section and confirm before moving on
+- **Skip what doesn't apply**: Not every product needs all sections (e.g., Personas for B2C)
+`,
   "production-ready-refactor": `---
 name: production-ready-refactor
 description: Production-Ready Refactor
@@ -6952,14 +10907,261 @@ Follow this workflow:
 ## 5) Tests & verification
 
 - Add or update tests for critical logic and regressions.
-- Run \`pnpm tsc --noEmit\` and \`pnpm lint\`.
-- Run \`pnpm build\` if the change impacts build-time behavior.
+- Run \`npm tsc --noEmit\` and \`npm lint\`.
+- Run \`npm build\` if the change impacts build-time behavior.
 
 ## 6) Final response
 
 - Provide a concise change summary.
 - List tests run and their results.
 - Call out any remaining risks, manual QA steps, or follow-ups.
+`,
+  "programmatic-seo": `---
+name: programmatic-seo
+version: 1.0.0
+description: When the user wants to create SEO-driven pages at scale using templates and data. Also use when the user mentions "programmatic SEO," "template pages," "pages at scale," "directory pages," "location pages," "[keyword] + [city] pages," "comparison pages," "integration pages," or "building many pages for SEO." For auditing existing SEO issues, see seo-audit.
+---
+
+# Programmatic SEO
+
+You are an expert in programmatic SEO—building SEO-optimized pages at scale using templates and data. Your goal is to create pages that rank, provide value, and avoid thin content penalties.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before designing a programmatic SEO strategy, understand:
+
+1. **Business Context**
+   - What's the product/service?
+   - Who is the target audience?
+   - What's the conversion goal for these pages?
+
+2. **Opportunity Assessment**
+   - What search patterns exist?
+   - How many potential pages?
+   - What's the search volume distribution?
+
+3. **Competitive Landscape**
+   - Who ranks for these terms now?
+   - What do their pages look like?
+   - Can you realistically compete?
+
+---
+
+## Core Principles
+
+### 1. Unique Value Per Page
+- Every page must provide value specific to that page
+- Not just swapped variables in a template
+- Maximize unique content—the more differentiated, the better
+
+### 2. Proprietary Data Wins
+Hierarchy of data defensibility:
+1. Proprietary (you created it)
+2. Product-derived (from your users)
+3. User-generated (your community)
+4. Licensed (exclusive access)
+5. Public (anyone can use—weakest)
+
+### 3. Clean URL Structure
+**Always use subfolders, not subdomains**:
+- Good: \`yoursite.com/templates/resume/\`
+- Bad: \`templates.yoursite.com/resume/\`
+
+### 4. Genuine Search Intent Match
+Pages must actually answer what people are searching for.
+
+### 5. Quality Over Quantity
+Better to have 100 great pages than 10,000 thin ones.
+
+### 6. Avoid Google Penalties
+- No doorway pages
+- No keyword stuffing
+- No duplicate content
+- Genuine utility for users
+
+---
+
+## The 12 Playbooks (Overview)
+
+| Playbook | Pattern | Example |
+|----------|---------|---------|
+| Templates | "[Type] template" | "resume template" |
+| Curation | "best [category]" | "best website builders" |
+| Conversions | "[X] to [Y]" | "\$10 USD to GBP" |
+| Comparisons | "[X] vs [Y]" | "webflow vs wordpress" |
+| Examples | "[type] examples" | "landing page examples" |
+| Locations | "[service] in [location]" | "dentists in austin" |
+| Personas | "[product] for [audience]" | "crm for real estate" |
+| Integrations | "[product A] [product B] integration" | "slack asana integration" |
+| Glossary | "what is [term]" | "what is pSEO" |
+| Translations | Content in multiple languages | Localized content |
+| Directory | "[category] tools" | "ai copywriting tools" |
+| Profiles | "[entity name]" | "stripe ceo" |
+
+**For detailed playbook implementation**: See [references/playbooks.md](references/playbooks.md)
+
+---
+
+## Choosing Your Playbook
+
+| If you have... | Consider... |
+|----------------|-------------|
+| Proprietary data | Directories, Profiles |
+| Product with integrations | Integrations |
+| Design/creative product | Templates, Examples |
+| Multi-segment audience | Personas |
+| Local presence | Locations |
+| Tool or utility product | Conversions |
+| Content/expertise | Glossary, Curation |
+| Competitor landscape | Comparisons |
+
+You can layer multiple playbooks (e.g., "Best coworking spaces in San Diego").
+
+---
+
+## Implementation Framework
+
+### 1. Keyword Pattern Research
+
+**Identify the pattern:**
+- What's the repeating structure?
+- What are the variables?
+- How many unique combinations exist?
+
+**Validate demand:**
+- Aggregate search volume
+- Volume distribution (head vs. long tail)
+- Trend direction
+
+### 2. Data Requirements
+
+**Identify data sources:**
+- What data populates each page?
+- Is it first-party, scraped, licensed, public?
+- How is it updated?
+
+### 3. Template Design
+
+**Page structure:**
+- Header with target keyword
+- Unique intro (not just variables swapped)
+- Data-driven sections
+- Related pages / internal links
+- CTAs appropriate to intent
+
+**Ensuring uniqueness:**
+- Each page needs unique value
+- Conditional content based on data
+- Original insights/analysis per page
+
+### 4. Internal Linking Architecture
+
+**Hub and spoke model:**
+- Hub: Main category page
+- Spokes: Individual programmatic pages
+- Cross-links between related spokes
+
+**Avoid orphan pages:**
+- Every page reachable from main site
+- XML sitemap for all pages
+- Breadcrumbs with structured data
+
+### 5. Indexation Strategy
+
+- Prioritize high-volume patterns
+- Noindex very thin variations
+- Manage crawl budget thoughtfully
+- Separate sitemaps by page type
+
+---
+
+## Quality Checks
+
+### Pre-Launch Checklist
+
+**Content quality:**
+- [ ] Each page provides unique value
+- [ ] Answers search intent
+- [ ] Readable and useful
+
+**Technical SEO:**
+- [ ] Unique titles and meta descriptions
+- [ ] Proper heading structure
+- [ ] Schema markup implemented
+- [ ] Page speed acceptable
+
+**Internal linking:**
+- [ ] Connected to site architecture
+- [ ] Related pages linked
+- [ ] No orphan pages
+
+**Indexation:**
+- [ ] In XML sitemap
+- [ ] Crawlable
+- [ ] No conflicting noindex
+
+### Post-Launch Monitoring
+
+Track: Indexation rate, Rankings, Traffic, Engagement, Conversion
+
+Watch for: Thin content warnings, Ranking drops, Manual actions, Crawl errors
+
+---
+
+## Common Mistakes
+
+- **Thin content**: Just swapping city names in identical content
+- **Keyword cannibalization**: Multiple pages targeting same keyword
+- **Over-generation**: Creating pages with no search demand
+- **Poor data quality**: Outdated or incorrect information
+- **Ignoring UX**: Pages exist for Google, not users
+
+---
+
+## Output Format
+
+### Strategy Document
+- Opportunity analysis
+- Implementation plan
+- Content guidelines
+
+### Page Template
+- URL structure
+- Title/meta templates
+- Content outline
+- Schema markup
+
+---
+
+## Task-Specific Questions
+
+1. What keyword patterns are you targeting?
+2. What data do you have (or can acquire)?
+3. How many pages are you planning?
+4. What does your site authority look like?
+5. Who currently ranks for these terms?
+6. What's your technical stack?
+
+---
+
+## Related Skills
+
+- **seo-audit**: For auditing programmatic pages after launch
+- **schema-markup**: For adding structured data
+- **competitor-alternatives**: For comparison page frameworks
+`,
+  "rate-current-update": `---
+name: rate-current-update
+description: Rate the current refactor
+disable-model-invocation: true
+---
+
+# Rate the current refactor
+
+Your role is now to analyze and rate the current refactor base on the initial requirement and rate it on a scale of 0 to 20 explaining why and what to improve if any.
 `,
   "regression-testing": `---
 name: regression-testing
@@ -8245,6 +12447,183 @@ Execute the full test suite and systematically fix any failures, ensuring code q
 - [ ] Tests re-run with passing results
 - [ ] Follow-up improvements noted
 `,
+  "schema-markup": `---
+name: schema-markup
+version: 1.0.0
+description: When the user wants to add, fix, or optimize schema markup and structured data on their site. Also use when the user mentions "schema markup," "structured data," "JSON-LD," "rich snippets," "schema.org," "FAQ schema," "product schema," "review schema," or "breadcrumb schema." For broader SEO issues, see seo-audit.
+---
+
+# Schema Markup
+
+You are an expert in structured data and schema markup. Your goal is to implement schema.org markup that helps search engines understand content and enables rich results in search.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before implementing schema, understand:
+
+1. **Page Type** - What kind of page? What's the primary content? What rich results are possible?
+
+2. **Current State** - Any existing schema? Errors in implementation? Which rich results already appearing?
+
+3. **Goals** - Which rich results are you targeting? What's the business value?
+
+---
+
+## Core Principles
+
+### 1. Accuracy First
+- Schema must accurately represent page content
+- Don't markup content that doesn't exist
+- Keep updated when content changes
+
+### 2. Use JSON-LD
+- Google recommends JSON-LD format
+- Easier to implement and maintain
+- Place in \`<head>\` or end of \`<body>\`
+
+### 3. Follow Google's Guidelines
+- Only use markup Google supports
+- Avoid spam tactics
+- Review eligibility requirements
+
+### 4. Validate Everything
+- Test before deploying
+- Monitor Search Console
+- Fix errors promptly
+
+---
+
+## Common Schema Types
+
+| Type | Use For | Required Properties |
+|------|---------|-------------------|
+| Organization | Company homepage/about | name, url |
+| WebSite | Homepage (search box) | name, url |
+| Article | Blog posts, news | headline, image, datePublished, author |
+| Product | Product pages | name, image, offers |
+| SoftwareApplication | SaaS/app pages | name, offers |
+| FAQPage | FAQ content | mainEntity (Q&A array) |
+| HowTo | Tutorials | name, step |
+| BreadcrumbList | Any page with breadcrumbs | itemListElement |
+| LocalBusiness | Local business pages | name, address |
+| Event | Events, webinars | name, startDate, location |
+
+**For complete JSON-LD examples**: See [references/schema-examples.md](references/schema-examples.md)
+
+---
+
+## Quick Reference
+
+### Organization (Company Page)
+Required: name, url
+Recommended: logo, sameAs (social profiles), contactPoint
+
+### Article/BlogPosting
+Required: headline, image, datePublished, author
+Recommended: dateModified, publisher, description
+
+### Product
+Required: name, image, offers (price + availability)
+Recommended: sku, brand, aggregateRating, review
+
+### FAQPage
+Required: mainEntity (array of Question/Answer pairs)
+
+### BreadcrumbList
+Required: itemListElement (array with position, name, item)
+
+---
+
+## Multiple Schema Types
+
+You can combine multiple schema types on one page using \`@graph\`:
+
+\`\`\`json
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", ... },
+    { "@type": "WebSite", ... },
+    { "@type": "BreadcrumbList", ... }
+  ]
+}
+\`\`\`
+
+---
+
+## Validation and Testing
+
+### Tools
+- **Google Rich Results Test**: https://search.google.com/test/rich-results
+- **Schema.org Validator**: https://validator.schema.org/
+- **Search Console**: Enhancements reports
+
+### Common Errors
+
+**Missing required properties** - Check Google's documentation for required fields
+
+**Invalid values** - Dates must be ISO 8601, URLs fully qualified, enumerations exact
+
+**Mismatch with page content** - Schema doesn't match visible content
+
+---
+
+## Implementation
+
+### Static Sites
+- Add JSON-LD directly in HTML template
+- Use includes/partials for reusable schema
+
+### Dynamic Sites (React, Next.js)
+- Component that renders schema
+- Server-side rendered for SEO
+- Serialize data to JSON-LD
+
+### CMS / WordPress
+- Plugins (Yoast, Rank Math, Schema Pro)
+- Theme modifications
+- Custom fields to structured data
+
+---
+
+## Output Format
+
+### Schema Implementation
+\`\`\`json
+// Full JSON-LD code block
+{
+  "@context": "https://schema.org",
+  "@type": "...",
+  // Complete markup
+}
+\`\`\`
+
+### Testing Checklist
+- [ ] Validates in Rich Results Test
+- [ ] No errors or warnings
+- [ ] Matches page content
+- [ ] All required properties included
+
+---
+
+## Task-Specific Questions
+
+1. What type of page is this?
+2. What rich results are you hoping to achieve?
+3. What data is available to populate the schema?
+4. Is there existing schema on the page?
+5. What's your tech stack?
+
+---
+
+## Related Skills
+
+- **seo-audit**: For overall SEO including schema review
+- **programmatic-seo**: For templated schema at scale
+`,
   "security-audit-copy": `---
 name: security-audit-copy
 description: Security Audit
@@ -8657,6 +13036,679 @@ const validated = userSchema.parse(userInput);
 - @api-design - Design secure APIs
 - @test-automation - Test security with automated tests
 - @production-ready-refactor - Refactor for security
+`,
+  "seo-audit": `---
+name: seo-audit
+version: 1.0.0
+description: When the user wants to audit, review, or diagnose SEO issues on their site. Also use when the user mentions "SEO audit," "technical SEO," "why am I not ranking," "SEO issues," "on-page SEO," "meta tags review," or "SEO health check." For building pages at scale to target keywords, see programmatic-seo. For adding structured data, see schema-markup.
+---
+
+# SEO Audit
+
+You are an expert in search engine optimization. Your goal is to identify SEO issues and provide actionable recommendations to improve organic search performance.
+
+## Initial Assessment
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Before auditing, understand:
+
+1. **Site Context**
+   - What type of site? (SaaS, e-commerce, blog, etc.)
+   - What's the primary business goal for SEO?
+   - What keywords/topics are priorities?
+
+2. **Current State**
+   - Any known issues or concerns?
+   - Current organic traffic level?
+   - Recent changes or migrations?
+
+3. **Scope**
+   - Full site audit or specific pages?
+   - Technical + on-page, or one focus area?
+   - Access to Search Console / analytics?
+
+---
+
+## Audit Framework
+
+### Priority Order
+1. **Crawlability & Indexation** (can Google find and index it?)
+2. **Technical Foundations** (is the site fast and functional?)
+3. **On-Page Optimization** (is content optimized?)
+4. **Content Quality** (does it deserve to rank?)
+5. **Authority & Links** (does it have credibility?)
+
+---
+
+## Technical SEO Audit
+
+### Crawlability
+
+**Robots.txt**
+- Check for unintentional blocks
+- Verify important pages allowed
+- Check sitemap reference
+
+**XML Sitemap**
+- Exists and accessible
+- Submitted to Search Console
+- Contains only canonical, indexable URLs
+- Updated regularly
+- Proper formatting
+
+**Site Architecture**
+- Important pages within 3 clicks of homepage
+- Logical hierarchy
+- Internal linking structure
+- No orphan pages
+
+**Crawl Budget Issues** (for large sites)
+- Parameterized URLs under control
+- Faceted navigation handled properly
+- Infinite scroll with pagination fallback
+- Session IDs not in URLs
+
+### Indexation
+
+**Index Status**
+- site:domain.com check
+- Search Console coverage report
+- Compare indexed vs. expected
+
+**Indexation Issues**
+- Noindex tags on important pages
+- Canonicals pointing wrong direction
+- Redirect chains/loops
+- Soft 404s
+- Duplicate content without canonicals
+
+**Canonicalization**
+- All pages have canonical tags
+- Self-referencing canonicals on unique pages
+- HTTP → HTTPS canonicals
+- www vs. non-www consistency
+- Trailing slash consistency
+
+### Site Speed & Core Web Vitals
+
+**Core Web Vitals**
+- LCP (Largest Contentful Paint): < 2.5s
+- INP (Interaction to Next Paint): < 200ms
+- CLS (Cumulative Layout Shift): < 0.1
+
+**Speed Factors**
+- Server response time (TTFB)
+- Image optimization
+- JavaScript execution
+- CSS delivery
+- Caching headers
+- CDN usage
+- Font loading
+
+**Tools**
+- PageSpeed Insights
+- WebPageTest
+- Chrome DevTools
+- Search Console Core Web Vitals report
+
+### Mobile-Friendliness
+
+- Responsive design (not separate m. site)
+- Tap target sizes
+- Viewport configured
+- No horizontal scroll
+- Same content as desktop
+- Mobile-first indexing readiness
+
+### Security & HTTPS
+
+- HTTPS across entire site
+- Valid SSL certificate
+- No mixed content
+- HTTP → HTTPS redirects
+- HSTS header (bonus)
+
+### URL Structure
+
+- Readable, descriptive URLs
+- Keywords in URLs where natural
+- Consistent structure
+- No unnecessary parameters
+- Lowercase and hyphen-separated
+
+---
+
+## On-Page SEO Audit
+
+### Title Tags
+
+**Check for:**
+- Unique titles for each page
+- Primary keyword near beginning
+- 50-60 characters (visible in SERP)
+- Compelling and click-worthy
+- Brand name placement (end, usually)
+
+**Common issues:**
+- Duplicate titles
+- Too long (truncated)
+- Too short (wasted opportunity)
+- Keyword stuffing
+- Missing entirely
+
+### Meta Descriptions
+
+**Check for:**
+- Unique descriptions per page
+- 150-160 characters
+- Includes primary keyword
+- Clear value proposition
+- Call to action
+
+**Common issues:**
+- Duplicate descriptions
+- Auto-generated garbage
+- Too long/short
+- No compelling reason to click
+
+### Heading Structure
+
+**Check for:**
+- One H1 per page
+- H1 contains primary keyword
+- Logical hierarchy (H1 → H2 → H3)
+- Headings describe content
+- Not just for styling
+
+**Common issues:**
+- Multiple H1s
+- Skip levels (H1 → H3)
+- Headings used for styling only
+- No H1 on page
+
+### Content Optimization
+
+**Primary Page Content**
+- Keyword in first 100 words
+- Related keywords naturally used
+- Sufficient depth/length for topic
+- Answers search intent
+- Better than competitors
+
+**Thin Content Issues**
+- Pages with little unique content
+- Tag/category pages with no value
+- Doorway pages
+- Duplicate or near-duplicate content
+
+### Image Optimization
+
+**Check for:**
+- Descriptive file names
+- Alt text on all images
+- Alt text describes image
+- Compressed file sizes
+- Modern formats (WebP)
+- Lazy loading implemented
+- Responsive images
+
+### Internal Linking
+
+**Check for:**
+- Important pages well-linked
+- Descriptive anchor text
+- Logical link relationships
+- No broken internal links
+- Reasonable link count per page
+
+**Common issues:**
+- Orphan pages (no internal links)
+- Over-optimized anchor text
+- Important pages buried
+- Excessive footer/sidebar links
+
+### Keyword Targeting
+
+**Per Page**
+- Clear primary keyword target
+- Title, H1, URL aligned
+- Content satisfies search intent
+- Not competing with other pages (cannibalization)
+
+**Site-Wide**
+- Keyword mapping document
+- No major gaps in coverage
+- No keyword cannibalization
+- Logical topical clusters
+
+---
+
+## Content Quality Assessment
+
+### E-E-A-T Signals
+
+**Experience**
+- First-hand experience demonstrated
+- Original insights/data
+- Real examples and case studies
+
+**Expertise**
+- Author credentials visible
+- Accurate, detailed information
+- Properly sourced claims
+
+**Authoritativeness**
+- Recognized in the space
+- Cited by others
+- Industry credentials
+
+**Trustworthiness**
+- Accurate information
+- Transparent about business
+- Contact information available
+- Privacy policy, terms
+- Secure site (HTTPS)
+
+### Content Depth
+
+- Comprehensive coverage of topic
+- Answers follow-up questions
+- Better than top-ranking competitors
+- Updated and current
+
+### User Engagement Signals
+
+- Time on page
+- Bounce rate in context
+- Pages per session
+- Return visits
+
+---
+
+## Common Issues by Site Type
+
+### SaaS/Product Sites
+- Product pages lack content depth
+- Blog not integrated with product pages
+- Missing comparison/alternative pages
+- Feature pages thin on content
+- No glossary/educational content
+
+### E-commerce
+- Thin category pages
+- Duplicate product descriptions
+- Missing product schema
+- Faceted navigation creating duplicates
+- Out-of-stock pages mishandled
+
+### Content/Blog Sites
+- Outdated content not refreshed
+- Keyword cannibalization
+- No topical clustering
+- Poor internal linking
+- Missing author pages
+
+### Local Business
+- Inconsistent NAP
+- Missing local schema
+- No Google Business Profile optimization
+- Missing location pages
+- No local content
+
+---
+
+## Output Format
+
+### Audit Report Structure
+
+**Executive Summary**
+- Overall health assessment
+- Top 3-5 priority issues
+- Quick wins identified
+
+**Technical SEO Findings**
+For each issue:
+- **Issue**: What's wrong
+- **Impact**: SEO impact (High/Medium/Low)
+- **Evidence**: How you found it
+- **Fix**: Specific recommendation
+- **Priority**: 1-5 or High/Medium/Low
+
+**On-Page SEO Findings**
+Same format as above
+
+**Content Findings**
+Same format as above
+
+**Prioritized Action Plan**
+1. Critical fixes (blocking indexation/ranking)
+2. High-impact improvements
+3. Quick wins (easy, immediate benefit)
+4. Long-term recommendations
+
+---
+
+## References
+
+- [AI Writing Detection](references/ai-writing-detection.md): Common AI writing patterns to avoid (em dashes, overused phrases, filler words)
+- [AEO & GEO Patterns](references/aeo-geo-patterns.md): Content patterns optimized for answer engines and AI citation
+
+---
+
+## Tools Referenced
+
+**Free Tools**
+- Google Search Console (essential)
+- Google PageSpeed Insights
+- Bing Webmaster Tools
+- Rich Results Test
+- Mobile-Friendly Test
+- Schema Validator
+
+**Paid Tools** (if available)
+- Screaming Frog
+- Ahrefs / Semrush
+- Sitebulb
+- ContentKing
+
+---
+
+## Task-Specific Questions
+
+1. What pages/keywords matter most?
+2. Do you have Search Console access?
+3. Any recent changes or migrations?
+4. Who are your top organic competitors?
+5. What's your current organic traffic baseline?
+
+---
+
+## Related Skills
+
+- **programmatic-seo**: For building SEO pages at scale
+- **schema-markup**: For implementing structured data
+- **page-cro**: For optimizing pages for conversion (not just ranking)
+- **analytics-tracking**: For measuring SEO performance
+`,
+  "social-content": `---
+name: social-content
+version: 1.0.0
+description: "When the user wants help creating, scheduling, or optimizing social media content for LinkedIn, Twitter/X, Instagram, TikTok, Facebook, or other platforms. Also use when the user mentions 'LinkedIn post,' 'Twitter thread,' 'social media,' 'content calendar,' 'social scheduling,' 'engagement,' or 'viral content.' This skill covers content creation, repurposing, and platform-specific strategies."
+---
+
+# Social Content
+
+You are an expert social media strategist. Your goal is to help create engaging content that builds audience, drives engagement, and supports business goals.
+
+## Before Creating Content
+
+**Check for product marketing context first:**
+If \`.claude/product-marketing-context.md\` exists, read it before asking questions. Use that context and only ask for information not already covered or specific to this task.
+
+Gather this context (ask if not provided):
+
+### 1. Goals
+- What's the primary objective? (Brand awareness, leads, traffic, community)
+- What action do you want people to take?
+- Are you building personal brand, company brand, or both?
+
+### 2. Audience
+- Who are you trying to reach?
+- What platforms are they most active on?
+- What content do they engage with?
+
+### 3. Brand Voice
+- What's your tone? (Professional, casual, witty, authoritative)
+- Any topics to avoid?
+- Any specific terminology or style guidelines?
+
+### 4. Resources
+- How much time can you dedicate to social?
+- Do you have existing content to repurpose?
+- Can you create video content?
+
+---
+
+## Platform Quick Reference
+
+| Platform | Best For | Frequency | Key Format |
+|----------|----------|-----------|------------|
+| LinkedIn | B2B, thought leadership | 3-5x/week | Carousels, stories |
+| Twitter/X | Tech, real-time, community | 3-10x/day | Threads, hot takes |
+| Instagram | Visual brands, lifestyle | 1-2 posts + Stories daily | Reels, carousels |
+| TikTok | Brand awareness, younger audiences | 1-4x/day | Short-form video |
+| Facebook | Communities, local businesses | 1-2x/day | Groups, native video |
+
+**For detailed platform strategies**: See [references/platforms.md](references/platforms.md)
+
+---
+
+## Content Pillars Framework
+
+Build your content around 3-5 pillars that align with your expertise and audience interests.
+
+### Example for a SaaS Founder
+
+| Pillar | % of Content | Topics |
+|--------|--------------|--------|
+| Industry insights | 30% | Trends, data, predictions |
+| Behind-the-scenes | 25% | Building the company, lessons learned |
+| Educational | 25% | How-tos, frameworks, tips |
+| Personal | 15% | Stories, values, hot takes |
+| Promotional | 5% | Product updates, offers |
+
+### Pillar Development Questions
+
+For each pillar, ask:
+1. What unique perspective do you have?
+2. What questions does your audience ask?
+3. What content has performed well before?
+4. What can you create consistently?
+5. What aligns with business goals?
+
+---
+
+## Hook Formulas
+
+The first line determines whether anyone reads the rest.
+
+### Curiosity Hooks
+- "I was wrong about [common belief]."
+- "The real reason [outcome] happens isn't what you think."
+- "[Impressive result] — and it only took [surprisingly short time]."
+
+### Story Hooks
+- "Last week, [unexpected thing] happened."
+- "I almost [big mistake/failure]."
+- "3 years ago, I [past state]. Today, [current state]."
+
+### Value Hooks
+- "How to [desirable outcome] (without [common pain]):"
+- "[Number] [things] that [outcome]:"
+- "Stop [common mistake]. Do this instead:"
+
+### Contrarian Hooks
+- "Unpopular opinion: [bold statement]"
+- "[Common advice] is wrong. Here's why:"
+- "I stopped [common practice] and [positive result]."
+
+**For post templates and more hooks**: See [references/post-templates.md](references/post-templates.md)
+
+---
+
+## Content Repurposing System
+
+Turn one piece of content into many:
+
+### Blog Post → Social Content
+
+| Platform | Format |
+|----------|--------|
+| LinkedIn | Key insight + link in comments |
+| LinkedIn | Carousel of main points |
+| Twitter/X | Thread of key takeaways |
+| Instagram | Carousel with visuals |
+| Instagram | Reel summarizing the post |
+
+### Repurposing Workflow
+
+1. **Create pillar content** (blog, video, podcast)
+2. **Extract key insights** (3-5 per piece)
+3. **Adapt to each platform** (format and tone)
+4. **Schedule across the week** (spread distribution)
+5. **Update and reshare** (evergreen content can repeat)
+
+---
+
+## Content Calendar Structure
+
+### Weekly Planning Template
+
+| Day | LinkedIn | Twitter/X | Instagram |
+|-----|----------|-----------|-----------|
+| Mon | Industry insight | Thread | Carousel |
+| Tue | Behind-scenes | Engagement | Story |
+| Wed | Educational | Tips tweet | Reel |
+| Thu | Story post | Thread | Educational |
+| Fri | Hot take | Engagement | Story |
+
+### Batching Strategy (2-3 hours weekly)
+
+1. Review content pillar topics
+2. Write 5 LinkedIn posts
+3. Write 3 Twitter threads + daily tweets
+4. Create Instagram carousel + Reel ideas
+5. Schedule everything
+6. Leave room for real-time engagement
+
+---
+
+## Engagement Strategy
+
+### Daily Engagement Routine (30 min)
+
+1. Respond to all comments on your posts (5 min)
+2. Comment on 5-10 posts from target accounts (15 min)
+3. Share/repost with added insight (5 min)
+4. Send 2-3 DMs to new connections (5 min)
+
+### Quality Comments
+
+- Add new insight, not just "Great post!"
+- Share a related experience
+- Ask a thoughtful follow-up question
+- Respectfully disagree with nuance
+
+### Building Relationships
+
+- Identify 20-50 accounts in your space
+- Consistently engage with their content
+- Share their content with credit
+- Eventually collaborate (podcasts, co-created content)
+
+---
+
+## Analytics & Optimization
+
+### Metrics That Matter
+
+**Awareness:** Impressions, Reach, Follower growth rate
+
+**Engagement:** Engagement rate, Comments (higher value than likes), Shares/reposts, Saves
+
+**Conversion:** Link clicks, Profile visits, DMs received, Leads attributed
+
+### Weekly Review
+
+- Top 3 performing posts (why did they work?)
+- Bottom 3 posts (what can you learn?)
+- Follower growth trend
+- Engagement rate trend
+- Best posting times (from data)
+
+### Optimization Actions
+
+**If engagement is low:**
+- Test new hooks
+- Post at different times
+- Try different formats
+- Increase engagement with others
+
+**If reach is declining:**
+- Avoid external links in post body
+- Increase posting frequency
+- Engage more in comments
+- Test video/visual content
+
+---
+
+## Content Ideas by Situation
+
+### When You're Starting Out
+- Document your journey
+- Share what you're learning
+- Curate and comment on industry content
+- Engage heavily with established accounts
+
+### When You're Stuck
+- Repurpose old high-performing content
+- Ask your audience what they want
+- Comment on industry news
+- Share a failure or lesson learned
+
+---
+
+## Scheduling Best Practices
+
+### When to Schedule vs. Post Live
+
+**Schedule:** Core content posts, Threads, Carousels, Evergreen content
+
+**Post live:** Real-time commentary, Responses to news/trends, Engagement with others
+
+### Queue Management
+
+- Maintain 1-2 weeks of scheduled content
+- Review queue weekly for relevance
+- Leave gaps for spontaneous posts
+- Adjust timing based on performance data
+
+---
+
+## Reverse Engineering Viral Content
+
+Instead of guessing, analyze what's working for top creators in your niche:
+
+1. **Find creators** — 10-20 accounts with high engagement
+2. **Collect data** — 500+ posts for analysis
+3. **Analyze patterns** — Hooks, formats, CTAs that work
+4. **Codify playbook** — Document repeatable patterns
+5. **Layer your voice** — Apply patterns with authenticity
+6. **Convert** — Bridge attention to business results
+
+**For the complete framework**: See [references/reverse-engineering.md](references/reverse-engineering.md)
+
+---
+
+## Task-Specific Questions
+
+1. What platform(s) are you focusing on?
+2. What's your current posting frequency?
+3. Do you have existing content to repurpose?
+4. What content has performed well in the past?
+5. How much time can you dedicate weekly?
+6. Are you building personal brand, company brand, or both?
+
+---
+
+## Related Skills
+
+- **copywriting**: For longer-form content that feeds social
+- **launch-strategy**: For coordinating social with launches
+- **email-sequence**: For nurturing social audience via email
+- **marketing-psychology**: For understanding what drives engagement
 `,
   "sprint-planning": `---
 name: writing-plans
@@ -9675,5 +14727,432 @@ Otherwise → not TDD
 \`\`\`
 
 No exceptions without your human partner's permission.
+`,
+  "ui-ux-pro-max": `---
+name: ui-ux-pro-max
+description: "UI/UX design intelligence. 50 styles, 21 palettes, 50 font pairings, 20 charts, 9 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, mobile app, .html, .tsx, .vue, .svelte. Elements: button, modal, navbar, sidebar, card, table, form, chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, flat design. Topics: color palette, accessibility, animation, layout, typography, font pairing, spacing, hover, shadow, gradient. Integrations: shadcn/ui MCP for component search and examples."
+---
+
+# UI/UX Pro Max - Design Intelligence
+
+Comprehensive design guide for web and mobile applications. Contains 50+ styles, 97 color palettes, 57 font pairings, 99 UX guidelines, and 25 chart types across 9 technology stacks. Searchable database with priority-based recommendations.
+
+## When to Apply
+
+Reference these guidelines when:
+- Designing new UI components or pages
+- Choosing color palettes and typography
+- Reviewing code for UX issues
+- Building landing pages or dashboards
+- Implementing accessibility requirements
+
+## Rule Categories by Priority
+
+| Priority | Category | Impact | Domain |
+|----------|----------|--------|--------|
+| 1 | Accessibility | CRITICAL | \`ux\` |
+| 2 | Touch & Interaction | CRITICAL | \`ux\` |
+| 3 | Performance | HIGH | \`ux\` |
+| 4 | Layout & Responsive | HIGH | \`ux\` |
+| 5 | Typography & Color | MEDIUM | \`typography\`, \`color\` |
+| 6 | Animation | MEDIUM | \`ux\` |
+| 7 | Style Selection | MEDIUM | \`style\`, \`product\` |
+| 8 | Charts & Data | LOW | \`chart\` |
+
+## Quick Reference
+
+### 1. Accessibility (CRITICAL)
+
+- \`color-contrast\` - Minimum 4.5:1 ratio for normal text
+- \`focus-states\` - Visible focus rings on interactive elements
+- \`alt-text\` - Descriptive alt text for meaningful images
+- \`aria-labels\` - aria-label for icon-only buttons
+- \`keyboard-nav\` - Tab order matches visual order
+- \`form-labels\` - Use label with for attribute
+
+### 2. Touch & Interaction (CRITICAL)
+
+- \`touch-target-size\` - Minimum 44x44px touch targets
+- \`hover-vs-tap\` - Use click/tap for primary interactions
+- \`loading-buttons\` - Disable button during async operations
+- \`error-feedback\` - Clear error messages near problem
+- \`cursor-pointer\` - Add cursor-pointer to clickable elements
+
+### 3. Performance (HIGH)
+
+- \`image-optimization\` - Use WebP, srcset, lazy loading
+- \`reduced-motion\` - Check prefers-reduced-motion
+- \`content-jumping\` - Reserve space for async content
+
+### 4. Layout & Responsive (HIGH)
+
+- \`viewport-meta\` - width=device-width initial-scale=1
+- \`readable-font-size\` - Minimum 16px body text on mobile
+- \`horizontal-scroll\` - Ensure content fits viewport width
+- \`z-index-management\` - Define z-index scale (10, 20, 30, 50)
+
+### 5. Typography & Color (MEDIUM)
+
+- \`line-height\` - Use 1.5-1.75 for body text
+- \`line-length\` - Limit to 65-75 characters per line
+- \`font-pairing\` - Match heading/body font personalities
+
+### 6. Animation (MEDIUM)
+
+- \`duration-timing\` - Use 150-300ms for micro-interactions
+- \`transform-performance\` - Use transform/opacity, not width/height
+- \`loading-states\` - Skeleton screens or spinners
+
+### 7. Style Selection (MEDIUM)
+
+- \`style-match\` - Match style to product type
+- \`consistency\` - Use same style across all pages
+- \`no-emoji-icons\` - Use SVG icons, not emojis
+
+### 8. Charts & Data (LOW)
+
+- \`chart-type\` - Match chart type to data type
+- \`color-guidance\` - Use accessible color palettes
+- \`data-table\` - Provide table alternative for accessibility
+
+## How to Use
+
+Search specific domains using the CLI tool below.
+
+---
+
+## Prerequisites
+
+Check if Python is installed:
+
+\`\`\`bash
+python3 --version || python --version
+\`\`\`
+
+If Python is not installed, install it based on user's OS:
+
+**macOS:**
+\`\`\`bash
+brew install python3
+\`\`\`
+
+**Ubuntu/Debian:**
+\`\`\`bash
+sudo apt update && sudo apt install python3
+\`\`\`
+
+**Windows:**
+\`\`\`powershell
+winget install Python.Python.3.12
+\`\`\`
+
+---
+
+## How to Use This Skill
+
+When user requests UI/UX work (design, build, create, implement, review, fix, improve), follow this workflow:
+
+### Step 1: Analyze User Requirements
+
+Extract key information from user request:
+- **Product type**: SaaS, e-commerce, portfolio, dashboard, landing page, etc.
+- **Style keywords**: minimal, playful, professional, elegant, dark mode, etc.
+- **Industry**: healthcare, fintech, gaming, education, etc.
+- **Stack**: React, Vue, Next.js, or default to \`html-tailwind\`
+
+### Step 2: Generate Design System (REQUIRED)
+
+**Always start with \`--design-system\`** to get comprehensive recommendations with reasoning:
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "<product_type> <industry> <keywords>" --design-system [-p "Project Name"]
+\`\`\`
+
+This command:
+1. Searches 5 domains in parallel (product, style, color, landing, typography)
+2. Applies reasoning rules from \`ui-reasoning.csv\` to select best matches
+3. Returns complete design system: pattern, style, colors, typography, effects
+4. Includes anti-patterns to avoid
+
+**Example:**
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "beauty spa wellness service" --design-system -p "Serenity Spa"
+\`\`\`
+
+### Step 2b: Persist Design System (Master + Overrides Pattern)
+
+To save the design system for **hierarchical retrieval across sessions**, add \`--persist\`:
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "<query>" --design-system --persist -p "Project Name"
+\`\`\`
+
+This creates:
+- \`design-system/MASTER.md\` — Global Source of Truth with all design rules
+- \`design-system/pages/\` — Folder for page-specific overrides
+
+**With page-specific override:**
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "<query>" --design-system --persist -p "Project Name" --page "dashboard"
+\`\`\`
+
+This also creates:
+- \`design-system/pages/dashboard.md\` — Page-specific deviations from Master
+
+**How hierarchical retrieval works:**
+1. When building a specific page (e.g., "Checkout"), first check \`design-system/pages/checkout.md\`
+2. If the page file exists, its rules **override** the Master file
+3. If not, use \`design-system/MASTER.md\` exclusively
+
+**Context-aware retrieval prompt:**
+\`\`\`
+I am building the [Page Name] page. Please read design-system/MASTER.md.
+Also check if design-system/pages/[page-name].md exists.
+If the page file exists, prioritize its rules.
+If not, use the Master rules exclusively.
+Now, generate the code...
+\`\`\`
+
+### Step 3: Supplement with Detailed Searches (as needed)
+
+After getting the design system, use domain searches to get additional details:
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n <max_results>]
+\`\`\`
+
+**When to use detailed searches:**
+
+| Need | Domain | Example |
+|------|--------|---------|
+| More style options | \`style\` | \`--domain style "glassmorphism dark"\` |
+| Chart recommendations | \`chart\` | \`--domain chart "real-time dashboard"\` |
+| UX best practices | \`ux\` | \`--domain ux "animation accessibility"\` |
+| Alternative fonts | \`typography\` | \`--domain typography "elegant luxury"\` |
+| Landing structure | \`landing\` | \`--domain landing "hero social-proof"\` |
+
+### Step 4: Stack Guidelines (Default: html-tailwind)
+
+Get implementation-specific best practices. If user doesn't specify a stack, **default to \`html-tailwind\`**.
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack html-tailwind
+\`\`\`
+
+Available stacks: \`html-tailwind\`, \`react\`, \`nextjs\`, \`vue\`, \`svelte\`, \`swiftui\`, \`react-native\`, \`flutter\`, \`shadcn\`, \`jetpack-compose\`
+
+---
+
+## Search Reference
+
+### Available Domains
+
+| Domain | Use For | Example Keywords |
+|--------|---------|------------------|
+| \`product\` | Product type recommendations | SaaS, e-commerce, portfolio, healthcare, beauty, service |
+| \`style\` | UI styles, colors, effects | glassmorphism, minimalism, dark mode, brutalism |
+| \`typography\` | Font pairings, Google Fonts | elegant, playful, professional, modern |
+| \`color\` | Color palettes by product type | saas, ecommerce, healthcare, beauty, fintech, service |
+| \`landing\` | Page structure, CTA strategies | hero, hero-centric, testimonial, pricing, social-proof |
+| \`chart\` | Chart types, library recommendations | trend, comparison, timeline, funnel, pie |
+| \`ux\` | Best practices, anti-patterns | animation, accessibility, z-index, loading |
+| \`react\` | React/Next.js performance | waterfall, bundle, suspense, memo, rerender, cache |
+| \`web\` | Web interface guidelines | aria, focus, keyboard, semantic, virtualize |
+| \`prompt\` | AI prompts, CSS keywords | (style name) |
+
+### Available Stacks
+
+| Stack | Focus |
+|-------|-------|
+| \`html-tailwind\` | Tailwind utilities, responsive, a11y (DEFAULT) |
+| \`react\` | State, hooks, performance, patterns |
+| \`nextjs\` | SSR, routing, images, API routes |
+| \`vue\` | Composition API, Pinia, Vue Router |
+| \`svelte\` | Runes, stores, SvelteKit |
+| \`swiftui\` | Views, State, Navigation, Animation |
+| \`react-native\` | Components, Navigation, Lists |
+| \`flutter\` | Widgets, State, Layout, Theming |
+| \`shadcn\` | shadcn/ui components, theming, forms, patterns |
+| \`jetpack-compose\` | Composables, Modifiers, State Hoisting, Recomposition |
+
+---
+
+## Example Workflow
+
+**User request:** "Làm landing page cho dịch vụ chăm sóc da chuyên nghiệp"
+
+### Step 1: Analyze Requirements
+- Product type: Beauty/Spa service
+- Style keywords: elegant, professional, soft
+- Industry: Beauty/Wellness
+- Stack: html-tailwind (default)
+
+### Step 2: Generate Design System (REQUIRED)
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "beauty spa wellness service elegant" --design-system -p "Serenity Spa"
+\`\`\`
+
+**Output:** Complete design system with pattern, style, colors, typography, effects, and anti-patterns.
+
+### Step 3: Supplement with Detailed Searches (as needed)
+
+\`\`\`bash
+# Get UX guidelines for animation and accessibility
+python3 skills/ui-ux-pro-max/scripts/search.py "animation accessibility" --domain ux
+
+# Get alternative typography options if needed
+python3 skills/ui-ux-pro-max/scripts/search.py "elegant luxury serif" --domain typography
+\`\`\`
+
+### Step 4: Stack Guidelines
+
+\`\`\`bash
+python3 skills/ui-ux-pro-max/scripts/search.py "layout responsive form" --stack html-tailwind
+\`\`\`
+
+**Then:** Synthesize design system + detailed searches and implement the design.
+
+---
+
+## Output Formats
+
+The \`--design-system\` flag supports two output formats:
+
+\`\`\`bash
+# ASCII box (default) - best for terminal display
+python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system
+
+# Markdown - best for documentation
+python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system -f markdown
+\`\`\`
+
+---
+
+## Tips for Better Results
+
+1. **Be specific with keywords** - "healthcare SaaS dashboard" > "app"
+2. **Search multiple times** - Different keywords reveal different insights
+3. **Combine domains** - Style + Typography + Color = Complete design system
+4. **Always check UX** - Search "animation", "z-index", "accessibility" for common issues
+5. **Use stack flag** - Get implementation-specific best practices
+6. **Iterate** - If first search doesn't match, try different keywords
+
+---
+
+## Common Rules for Professional UI
+
+These are frequently overlooked issues that make UI look unprofessional:
+
+### Icons & Visual Elements
+
+| Rule | Do | Don't |
+|------|----|----- |
+| **No emoji icons** | Use SVG icons (Heroicons, Lucide, Simple Icons) | Use emojis like 🎨 🚀 ⚙️ as UI icons |
+| **Stable hover states** | Use color/opacity transitions on hover | Use scale transforms that shift layout |
+| **Correct brand logos** | Research official SVG from Simple Icons | Guess or use incorrect logo paths |
+| **Consistent icon sizing** | Use fixed viewBox (24x24) with w-6 h-6 | Mix different icon sizes randomly |
+
+### Interaction & Cursor
+
+| Rule | Do | Don't |
+|------|----|----- |
+| **Cursor pointer** | Add \`cursor-pointer\` to all clickable/hoverable cards | Leave default cursor on interactive elements |
+| **Hover feedback** | Provide visual feedback (color, shadow, border) | No indication element is interactive |
+| **Smooth transitions** | Use \`transition-colors duration-200\` | Instant state changes or too slow (>500ms) |
+
+### Light/Dark Mode Contrast
+
+| Rule | Do | Don't |
+|------|----|----- |
+| **Glass card light mode** | Use \`bg-white/80\` or higher opacity | Use \`bg-white/10\` (too transparent) |
+| **Text contrast light** | Use \`#0F172A\` (slate-900) for text | Use \`#94A3B8\` (slate-400) for body text |
+| **Muted text light** | Use \`#475569\` (slate-600) minimum | Use gray-400 or lighter |
+| **Border visibility** | Use \`border-gray-200\` in light mode | Use \`border-white/10\` (invisible) |
+
+### Layout & Spacing
+
+| Rule | Do | Don't |
+|------|----|----- |
+| **Floating navbar** | Add \`top-4 left-4 right-4\` spacing | Stick navbar to \`top-0 left-0 right-0\` |
+| **Content padding** | Account for fixed navbar height | Let content hide behind fixed elements |
+| **Consistent max-width** | Use same \`max-w-6xl\` or \`max-w-7xl\` | Mix different container widths |
+
+---
+
+## Pre-Delivery Checklist
+
+Before delivering UI code, verify these items:
+
+### Visual Quality
+- [ ] No emojis used as icons (use SVG instead)
+- [ ] All icons from consistent icon set (Heroicons/Lucide)
+- [ ] Brand logos are correct (verified from Simple Icons)
+- [ ] Hover states don't cause layout shift
+- [ ] Use theme colors directly (bg-primary) not var() wrapper
+
+### Interaction
+- [ ] All clickable elements have \`cursor-pointer\`
+- [ ] Hover states provide clear visual feedback
+- [ ] Transitions are smooth (150-300ms)
+- [ ] Focus states visible for keyboard navigation
+
+### Light/Dark Mode
+- [ ] Light mode text has sufficient contrast (4.5:1 minimum)
+- [ ] Glass/transparent elements visible in light mode
+- [ ] Borders visible in both modes
+- [ ] Test both modes before delivery
+
+### Layout
+- [ ] Floating elements have proper spacing from edges
+- [ ] No content hidden behind fixed navbars
+- [ ] Responsive at 375px, 768px, 1024px, 1440px
+- [ ] No horizontal scroll on mobile
+
+### Accessibility
+- [ ] All images have alt text
+- [ ] Form inputs have labels
+- [ ] Color is not the only indicator
+- [ ] \`prefers-reduced-motion\` respected
+`,
+  "web-design-guidelines": `---
+name: web-design-guidelines
+description: Review UI code for Web Interface Guidelines compliance. Use when asked to "review my UI", "check accessibility", "audit design", "review UX", or "check my site against best practices".
+metadata:
+  author: vercel
+  version: "1.0.0"
+  argument-hint: <file-or-pattern>
+---
+
+# Web Interface Guidelines
+
+Review files for compliance with Web Interface Guidelines.
+
+## How It Works
+
+1. Fetch the latest guidelines from the source URL below
+2. Read the specified files (or prompt user for files/pattern)
+3. Check against all rules in the fetched guidelines
+4. Output findings in the terse \`file:line\` format
+
+## Guidelines Source
+
+Fetch fresh guidelines before each review:
+
+\`\`\`
+https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md
+\`\`\`
+
+Use WebFetch to retrieve the latest rules. The fetched content contains all the rules and output format instructions.
+
+## Usage
+
+When a user provides a file or pattern argument:
+1. Fetch guidelines from the source URL above
+2. Read the specified files
+3. Apply all rules from the fetched guidelines
+4. Output findings using the format specified in the guidelines
+
+If no files specified, ask the user which files to review.
 `,
 };

@@ -1,4 +1,56 @@
 {
+  "baseline-ui": {
+    "source": "ibelick/ui-skills",
+    "path": "skills/baseline-ui/SKILL.md"
+  },
+  "brand-guidelines": {
+    "source": "anthropics/skills",
+    "path": "skills/brand-guidelines/SKILL.md"
+  },
+  "canvas-design": {
+    "source": "anthropics/skills",
+    "path": "skills/canvas-design/SKILL.md"
+  },
+  "competitor-alternatives": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/competitor-alternatives/SKILL.md"
+  },
+  "content-strategy": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/content-strategy/SKILL.md"
+  },
+  "copy-editing": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/copy-editing/SKILL.md"
+  },
+  "copywriting": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/copywriting/SKILL.md"
+  },
+  "design-md": {
+    "source": "google-labs-code/stitch-skills",
+    "path": "skills/design-md/SKILL.md"
+  },
+  "email-sequence": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/email-sequence/SKILL.md"
+  },
+  "fixing-accessibility": {
+    "source": "ibelick/ui-skills",
+    "path": "skills/fixing-accessibility/SKILL.md"
+  },
+  "fixing-metadata": {
+    "source": "ibelick/ui-skills",
+    "path": "skills/fixing-metadata/SKILL.md"
+  },
+  "fixing-motion-performance": {
+    "source": "ibelick/ui-skills",
+    "path": "skills/fixing-motion-performance/SKILL.md"
+  },
+  "frontend-design": {
+    "source": "anthropics/skills",
+    "path": "skills/frontend-design/SKILL.md"
+  },
   "sprint-planning": {
     "source": "obra/superpowers",
     "path": "skills/writing-plans/SKILL.md"
@@ -11,9 +63,33 @@
     "source": "vercel-labs/agent-skills",
     "path": "skills/react-best-practices/SKILL.md"
   },
+  "launch-strategy": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/launch-strategy/SKILL.md"
+  },
+  "marketing-ideas": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/marketing-ideas/SKILL.md"
+  },
+  "marketing-psychology": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/marketing-psychology/SKILL.md"
+  },
+  "page-cro": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/page-cro/SKILL.md"
+  },
   "pr-review": {
     "source": "obra/superpowers",
     "path": "skills/requesting-code-review/SKILL.md"
+  },
+  "product-marketing-context": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/product-marketing-context/SKILL.md"
+  },
+  "programmatic-seo": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/programmatic-seo/SKILL.md"
   },
   "test-strategy": {
     "source": "obra/superpowers",
@@ -22,5 +98,25 @@
   "test-automation": {
     "source": "anthropics/skills",
     "path": "skills/webapp-testing/SKILL.md"
+  },
+  "schema-markup": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/schema-markup/SKILL.md"
+  },
+  "seo-audit": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/seo-audit/SKILL.md"
+  },
+  "social-content": {
+    "source": "coreyhaines31/marketingskills",
+    "path": "skills/social-content/SKILL.md"
+  },
+  "ui-ux-pro-max": {
+    "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+    "path": ".claude/skills/ui-ux-pro-max/SKILL.md"
+  },
+  "web-design-guidelines": {
+    "source": "vercel-labs/agent-skills",
+    "path": "skills/web-design-guidelines/SKILL.md"
   }
 }
