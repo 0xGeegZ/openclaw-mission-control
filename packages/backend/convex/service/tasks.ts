@@ -594,3 +594,28 @@ export const updateStatusFromAgent = internalMutation({
     return args.taskId;
   },
 });
+
+/**
+ * Update task PR metadata (internal, service-only).
+ * Used by task_link_pr tool to store GitHub PR link.
+ */
+export const updateTaskPrMetadata = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    const metadata = task.metadata || {};
+    metadata.prNumber = args.prNumber;
+
+    await ctx.db.patch(args.taskId, {
+      metadata,
+      updatedAt: Date.now(),
+    });
+  },
+});
