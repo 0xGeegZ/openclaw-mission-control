@@ -1333,6 +1333,65 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
+    if (req.url === "/agent/get-agent-skills") {
+      if (req.method !== "POST") {
+        res.writeHead(405, { Allow: "POST" });
+        res.end("Method Not Allowed");
+        return;
+      }
+      if (!isLocalAddress(req.socket.remoteAddress)) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: endpoint is local-only",
+        });
+        return;
+      }
+      const sessionHeader = req.headers["x-openclaw-session-key"];
+      const sessionKey = Array.isArray(sessionHeader)
+        ? sessionHeader[0]
+        : sessionHeader;
+      if (!sessionKey) {
+        sendJson(res, 401, {
+          success: false,
+          error: "Missing x-openclaw-session-key header",
+        });
+        return;
+      }
+      const agentId = getAgentIdForSessionKey(sessionKey);
+      if (!agentId) {
+        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        return;
+      }
+      if (!runtimeConfig) {
+        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        return;
+      }
+      let body: { agentId?: string };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const queryAgentId = body.agentId
+          ? (body.agentId as Id<"agents">)
+          : undefined;
+        const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
+          accountId: runtimeConfig.accountId,
+          agentId,
+          serviceToken: runtimeConfig.serviceToken,
+          queryAgentId,
+        });
+        sendJson(res, 200, { success: true, data: { agents: skills } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
     if (req.url === "/agent/task-delete") {
       if (req.method !== "POST") {
         res.writeHead(405, { Allow: "POST" });

@@ -919,6 +919,7 @@ function buildHttpCapabilityLabels(options: {
     labels.push("request agent responses via HTTP (POST /agent/response-request)");
   }
   labels.push("load task details via HTTP (POST /agent/task-load)");
+  labels.push("query agent skills via HTTP (POST /agent/get-agent-skills)");
   if (options.isOrchestrator) {
     labels.push("assign agents via HTTP (POST /agent/task-assign)");
     labels.push("list tasks via HTTP (POST /agent/task-list)");
