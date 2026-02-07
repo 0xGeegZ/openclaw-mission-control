@@ -11,11 +11,13 @@ import { Textarea } from "@packages/ui/components/textarea";
 import {
   AlertCircle,
   ArrowLeft,
+  Copy,
   Edit3,
   Eye,
   FileText,
   Save,
 } from "lucide-react";
+import { useCopyToClipboard } from "usehooks-ts";
 import Link from "next/link";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { toast } from "sonner";
@@ -37,6 +39,7 @@ export default function DocumentDetailPage({
     isAuthenticated ? { documentId: documentId as Id<"documents"> } : "skip",
   );
   const updateDoc = useMutation(api.documents.update);
+  const [, copyToClipboard] = useCopyToClipboard();
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
@@ -50,6 +53,19 @@ export default function DocumentDetailPage({
     setEditContent(content);
     setIsEditMode(resolvedKind === "file" && !content.trim());
   }, [document]);
+
+  /**
+   * Copy document URL to clipboard for sharing.
+   */
+  const handleCopyLink = () => {
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/${accountSlug}/docs/${documentId}`
+        : "";
+    copyToClipboard(url)
+      .then(() => toast.success("Link copied"))
+      .catch(() => toast.error("Failed to copy"));
+  };
 
   /**
    * Persist document title and content updates.
@@ -135,6 +151,15 @@ export default function DocumentDetailPage({
                 Edit
               </Button>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleCopyLink}
+              aria-label="Copy link"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
             <Button onClick={handleSaveDoc}>
               <Save className="mr-2 h-4 w-4" />
               Save
