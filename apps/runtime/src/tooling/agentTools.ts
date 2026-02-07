@@ -204,6 +204,25 @@ export const TASK_LINK_PR_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: get agent skills */
+export const GET_AGENT_SKILLS_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "get_agent_skills",
+    description:
+      "Get skills available to agents in the account. Query specific agent or all agents. Orchestrator can query any agent for skill audits.",
+    parameters: {
+      type: "object",
+      properties: {
+        agentId: {
+          type: "string",
+          description: "Optional agent ID to query (defaults to all agents). Orchestrator can query any; non-orchestrator only own.",
+        },
+      },
+    },
+  },
+};
+
 /** OpenResponses function tool schema: request a response from other agents */
 export const RESPONSE_REQUEST_TOOL_SCHEMA = {
   type: "function" as const,
@@ -321,6 +340,10 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("request agent responses (response_request tool)");
     schemas.push(RESPONSE_REQUEST_TOOL_SCHEMA);
   }
+  // Available to all agents (including orchestrator)
+  capabilityLabels.push("query agent skills (get_agent_skills tool)");
+  schemas.push(GET_AGENT_SKILLS_TOOL_SCHEMA);
+
   if (isOrchestrator) {
     capabilityLabels.push("assign agents (task_assign tool)");
     capabilityLabels.push("post to other tasks (task_message tool)");
@@ -874,6 +897,28 @@ export async function executeAgentTool(params: {
         prNumber: args.prNumber,
       });
       return { success: true, data: { taskId: args.taskId, prNumber: args.prNumber } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "get_agent_skills") {
+    let args: { agentId?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    try {
+      const queryAgentId = args.agentId ? (args.agentId as Id<"agents">) : undefined;
+      const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
+        accountId,
+        agentId,
+        serviceToken,
+        queryAgentId,
+      });
+      return { success: true, data: { agents: skills } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

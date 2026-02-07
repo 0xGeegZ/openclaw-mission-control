@@ -1579,3 +1579,80 @@ export const linkTaskToPrForAgentTool = action({
     return { success: true };
   },
 });
+
+/**
+ * Get agent skills for query tool.
+ * All agents can query own or all agents' skills.
+ * Orchestrator has enhanced visibility for detailed skill audits.
+ */
+export const getAgentSkillsForTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    serviceToken: v.string(),
+    queryAgentId: v.optional(v.id("agents")), // Which agent to query; undefined = all agents
+  },
+  handler: async (ctx, args): Promise<
+    Array<{ agentId: string; skillIds: string[]; skillCount: number; lastUpdated: number }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify requesting agent exists and belongs to account
+    const requestingAgent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!requestingAgent) {
+      throw new Error("Not found: Requesting agent does not exist");
+    }
+    if (requestingAgent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const isOrchestrator = requestingAgent.slug === "orchestrator";
+
+    // If queryAgentId specified, verify access
+    if (args.queryAgentId) {
+      const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
+        agentId: args.queryAgentId,
+      });
+      if (!targetAgent) {
+        throw new Error("Not found: Target agent does not exist");
+      }
+      if (targetAgent.accountId !== args.accountId) {
+        throw new Error("Forbidden: Target agent belongs to different account");
+      }
+
+      // Non-orchestrator agents can only query their own skills
+      if (!isOrchestrator && args.queryAgentId !== args.agentId) {
+        throw new Error(
+          "Forbidden: Only orchestrator can query other agents' skills"
+        );
+      }
+
+      // Return single agent's skills
+      return [
+        {
+          agentId: targetAgent.slug || String(targetAgent._id),
+          skillIds: targetAgent.openclawConfig?.skillIds || [],
+          skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+          lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+        },
+      ];
+    }
+
+    // No queryAgentId: return all agents' skills (all agents can access this)
+    const allAgents = await ctx.runQuery(internal.service.agents.listInternal, {
+      accountId: args.accountId,
+    });
+
+    return allAgents.map((agent) => ({
+      agentId: agent.slug || String(agent._id),
+      skillIds: agent.openclawConfig?.skillIds || [],
+      skillCount: agent.openclawConfig?.skillIds?.length || 0,
+      lastUpdated: agent.lastHeartbeat || agent._creationTime,
+    }));
+  },
+});
