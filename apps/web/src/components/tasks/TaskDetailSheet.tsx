@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
@@ -10,6 +11,7 @@ import {
   SheetTitle,
 } from "@packages/ui/components/sheet";
 import { Badge } from "@packages/ui/components/badge";
+import { Button } from "@packages/ui/components/button";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import {
   Tabs,
@@ -21,6 +23,8 @@ import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Maximize2,
+  Trash2,
+  CheckCircle2,
   Calendar,
   MessageSquare,
   FileText,
@@ -29,10 +33,13 @@ import {
   Tag,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
+import { cn } from "@packages/ui/lib/utils";
+import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskDetailSheetProps {
@@ -112,13 +119,30 @@ const STATUS_CONFIG: Record<string, { color: string; bgColor: string }> = {
  * Task detail sheet component.
  * Opens as a slide-over panel showing full task details.
  */
+const headerActionClass =
+  "ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden";
+
 export function TaskDetailSheet({
   taskId,
   accountSlug,
   open,
   onOpenChange,
 }: TaskDetailSheetProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
+  const updateStatus = useMutation(api.tasks.updateStatus);
+
+  const handleMarkAsDone = async () => {
+    if (!task) return;
+    try {
+      await updateStatus({ taskId: task._id, status: "done" });
+      toast.success("Status updated");
+    } catch (error) {
+      toast.error("Failed to update status", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -128,14 +152,25 @@ export function TaskDetailSheet({
         showCloseButton={true}
         headerActions={
           task && (
-            <Link
-              href={`/${accountSlug}/tasks/${task._id}`}
-              className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
-              title="Open full page"
-            >
-              <Maximize2 className="size-4" />
-              <span className="sr-only">Open full page</span>
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link
+                href={`/${accountSlug}/tasks/${task._id}`}
+                className={headerActionClass}
+                title="Open full page"
+              >
+                <Maximize2 className="size-4" />
+                <span className="sr-only">Open full page</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setDeleteDialogOpen(true)}
+                className={cn(headerActionClass, "hover:text-destructive")}
+                title="Delete task"
+                aria-label="Delete task"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
           )
         }
       >
@@ -170,6 +205,17 @@ export function TaskDetailSheet({
                 aria-label="Task status and priority"
               >
                 <TaskStatusSelect task={task} variant="compact" />
+
+                {task.status === "review" && (
+                  <Button
+                    size="sm"
+                    onClick={handleMarkAsDone}
+                    className="gap-1.5"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Mark as done
+                  </Button>
+                )}
 
                 {task.priority && (
                   <Badge
@@ -339,6 +385,15 @@ export function TaskDetailSheet({
           </>
         )}
       </SheetContent>
+      {task && (
+        <DeleteTaskDialog
+          taskId={task._id}
+          taskTitle={task.title}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onDeleted={() => onOpenChange(false)}
+        />
+      )}
     </Sheet>
   );
 }
