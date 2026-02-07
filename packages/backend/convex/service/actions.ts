@@ -1409,7 +1409,7 @@ export const loadTaskDetailsForAgentTool = action({
       {
         accountId: args.accountId,
         taskId: args.taskId,
-        limit: args.messageLimit,
+        limit: args.messageLimit ?? 10,
       },
     );
 
