@@ -1403,13 +1403,17 @@ export const loadTaskDetailsForAgentTool = action({
       throw new Error("Forbidden: Task belongs to different account");
     }
 
-    // Fetch thread messages
+    // Fetch thread messages with validated limit (1-200, default 10)
+    const messageLimit =
+      args.messageLimit != null
+        ? Math.min(Math.max(1, args.messageLimit), 200)
+        : 10;
     const thread = await ctx.runQuery(
       internal.service.messages.listThreadForTool,
       {
         accountId: args.accountId,
         taskId: args.taskId,
-        limit: args.messageLimit ?? 10,
+        limit: messageLimit,
       },
     );
 
