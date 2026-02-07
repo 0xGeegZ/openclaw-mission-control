@@ -1077,6 +1077,122 @@ export const createTaskMessageForAgentTool = action({
 });
 
 /**
+ * Create response_request notifications from an agent (service-only).
+ * Used by runtime response_request tool to explicitly ask other agents for replies.
+ */
+export const createResponseRequestNotifications = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    requesterAgentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    recipientSlugs: v.array(v.string()),
+    message: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ notificationIds: Array<Id<"notifications">> }> => {
+    const maxRecipients = 10;
+    const maxMessageChars = 1000;
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const requester = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.requesterAgentId,
+    });
+    if (!requester) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (requester.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const task = await ctx.runQuery(internal.service.agents.getTaskInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(requester, account);
+    if (!flags.canMentionAgents) {
+      throw new Error("Forbidden: Agent may not request responses");
+    }
+
+    if (args.recipientSlugs.length > maxRecipients) {
+      throw new Error(
+        `Too many recipients: max ${maxRecipients} allowed per request`,
+      );
+    }
+    if (!args.message.trim()) {
+      throw new Error("Message is required");
+    }
+    if (args.message.trim().length > maxMessageChars) {
+      throw new Error(
+        `Message too long: max ${maxMessageChars} characters allowed`,
+      );
+    }
+
+    const slugMap = new Map(
+      args.recipientSlugs.map((slug) => [slug.trim().toLowerCase(), slug]),
+    );
+    const uniqueSlugs = Array.from(slugMap.keys()).filter((slug) => slug);
+    if (uniqueSlugs.length === 0) {
+      throw new Error("Invalid recipient slugs: none provided");
+    }
+
+    const agents = await ctx.runQuery(internal.service.agents.listInternal, {
+      accountId: args.accountId,
+    });
+    const agentsBySlug = new Map(
+      agents
+        .filter((agent) => (agent.slug ?? "").trim())
+        .map((agent) => [agent.slug.trim().toLowerCase(), agent]),
+    );
+    const missingSlugs: string[] = [];
+    const recipientAgentIds: Array<Id<"agents">> = [];
+    for (const slug of uniqueSlugs) {
+      const agent = agentsBySlug.get(slug);
+      if (!agent) {
+        missingSlugs.push(slugMap.get(slug) ?? slug);
+        continue;
+      }
+      if (agent._id === requester._id) continue;
+      recipientAgentIds.push(agent._id);
+    }
+
+    if (missingSlugs.length > 0) {
+      throw new Error(`Unknown recipient slugs: ${missingSlugs.join(", ")}`);
+    }
+    if (recipientAgentIds.length === 0) {
+      throw new Error("No valid recipients after filtering");
+    }
+
+    const notificationIds = await ctx.runMutation(
+      internal.service.notifications.createResponseRequestNotificationsInternal,
+      {
+        accountId: args.accountId,
+        requesterAgentId: args.requesterAgentId,
+        taskId: args.taskId,
+        recipientAgentIds,
+        message: args.message,
+      },
+    );
+
+    return { notificationIds };
+  },
+});
+
+/**
  * Create or update a document on behalf of an agent (service-only).
  * Gated by canCreateDocuments behavior flag.
  */

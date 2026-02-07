@@ -55,6 +55,7 @@ export type NotificationType =
   | "assignment"
   | "thread_update"
   | "status_change"
+  | "response_request"
   | "member_added"
   | "member_removed"
   | "role_changed";

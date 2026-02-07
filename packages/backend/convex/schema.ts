@@ -77,6 +77,7 @@ const notificationTypeValidator = v.union(
   v.literal("assignment"),
   v.literal("thread_update"),
   v.literal("status_change"),
+  v.literal("response_request"),
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("role_changed"),
@@ -559,6 +560,12 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_author_created", [
+      "taskId",
+      "authorType",
+      "authorId",
+      "createdAt",
+    ])
     .index("by_account", ["accountId"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
@@ -782,6 +789,11 @@ export default defineSchema({
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_task_recipient_id_created", [
+      "taskId",
+      "recipientId",
+      "createdAt",
+    ])
     .index("by_task_recipient_created", [
       "taskId",
       "recipientType",

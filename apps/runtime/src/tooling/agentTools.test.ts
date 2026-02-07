@@ -78,6 +78,29 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(schemaNames(result.schemas)).toContain("document_upsert");
   });
 
+  it("returns response_request when canMentionAgents and hasTaskContext", () => {
+    const result = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      canMentionAgents: true,
+      hasTaskContext: true,
+    });
+    expect(result.capabilityLabels).toContain(
+      "request agent responses (response_request tool)",
+    );
+    expect(schemaNames(result.schemas)).toContain("response_request");
+
+    const noTask = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      canMentionAgents: true,
+      hasTaskContext: false,
+    });
+    expect(schemaNames(noTask.schemas)).not.toContain("response_request");
+  });
+
   it("includes orchestrator-only tools when isOrchestrator is true", () => {
     const result = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -99,6 +122,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       canCreateTasks: true,
       canModifyTaskStatus: true,
       canCreateDocuments: true,
+      canMentionAgents: true,
       hasTaskContext: true,
     };
     const result = getToolCapabilitiesAndSchemas(options);
@@ -128,6 +152,7 @@ describe("getToolSchemasForCapabilities", () => {
       canCreateTasks: true,
       canModifyTaskStatus: true,
       canCreateDocuments: true,
+      canMentionAgents: true,
       hasTaskContext: true,
     };
     const fromHelper = getToolCapabilitiesAndSchemas(options).schemas;
