@@ -205,7 +205,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         </div>
 
         {task.description && (
-          <div className="text-muted-foreground">
+          <div className="max-h-60 overflow-y-auto pr-3 text-sm leading-relaxed text-muted-foreground">
             <MarkdownRenderer content={task.description} compact />
           </div>
         )}

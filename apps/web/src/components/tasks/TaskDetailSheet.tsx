@@ -20,7 +20,7 @@ import {
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { formatDistanceToNow, format } from "date-fns";
 import {
-  ArrowUpRight,
+  Maximize2,
   Calendar,
   MessageSquare,
   FileText,
@@ -133,7 +133,7 @@ export function TaskDetailSheet({
               className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
               title="Open full page"
             >
-              <ArrowUpRight className="size-4" />
+              <Maximize2 className="size-4" />
               <span className="sr-only">Open full page</span>
             </Link>
           )
