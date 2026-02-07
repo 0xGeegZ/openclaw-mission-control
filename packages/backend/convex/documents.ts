@@ -5,6 +5,11 @@ import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { documentTypeValidator, documentKindValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
+import {
+  validateDocumentParent,
+  validateDocumentReferences,
+  cascadeDeleteDocumentChildren,
+} from "./lib/reference_validation";
 
 /**
  * List documents for an account.
