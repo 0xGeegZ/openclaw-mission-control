@@ -1128,14 +1128,14 @@ export function formatNotificationMessage(
         localRepoHint,
         "",
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
-        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create.",
+        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n")
     : [
         "Repository context: not found.",
         localRepoHint,
-        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create.",
+        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
       ].join("\n");

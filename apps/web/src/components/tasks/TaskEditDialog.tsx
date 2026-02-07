@@ -45,13 +45,17 @@ const PRIORITY_OPTIONS = [
 /**
  * Dialog for editing task details: description, priority, labels, due date.
  */
-export function TaskEditDialog({ task, open, onOpenChange }: TaskEditDialogProps) {
+export function TaskEditDialog({
+  task,
+  open,
+  onOpenChange,
+}: TaskEditDialogProps) {
   const [description, setDescription] = useState(task.description ?? "");
   const [priority, setPriority] = useState(String(task.priority));
   const [labels, setLabels] = useState<string[]>(task.labels);
   const [newLabel, setNewLabel] = useState("");
   const [dueDate, setDueDate] = useState(
-    task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd") : ""
+    task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd") : "",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -62,7 +66,9 @@ export function TaskEditDialog({ task, open, onOpenChange }: TaskEditDialogProps
     setDescription(task.description ?? "");
     setPriority(String(task.priority));
     setLabels(task.labels);
-    setDueDate(task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd") : "");
+    setDueDate(
+      task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd") : "",
+    );
   }, [task]);
 
   const handleAddLabel = () => {
@@ -102,103 +108,119 @@ export function TaskEditDialog({ task, open, onOpenChange }: TaskEditDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-4 overflow-hidden sm:max-w-lg">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Edit Task</DialogTitle>
           <DialogDescription>
-            Update task details for <span className="font-medium">{task.title}</span>
+            Update task details for{" "}
+            <span className="font-medium">{task.title}</span>
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="edit-description">Description</Label>
-            <Textarea
-              id="edit-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add more details about this task...&#10;&#10;Supports **Markdown** formatting"
-              rows={4}
-              className="resize-none font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">Supports Markdown formatting</p>
-          </div>
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <div className="min-h-0 flex-1 overflow-auto pr-2">
+            <div className="space-y-4">
+              {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add more details about this task...&#10;&#10;Supports **Markdown** formatting"
+                  rows={4}
+                  className="resize-none font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Supports Markdown formatting
+                </p>
+              </div>
 
-          {/* Priority & Due Date row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-priority">Priority</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger id="edit-priority">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${opt.color}`} />
-                        {opt.label}
-                      </div>
-                    </SelectItem>
+              {/* Priority & Due Date row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-priority">Priority</Label>
+                  <Select value={priority} onValueChange={setPriority}>
+                    <SelectTrigger id="edit-priority">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-2 h-2 rounded-full ${opt.color}`}
+                            />
+                            {opt.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-due-date">Due Date</Label>
+                  <Input
+                    id="edit-due-date"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Labels */}
+              <div className="space-y-2">
+                <Label>Labels</Label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {labels.map((label) => (
+                    <Badge
+                      key={label}
+                      variant="secondary"
+                      className="gap-1 pr-1"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLabel(label)}
+                        className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                        <span className="sr-only">Remove {label}</span>
+                      </button>
+                    </Badge>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-due-date">Due Date</Label>
-              <Input
-                id="edit-due-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Labels */}
-          <div className="space-y-2">
-            <Label>Labels</Label>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {labels.map((label) => (
-                <Badge key={label} variant="secondary" className="gap-1 pr-1">
-                  {label}
-                  <button
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    placeholder="Add a label..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddLabel();
+                      }
+                    }}
+                  />
+                  <Button
                     type="button"
-                    onClick={() => handleRemoveLabel(label)}
-                    className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleAddLabel}
+                    disabled={!newLabel.trim()}
                   >
-                    <X className="h-3 w-3" />
-                    <span className="sr-only">Remove {label}</span>
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="Add a label..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddLabel();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleAddLabel}
-                disabled={!newLabel.trim()}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="sr-only">Add label</span>
-              </Button>
+                    <Plus className="h-4 w-4" />
+                    <span className="sr-only">Add label</span>
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="shrink-0 gap-2 sm:gap-0">
             <Button
               type="button"
               variant="outline"
@@ -208,7 +230,9 @@ export function TaskEditDialog({ task, open, onOpenChange }: TaskEditDialogProps
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {isSubmitting ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>

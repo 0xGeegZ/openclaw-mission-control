@@ -17,7 +17,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ### Creating a PR
 
-Work in `/root/clawd/repos/openclaw-mission-control`: create a branch, commit, push, then open the PR with `gh pr create` (e.g. `gh pr create --title "..." --body "..."`). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
+Work in `/root/clawd/repos/openclaw-mission-control`: create a branch, commit, push, then open the PR with `gh pr create` (e.g. `gh pr create --title "..." --body "..." --base dev`). Use `dev` as the base branch for all PRs (merge into `dev`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
 
 ## Non-negotiable rules
 
