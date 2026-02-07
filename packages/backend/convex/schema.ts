@@ -206,13 +206,14 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
+        /** Task ID used for the orchestrator chat thread (PM task). */
+        orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
     restartRequestedAt: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
-    .unique()
     .index("by_created", ["createdAt"]),
 
   // ==========================================================================
@@ -243,7 +244,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_user", ["userId"])
-    .index("by_account_user", ["accountId", "userId"]).unique(),
+    .index("by_account_user", ["accountId", "userId"]),
 
   // ==========================================================================
   // SKILLS
@@ -434,7 +435,7 @@ export default defineSchema({
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
     .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]).unique(),
+    .index("by_session_key", ["sessionKey"]),
 
   // ==========================================================================
   // TASKS

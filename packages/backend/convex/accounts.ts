@@ -517,7 +517,7 @@ export const remove = mutation({
     await requireAccountOwner(ctx, args.accountId);
 
     // Use cascadeDeleteAccount helper for comprehensive deletion
-    await cascadeDeleteAccount(ctx.db, ctx, args.accountId);
+    await cascadeDeleteAccount(ctx.db, ctx.db, args.accountId);
 
     return true;
   },

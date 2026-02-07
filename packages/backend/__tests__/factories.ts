@@ -1,23 +1,16 @@
 /**
- * convex/__tests__/factories.ts — Test Data Factories
- * 
+ * Test Data Factories (lives outside convex/ so Convex deploy does not bundle test-only code).
+ * Location: packages/backend/__tests__/factories.ts
+ *
  * Object factories for creating consistent test data.
- * Follows the Factory pattern for test data generation.
- * 
+ *
  * Example:
  * ```
- * const task = TaskFactory.create({
- *   accountId,
- *   title: "Custom title",
- * });
+ * const task = TaskFactory.create({ accountId, title: "Custom title" });
  * ```
  */
 
-import type { DataModel } from "../_generated/dataModel";
-
-// ============================================================================
-// Type Aliases (for clarity)
-// ============================================================================
+import type { DataModel } from "../convex/_generated/dataModel";
 
 type Account = DataModel["accounts"]["document"];
 type Membership = DataModel["memberships"]["document"];
@@ -29,15 +22,15 @@ type Activity = DataModel["activities"]["document"];
 type Notification = DataModel["notifications"]["document"];
 type Subscription = DataModel["subscriptions"]["document"];
 
-// ============================================================================
-// Account Factory
-// ============================================================================
+function generateId(table: string): string {
+  return `${table}_${Math.random().toString(36).substr(2, 12)}`;
+}
 
 export class AccountFactory {
   static create(overrides?: Partial<Omit<Account, "_id" | "_creationTime">>): Account {
     const now = Date.now();
     return {
-      _id: generateId("accounts"),
+      _id: generateId("accounts") as Account["_id"],
       _creationTime: now,
       name: "Test Account",
       slug: "test-account-" + Math.random().toString(36).substr(2, 9),
@@ -57,23 +50,19 @@ export class AccountFactory {
   }
 
   static createMany(count: number, overrides?: Partial<Account>): Account[] {
-    return Array.from({ length: count }, (_, i) =>
-      AccountFactory.create({ ...overrides })
+    return Array.from({ length: count }, () =>
+      AccountFactory.create(overrides as Partial<Omit<Account, "_id" | "_creationTime">>)
     );
   }
 }
-
-// ============================================================================
-// Membership Factory
-// ============================================================================
 
 export class MembershipFactory {
   static create(overrides?: Partial<Omit<Membership, "_id" | "_creationTime">>): Membership {
     const now = Date.now();
     return {
-      _id: generateId("memberships"),
+      _id: generateId("memberships") as Membership["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Membership["accountId"],
       userId: "user_" + Math.random().toString(36).substr(2, 20),
       userName: "Test User",
       userEmail: "user@example.com",
@@ -86,23 +75,19 @@ export class MembershipFactory {
 
   static createMany(count: number, overrides?: Partial<Membership>): Membership[] {
     return Array.from({ length: count }, () =>
-      MembershipFactory.create(overrides)
+      MembershipFactory.create(overrides as Partial<Omit<Membership, "_id" | "_creationTime">>)
     );
   }
 }
-
-// ============================================================================
-// Agent Factory
-// ============================================================================
 
 export class AgentFactory {
   static create(overrides?: Partial<Omit<Agent, "_id" | "_creationTime">>): Agent {
     const now = Date.now();
     const slug = "agent-" + Math.random().toString(36).substr(2, 6);
     return {
-      _id: generateId("agents"),
+      _id: generateId("agents") as Agent["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Agent["accountId"],
       name: "Test Agent",
       slug,
       role: "Engineer",
@@ -137,7 +122,7 @@ export class AgentFactory {
 
   static createMany(count: number, overrides?: Partial<Agent>): Agent[] {
     return Array.from({ length: count }, () =>
-      AgentFactory.create(overrides)
+      AgentFactory.create(overrides as Partial<Omit<Agent, "_id" | "_creationTime">>)
     );
   }
 
@@ -145,21 +130,17 @@ export class AgentFactory {
     status: "online" | "busy" | "idle" | "offline" | "error",
     overrides?: Partial<Agent>
   ): Agent {
-    return AgentFactory.create({ status, ...overrides });
+    return AgentFactory.create({ status, ...(overrides as Partial<Omit<Agent, "_id" | "_creationTime">>) });
   }
 }
-
-// ============================================================================
-// Task Factory
-// ============================================================================
 
 export class TaskFactory {
   static create(overrides?: Partial<Omit<Task, "_id" | "_creationTime">>): Task {
     const now = Date.now();
     return {
-      _id: generateId("tasks"),
+      _id: generateId("tasks") as Task["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Task["accountId"],
       title: "Test Task",
       description: "A test task description",
       status: "inbox",
@@ -176,7 +157,7 @@ export class TaskFactory {
 
   static createMany(count: number, overrides?: Partial<Task>): Task[] {
     return Array.from({ length: count }, () =>
-      TaskFactory.create(overrides)
+      TaskFactory.create(overrides as Partial<Omit<Task, "_id" | "_creationTime">>)
     );
   }
 
@@ -184,7 +165,10 @@ export class TaskFactory {
     status: "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked",
     overrides?: Partial<Task>
   ): Task {
-    return TaskFactory.create({ status, ...overrides });
+    return TaskFactory.create({
+      status,
+      ...(overrides as Partial<Omit<Task, "_id" | "_creationTime">>),
+    });
   }
 
   static createWithAssignee(
@@ -192,29 +176,25 @@ export class TaskFactory {
     type: "user" | "agent" = "agent",
     overrides?: Partial<Task>
   ): Task {
-    const assignedAgentIds = type === "agent" ? [assigneeId as any] : [];
+    const assignedAgentIds = type === "agent" ? [assigneeId as Task["assignedAgentIds"][number]] : [];
     const assignedUserIds = type === "user" ? [assigneeId] : [];
     return TaskFactory.create({
       status: "assigned",
       assignedAgentIds,
       assignedUserIds,
-      ...overrides,
+      ...(overrides as Partial<Omit<Task, "_id" | "_creationTime">>),
     });
   }
 }
-
-// ============================================================================
-// Message Factory
-// ============================================================================
 
 export class MessageFactory {
   static create(overrides?: Partial<Omit<Message, "_id" | "_creationTime">>): Message {
     const now = Date.now();
     return {
-      _id: generateId("messages"),
+      _id: generateId("messages") as Message["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
-      taskId: generateId("tasks") as any,
+      accountId: generateId("accounts") as Message["accountId"],
+      taskId: generateId("tasks") as Message["taskId"],
       authorType: "user",
       authorId: "user_test",
       content: "Test message content",
@@ -226,7 +206,7 @@ export class MessageFactory {
 
   static createMany(count: number, overrides?: Partial<Message>): Message[] {
     return Array.from({ length: count }, () =>
-      MessageFactory.create(overrides)
+      MessageFactory.create(overrides as Partial<Omit<Message, "_id" | "_creationTime">>)
     );
   }
 
@@ -234,21 +214,20 @@ export class MessageFactory {
     mentions: Message["mentions"],
     overrides?: Partial<Message>
   ): Message {
-    return MessageFactory.create({ mentions, ...overrides });
+    return MessageFactory.create({
+      mentions,
+      ...(overrides as Partial<Omit<Message, "_id" | "_creationTime">>),
+    });
   }
 }
-
-// ============================================================================
-// Document Factory
-// ============================================================================
 
 export class DocumentFactory {
   static create(overrides?: Partial<Omit<Document, "_id" | "_creationTime">>): Document {
     const now = Date.now();
     return {
-      _id: generateId("documents"),
+      _id: generateId("documents") as Document["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Document["accountId"],
       title: "Test Document",
       content: "# Test Document\n\nTest content",
       type: "deliverable",
@@ -263,28 +242,24 @@ export class DocumentFactory {
 
   static createMany(count: number, overrides?: Partial<Document>): Document[] {
     return Array.from({ length: count }, () =>
-      DocumentFactory.create(overrides)
+      DocumentFactory.create(overrides as Partial<Omit<Document, "_id" | "_creationTime">>)
     );
   }
 }
-
-// ============================================================================
-// Activity Factory
-// ============================================================================
 
 export class ActivityFactory {
   static create(overrides?: Partial<Omit<Activity, "_id" | "_creationTime">>): Activity {
     const now = Date.now();
     return {
-      _id: generateId("activities"),
+      _id: generateId("activities") as Activity["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Activity["accountId"],
       type: "task_created",
       actorType: "user",
       actorId: "user_test",
       actorName: "Test User",
       targetType: "task",
-      targetId: generateId("tasks"),
+      targetId: generateId("tasks") as Activity["targetId"],
       createdAt: now,
       ...overrides,
     } as Activity;
@@ -292,22 +267,20 @@ export class ActivityFactory {
 
   static createMany(count: number, overrides?: Partial<Activity>): Activity[] {
     return Array.from({ length: count }, () =>
-      ActivityFactory.create(overrides)
+      ActivityFactory.create(overrides as Partial<Omit<Activity, "_id" | "_creationTime">>)
     );
   }
 }
 
-// ============================================================================
-// Notification Factory
-// ============================================================================
-
 export class NotificationFactory {
-  static create(overrides?: Partial<Omit<Notification, "_id" | "_creationTime">>): Notification {
+  static create(
+    overrides?: Partial<Omit<Notification, "_id" | "_creationTime">>
+  ): Notification {
     const now = Date.now();
     return {
-      _id: generateId("notifications"),
+      _id: generateId("notifications") as Notification["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
+      accountId: generateId("accounts") as Notification["accountId"],
       type: "mention",
       recipientType: "user",
       recipientId: "user_test",
@@ -320,23 +293,21 @@ export class NotificationFactory {
 
   static createMany(count: number, overrides?: Partial<Notification>): Notification[] {
     return Array.from({ length: count }, () =>
-      NotificationFactory.create(overrides)
+      NotificationFactory.create(overrides as Partial<Omit<Notification, "_id" | "_creationTime">>)
     );
   }
 }
 
-// ============================================================================
-// Subscription Factory
-// ============================================================================
-
 export class SubscriptionFactory {
-  static create(overrides?: Partial<Omit<Subscription, "_id" | "_creationTime">>): Subscription {
+  static create(
+    overrides?: Partial<Omit<Subscription, "_id" | "_creationTime">>
+  ): Subscription {
     const now = Date.now();
     return {
-      _id: generateId("subscriptions"),
+      _id: generateId("subscriptions") as Subscription["_id"],
       _creationTime: now,
-      accountId: generateId("accounts") as any,
-      taskId: generateId("tasks") as any,
+      accountId: generateId("accounts") as Subscription["accountId"],
+      taskId: generateId("tasks") as Subscription["taskId"],
       subscriberType: "user",
       subscriberId: "user_test",
       subscribedAt: now,
@@ -346,36 +317,22 @@ export class SubscriptionFactory {
 
   static createMany(count: number, overrides?: Partial<Subscription>): Subscription[] {
     return Array.from({ length: count }, () =>
-      SubscriptionFactory.create(overrides)
+      SubscriptionFactory.create(
+        overrides as Partial<Omit<Subscription, "_id" | "_creationTime">>
+      )
     );
   }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Generate a mock Convex ID string
- * 
- * Format: "table_randomstring"
- */
-function generateId(table: string): string {
-  return `${table}_${Math.random().toString(36).substr(2, 12)}`;
-}
-
-/**
- * Create multiple related objects (e.g., account with agents)
- */
 export function createTestContext() {
   const account = AccountFactory.create();
   const agents = AgentFactory.createMany(3, {
     accountId: account._id,
-  });
+  } as Partial<Agent>);
   const tasks = TaskFactory.createMany(5, {
     accountId: account._id,
-  });
-  
+  } as Partial<Task>);
+
   return {
     account,
     agents,

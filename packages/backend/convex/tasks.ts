@@ -810,7 +810,7 @@ export const remove = mutation({
     );
 
     // Use cascadeDeleteTask helper for comprehensive deletion
-    await cascadeDeleteTask(ctx.db, ctx, args.taskId);
+    await cascadeDeleteTask(ctx.db, ctx.db, args.taskId);
 
     // Note: Activities for task deletion are intentionally not logged
     // since the task itself is deleted. Could implement separate audit log if needed.

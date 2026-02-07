@@ -34,7 +34,7 @@ export default defineConfig({
         "convex/**/*.ts",
       ],
       exclude: [
-        "convex/__tests__/**",
+        "__tests__/**",
         "convex/_generated/**",
         "convex/**/*.test.ts",
         "convex/seed/**",
@@ -46,8 +46,8 @@ export default defineConfig({
       statements: 70,
     },
     
-    // Setup files run before tests
-    setupFiles: ["./convex/__tests__/setup.ts"],
+    // Setup files run before tests (outside convex/ so Convex deploy does not load vitest)
+    setupFiles: ["./__tests__/setup.ts"],
     
     // Test timeout
     testTimeout: 10000,

@@ -42,13 +42,14 @@ export const list = query({
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
         .collect();
     } else {
+      const parentId = args.folderId ?? undefined;
       documents = await ctx.db
         .query("documents")
-        .withIndex("by_parent_updated", (q) =>
-          q.eq("accountId", args.accountId).eq("parentId", args.folderId),
+        .withIndex("by_parent", (q) =>
+          q.eq("accountId", args.accountId).eq("parentId", parentId),
         )
-        .order("desc")
         .collect();
+      documents.sort((a, b) => b.updatedAt - a.updatedAt);
     }
 
     if (args.type) {
@@ -124,6 +125,28 @@ export const get = query({
 
     await requireAccountMember(ctx, document.accountId);
     return document;
+  },
+});
+
+/**
+ * Resolve account slug for a document (for redirects from /docs/[id] or /document/[id]).
+ * Returns { accountSlug } if the user has access, null if not found or no access.
+ */
+export const getAccountSlugForRedirect = query({
+  args: {
+    documentId: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (!document) {
+      return null;
+    }
+    await requireAccountMember(ctx, document.accountId);
+    const account = await ctx.db.get(document.accountId);
+    if (!account) {
+      return null;
+    }
+    return { accountSlug: account.slug };
   },
 });
 
