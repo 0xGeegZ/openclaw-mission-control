@@ -1483,3 +1483,63 @@ export const loadTaskDetailsForAgentTool = action({
     return { task, thread };
   },
 });
+
+/**
+ * Delete/archive a task on behalf of an agent (service action).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; enforces that agent is the account orchestrator.
+ * Messages and documents are preserved for audit trail.
+ * Called by the task_delete runtime tool.
+ */
+export const deleteTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify orchestrator status
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId = (
+      account?.settings as
+        | {
+            orchestratorAgentId?: Id<"agents">;
+          }
+        | undefined
+    )?.orchestratorAgentId;
+
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    // Perform soft-delete via internal mutation
+    await ctx.runMutation(internal.service.tasks.deleteTaskFromAgent, {
+      taskId: args.taskId,
+      agentId: args.agentId,
+      reason: args.reason,
+    });
+
+    return { success: true };
+  },
+});
