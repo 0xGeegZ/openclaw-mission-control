@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* Typography prose customization */
 .prose {
@@ -36,5 +34,5 @@
 }
 
 .line.highlight {
-  @apply bg-gray-700 bg-opacity-50;
+  @apply bg-gray-700/50;
 }
