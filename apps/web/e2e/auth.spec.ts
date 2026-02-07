@@ -9,9 +9,9 @@ import { test, expect } from '@playwright/test';
 test.describe('Authentication', () => {
   test('should display sign-in page for unauthenticated users', async ({ page }) => {
     await page.goto('/');
-    
-    // Should redirect to Clerk sign-in or show sign-in UI
-    await expect(page).toHaveURL(/sign-in|login/);
+    // App shows landing at / for unauthenticated users; sign-in is available via link
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('link', { name: /log in|sign in/i })).toBeVisible();
   });
 
   test.skip('should allow user to sign in with email', async ({ page }) => {
