@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -28,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@packages/ui/components/select";
-import { Textarea } from "@packages/ui/components/textarea";
 import {
   FileText,
   FilePlus,
@@ -44,11 +43,8 @@ import {
   ArrowLeft,
   Copy,
   Link2,
-  Save,
-  Eye,
-  Edit3,
 } from "lucide-react";
-import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -69,22 +65,19 @@ type DocItem = {
  * Supports folder navigation, create file/folder, search, and delete.
  */
 export default function DocsPage({ params }: DocsPageProps) {
-  use(params);
+  const { accountSlug } = use(params);
+  const router = useRouter();
   const { accountId } = useAccount();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<
     Id<"documents"> | undefined
   >(undefined);
-  const [openDocId, setOpenDocId] = useState<Id<"documents"> | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
   const [linkToTaskDocId, setLinkToTaskDocId] =
     useState<Id<"documents"> | null>(null);
   const [linkTaskId, setLinkTaskId] = useState<Id<"tasks"> | "__unlink__">(
     "__unlink__",
   );
-  const [isEditMode, setIsEditMode] = useState(false);
 
   const documents = useQuery(
     api.documents.list,
@@ -100,14 +93,9 @@ export default function DocsPage({ params }: DocsPageProps) {
     api.documents.get,
     currentFolderId ? { documentId: currentFolderId } : "skip",
   );
-  const openDoc = useQuery(
-    api.documents.get,
-    openDocId ? { documentId: openDocId } : "skip",
-  );
 
   const createDoc = useMutation(api.documents.create);
   const removeDoc = useMutation(api.documents.remove);
-  const updateDoc = useMutation(api.documents.update);
   const duplicateDoc = useMutation(api.documents.duplicate);
   const linkToTask = useMutation(api.documents.linkToTask);
   const tasks = useQuery(
@@ -169,7 +157,6 @@ export default function DocsPage({ params }: DocsPageProps) {
     try {
       await removeDoc({ documentId });
       toast.success("Deleted");
-      if (openDocId === documentId) setOpenDocId(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
     }
@@ -179,35 +166,7 @@ export default function DocsPage({ params }: DocsPageProps) {
     if (item.type === "folder") {
       setCurrentFolderId(item._id);
     } else {
-      setOpenDocId(item._id);
-    }
-  };
-
-  useEffect(() => {
-    if (!openDoc) return;
-    const resolvedKind = openDoc.kind ?? "file";
-    const title = openDoc.title ?? openDoc.name ?? "";
-    const content = resolvedKind === "file" ? (openDoc.content ?? "") : "";
-    const t = setTimeout(() => {
-      setEditTitle(title);
-      setEditContent(content);
-      // Start in view mode if there's content, edit mode if empty
-      setIsEditMode(resolvedKind === "file" && !content.trim());
-    }, 0);
-    return () => clearTimeout(t);
-  }, [openDoc]);
-
-  const handleSaveDoc = async () => {
-    if (!openDocId || !openDoc) return;
-    try {
-      await updateDoc({
-        documentId: openDocId,
-        title: editTitle || undefined,
-        content: openDoc.kind === "file" ? editContent : undefined,
-      });
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save");
+      router.push(`/${accountSlug}/docs/${item._id}`);
     }
   };
 
@@ -387,10 +346,7 @@ export default function DocsPage({ params }: DocsPageProps) {
               >
                 <div
                   className="flex flex-col items-center text-center flex-1"
-                  onClick={() => {
-                    handleRowClick(doc);
-                    if (doc.type === "file") setOpenDocId(doc._id);
-                  }}
+                  onClick={() => handleRowClick(doc)}
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted mb-3">
                     {doc.type === "folder" ? (
@@ -519,114 +475,6 @@ export default function DocsPage({ params }: DocsPageProps) {
           </Card>
         )}
       </div>
-
-      {/* View/edit document dialog */}
-      <Dialog
-        open={!!openDocId}
-        onOpenChange={(open) => !open && setOpenDocId(null)}
-      >
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
-          {openDoc?.kind === "folder" ? (
-            <div className="p-6">
-              <DialogHeader>
-                <DialogTitle>Folder</DialogTitle>
-              </DialogHeader>
-              <p className="text-muted-foreground mt-2">This is a folder.</p>
-            </div>
-          ) : (
-            <>
-              {/* Header with title and mode toggle */}
-              <div className="flex items-center justify-between gap-4 p-4 border-b bg-muted/30">
-                <DialogHeader className="flex-1 space-y-0">
-                  {isEditMode ? (
-                    <Input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      placeholder="Document title"
-                      className="text-lg font-semibold h-auto py-1 px-2 -ml-2 bg-transparent border-transparent focus:border-input focus:bg-background"
-                    />
-                  ) : (
-                    <DialogTitle className="text-lg font-semibold">
-                      {editTitle || "Untitled"}
-                    </DialogTitle>
-                  )}
-                </DialogHeader>
-
-                {/* View/Edit toggle */}
-                <div className="flex items-center gap-1 border rounded-lg p-1 bg-background">
-                  <Button
-                    variant={!isEditMode ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    onClick={() => setIsEditMode(false)}
-                  >
-                    <Eye className="h-4 w-4" />
-                    View
-                  </Button>
-                  <Button
-                    variant={isEditMode ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    onClick={() => setIsEditMode(true)}
-                  >
-                    <Edit3 className="h-4 w-4" />
-                    Edit
-                  </Button>
-                </div>
-              </div>
-
-              {/* Content area */}
-              <div className="flex-1 min-h-0 overflow-auto">
-                {isEditMode ? (
-                  <div className="h-full flex flex-col">
-                    <Textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      placeholder="Write your content here using Markdown...&#10;&#10;# Headings&#10;**Bold text** and *italic text*&#10;- Bullet points&#10;- Lists&#10;&#10;> Blockquotes&#10;&#10;`code snippets`"
-                      className="flex-1 min-h-[300px] resize-none border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-sm leading-relaxed p-4"
-                    />
-                  </div>
-                ) : (
-                  <div className="p-6">
-                    {editContent.trim() ? (
-                      <MarkdownRenderer content={editContent} />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                        <FileText className="h-12 w-12 mb-3 opacity-50" />
-                        <p>No content yet</p>
-                        <Button
-                          variant="link"
-                          size="sm"
-                          onClick={() => setIsEditMode(true)}
-                          className="mt-2"
-                        >
-                          Click to add content
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer with actions */}
-              <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
-                <p className="text-xs text-muted-foreground">
-                  {isEditMode ? "Supports Markdown formatting" : ""}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={() => setOpenDocId(null)}>
-                    Close
-                  </Button>
-                  <Button onClick={handleSaveDoc}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Link to task dialog */}
       <Dialog

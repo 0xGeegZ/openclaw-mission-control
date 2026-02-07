@@ -19,8 +19,8 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.57.1",
-    "lightningcss-linux-x64-gnu": "1.30.2",
-    "@tailwindcss/oxide-linux-x64-gnu": "4.1.18"
+    "@tailwindcss/oxide-linux-x64-gnu": "4.1.18",
+    "lightningcss-linux-x64-gnu": "1.30.2"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -29,5 +29,16 @@
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "npm@11.6.1"
+  "packageManager": "npm@11.6.1",
+  "dependencies": {
+    "@packages/backend": "^1.0.0",
+    "@packages/shared": "^0.1.0",
+    "@packages/ui": "^0.1.0",
+    "convex": "^1.31.7",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "sonner": "^2.0.7",
+    "usehooks-ts": "^3.1.1"
+  }
 }

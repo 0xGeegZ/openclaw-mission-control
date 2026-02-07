@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -16,9 +16,10 @@ import {
   UserPlus,
   UserMinus,
   Shield,
-  Filter,
   X,
   ChevronDown,
+  Eye,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import {
@@ -51,27 +52,45 @@ const notificationIcons: Record<NotificationType, typeof Bell> = {
   role_changed: Shield,
 };
 
-/** Color classes keyed by backend NotificationType. */
-const notificationColors: Record<NotificationType, string> = {
-  mention:
-    "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
-  assignment:
-    "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
-  thread_update:
-    "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-  status_change:
-    "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
-  member_added:
-    "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
-  member_removed:
-    "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400",
-  role_changed:
-    "bg-slate-100 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400",
+/** Subtle icon background colors per type. */
+const notificationIconStyles: Record<
+  NotificationType,
+  { bg: string; text: string }
+> = {
+  mention: {
+    bg: "bg-purple-500/10 dark:bg-purple-500/15",
+    text: "text-purple-600 dark:text-purple-400",
+  },
+  assignment: {
+    bg: "bg-blue-500/10 dark:bg-blue-500/15",
+    text: "text-blue-600 dark:text-blue-400",
+  },
+  thread_update: {
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  status_change: {
+    bg: "bg-green-500/10 dark:bg-green-500/15",
+    text: "text-green-600 dark:text-green-400",
+  },
+  member_added: {
+    bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
+    text: "text-emerald-600 dark:text-emerald-400",
+  },
+  member_removed: {
+    bg: "bg-rose-500/10 dark:bg-rose-500/15",
+    text: "text-rose-600 dark:text-rose-400",
+  },
+  role_changed: {
+    bg: "bg-slate-500/10 dark:bg-slate-500/15",
+    text: "text-slate-600 dark:text-slate-400",
+  },
 };
 
 /**
  * Notification bell with unread count badge. Opens a popover with recent
- * notifications with dismiss/mark-all actions and pagination.
+ * notifications with dismiss/mark-all actions, inline mark-read on hover, and
+ * swipe-to-dismiss style interactions.
  */
 export function NotificationBell({ accountSlug }: NotificationBellProps) {
   const { accountId, account } = useAccount();
@@ -86,6 +105,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   const [lastNextCursor, setLastNextCursor] = useState<
     Id<"notifications"> | undefined
   >(undefined);
+  const [dismissingIds, setDismissingIds] = useState<Set<string>>(new Set());
 
   const unreadCount = useQuery(
     api.notifications.getUnreadCount,
@@ -123,16 +143,25 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   }, [cursorToFetch, resultMore]);
 
   const firstPage = result?.notifications ?? [];
-  const notifications = [...firstPage, ...accumulatedMore];
+  const notifications = [...firstPage, ...accumulatedMore].filter(
+    (n) => !dismissingIds.has(n._id),
+  );
   const nextCursor =
     accumulatedMore.length > 0 ? lastNextCursor : result?.nextCursor;
 
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
+  const markAsRead = useMutation(api.notifications.markAsRead);
   const dismissAll = useMutation(api.notifications.dismissAll);
   const removeNotification = useMutation(api.notifications.remove);
 
   const hasUnread = unreadCount !== undefined && unreadCount > 0;
   const accountSlugResolved = account?.slug ?? accountSlug;
+
+  const resetPagination = useCallback(() => {
+    setAccumulatedMore([]);
+    setCursorToFetch(undefined);
+    setLastNextCursor(undefined);
+  }, []);
 
   const handleMarkAllAsRead = async () => {
     if (!accountId) return;
@@ -163,28 +192,49 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
   };
 
   const handleDismiss = async (notificationId: Id<"notifications">) => {
+    // Animate out, then remove
+    setDismissingIds((prev) => new Set(prev).add(notificationId));
     try {
       await removeNotification({ notificationId });
-      const remainingNotifications = notifications.filter(
-        (notification) => notification._id !== notificationId,
-      );
-      const fallbackCursor =
-        remainingNotifications.length > 0
-          ? remainingNotifications[remainingNotifications.length - 1]?._id
-          : undefined;
-      setLastNextCursor((prev) =>
-        prev === notificationId ? fallbackCursor : prev,
-      );
-      setAccumulatedMore((prev) =>
-        prev.filter((notification) => notification._id !== notificationId),
-      );
-      toast.success("Notification dismissed");
     } catch {
+      // revert animation on failure
+      setDismissingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(notificationId);
+        return next;
+      });
       toast.error("Failed to dismiss notification");
+      return;
+    }
+
+    const remainingNotifications = notifications.filter(
+      (notification) => notification._id !== notificationId,
+    );
+    const fallbackCursor =
+      remainingNotifications.length > 0
+        ? remainingNotifications[remainingNotifications.length - 1]?._id
+        : undefined;
+    setLastNextCursor((prev) =>
+      prev === notificationId ? fallbackCursor : prev,
+    );
+    setAccumulatedMore((prev) =>
+      prev.filter((notification) => notification._id !== notificationId),
+    );
+    setDismissingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(notificationId);
+      return next;
+    });
+  };
+
+  const handleMarkRead = async (notificationId: Id<"notifications">) => {
+    try {
+      await markAsRead({ notificationId });
+    } catch {
+      toast.error("Failed to mark as read");
     }
   };
 
-  const listUnreadCount = notifications.filter((n) => !n.readAt).length;
   const isLoadingMore = cursorToFetch !== undefined;
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -193,13 +243,8 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
       setAccumulatedMore([]);
       setCursorToFetch(undefined);
       setLastNextCursor(undefined);
+      setDismissingIds(new Set());
     }
-  };
-
-  const resetPagination = () => {
-    setAccumulatedMore([]);
-    setCursorToFetch(undefined);
-    setLastNextCursor(undefined);
   };
 
   return (
@@ -235,72 +280,110 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[380px] p-0 rounded-xl"
+        className="w-[400px] p-0 rounded-2xl overflow-hidden"
         align="end"
-        side="bottom"
-        sideOffset={8}
+        side="right"
+        sideOffset={24}
+        collisionPadding={16}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col max-h-[min(70vh,420px)]">
-          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b bg-muted/30">
-            <div className="flex rounded-lg border border-border bg-background p-0.5">
-              <Button
-                variant={filter === "all" ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-1.5 h-7 text-xs"
-                onClick={() => {
-                  setFilter("all");
-                  resetPagination();
-                }}
-              >
-                <Filter className="h-3 w-3" />
-                All
-              </Button>
-              <Button
-                variant={filter === "unread" ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-1.5 h-7 text-xs"
-                onClick={() => {
-                  setFilter("unread");
-                  resetPagination();
-                }}
-              >
-                Unread
-              </Button>
+        <div className="flex flex-col max-h-[min(75vh,480px)]">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-sm font-semibold text-foreground">
+                Notifications
+              </h3>
+              {hasUnread && (
+                <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  {unreadCount} new
+                </span>
+              )}
             </div>
-            {notifications.length > 0 && filter === "all" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleDismissAll}
-                title="Dismiss all notifications"
-              >
-                <X className="mr-1.5 h-3.5 w-3.5" />
-                Dismiss all
-              </Button>
-            )}
-            {notifications.length > 0 && filter === "unread" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleMarkAllAsRead}
-                title={listUnreadCount > 0 ? "Mark all as read" : "All read"}
-              >
-                <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
-                Mark all read
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {notifications.length > 0 && (
+                <>
+                  {filter === "unread" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={handleMarkAllAsRead}
+                      title="Mark all as read"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Mark all read</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                      onClick={handleDismissAll}
+                      title="Clear all notifications"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Clear all</span>
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
+          {/* Filter tabs */}
+          <div className="flex border-b px-4">
+            <button
+              type="button"
+              className={cn(
+                "relative px-3 py-2 text-xs font-medium transition-colors",
+                filter === "all"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => {
+                setFilter("all");
+                resetPagination();
+              }}
+            >
+              All
+              {filter === "all" && (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-primary rounded-full" />
+              )}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "relative px-3 py-2 text-xs font-medium transition-colors",
+                filter === "unread"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => {
+                setFilter("unread");
+                resetPagination();
+              }}
+            >
+              Unread
+              {hasUnread && (
+                <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-semibold text-primary">
+                  {unreadCount}
+                </span>
+              )}
+              {filter === "unread" && (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-primary rounded-full" />
+              )}
+            </button>
+          </div>
+
+          {/* Notification list */}
           <div className="overflow-y-auto flex-1 min-h-0">
             {result === undefined ? (
-              <div className="p-3 space-y-2">
+              <div className="p-3 space-y-1">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex gap-3 p-2.5">
-                    <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-1.5">
+                  <div key={i} className="flex gap-3 p-3 rounded-xl">
+                    <Skeleton className="h-9 w-9 rounded-xl shrink-0" />
+                    <div className="flex-1 space-y-2 pt-0.5">
                       <Skeleton className="h-3.5 w-4/5" />
                       <Skeleton className="h-3 w-1/2" />
                       <Skeleton className="h-2.5 w-20" />
@@ -309,52 +392,75 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                 ))}
               </div>
             ) : notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
-                  <BellOff className="h-6 w-6 text-muted-foreground/50" />
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50 mb-4">
+                  <BellOff className="h-6 w-6 text-muted-foreground/40" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  All caught up!
+                  All caught up
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-[220px] leading-relaxed">
                   {filter === "unread"
-                    ? "No unread notifications."
-                    : "Notifications will appear here."}
+                    ? "You have no unread notifications right now."
+                    : "New notifications will appear here when something happens."}
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
+              <div className="p-1.5">
                 {notifications.map((notification) => {
                   const isUnread = !notification.readAt;
                   const type = notification.type as NotificationType;
                   const Icon = notificationIcons[type] ?? Bell;
-                  const colorClass =
-                    notificationColors[type] ??
-                    "bg-muted text-muted-foreground";
+                  const iconStyle = notificationIconStyles[type] ?? {
+                    bg: "bg-muted",
+                    text: "text-muted-foreground",
+                  };
                   const taskId = notification.taskId;
                   const href =
                     accountSlugResolved && taskId
                       ? getTaskDetailSheetHref(accountSlugResolved, taskId)
                       : null;
 
-                  const textContent = (
-                    <div className="flex-1 min-w-0">
-                      <p
+                  const cardContent = (
+                    <div className="flex gap-3 flex-1 min-w-0">
+                      {/* Icon */}
+                      <div
                         className={cn(
-                          "text-sm leading-snug",
-                          isUnread && "font-medium",
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+                          iconStyle.bg,
                         )}
                       >
-                        {notification.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                        {notification.body}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground mt-1.5">
-                        {formatDistanceToNow(new Date(notification.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </p>
+                        <Icon className={cn("h-4 w-4", iconStyle.text)} />
+                      </div>
+                      {/* Text */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-2">
+                          <p
+                            className={cn(
+                              "text-sm leading-snug flex-1",
+                              isUnread
+                                ? "font-medium text-foreground"
+                                : "text-foreground/80",
+                            )}
+                          >
+                            {notification.title}
+                          </p>
+                          {isUnread && (
+                            <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
+                          )}
+                        </div>
+                        {notification.body && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+                            {notification.body}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground/70 mt-1.5">
+                          {formatDistanceToNow(
+                            new Date(notification.createdAt),
+                            { addSuffix: true },
+                          )}
+                        </p>
+                      </div>
                     </div>
                   );
 
@@ -362,72 +468,91 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
                     <div
                       key={notification._id}
                       className={cn(
-                        "flex gap-3 p-2.5 transition-colors hover:bg-muted/50",
-                        isUnread && "bg-primary/5",
+                        "group relative flex items-start gap-1 rounded-xl p-2.5 transition-all duration-200",
+                        "hover:bg-accent/50",
+                        isUnread && "bg-primary/[0.03]",
                       )}
                     >
-                      <div
-                        className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                          colorClass,
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
                       {href ? (
                         <Link
                           href={href}
-                          className="flex flex-1 min-w-0 text-left"
-                          onClick={() => setOpen(false)}
+                          className="flex flex-1 min-w-0"
+                          onClick={() => {
+                            if (isUnread) handleMarkRead(notification._id);
+                            setOpen(false);
+                          }}
                         >
-                          {textContent}
+                          {cardContent}
                         </Link>
                       ) : (
-                        <div className="flex flex-1 min-w-0">{textContent}</div>
+                        <div className="flex flex-1 min-w-0">{cardContent}</div>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDismiss(notification._id)}
-                        title="Dismiss"
-                        aria-label="Dismiss notification"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
+                      {/* Action buttons (appear on hover) */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pt-0.5">
+                        {isUnread && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-lg text-muted-foreground hover:text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkRead(notification._id);
+                            }}
+                            title="Mark as read"
+                            aria-label="Mark as read"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismiss(notification._id);
+                          }}
+                          title="Dismiss"
+                          aria-label="Dismiss notification"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
-                <div className="p-2 border-t border-border bg-muted/20">
-                  {nextCursor ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full h-8 text-xs gap-1.5"
-                      onClick={handleLoadMore}
-                      disabled={isLoadingMore}
-                      aria-label="Load more notifications"
-                    >
-                      {isLoadingMore ? (
-                        "Loading…"
-                      ) : (
-                        <>
-                          <ChevronDown className="h-3.5 w-3.5" />
-                          Load more
-                        </>
-                      )}
-                    </Button>
-                  ) : (
-                    <p className="text-center text-xs text-muted-foreground py-1">
-                      {notifications.length > 0
-                        ? "No more notifications"
-                        : null}
-                    </p>
-                  )}
-                </div>
               </div>
             )}
           </div>
+
+          {/* Load more / footer */}
+          {result !== undefined && notifications.length > 0 && (
+            <div className="border-t p-2 bg-muted/20">
+              {nextCursor ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  aria-label="Load more notifications"
+                >
+                  {isLoadingMore ? (
+                    "Loading..."
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      Show older notifications
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <p className="text-center text-[11px] text-muted-foreground/60 py-1">
+                  {"That's everything"}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>
