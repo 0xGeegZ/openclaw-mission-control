@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -27,12 +28,14 @@ import {
   Clock,
   Flag,
   Tag,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
+import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskDetailSheetProps {
@@ -40,6 +43,8 @@ interface TaskDetailSheetProps {
   accountSlug: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after task is deleted (e.g. to close sheet and clear URL). */
+  onDeleted?: () => void;
 }
 
 const PRIORITY_CONFIG: Record<
@@ -117,8 +122,15 @@ export function TaskDetailSheet({
   accountSlug,
   open,
   onOpenChange,
+  onDeleted,
 }: TaskDetailSheetProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
+
+  const handleDeleted = () => {
+    onOpenChange(false);
+    onDeleted?.();
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -128,14 +140,25 @@ export function TaskDetailSheet({
         showCloseButton={true}
         headerActions={
           task && (
-            <Link
-              href={`/${accountSlug}/tasks/${task._id}`}
-              className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
-              title="Open full page"
-            >
-              <Maximize2 className="size-4" />
-              <span className="sr-only">Open full page</span>
-            </Link>
+            <>
+              <Link
+                href={`/${accountSlug}/tasks/${task._id}`}
+                className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
+                title="Open full page"
+              >
+                <Maximize2 className="size-4" />
+                <span className="sr-only">Open full page</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowDeleteDialog(true)}
+                className="ring-offset-background focus:ring-ring rounded-md p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
+                title="Delete task"
+              >
+                <Trash2 className="size-4" />
+                <span className="sr-only">Delete task</span>
+              </button>
+            </>
           )
         }
       >
@@ -339,6 +362,15 @@ export function TaskDetailSheet({
           </>
         )}
       </SheetContent>
+      {task && (
+        <DeleteTaskDialog
+          taskId={task._id}
+          taskTitle={task.title}
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onDeleted={handleDeleted}
+        />
+      )}
     </Sheet>
   );
 }

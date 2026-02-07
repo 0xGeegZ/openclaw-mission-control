@@ -29,16 +29,5 @@
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "npm@11.6.1",
-  "dependencies": {
-    "@packages/backend": "^1.0.0",
-    "@packages/shared": "^0.1.0",
-    "@packages/ui": "^0.1.0",
-    "convex": "^1.31.7",
-    "date-fns": "^4.1.0",
-    "lucide-react": "^0.563.0",
-    "react": "^19.2.4",
-    "sonner": "^2.0.7",
-    "usehooks-ts": "^3.1.1"
-  }
+  "packageManager": "npm@11.6.1"
 }
