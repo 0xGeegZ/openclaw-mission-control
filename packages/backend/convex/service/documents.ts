@@ -27,22 +27,22 @@ export const createOrUpdateFromAgent = internalMutation({
     if (!agent) {
       throw new Error("Not found: Agent does not exist");
     }
-    
+
     const now = Date.now();
-    
+
     if (args.documentId) {
       // Update existing document
       const document = await ctx.db.get(args.documentId);
       if (!document) {
         throw new Error("Not found: Document does not exist");
       }
-      
+
       if (document.accountId !== agent.accountId) {
         throw new Error("Forbidden: Document belongs to different account");
       }
-      
+
       const versionIncrement = args.content !== document.content;
-      
+
       const currentVersion = document.version ?? 0;
       await ctx.db.patch(args.documentId, {
         title: args.title,
@@ -68,13 +68,14 @@ export const createOrUpdateFromAgent = internalMutation({
           newVersion: versionIncrement ? currentVersion + 1 : currentVersion,
         },
       });
-      
+
       return args.documentId;
     } else {
       // Create new document
       const documentId = await ctx.db.insert("documents", {
         accountId: agent.accountId,
         taskId: args.taskId,
+        kind: "file",
         title: args.title,
         content: args.content,
         type: args.type,
@@ -84,7 +85,7 @@ export const createOrUpdateFromAgent = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
-      
+
       // Log activity
       await logActivity({
         ctx,
@@ -98,7 +99,7 @@ export const createOrUpdateFromAgent = internalMutation({
         targetName: args.title,
         meta: { type: args.type, taskId: args.taskId },
       });
-      
+
       return documentId;
     }
   },

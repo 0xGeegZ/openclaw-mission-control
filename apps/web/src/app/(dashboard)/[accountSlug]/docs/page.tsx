@@ -73,31 +73,36 @@ export default function DocsPage({ params }: DocsPageProps) {
   const { accountId } = useAccount();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentFolderId, setCurrentFolderId] = useState<Id<"documents"> | undefined>(undefined);
+  const [currentFolderId, setCurrentFolderId] = useState<
+    Id<"documents"> | undefined
+  >(undefined);
   const [openDocId, setOpenDocId] = useState<Id<"documents"> | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
-  const [linkToTaskDocId, setLinkToTaskDocId] = useState<Id<"documents"> | null>(null);
-  const [linkTaskId, setLinkTaskId] = useState<Id<"tasks"> | "__unlink__">("__unlink__");
+  const [linkToTaskDocId, setLinkToTaskDocId] =
+    useState<Id<"documents"> | null>(null);
+  const [linkTaskId, setLinkTaskId] = useState<Id<"tasks"> | "__unlink__">(
+    "__unlink__",
+  );
   const [isEditMode, setIsEditMode] = useState(false);
 
   const documents = useQuery(
     api.documents.list,
-    accountId ? { accountId, folderId: currentFolderId } : "skip"
+    accountId ? { accountId, folderId: currentFolderId } : "skip",
   );
   const searchResults = useQuery(
     api.documents.search,
     accountId && searchQuery.trim().length >= 2
       ? { accountId, query: searchQuery.trim(), limit: 50 }
-      : "skip"
+      : "skip",
   );
   const currentFolder = useQuery(
     api.documents.get,
-    currentFolderId ? { documentId: currentFolderId } : "skip"
+    currentFolderId ? { documentId: currentFolderId } : "skip",
   );
   const openDoc = useQuery(
     api.documents.get,
-    openDocId ? { documentId: openDocId } : "skip"
+    openDocId ? { documentId: openDocId } : "skip",
   );
 
   const createDoc = useMutation(api.documents.create);
@@ -107,23 +112,24 @@ export default function DocsPage({ params }: DocsPageProps) {
   const linkToTask = useMutation(api.documents.linkToTask);
   const tasks = useQuery(
     api.tasks.list,
-    accountId ? { accountId, limit: 200 } : "skip"
+    accountId ? { accountId, limit: 200 } : "skip",
   );
 
   const isSearching = searchQuery.trim().length >= 2;
-  const displayItems: DocItem[] = isSearching && searchResults
-    ? searchResults.map((d) => ({
-        _id: d._id,
-        name: d.name ?? d.title ?? "Untitled",
-        type: (d.kind ?? "file") as "file" | "folder",
-        updatedAt: d.updatedAt,
-      }))
-    : (documents ?? []).map((d) => ({
-        _id: d._id,
-        name: d.name,
-        type: d.type as "file" | "folder",
-        updatedAt: d.updatedAt,
-      }));
+  const displayItems: DocItem[] =
+    isSearching && searchResults
+      ? searchResults.map((d) => ({
+          _id: d._id,
+          name: d.name ?? d.title ?? "Untitled",
+          type: (d.kind ?? "file") as "file" | "folder",
+          updatedAt: d.updatedAt,
+        }))
+      : (documents ?? []).map((d) => ({
+          _id: d._id,
+          name: d.name,
+          type: d.type as "file" | "folder",
+          updatedAt: d.updatedAt,
+        }));
 
   const hasItems = displayItems.length > 0;
 
@@ -179,13 +185,14 @@ export default function DocsPage({ params }: DocsPageProps) {
 
   useEffect(() => {
     if (!openDoc) return;
+    const resolvedKind = openDoc.kind ?? "file";
     const title = openDoc.title ?? openDoc.name ?? "";
-    const content = openDoc.kind === "file" ? (openDoc.content ?? "") : "";
+    const content = resolvedKind === "file" ? (openDoc.content ?? "") : "";
     const t = setTimeout(() => {
       setEditTitle(title);
       setEditContent(content);
       // Start in view mode if there's content, edit mode if empty
-      setIsEditMode(!content.trim());
+      setIsEditMode(resolvedKind === "file" && !content.trim());
     }, 0);
     return () => clearTimeout(t);
   }, [openDoc]);
@@ -221,7 +228,7 @@ export default function DocsPage({ params }: DocsPageProps) {
         taskId: linkTaskId === "__unlink__" ? undefined : linkTaskId,
       });
       toast.success(
-        linkTaskId === "__unlink__" ? "Unlinked from task" : "Linked to task"
+        linkTaskId === "__unlink__" ? "Unlinked from task" : "Linked to task",
       );
       setLinkToTaskDocId(null);
       setLinkTaskId("__unlink__");
@@ -392,12 +399,19 @@ export default function DocsPage({ params }: DocsPageProps) {
                       <FileIcon className="h-8 w-8 text-muted-foreground" />
                     )}
                   </div>
-                  <p className="font-medium text-sm truncate w-full">{doc.name}</p>
+                  <p className="font-medium text-sm truncate w-full">
+                    {doc.name}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(doc.updatedAt), {
+                      addSuffix: true,
+                    })}
                   </p>
                 </div>
-                <div className="mt-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="mt-2 flex justify-end"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -407,13 +421,17 @@ export default function DocsPage({ params }: DocsPageProps) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {doc.type === "file" && (
-                        <DropdownMenuItem onClick={() => handleDuplicate(doc._id)}>
+                        <DropdownMenuItem
+                          onClick={() => handleDuplicate(doc._id)}
+                        >
                           <Copy className="mr-2 h-4 w-4" />
                           Duplicate
                         </DropdownMenuItem>
                       )}
                       {doc.type === "file" && (
-                        <DropdownMenuItem onClick={() => setLinkToTaskDocId(doc._id)}>
+                        <DropdownMenuItem
+                          onClick={() => setLinkToTaskDocId(doc._id)}
+                        >
                           <Link2 className="mr-2 h-4 w-4" />
                           Link to task
                         </DropdownMenuItem>
@@ -450,25 +468,38 @@ export default function DocsPage({ params }: DocsPageProps) {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{doc.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(doc.updatedAt), {
+                        addSuffix: true,
+                      })}
                     </p>
                   </div>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <DropdownMenuTrigger
+                      asChild
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                      >
                         <MoreHorizontal className="h-4 w-4" />
                         <span className="sr-only">Actions</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {doc.type === "file" && (
-                        <DropdownMenuItem onClick={() => handleDuplicate(doc._id)}>
+                        <DropdownMenuItem
+                          onClick={() => handleDuplicate(doc._id)}
+                        >
                           <Copy className="mr-2 h-4 w-4" />
                           Duplicate
                         </DropdownMenuItem>
                       )}
                       {doc.type === "file" && (
-                        <DropdownMenuItem onClick={() => setLinkToTaskDocId(doc._id)}>
+                        <DropdownMenuItem
+                          onClick={() => setLinkToTaskDocId(doc._id)}
+                        >
                           <Link2 className="mr-2 h-4 w-4" />
                           Link to task
                         </DropdownMenuItem>
@@ -490,7 +521,10 @@ export default function DocsPage({ params }: DocsPageProps) {
       </div>
 
       {/* View/edit document dialog */}
-      <Dialog open={!!openDocId} onOpenChange={(open) => !open && setOpenDocId(null)}>
+      <Dialog
+        open={!!openDocId}
+        onOpenChange={(open) => !open && setOpenDocId(null)}
+      >
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
           {openDoc?.kind === "folder" ? (
             <div className="p-6">
@@ -517,7 +551,7 @@ export default function DocsPage({ params }: DocsPageProps) {
                     </DialogTitle>
                   )}
                 </DialogHeader>
-                
+
                 {/* View/Edit toggle */}
                 <div className="flex items-center gap-1 border rounded-lg p-1 bg-background">
                   <Button
@@ -540,7 +574,7 @@ export default function DocsPage({ params }: DocsPageProps) {
                   </Button>
                 </div>
               </div>
-              
+
               {/* Content area */}
               <div className="flex-1 min-h-0 overflow-auto">
                 {isEditMode ? (
@@ -560,9 +594,9 @@ export default function DocsPage({ params }: DocsPageProps) {
                       <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                         <FileText className="h-12 w-12 mb-3 opacity-50" />
                         <p>No content yet</p>
-                        <Button 
-                          variant="link" 
-                          size="sm" 
+                        <Button
+                          variant="link"
+                          size="sm"
                           onClick={() => setIsEditMode(true)}
                           className="mt-2"
                         >
@@ -573,7 +607,7 @@ export default function DocsPage({ params }: DocsPageProps) {
                   </div>
                 )}
               </div>
-              
+
               {/* Footer with actions */}
               <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
                 <p className="text-xs text-muted-foreground">
@@ -613,7 +647,9 @@ export default function DocsPage({ params }: DocsPageProps) {
               <label className="text-sm font-medium">Task</label>
               <Select
                 value={linkTaskId}
-                onValueChange={(v) => setLinkTaskId(v as Id<"tasks"> | "__unlink__")}
+                onValueChange={(v) =>
+                  setLinkTaskId(v as Id<"tasks"> | "__unlink__")
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a task (or Unlink)" />

@@ -92,7 +92,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
           className="relative flex-1 min-h-0 overflow-auto mt-0 p-4 data-[state=inactive]:hidden"
         >
           <ErrorBoundary variant="section">
-            <TaskDocuments taskId={task._id} />
+            <TaskDocuments taskId={task._id} accountSlug={accountSlug} />
           </ErrorBoundary>
         </TabsContent>
       </Tabs>

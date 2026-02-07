@@ -328,7 +328,10 @@ export function TaskDetailSheet({
               >
                 <ScrollArea className="h-full">
                   <div className="p-4">
-                    <TaskDocuments taskId={task._id} />
+                    <TaskDocuments
+                      taskId={task._id}
+                      accountSlug={accountSlug}
+                    />
                   </div>
                 </ScrollArea>
               </TabsContent>
