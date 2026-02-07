@@ -1351,3 +1351,68 @@ export const recordUpgradeResult = action({
     return { success: true };
   },
 });
+
+/**
+ * Load full task details with thread summary for agents (service-only).
+ * Returns task metadata plus recent thread messages in one call.
+ */
+export const loadTaskDetailsForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    messageLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    task: Doc<"tasks">;
+    thread: Array<{
+      messageId: Id<"messages">;
+      authorType: "user" | "agent";
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>;
+  }> => {
+    // Validate service token
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify agent belongs to this account
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify task belongs to this account
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Fetch thread messages
+    const thread = await ctx.runQuery(
+      internal.service.messages.listThreadForTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: args.messageLimit,
+      },
+    );
+
+    return { task, thread };
+  },
+});
