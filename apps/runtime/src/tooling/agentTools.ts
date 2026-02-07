@@ -239,6 +239,32 @@ export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: mention an agent directly */
+export const AGENT_MENTION_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "agent_mention",
+    description:
+      "Send a direct message to another agent without requiring a task. Use for quick context switches, urgent unblocking, or knowledge sharing between agents.",
+    parameters: {
+      type: "object",
+      properties: {
+        agentSlug: {
+          type: "string",
+          description:
+            "Slug of the agent to mention (e.g., 'qa', 'designer'). Use @ prefix or slug name.",
+        },
+        message: {
+          type: "string",
+          description:
+            "Message content to send (Markdown supported). Include context about why you're mentioning them.",
+        },
+      },
+      required: ["agentSlug", "message"],
+    },
+  },
+};
+
 export { TASK_STATUS_TOOL_SCHEMA };
 
 export type ToolResult = {
@@ -298,6 +324,8 @@ export function getToolCapabilitiesAndSchemas(options: {
   // Utility tools available to all agents
   capabilityLabels.push("load task details with thread (task_load tool)");
   schemas.push(TASK_LOAD_TOOL_SCHEMA);
+  capabilityLabels.push("mention agent directly (agent_mention tool)");
+  schemas.push(AGENT_MENTION_TOOL_SCHEMA);
 
   if (isOrchestrator) {
     capabilityLabels.push("assign agents (task_assign tool)");
@@ -798,6 +826,37 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: result };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "agent_mention") {
+    let args: { agentSlug?: string; message?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.agentSlug?.trim() || !args.message?.trim()) {
+      return {
+        success: false,
+        error: "agentSlug and message are required",
+      };
+    }
+    try {
+      const result = await client.action(
+        api.service.actions.mentionAgentForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          targetAgentSlug: args.agentSlug.trim().replace(/^@/, "").toLowerCase(),
+          message: args.message.trim(),
+        },
+      );
+      return { success: true, data: { notificationId: result.notificationId } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

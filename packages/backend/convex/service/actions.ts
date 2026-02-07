@@ -1416,3 +1416,64 @@ export const loadTaskDetailsForAgentTool = action({
     return { task, thread };
   },
 });
+
+/**
+ * Mention an agent directly for cross-agent communication (service-only).
+ * Creates a notification to send to the target agent's session.
+ */
+export const mentionAgentForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    targetAgentSlug: v.string(),
+    message: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ notificationId: Id<"notifications"> }> => {
+    // Validate service token
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify source agent belongs to this account
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Resolve target agent slug to agent ID
+    const agents = await ctx.runQuery(internal.service.agents.listInternal, {
+      accountId: args.accountId,
+    });
+    const targetAgent = agents.find((a) =>
+      String(a.slug ?? "").toLowerCase().includes(args.targetAgentSlug),
+    );
+    if (!targetAgent) {
+      throw new Error(
+        `Not found: Agent with slug '${args.targetAgentSlug}' does not exist`,
+      );
+    }
+
+    // Create agent-mention notification and send to target agent's session
+    const notificationId = await ctx.runMutation(
+      internal.service.notifications.createAgentMention,
+      {
+        accountId: args.accountId,
+        sourceAgentId: args.agentId,
+        targetAgentId: targetAgent._id,
+        message: args.message.trim(),
+      },
+    );
+
+    return { notificationId };
+  },
+});

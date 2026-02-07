@@ -59,6 +59,7 @@ export const notificationTypeValidator = v.union(
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("role_changed"),
+  v.literal("agent_mention"),
 );
 
 /** Activity type validator */

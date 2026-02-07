@@ -468,3 +468,34 @@ export const batchMarkDelivered = internalMutation({
     return { count: args.notificationIds.length };
   },
 });
+
+/**
+ * Create an agent-mention notification for direct cross-agent communication.
+ * Used when an agent mentions another agent directly without a task context.
+ */
+export const createAgentMention = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+    sourceAgentId: v.id("agents"),
+    targetAgentId: v.id("agents"),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Create agent-mention notification
+    const notificationId = await ctx.db.insert("notifications", {
+      accountId: args.accountId,
+      type: "agent_mention",
+      sourceType: "agent",
+      sourceAgentId: args.sourceAgentId,
+      targetAgentId: args.targetAgentId,
+      description: args.message,
+      createdAt: now,
+      readAt: null,
+      deliveredAt: null,
+    });
+
+    return notificationId;
+  },
+});
