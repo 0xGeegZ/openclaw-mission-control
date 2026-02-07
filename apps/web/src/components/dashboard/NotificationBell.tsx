@@ -283,7 +283,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
         className="w-[400px] p-0 rounded-2xl overflow-hidden"
         align="end"
         side="right"
-        sideOffset={12}
+        sideOffset={24}
         collisionPadding={16}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
