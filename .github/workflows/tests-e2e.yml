@@ -33,7 +33,7 @@ jobs:
       # Ensure lightningcss native binary is present on Linux (optional dep)
       - name: Install LightningCSS Linux binary
         run: |
-          LIGHTNINGCSS_VERSION="$(node -p "require('lightningcss/package.json').version")"
+          LIGHTNINGCSS_VERSION="$(node -e "const fs=require('fs');const path=require('path');const pkg=path.join(path.dirname(require.resolve('lightningcss')), '..', 'package.json');console.log(JSON.parse(fs.readFileSync(pkg,'utf8')).version);")"
           npm install --no-save "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}"
 
       - name: Install Playwright Browsers
