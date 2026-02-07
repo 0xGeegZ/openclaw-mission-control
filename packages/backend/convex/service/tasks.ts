@@ -20,6 +20,10 @@ import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
+import {
+  DEFAULT_TASK_SEARCH_LIMIT,
+  MAX_TASK_SEARCH_LIMIT,
+} from "../search";
 
 const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
 
@@ -592,5 +596,80 @@ export const updateStatusFromAgent = internalMutation({
     }
 
     return args.taskId;
+  },
+});
+
+/**
+ * Search tasks for an account on behalf of an agent (service-only).
+ * Returns tasks matching the query with relevance scores.
+ */
+export const searchTasksForAgentTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Verify agent belongs to account (for auth; agentId is not used for filtering)
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent does not belong to this account");
+    }
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account", (index) => index.eq("accountId", args.accountId))
+      .collect();
+
+    const q = args.query.trim().toLowerCase();
+    const limit = Math.min(args.limit ?? DEFAULT_TASK_SEARCH_LIMIT, MAX_TASK_SEARCH_LIMIT);
+
+    if (!q) {
+      return [];
+    }
+
+    /**
+     * Calculate relevance score for a task based on substring matches.
+     * Uses safe substring matching (no regex), weighted by field:
+     * title (3x) > description (2x) > blocker text (1x)
+     */
+    function scoreTask(task: (typeof tasks)[0]): number {
+      let score = 0;
+      const titleLower = task.title.toLowerCase();
+      const descLower = (task.description ?? "").toLowerCase();
+      const blockerLower = (task.blockedReason ?? "").toLowerCase();
+
+      // Count matches: simple presence test for each field
+      if (titleLower.includes(q)) score += 3;
+      if (descLower.includes(q)) score += 2;
+      if (blockerLower.includes(q)) score += 1;
+
+      return score;
+    }
+
+    // Score and filter all tasks
+    const scored = tasks
+      .map((task) => ({
+        task,
+        score: scoreTask(task),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((item) => ({
+        _id: item.task._id,
+        title: item.task.title,
+        status: item.task.status,
+        priority: item.task.priority,
+        blockedReason: item.task.blockedReason,
+        assignedAgentIds: item.task.assignedAgentIds,
+        assignedUserIds: item.task.assignedUserIds,
+        createdAt: item.task.createdAt,
+        updatedAt: item.task.updatedAt,
+        relevanceScore: item.score,
+      }));
+
+    return scored;
   },
 });

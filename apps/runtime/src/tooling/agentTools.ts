@@ -183,6 +183,30 @@ export const TASK_THREAD_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: search tasks */
+export const TASK_SEARCH_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_search",
+    description:
+      "Search tasks by title, description, or blockers. Returns matching tasks with relevance scores. Use to find tasks related to a keyword, blocker, or assignee question.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (e.g., 'PR #65', 'database', 'blocked by auth')",
+        },
+        limit: {
+          type: "number",
+          description: "Optional result limit (default 20, max 100)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+};
+
 /** OpenResponses function tool schema: create or update a document */
 export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   type: "function" as const,
@@ -275,12 +299,14 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("list tasks (task_list tool)");
     capabilityLabels.push("get task details (task_get tool)");
     capabilityLabels.push("read task threads (task_thread tool)");
+    capabilityLabels.push("search tasks (task_search tool)");
     schemas.push(
       TASK_ASSIGN_TOOL_SCHEMA,
       TASK_MESSAGE_TOOL_SCHEMA,
       TASK_LIST_TOOL_SCHEMA,
       TASK_GET_TOOL_SCHEMA,
       TASK_THREAD_TOOL_SCHEMA,
+      TASK_SEARCH_TOOL_SCHEMA,
     );
   }
 
@@ -740,6 +766,40 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: { thread } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_search") {
+    let args: { query?: string; limit?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.query?.trim()) {
+      return { success: false, error: "query is required" };
+    }
+    if (isOrchestrator !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can search tasks",
+      };
+    }
+    try {
+      const results = await client.action(
+        api.service.actions.searchTasksForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          query: args.query.trim(),
+          limit: args.limit,
+        },
+      );
+      return { success: true, data: { results } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };
