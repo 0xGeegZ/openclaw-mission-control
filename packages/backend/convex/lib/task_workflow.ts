@@ -7,23 +7,27 @@ export type TaskStatus =
   | "in_progress"
   | "review"
   | "done"
-  | "blocked";
+  | "blocked"
+  | "archived";
 
 /**
  * Valid status transitions.
  * Maps current status to array of allowed next statuses.
+ * "archived" is a terminal state (soft-delete) reachable from most statuses via orchestrator action.
  */
 export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  inbox: ["assigned"],
-  assigned: ["in_progress", "blocked", "inbox"],
-  in_progress: ["review", "blocked"],
-  review: ["done", "in_progress", "blocked"],
-  done: [], // Cannot transition from done
-  blocked: ["assigned", "in_progress"],
+  inbox: ["assigned", "archived"],
+  assigned: ["in_progress", "blocked", "inbox", "archived"],
+  in_progress: ["review", "blocked", "archived"],
+  review: ["done", "in_progress", "blocked", "archived"],
+  done: ["archived"], // Can archive completed tasks
+  blocked: ["assigned", "in_progress", "archived"],
+  archived: [], // Terminal state; cannot transition from archived
 };
 
 /**
  * Ordered list of statuses for Kanban columns.
+ * Archived tasks are typically hidden from the main board but accessible in history/archive views.
  */
 export const TASK_STATUS_ORDER: TaskStatus[] = [
   "inbox",
@@ -31,6 +35,7 @@ export const TASK_STATUS_ORDER: TaskStatus[] = [
   "in_progress",
   "review",
   "done",
+  "archived",
 ];
 
 /**
@@ -115,4 +120,5 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   review: "Review",
   done: "Done",
   blocked: "Blocked",
+  archived: "Archived",
 };

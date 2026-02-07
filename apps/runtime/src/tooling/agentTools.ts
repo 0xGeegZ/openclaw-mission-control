@@ -12,6 +12,11 @@ import {
   executeTaskStatusTool,
   type TaskStatusToolResult,
 } from "./taskStatusTool";
+import {
+  TASK_DELETE_TOOL_SCHEMA,
+  executeTaskDeleteTool,
+  type TaskDeleteToolResult,
+} from "./taskDeleteTool";
 
 /** OpenResponses function tool schema: create a new task */
 export const TASK_CREATE_TOOL_SCHEMA = {
@@ -46,9 +51,10 @@ export const TASK_CREATE_TOOL_SCHEMA = {
             "review",
             "done",
             "blocked",
+            "archived",
           ],
           description:
-            "Initial status; default inbox. If assigned/in_progress, you are auto-assigned. blocked requires blockedReason.",
+            "Initial status; default inbox. If assigned/in_progress, you are auto-assigned. blocked requires blockedReason. archived is for cleanup (soft-delete).",
         },
         blockedReason: {
           type: "string",
@@ -129,6 +135,7 @@ export const TASK_LIST_TOOL_SCHEMA = {
             "review",
             "done",
             "blocked",
+            "archived",
           ],
           description: "Optional status filter",
         },
@@ -275,12 +282,14 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("list tasks (task_list tool)");
     capabilityLabels.push("get task details (task_get tool)");
     capabilityLabels.push("read task threads (task_thread tool)");
+    capabilityLabels.push("archive/delete tasks (task_delete tool)");
     schemas.push(
       TASK_ASSIGN_TOOL_SCHEMA,
       TASK_MESSAGE_TOOL_SCHEMA,
       TASK_LIST_TOOL_SCHEMA,
       TASK_GET_TOOL_SCHEMA,
       TASK_THREAD_TOOL_SCHEMA,
+      TASK_DELETE_TOOL_SCHEMA,
     );
   }
 
@@ -490,6 +499,7 @@ export async function executeAgentTool(params: {
             | "review"
             | "done"
             | "blocked"
+            | "archived"
             | undefined,
           blockedReason: args.blockedReason?.trim(),
           dueDate: args.dueDate,
@@ -679,6 +689,7 @@ export async function executeAgentTool(params: {
             | "review"
             | "done"
             | "blocked"
+            | "archived"
             | undefined,
           assigneeAgentId,
           limit: args.limit,
@@ -740,6 +751,37 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, data: { thread } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "task_delete") {
+    let args: { taskId?: string; reason?: string };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim() || !args.reason?.trim()) {
+      return { success: false, error: "taskId and reason are required" };
+    }
+    if (isOrchestrator !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Only the orchestrator can delete/archive tasks",
+      };
+    }
+    try {
+      const result: TaskDeleteToolResult = await executeTaskDeleteTool({
+        agentId,
+        taskId: args.taskId.trim(),
+        reason: args.reason.trim(),
+        serviceToken,
+        accountId,
+      });
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

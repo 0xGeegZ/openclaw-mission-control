@@ -150,6 +150,7 @@ const TOOL_TASK_STATUSES: TaskStatus[] = [
   "review",
   "done",
   "blocked",
+  "archived",
 ];
 
 /**
@@ -590,6 +591,81 @@ export const updateStatusFromAgent = internalMutation({
         },
       });
     }
+
+    return args.taskId;
+  },
+});
+
+/**
+ * Delete/archive a task on behalf of an agent (service-only).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; messages and documents are preserved for audit trail.
+ * Logs activity for accountability.
+ */
+export const deleteTaskFromAgent = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    if (task.accountId !== agent.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Check if agent is orchestrator (admin-only operation)
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as
+        | {
+            orchestratorAgentId?: Id<"agents">;
+          }
+        | undefined
+    )?.orchestratorAgentId;
+
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    const now = Date.now();
+
+    // Soft-delete: transition to "archived" status
+    await ctx.db.patch(args.taskId, {
+      status: "archived" as TaskStatus,
+      archivedAt: now,
+      updatedAt: now,
+    });
+
+    // Log activity for audit trail
+    await logActivity({
+      ctx,
+      accountId: task.accountId,
+      type: "task_status_changed",
+      actorType: "agent",
+      actorId: args.agentId,
+      actorName: agent.name,
+      targetType: "task",
+      targetId: args.taskId,
+      targetName: task.title,
+      meta: {
+        oldStatus: task.status,
+        newStatus: "archived",
+        reason: args.reason,
+        action: "task_deleted",
+      },
+    });
 
     return args.taskId;
   },
