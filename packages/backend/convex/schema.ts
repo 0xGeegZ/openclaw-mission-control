@@ -19,19 +19,36 @@ import { TASK_STATUS, AGENT_STATUSES, MEMBER_ROLES } from "./lib/enums";
  * Workflow: inbox → assigned → in_progress → review → done
  * Special state: blocked (can be entered from assigned or in_progress)
  */
-const taskStatusValidator = v.union(...TASK_STATUS.map(s => v.literal(s)));
+const taskStatusValidator = v.union(
+  v.literal('inbox'),
+  v.literal('assigned'),
+  v.literal('in_progress'),
+  v.literal('review'),
+  v.literal('done'),
+  v.literal('blocked')
+);
 
 /**
  * Agent status validator.
  * Uses shared enum from lib/enums.ts to indicate operational state.
  */
-const agentStatusValidator = v.union(...AGENT_STATUSES.map(s => v.literal(s)));
+const agentStatusValidator = v.union(
+  v.literal('online'),
+  v.literal('busy'),
+  v.literal('idle'),
+  v.literal('offline'),
+  v.literal('error')
+);
 
 /**
  * Membership role validator.
  * Uses shared enum from lib/enums.ts for permission levels.
  */
-const memberRoleValidator = v.union(...MEMBER_ROLES.map(r => v.literal(r)));
+const memberRoleValidator = v.union(
+  v.literal('owner'),
+  v.literal('admin'),
+  v.literal('member')
+);
 
 /**
  * Recipient type validator.
