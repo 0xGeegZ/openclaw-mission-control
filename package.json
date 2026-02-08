@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "(cd packages/backend && npm run dev) & (cd apps/web && npm run dev) & wait",
     "dev:openclaw": "cd apps/runtime && npm run docker:up:openclaw",
+    "dev:openclaw:light": "BUILD=0 cd apps/runtime && npm run docker:up:openclaw",
+    "logs:openclaw-gateway": "docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw logs openclaw-gateway",
     "dev:turbo": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
