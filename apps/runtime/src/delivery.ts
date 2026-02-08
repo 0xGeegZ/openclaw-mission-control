@@ -630,18 +630,31 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const isOrchestratorChat = isOrchestratorChatTask(context.task);
   const orchestratorAgentId = context.orchestratorAgentId;
 
+  // Orchestrator chat: only the designated orchestrator receives agent notifications for that task.
   if (isOrchestratorChat && context.notification?.recipientType === "agent") {
     return context.notification?.recipientId === context.orchestratorAgentId;
   }
 
+  // Any thread_update when task is done/blocked: skip to avoid reply loops and redundant pings.
+  if (
+    notificationType === "thread_update" &&
+    taskStatus != null &&
+    TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+  ) {
+    return false;
+  }
+
+  // status_change to an agent: apply task-state and review-role rules.
   if (
     notificationType === "status_change" &&
     context.notification?.recipientType === "agent" &&
     taskStatus != null
   ) {
+    // Skip status_change when task is done/blocked (no need for agents to react).
     if (TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)) {
       return false;
     }
+    // In REVIEW: deliver to orchestrator or to reviewers (e.g. QA); others skip.
     if (taskStatus === "review") {
       const recipientId = context.notification?.recipientId;
       if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
@@ -651,31 +664,49 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     }
   }
 
+  /**
+   * Agent-authored thread_update delivery rules:
+   * - Orchestrator receives replies from other agents (coordination).
+   * - Everyone else is blocked when the reply was triggered by a thread_update (loop prevention).
+   * - Reviewers still receive updates during REVIEW.
+   */
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
     const recipientId = context.notification?.recipientId;
     const assignedAgentIds = context.task?.assignedAgentIds;
     const sourceNotificationType = context.sourceNotificationType;
     const agentRole = context.agent?.role;
+    const messageAuthorId = context.message?.authorId;
+    const isOrchestratorRecipient =
+      orchestratorAgentId != null && recipientId === orchestratorAgentId;
+    const isOrchestratorAuthor =
+      orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
+
+    // Skip when task is done/blocked to avoid redundant notifications.
     if (
       taskStatus != null &&
       TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
     ) {
       return false;
     }
+    // Orchestrator receives other agents' replies (not their own) to coordinate and create follow-up tasks.
+    if (isOrchestratorRecipient && !isOrchestratorAuthor) {
+      return true;
+    }
+    // Block thread_update → thread_update cascade for everyone else to avoid ping-pong loops.
     if (sourceNotificationType === "thread_update") {
       return false;
     }
-    if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
-      return true;
-    }
+    // During REVIEW, deliver to reviewers (e.g. QA) so they can approve.
     if (taskStatus === "review" && isReviewerRole(agentRole)) {
       return true;
     }
+    // Only deliver to agents who are assigned to the task (no bystanders).
     if (!Array.isArray(assignedAgentIds) || typeof recipientId !== "string")
       return false;
     return assignedAgentIds.includes(recipientId);
   }
 
+  // Default: deliver (e.g. assignment, mention, user-authored thread_update, status_change when not review).
   return true;
 }
 
@@ -1029,6 +1060,7 @@ export function formatNotificationMessage(
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n")
     : [
         "Repository context: not found.",
@@ -1036,6 +1068,7 @@ export function formatNotificationMessage(
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n");
   const globalContextSection = globalBriefingDoc?.content?.trim()
     ? [
