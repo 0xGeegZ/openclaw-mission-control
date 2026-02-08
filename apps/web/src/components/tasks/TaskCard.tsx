@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@packages/ui/components/ava
 import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronRight, Clock, AlertTriangle } from "lucide-react";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 
 interface TaskCardProps {
   task: Doc<"tasks">;
@@ -59,6 +60,9 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
   
   // Get the first assigned agent for display
   const primaryAgent = assignedAgents?.[0];
+  const PrimaryFallbackIcon = primaryAgent?.icon
+    ? AGENT_ICON_MAP[primaryAgent.icon]
+    : null;
   const isBlocked = task.status === "blocked";
   const isHighPriority = task.priority <= 2;
 
@@ -129,7 +133,14 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
                   <AvatarImage src={primaryAgent.avatarUrl} alt={primaryAgent.name} />
                 ) : null}
                 <AvatarFallback className="text-[9px] font-semibold bg-gradient-to-br from-primary/15 to-primary/5 text-primary">
-                  {primaryAgent.name.slice(0, 2).toUpperCase()}
+                  {PrimaryFallbackIcon ? (
+                    <PrimaryFallbackIcon
+                      className="h-3 w-3 text-primary"
+                      aria-hidden
+                    />
+                  ) : (
+                    primaryAgent.name.slice(0, 2).toUpperCase()
+                  )}
                 </AvatarFallback>
               </Avatar>
               <span className="text-xs font-medium text-muted-foreground truncate">
@@ -174,16 +185,23 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
         {/* Additional assignees indicator */}
         {assignedAgents && assignedAgents.length > 1 && (
           <div className="flex items-center justify-end -space-x-1.5 pt-1">
-            {assignedAgents.slice(1, 4).map((agent) => (
-              <Avatar key={agent._id} className="h-5 w-5 ring-2 ring-background shadow-sm">
-                {agent.avatarUrl ? (
-                  <AvatarImage src={agent.avatarUrl} alt={agent.name} />
-                ) : null}
-                <AvatarFallback className="text-[8px] font-semibold bg-muted text-muted-foreground">
-                  {agent.name.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            ))}
+            {assignedAgents.slice(1, 4).map((agent) => {
+              const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
+              return (
+                <Avatar key={agent._id} className="h-5 w-5 ring-2 ring-background shadow-sm">
+                  {agent.avatarUrl ? (
+                    <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+                  ) : null}
+                  <AvatarFallback className="text-[8px] font-semibold bg-muted text-muted-foreground">
+                    {FallbackIcon ? (
+                      <FallbackIcon className="h-2.5 w-2.5 text-muted-foreground" aria-hidden />
+                    ) : (
+                      agent.name.slice(0, 2).toUpperCase()
+                    )}
+                  </AvatarFallback>
+                </Avatar>
+              );
+            })}
             {assignedAgents.length > 4 && (
               <div className="h-5 w-5 rounded-full ring-2 ring-background bg-muted/80 flex items-center justify-center shadow-sm">
                 <span className="text-[8px] font-semibold text-muted-foreground">+{assignedAgents.length - 4}</span>

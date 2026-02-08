@@ -15,8 +15,16 @@ import {
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@packages/ui/components/select";
 import { toast } from "sonner";
 import { Loader2, Bot, Sparkles, AtSign, Briefcase } from "lucide-react";
+import { AGENT_ICON_NAMES, getAgentIconComponent } from "@/lib/agentIcons";
 
 interface CreateAgentDialogProps {
   open: boolean;
@@ -31,6 +39,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [role, setRole] = useState("");
+  const [icon, setIcon] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const createAgent = useMutation(api.agents.create);
@@ -53,12 +62,14 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
         name: name.trim(),
         slug: slug.trim(),
         role: role.trim() || "Agent",
+        icon: icon.trim() || undefined,
       });
-      
+
       toast.success("Agent created successfully");
       setName("");
       setSlug("");
       setRole("");
+      setIcon("");
       onOpenChange(false);
     } catch (error) {
       toast.error("Failed to create agent", {
@@ -129,6 +140,31 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
               placeholder="e.g., Squad Lead, SEO Analyst, Content Writer"
               className="h-11"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="create-agent-icon" className="text-sm font-medium">
+              Icon
+              <span className="text-muted-foreground/60 font-normal text-xs ml-1">(optional)</span>
+            </Label>
+            <Select value={icon || "__none__"} onValueChange={(v) => setIcon(v === "__none__" ? "" : v)}>
+              <SelectTrigger id="create-agent-icon" className="h-11">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {AGENT_ICON_NAMES.map((iconName) => {
+                  const IconComponent = getAgentIconComponent(iconName);
+                  return (
+                    <SelectItem key={iconName} value={iconName}>
+                      <span className="flex items-center gap-2">
+                        <IconComponent className="h-4 w-4" aria-hidden />
+                        {iconName}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter className="gap-2 sm:gap-2 pt-2">
             <Button 

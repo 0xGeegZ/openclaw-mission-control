@@ -141,6 +141,7 @@ export function buildHeartbeatMessage(options: {
 Follow the HEARTBEAT.md checklist.
 - Load context (WORKING.md, memory, mentions, assigned/tracked tasks, activity feed).
 - Take one concrete action if appropriate.
+- Do not narrate the checklist or your intent; reply only with a concrete action update (include Task ID) or with ${HEARTBEAT_OK_RESPONSE}.
 - If you took action, post a thread update using AGENTS.md format.
 - If you did not take action, reply with a single line: ${HEARTBEAT_OK_RESPONSE}
 ${orchestratorLine ? `\n${orchestratorLine}` : ""}

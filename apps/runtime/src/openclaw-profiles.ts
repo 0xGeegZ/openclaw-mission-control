@@ -129,6 +129,8 @@ Pick one action that can be completed quickly:
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
 
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
+
 Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes. Use your available skills as much as possible.
 
 ## 4) Report + persist memory (always)
