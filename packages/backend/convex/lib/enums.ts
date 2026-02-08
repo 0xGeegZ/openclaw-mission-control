@@ -3,9 +3,12 @@
  * Single source of truth for TaskStatus, Priority, AgentRole, AgentStatus, MemberRole
  * 
  * Usage:
- * - Backend: Import from this file in schema definitions and validators
+ * - Backend: Import enum values from this file in schema definitions
  * - Frontend: Import types via `typeof` inference for TypeScript safety
- * - Convex validators: Generated from const arrays below
+ * - Runtime: Use AllValidators object for type checking
+ * 
+ * Note: Schema.ts uses the TASK_STATUS, AGENT_STATUSES, MEMBER_ROLES values directly
+ * in v.literal() calls, keeping a single source of truth for enum values.
  */
 
 // ============================================================================
@@ -129,7 +132,7 @@ export const MemberRoleValidator = {
 };
 
 // ============================================================================
-// Export all validators for Convex schema usage
+// Export all validators for runtime type checking
 // ============================================================================
 
 export const AllValidators = {
