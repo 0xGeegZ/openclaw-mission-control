@@ -362,6 +362,9 @@ export default defineSchema({
     /** Avatar/icon URL */
     avatarUrl: v.optional(v.string()),
 
+    /** Lucide icon name for UI when avatarUrl is not set (e.g. "Crown", "Code2") */
+    icon: v.optional(v.string()),
+
     /**
      * SOUL file content.
      * Contains personality, constraints, and operating procedures.

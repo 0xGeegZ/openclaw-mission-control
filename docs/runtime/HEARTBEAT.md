@@ -32,6 +32,8 @@ Pick one action that can be completed quickly:
 - update a task status with explanation
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
+
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or `HEARTBEAT_OK`.
  
 Action scope rules:
 

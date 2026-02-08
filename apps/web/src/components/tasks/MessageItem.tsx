@@ -48,11 +48,12 @@ import { api } from "@packages/backend/convex/_generated/api";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
 import { MessageContent } from "./MessageContent";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 
-/** Lookup for agent author display (name, optional avatar). */
+/** Lookup for agent author display (name, optional avatar, optional icon). */
 export type AgentsByAuthorId = Record<
   string,
-  { name: string; avatarUrl?: string }
+  { name: string; avatarUrl?: string; icon?: string }
 >;
 
 /** Agent info for read receipts display */
@@ -60,6 +61,7 @@ export interface ReadByAgent {
   id: string;
   name: string;
   avatarUrl?: string;
+  icon?: string;
 }
 
 interface MessageItemProps {
@@ -104,6 +106,8 @@ export function MessageItem({
       : agentAuthor
         ? agentAuthor.name
         : "Agent";
+  const AuthorIcon =
+    (agentAuthor?.icon && AGENT_ICON_MAP[agentAuthor.icon]) || Bot;
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
@@ -182,7 +186,10 @@ export function MessageItem({
         ) : (
           <AvatarFallback className="bg-transparent">
             {isAgent ? (
-              <Bot className="h-4 w-4 text-primary" />
+              <AuthorIcon
+                className="h-4 w-4 text-primary"
+                aria-hidden
+              />
             ) : (
               <User className="h-4 w-4 text-secondary-foreground" />
             )}
@@ -273,20 +280,35 @@ export function MessageItem({
                 <div className="mt-3 flex items-center gap-2">
                   <CheckCheck className="h-3.5 w-3.5 text-primary/50" />
                   <div className="flex items-center -space-x-1.5">
-                    {readByAgents.slice(0, 4).map((agent) => (
-                      <Avatar
-                        key={agent.id}
-                        className="h-5 w-5 ring-[1.5px] ring-background shadow-sm"
-                        title={`Seen by ${agent.name}`}
-                      >
-                        {agent.avatarUrl ? (
-                          <AvatarImage src={agent.avatarUrl} alt={agent.name} />
-                        ) : null}
-                        <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-primary text-[8px] font-semibold">
-                          {agent.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
+                    {readByAgents.slice(0, 4).map((agent) => {
+                      const ReadByIcon = agent.icon
+                        ? AGENT_ICON_MAP[agent.icon]
+                        : null;
+                      return (
+                        <Avatar
+                          key={agent.id}
+                          className="h-5 w-5 ring-[1.5px] ring-background shadow-sm"
+                          title={`Seen by ${agent.name}`}
+                        >
+                          {agent.avatarUrl ? (
+                            <AvatarImage
+                              src={agent.avatarUrl}
+                              alt={agent.name}
+                            />
+                          ) : null}
+                          <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-primary text-[8px] font-semibold">
+                            {ReadByIcon ? (
+                              <ReadByIcon
+                                className="h-2.5 w-2.5 text-primary"
+                                aria-hidden
+                              />
+                            ) : (
+                              agent.name.charAt(0).toUpperCase()
+                            )}
+                          </AvatarFallback>
+                        </Avatar>
+                      );
+                    })}
                     {readByAgents.length > 4 && (
                       <div className="h-5 w-5 rounded-full bg-muted/80 ring-[1.5px] ring-background flex items-center justify-center shadow-sm">
                         <span className="text-[8px] font-semibold text-muted-foreground">

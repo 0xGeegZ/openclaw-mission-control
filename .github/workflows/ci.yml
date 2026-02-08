@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate seed skills content
+        run: npm run seed-skills:generate --workspace=@packages/backend
+
       - name: Run linter
         run: npm run lint
 

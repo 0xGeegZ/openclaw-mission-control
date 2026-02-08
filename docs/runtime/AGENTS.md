@@ -163,6 +163,8 @@ All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are lo
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
 
+**Never self-assign tasks.** You are the orchestrator/coordinator—only assign work to the actual agents who will execute (e.g. `assigneeSlugs: ["engineer"]`, not `["squad-lead", "engineer"]`). This keeps accountability clear.
+
 ## Communication rules
 
 - Be short and concrete in threads.

@@ -54,6 +54,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@packages/ui/components/avatar";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 import { Separator } from "@packages/ui/components/separator";
 import {
   Tabs,
@@ -657,26 +658,38 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                         {skillAgents.length > 0 && (
                           <div className="flex items-center gap-2 pt-1">
                             <div className="flex -space-x-2">
-                              {skillAgents.slice(0, 5).map((agent) => (
-                                <Tooltip key={agent._id}>
-                                  <TooltipTrigger asChild>
-                                    <Avatar className="h-6 w-6 ring-2 ring-background">
-                                      {agent.avatarUrl ? (
-                                        <AvatarImage
-                                          src={agent.avatarUrl}
-                                          alt={agent.name}
-                                        />
-                                      ) : null}
-                                      <AvatarFallback className="text-[10px] bg-muted font-medium">
-                                        {agent.name[0].toUpperCase()}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom" className="text-xs">
-                                    {agent.name}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
+                              {skillAgents.slice(0, 5).map((agent) => {
+                                const FallbackIcon = agent.icon
+                                  ? AGENT_ICON_MAP[agent.icon]
+                                  : null;
+                                return (
+                                  <Tooltip key={agent._id}>
+                                    <TooltipTrigger asChild>
+                                      <Avatar className="h-6 w-6 ring-2 ring-background">
+                                        {agent.avatarUrl ? (
+                                          <AvatarImage
+                                            src={agent.avatarUrl}
+                                            alt={agent.name}
+                                          />
+                                        ) : null}
+                                        <AvatarFallback className="text-[10px] bg-muted font-medium">
+                                          {FallbackIcon ? (
+                                            <FallbackIcon
+                                              className="h-3 w-3 text-muted-foreground"
+                                              aria-hidden
+                                            />
+                                          ) : (
+                                            agent.name[0].toUpperCase()
+                                          )}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="text-xs">
+                                      {agent.name}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                );
+                              })}
                               {skillAgents.length > 5 && (
                                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium text-muted-foreground">
                                   +{skillAgents.length - 5}
@@ -1085,25 +1098,37 @@ export default function SkillsPage({ params }: SkillsPageProps) {
                     </div>
                     {skillAgents.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {skillAgents.map((agent) => (
-                          <div
-                            key={agent._id}
-                            className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5"
-                          >
-                            <Avatar className="h-5 w-5">
-                              {agent.avatarUrl ? (
-                                <AvatarImage
-                                  src={agent.avatarUrl}
-                                  alt={agent.name}
-                                />
-                              ) : null}
-                              <AvatarFallback className="text-[9px] bg-muted font-medium">
-                                {agent.name[0].toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm">{agent.name}</span>
-                          </div>
-                        ))}
+                        {skillAgents.map((agent) => {
+                          const FallbackIcon = agent.icon
+                            ? AGENT_ICON_MAP[agent.icon]
+                            : null;
+                          return (
+                            <div
+                              key={agent._id}
+                              className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5"
+                            >
+                              <Avatar className="h-5 w-5">
+                                {agent.avatarUrl ? (
+                                  <AvatarImage
+                                    src={agent.avatarUrl}
+                                    alt={agent.name}
+                                  />
+                                ) : null}
+                                <AvatarFallback className="text-[9px] bg-muted font-medium">
+                                  {FallbackIcon ? (
+                                    <FallbackIcon
+                                      className="h-2.5 w-2.5 text-muted-foreground"
+                                      aria-hidden
+                                    />
+                                  ) : (
+                                    agent.name[0].toUpperCase()
+                                  )}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm">{agent.name}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">

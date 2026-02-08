@@ -1093,7 +1093,7 @@ export function formatNotificationMessage(
     : "";
   const orchestratorChatInstruction =
     isOrchestrator && isOrchestratorChat
-      ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. If you plan to work on a task yourself, create/assign it to yourself and move the discussion to that task thread."
+      ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. Never self-assign: you are the coordinator—only assign to the agents who will execute (e.g. assigneeSlugs: [\"engineer\"], not [\"squad-lead\", \"engineer\"]). This keeps accountability clear."
       : "";
   const followupTaskInstruction =
     isOrchestrator && task
