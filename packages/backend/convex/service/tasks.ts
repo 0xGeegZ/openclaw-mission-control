@@ -527,9 +527,10 @@ export const updateStatusFromAgent = internalMutation({
       throw new Error(`Invalid status change: ${requirementError}`);
     }
 
+    const changedAt = Date.now();
     const updates: Record<string, unknown> = {
       status: nextStatus,
-      updatedAt: Date.now(),
+      updatedAt: changedAt,
     };
 
     if (nextStatus === "blocked") {
@@ -591,7 +592,14 @@ export const updateStatusFromAgent = internalMutation({
       });
     }
 
-    return args.taskId;
+    // Return enhanced response: previousStatus, newStatus, changedAt
+    // Enables QA to verify status changes without additional polling
+    return {
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: nextStatus,
+      changedAt,
+    };
   },
 });
 

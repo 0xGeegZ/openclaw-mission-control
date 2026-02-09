@@ -477,14 +477,7 @@ export const updateStatus = mutation({
       },
     });
 
-    // Return enhanced response: previousStatus, newStatus, changedAt
-    // Enables QA to verify status changes without additional polling
-    return {
-      taskId: args.taskId,
-      previousStatus: currentStatus,
-      newStatus: nextStatus,
-      changedAt,
-    };
+    return args.taskId;
   },
 });
 
