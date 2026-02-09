@@ -64,6 +64,7 @@ export const notificationTypeValidator = v.union(
 
 /** Activity type validator */
 export const activityTypeValidator = v.union(
+  v.literal("account_created"),
   v.literal("task_created"),
   v.literal("task_updated"),
   v.literal("task_status_changed"),

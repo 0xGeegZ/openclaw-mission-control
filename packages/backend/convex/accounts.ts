@@ -13,6 +13,7 @@ import {
 } from "./lib/auth";
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
+import { logActivity } from "./lib/activity";
 
 /**
  * Create a new account.
@@ -56,7 +57,19 @@ export const create = mutation({
       joinedAt: Date.now(),
     });
 
-    // TODO: Log activity (implemented in Module 08)
+    // Log account creation activity
+    await logActivity({
+      ctx,
+      accountId,
+      type: "account_created",
+      actorType: "user",
+      actorId: authContext.userId,
+      actorName: authContext.userName,
+      targetType: "account",
+      targetId: accountId,
+      targetName: args.name,
+      meta: { slug: args.slug, plan: "free" },
+    });
 
     return accountId;
   },

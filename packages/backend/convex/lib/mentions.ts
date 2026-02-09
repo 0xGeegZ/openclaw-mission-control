@@ -175,3 +175,49 @@ export async function getAllMentions(
 
   return mentions;
 }
+
+/**
+ * List all mentionable candidates for @mention autocomplete.
+ * Returns workspace members and agents, grouped by type for UI.
+ *
+ * @param ctx - Convex context
+ * @param accountId - Account to search within
+ * @returns Object with users and agents arrays
+ */
+export async function listCandidates(
+  ctx: QueryCtx,
+  accountId: Id<"accounts">,
+): Promise<{
+  users: Array<{ id: string; name: string; email: string; avatarUrl?: string }>;
+  agents: Array<{ id: string; name: string; slug: string }>;
+}> {
+  // Fetch all members
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const users = memberships.map((m) => ({
+    id: m.userId,
+    name: m.userName,
+    email: m.userEmail,
+    avatarUrl: m.userAvatarUrl,
+  }));
+
+  // Fetch all agents
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const agentList = agents.map((a) => ({
+    id: a._id,
+    name: a.name,
+    slug: a.slug,
+  }));
+
+  return {
+    users,
+    agents: agentList,
+  };
+}
