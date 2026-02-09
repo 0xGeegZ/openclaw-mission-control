@@ -651,9 +651,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     taskStatus != null &&
     TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
   ) {
-    if (!(isBlockedTask && isOrchestratorAuthor)) {
-      return false;
-    }
+    return false;
   }
 
   // status_change to an agent: apply task-state and review-role rules.
@@ -687,8 +685,11 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     const assignedAgentIds = context.task?.assignedAgentIds;
     const sourceNotificationType = context.sourceNotificationType;
     const agentRole = context.agent?.role;
+    const messageAuthorId = context.message?.authorId;
     const isOrchestratorRecipient =
       orchestratorAgentId != null && recipientId === orchestratorAgentId;
+    const isOrchestratorAuthor =
+      orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
 
     // Skip when task is done/blocked to avoid redundant notifications.
     if (

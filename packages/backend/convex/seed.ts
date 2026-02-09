@@ -321,7 +321,7 @@ const WRITING_SKILL_SLUGS = [
   "launch-strategy",
 ] as const;
 
-/** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
+/** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval, icon. */
 const seedAgents = [
   {
     name: "Squad Lead",
@@ -337,6 +337,7 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: true,
+    icon: "Crown",
   },
   {
     name: "Engineer",
@@ -352,6 +353,7 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
+    icon: "Code2",
   },
   {
     name: "QA",
@@ -367,6 +369,7 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
+    icon: "TestTube",
   },
   {
     name: "Designer",
@@ -378,6 +381,7 @@ const seedAgents = [
     skillSlugs: [...DESIGN_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
+    icon: "Palette",
   },
   {
     name: "Writer",
@@ -388,6 +392,7 @@ const seedAgents = [
     skillSlugs: [...WRITING_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
+    icon: "PenLine",
   },
 ] as const;
 
@@ -408,6 +413,18 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - To inspect directories, use exec (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
 - Write artifacts to /root/clawd/deliverables and reference them in the thread.
+
+## Workspace boundaries (read/write)
+
+- Allowed root: /root/clawd only.
+- Allowed working paths:
+  - /root/clawd/agents/<slug> (your agent workspace, safe to create files/folders)
+  - /root/clawd/memory (WORKING.md, daily notes, MEMORY.md)
+  - /root/clawd/deliverables (final artifacts to share)
+  - /root/clawd/repos/openclaw-mission-control (code changes)
+  - /root/clawd/skills (only if explicitly instructed)
+- Do not read or write outside /root/clawd (no /root, /etc, /usr, /tmp, or host paths).
+- If a required path under /root/clawd is missing, create it if you can (e.g. /root/clawd/agents and your /root/clawd/agents/<slug> workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
 
 ## Runtime ownership (critical)
 
@@ -538,6 +555,8 @@ All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are 
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
 
+**Never self-assign tasks.** You are the orchestrator/coordinator—only assign work to the actual agents who will execute (e.g. \`assigneeSlugs: ["engineer"]\`, not \`["squad-lead", "engineer"]\`). This keeps accountability clear.
+
 ## Communication rules
 
 - Be short and concrete in threads.
@@ -615,6 +634,8 @@ Pick one action that can be completed quickly:
 - update a task status with explanation
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
+
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
 
 ## 4) Report + persist memory (always)
 
@@ -758,6 +779,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Review PRs only when there are new commits or changes since your last review to avoid loops.
 - Flag blockers early and escalate when needed.
 - Prefer short, actionable thread updates.
+- Do not narrate the checklist on heartbeat; start with a concrete action update or reply with \`HEARTBEAT_OK\`.
 - Delegate to Engineer/QA with clear acceptance criteria.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
@@ -1261,6 +1283,7 @@ async function runSeedWithOwner(
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
         openclawConfig,
+        icon: a.icon,
       });
       agentsExisting += 1;
       continue;
@@ -1275,6 +1298,7 @@ async function runSeedWithOwner(
       sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
+      icon: a.icon,
       soulContent,
       openclawConfig,
       createdAt: now,
