@@ -164,42 +164,7 @@ export const get = query({
     }
 
     await requireAccountMember(ctx, task.accountId);
-
-    // Enhance response with polling hints for QA review efficiency
-    const currentStatus = task.status as TaskStatus;
-    const validNextStatuses = TASK_STATUS_TRANSITIONS[currentStatus] || [];
-    
-    // Determine next status hint based on workflow state
-    let nextStatusHint: TaskStatus | null = null;
-    let estimatedTransitionTime = 0; // milliseconds
-    
-    if (validNextStatuses.length > 0) {
-      // Heuristic: suggest the most common next transition
-      if (currentStatus === "inbox" && validNextStatuses.includes("assigned")) {
-        nextStatusHint = "assigned";
-        estimatedTransitionTime = 5 * 60 * 1000; // ~5 min for assignment
-      } else if (currentStatus === "assigned" && validNextStatuses.includes("in_progress")) {
-        nextStatusHint = "in_progress";
-        estimatedTransitionTime = 10 * 60 * 1000; // ~10 min to start work
-      } else if (currentStatus === "in_progress" && validNextStatuses.includes("review")) {
-        nextStatusHint = "review";
-        estimatedTransitionTime = 30 * 60 * 1000; // ~30 min for dev work
-      } else if (currentStatus === "review" && validNextStatuses.includes("done")) {
-        nextStatusHint = "done";
-        estimatedTransitionTime = 5 * 60 * 1000; // ~5 min for approval
-      } else {
-        // Default: use first valid transition
-        nextStatusHint = validNextStatuses[0] || null;
-        estimatedTransitionTime = 15 * 60 * 1000; // Default 15 min estimate
-      }
-    }
-
-    return {
-      ...task,
-      // Polling hint metadata for QA
-      nextStatusHint,
-      estimatedTransitionTime,
-    };
+    return task;
   },
 });
 
