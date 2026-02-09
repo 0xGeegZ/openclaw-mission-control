@@ -164,7 +164,42 @@ export const get = query({
     }
 
     await requireAccountMember(ctx, task.accountId);
-    return task;
+
+    // Enhance response with polling hints for QA review efficiency
+    const currentStatus = task.status as TaskStatus;
+    const validNextStatuses = TASK_STATUS_TRANSITIONS[currentStatus] || [];
+    
+    // Determine next status hint based on workflow state
+    let nextStatusHint: TaskStatus | null = null;
+    let estimatedTransitionTime = 0; // milliseconds
+    
+    if (validNextStatuses.length > 0) {
+      // Heuristic: suggest the most common next transition
+      if (currentStatus === "inbox" && validNextStatuses.includes("assigned")) {
+        nextStatusHint = "assigned";
+        estimatedTransitionTime = 5 * 60 * 1000; // ~5 min for assignment
+      } else if (currentStatus === "assigned" && validNextStatuses.includes("in_progress")) {
+        nextStatusHint = "in_progress";
+        estimatedTransitionTime = 10 * 60 * 1000; // ~10 min to start work
+      } else if (currentStatus === "in_progress" && validNextStatuses.includes("review")) {
+        nextStatusHint = "review";
+        estimatedTransitionTime = 30 * 60 * 1000; // ~30 min for dev work
+      } else if (currentStatus === "review" && validNextStatuses.includes("done")) {
+        nextStatusHint = "done";
+        estimatedTransitionTime = 5 * 60 * 1000; // ~5 min for approval
+      } else {
+        // Default: use first valid transition
+        nextStatusHint = validNextStatuses[0] || null;
+        estimatedTransitionTime = 15 * 60 * 1000; // Default 15 min estimate
+      }
+    }
+
+    return {
+      ...task,
+      // Polling hint metadata for QA
+      nextStatusHint,
+      estimatedTransitionTime,
+    };
   },
 });
 
@@ -424,7 +459,13 @@ export const updateStatus = mutation({
       updates.blockedReason = undefined;
     }
 
-    await ctx.db.patch(args.taskId, updates);
+    const changedAt = Date.now();
+    const updatesWithTimestamp = {
+      ...updates,
+      updatedAt: changedAt,
+    };
+
+    await ctx.db.patch(args.taskId, updatesWithTimestamp);
 
     for (const uid of task.assignedUserIds) {
       await createStatusChangeNotification(
@@ -471,7 +512,14 @@ export const updateStatus = mutation({
       },
     });
 
-    return args.taskId;
+    // Return enhanced response: previousStatus, newStatus, changedAt
+    // Enables QA to verify status changes without additional polling
+    return {
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: nextStatus,
+      changedAt,
+    };
   },
 });
 

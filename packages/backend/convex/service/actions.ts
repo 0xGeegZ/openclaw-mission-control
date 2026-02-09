@@ -956,12 +956,32 @@ export const getTaskForAgentTool = action({
 /**
  * List task thread messages for orchestrator tools (service-only).
  */
+/**
+ * Context window preset sizes for PR review workflows (QA enhancement).
+ * Enables flexible session history sizing without manual limit specification.
+ */
+const CONTEXT_WINDOW_PRESETS: Record<string, number> = {
+  minimal: 5,      // Last 5 messages (quick status check)
+  medium: 20,      // Last 20 messages (typical PR review)
+  full: 100,       // All messages (comprehensive review)
+};
+
 export const listTaskThreadForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
     serviceToken: v.string(),
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
+    // QA Enhancement: contextWindow parameter for flexible history sizing
+    contextWindow: v.optional(
+      v.union(
+        v.literal("minimal"),
+        v.literal("medium"),
+        v.literal("full"),
+        v.number() // Allow explicit limit
+      )
+    ),
+    // Keep limit for backward compatibility
     limit: v.optional(v.number()),
   },
   handler: async (
@@ -1002,10 +1022,20 @@ export const listTaskThreadForAgentTool = action({
       throw new Error("Forbidden: Only the orchestrator can read threads");
     }
 
+    // Determine effective limit from contextWindow or explicit limit
+    let effectiveLimit = args.limit;
+    if (args.contextWindow !== undefined) {
+      if (typeof args.contextWindow === "string") {
+        effectiveLimit = CONTEXT_WINDOW_PRESETS[args.contextWindow] || CONTEXT_WINDOW_PRESETS.medium;
+      } else {
+        effectiveLimit = args.contextWindow;
+      }
+    }
+
     return await ctx.runQuery(internal.service.messages.listThreadForTool, {
       accountId: args.accountId,
       taskId: args.taskId,
-      limit: args.limit,
+      limit: effectiveLimit,
     });
   },
 });
