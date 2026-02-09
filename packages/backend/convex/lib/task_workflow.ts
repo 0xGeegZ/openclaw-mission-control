@@ -1,13 +1,11 @@
 /**
- * Task status type.
+ * Task workflow logic for status transitions and requirements.
+ * Uses shared TaskStatus type from enums.ts
  */
-export type TaskStatus =
-  | "inbox"
-  | "assigned"
-  | "in_progress"
-  | "review"
-  | "done"
-  | "blocked";
+import type { TaskStatus } from "./enums";
+
+// Re-export for convenience when importing from task_workflow
+export type { TaskStatus };
 
 /**
  * Valid status transitions.
