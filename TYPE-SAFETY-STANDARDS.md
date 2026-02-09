@@ -11,6 +11,38 @@ This document establishes mandatory type safety and code quality standards for a
 
 ---
 
+## ⚡ Rollout Strategy: Phase 1 (Warnings) → Phase 2 (Enforcement)
+
+### Phase 1: Awareness & Guidance (Current - 2026-02-08 to 2026-02-29)
+
+**Goal:** Establish standards and guide the team toward best practices without blocking CI/merges.
+
+**ESLint Rules in Phase 1:**
+- `no-unsafe-*` rules: **WARN** (guide adoption, not blockers)
+- `no-explicit-any`: **WARN** (encourage typing, not blockers)
+- `explicit-function-return-types`: **OFF** (Phase 2 target)
+- `strict-boolean-expressions`: **OFF** (Phase 2 target)
+- `no-unused-vars`: **ERROR** (enforce cleanup, high-value rule)
+- `prefer-const`: **ERROR** (enforce good practices)
+
+**CI Behavior:** ESLint warnings do not block PR merge. Team reviews violations in code review and resolves incrementally.
+
+### Phase 2: Full Enforcement (2026-03-01+)
+
+After 3 weeks of Phase 1, upgrade critical rules to errors:
+- `no-unsafe-*` → ERROR
+- `no-explicit-any` → ERROR
+- `explicit-function-return-types` → ERROR
+- `strict-boolean-expressions` → ERROR
+
+**Trigger for Phase 2:** Majority of codebase (>80%) compliant with Phase 1 standards.
+
+---
+
+## 1. TypeScript Strictness
+
+---
+
 ## 1. TypeScript Strictness
 
 ### Mandatory Configuration
