@@ -363,14 +363,17 @@ export function startHealthServer(config: RuntimeConfig): void {
 
       try {
         const client = getConvexClient();
-        await client.action(api.service.actions.updateTaskStatusFromAgent, {
-          accountId: runtimeConfig.accountId,
-          serviceToken: runtimeConfig.serviceToken,
-          agentId,
-          taskId: body.taskId as Id<"tasks">,
-          status: body.status as "in_progress" | "review" | "done" | "blocked",
-          blockedReason: body.blockedReason,
-        });
+        const result = await client.action(
+          api.service.actions.updateTaskStatusFromAgent,
+          {
+            accountId: runtimeConfig.accountId,
+            serviceToken: runtimeConfig.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+            status: body.status as "in_progress" | "review" | "done" | "blocked",
+            blockedReason: body.blockedReason,
+          },
+        );
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_status", duration);
         log.info("[task-status] Success:", {
@@ -379,7 +382,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           status: body.status,
           durationMs: duration,
         });
-        sendJson(res, 200, { success: true });
+        sendJson(res, 200, { ...result, durationMs: duration });
       } catch (error) {
         const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
