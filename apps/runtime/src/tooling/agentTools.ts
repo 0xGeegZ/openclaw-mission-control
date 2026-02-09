@@ -176,14 +176,15 @@ export const TASK_THREAD_TOOL_SCHEMA = {
   function: {
     name: "task_thread",
     description:
-      "Fetch recent thread messages for a task. Use when you need context before replying.",
+      "Fetch recent thread messages for a task (returned oldest-to-newest). Use when you need context before replying.",
     parameters: {
       type: "object",
       properties: {
         taskId: { type: "string", description: "Task ID to fetch thread for" },
         limit: {
           type: "number",
-          description: "Optional message limit (default 50, max 200)",
+          description:
+            "Optional message limit (default 50, max 200). Returns the most recent messages ordered oldest-to-newest.",
         },
       },
       required: ["taskId"],
@@ -232,7 +233,7 @@ export const TASK_LOAD_TOOL_SCHEMA = {
         messageLimit: {
           type: "number",
           description:
-            "Optional thread message limit (default 10, max 200). Set higher to load more conversation context.",
+            "Optional thread message limit (default 10, max 200). Returns the most recent messages ordered oldest-to-newest.",
         },
       },
       required: ["taskId"],

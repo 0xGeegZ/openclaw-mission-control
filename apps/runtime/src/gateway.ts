@@ -242,7 +242,7 @@ const state: GatewayState = {
   sessions: new Map(),
   openclawGatewayUrl: "",
   openclawGatewayToken: undefined,
-  openclawRequestTimeoutMs: 60000,
+  openclawRequestTimeoutMs: 300000,
   lastSendAt: null,
   lastSendError: null,
 };

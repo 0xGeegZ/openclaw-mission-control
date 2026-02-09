@@ -44,7 +44,7 @@ export interface RuntimeConfig {
   openclawGatewayUrl: string;
   /** OpenClaw gateway auth token (Bearer); optional for local gateway URLs (empty = no auth) */
   openclawGatewayToken: string | undefined;
-  /** Timeout for OpenClaw /v1/responses requests (ms); default 180000 for long agent runs */
+  /** Timeout for OpenClaw /v1/responses requests (ms); default 300000 for long agent runs */
   openclawRequestTimeoutMs: number;
   /** When false, disable client-side tools and rely on HTTP fallbacks. */
   openclawClientToolsEnabled: boolean;
@@ -312,10 +312,22 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     dropletRegion: process.env.DROPLET_REGION || "unknown",
     openclawGatewayUrl,
     openclawGatewayToken,
-    openclawRequestTimeoutMs: parseIntOrDefault(
-      process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
-      180000,
-    ),
+    openclawRequestTimeoutMs: (() => {
+      const raw = parseIntOrDefault(
+        process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
+        300000,
+      );
+      const minMs = 5000;
+      const maxMs = 600000;
+      if (raw < minMs || raw > maxMs) {
+        log.warn(
+          `OPENCLAW_REQUEST_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`,
+          { value: raw },
+        );
+        return Math.max(minMs, Math.min(maxMs, raw));
+      }
+      return raw;
+    })(),
     openclawClientToolsEnabled,
     taskStatusBaseUrl,
     openclawWorkspaceRoot,

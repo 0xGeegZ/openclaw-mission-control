@@ -135,6 +135,7 @@ export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
               activity.type as ActivityType,
               activity.actorName,
               activity.targetName,
+              activity.meta as Record<string, unknown> | undefined,
             )}
           </span>
         </p>

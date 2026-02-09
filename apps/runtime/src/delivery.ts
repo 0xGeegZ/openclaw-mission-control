@@ -558,8 +558,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
     } catch (error) {
       state.consecutiveFailures++;
       state.lastErrorAt = Date.now();
-      state.lastErrorMessage =
-        error instanceof Error ? error.message : String(error);
+      const msg = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : error instanceof Error && error.cause != null
+            ? String(error.cause)
+            : null;
+      state.lastErrorMessage = cause ? `${msg} (cause: ${cause})` : msg;
       const pollDuration = Date.now() - pollStart;
       recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
       log.error("Poll error:", state.lastErrorMessage);
@@ -629,6 +635,10 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const taskStatus = context.task?.status;
   const isOrchestratorChat = isOrchestratorChatTask(context.task);
   const orchestratorAgentId = context.orchestratorAgentId;
+  const messageAuthorId = context.message?.authorId;
+  const isOrchestratorAuthor =
+    orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
+  const isBlockedTask = taskStatus === "blocked";
 
   // Orchestrator chat: only the designated orchestrator receives agent notifications for that task.
   if (isOrchestratorChat && context.notification?.recipientType === "agent") {
@@ -684,7 +694,8 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     // Skip when task is done/blocked to avoid redundant notifications.
     if (
       taskStatus != null &&
-      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus) &&
+      !(isBlockedTask && isOrchestratorAuthor)
     ) {
       return false;
     }
@@ -1046,7 +1057,7 @@ export function formatNotificationMessage(
     : "";
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
-    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull --ff-only`.";
+    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",

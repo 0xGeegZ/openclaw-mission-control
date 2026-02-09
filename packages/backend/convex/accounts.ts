@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import {
   requireAuth,
   requireAccountMember,
@@ -384,6 +385,13 @@ export const updateRuntimeStatusInternal = internalMutation({
 
     await ctx.db.patch(args.accountId, updates);
 
+    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    if (args.status === "offline") {
+      await ctx.runMutation(internal.service.agents.markAllOffline, {
+        accountId: args.accountId,
+      });
+    }
+
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
     const runtime = await ctx.db
       .query("runtimes")
@@ -474,6 +482,37 @@ export const updateRuntimeStatusInternal = internalMutation({
     }
 
     return args.accountId;
+  },
+});
+
+/** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
+const RUNTIME_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * Mark runtimes offline when lastHealthCheck is too old.
+ * Called by cron so agents show offline after ungraceful shutdown (kill, crash, Docker stop).
+ */
+export const markStaleRuntimesOffline = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const accounts = await ctx.db.query("accounts").collect();
+    let marked = 0;
+    for (const account of accounts) {
+      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+        continue;
+      }
+      const lastCheck = account.runtimeConfig?.lastHealthCheck;
+      if (lastCheck == null || now - lastCheck <= RUNTIME_STALE_MS) {
+        continue;
+      }
+      await ctx.runMutation(internal.accounts.updateRuntimeStatusInternal, {
+        accountId: account._id,
+        status: "offline",
+      });
+      marked++;
+    }
+    return { marked };
   },
 });
 

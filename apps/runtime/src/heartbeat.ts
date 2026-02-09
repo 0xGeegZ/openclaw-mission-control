@@ -109,16 +109,24 @@ function truncateHeartbeatText(value: string, maxChars: number): string {
 
 /**
  * Build the heartbeat prompt with assigned task context.
+ * For the orchestrator, optionally pass taskStatusBaseUrl so the prompt can mention HTTP fallback endpoints.
  */
 export function buildHeartbeatMessage(options: {
   focusTask: HeartbeatTask | null;
   tasks: HeartbeatTask[];
   isOrchestrator: boolean;
+  /** When set and isOrchestrator, instructs use of task tools/API for follow-ups and gives HTTP fallback base URL. */
+  taskStatusBaseUrl?: string;
 }): string {
-  const { focusTask, tasks, isOrchestrator } = options;
+  const { focusTask, tasks, isOrchestrator, taskStatusBaseUrl } = options;
   const orchestratorLine = isOrchestrator
     ? "- As the orchestrator, follow up on in_progress/assigned tasks (even if assigned to other agents)."
     : null;
+  const orchestratorFollowUpBlock = buildOrchestratorFollowUpBlock(
+    isOrchestrator,
+    tasks.length > 0,
+    taskStatusBaseUrl,
+  );
   const taskHeading = isOrchestrator ? "Tracked tasks:" : "Assigned tasks:";
   const taskLines = tasks.map((task) => {
     const description = task.description?.trim()
@@ -145,6 +153,7 @@ Follow the HEARTBEAT.md checklist.
 - If you took action, post a thread update using AGENTS.md format.
 - If you did not take action, reply with a single line: ${HEARTBEAT_OK_RESPONSE}
 ${orchestratorLine ? `\n${orchestratorLine}` : ""}
+${orchestratorFollowUpBlock}
 
 ${taskHeading}
 ${tasksBlock}
@@ -154,6 +163,31 @@ If you take action on a task, include a line with: Task ID: <id>. If you work on
 
 Current time: ${new Date().toISOString()}
 `.trim();
+}
+
+/**
+ * Build orchestrator-only instructions: do a follow-up per tracked task using task tools or API.
+ */
+function buildOrchestratorFollowUpBlock(
+  isOrchestrator: boolean,
+  hasTrackedTasks: boolean,
+  taskStatusBaseUrl?: string,
+): string {
+  if (!isOrchestrator) return "";
+  const base = taskStatusBaseUrl?.trim() ?? "";
+  const toolLine =
+    "For each tracked task, use the task_search or task_get / task_load tool to load task context (or search related work); then perform one follow-up using response_request to the assignee (use task_message only for a general thread update).";
+  const httpLine = base
+    ? ` If tools are unavailable, use HTTP: POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), or POST ${base}/agent/task-load for full task + thread.`
+    : " If tools are unavailable, use the HTTP fallback endpoints (task-search, task-get, task-load) with the base URL from your notification prompt.";
+  const oneAction =
+    "Still take only one atomic action per heartbeat (one task follow-up per run).";
+  if (!hasTrackedTasks) return "";
+  return [
+    "- Do a follow-up in each tracked task when relevant:",
+    `  ${toolLine}${httpLine}`,
+    `  ${oneAction}`,
+  ].join("\n");
 }
 
 /**
@@ -287,6 +321,7 @@ function runHeartbeatCycle(
         focusTask,
         tasks: sortedTasks,
         isOrchestrator,
+        taskStatusBaseUrl: config.taskStatusBaseUrl,
       });
 
       const result = await sendToOpenClaw(agent.sessionKey, heartbeatMessage);

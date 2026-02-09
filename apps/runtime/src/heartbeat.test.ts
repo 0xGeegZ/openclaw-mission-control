@@ -68,4 +68,23 @@ describe("buildHeartbeatMessage", () => {
     expect(message).toContain("No assigned tasks found.");
     expect(message).not.toContain("As the orchestrator");
   });
+
+  it("includes follow-up-per-task and task tool/API instructions for orchestrator when tracked tasks exist", () => {
+    const task = buildTask({
+      _id: "task-follow" as TaskDoc["_id"],
+      title: "Follow-up task",
+      status: "assigned",
+    });
+    const message = buildHeartbeatMessage({
+      focusTask: task,
+      tasks: [task],
+      isOrchestrator: true,
+      taskStatusBaseUrl: "http://runtime:3000",
+    });
+    expect(message).toContain("Do a follow-up in each tracked task");
+    expect(message).toContain("task_search or task_get / task_load");
+    expect(message).toContain("response_request");
+    expect(message).toContain("http://runtime:3000/agent/task-search");
+    expect(message).toContain("only one atomic action per heartbeat");
+  });
 });

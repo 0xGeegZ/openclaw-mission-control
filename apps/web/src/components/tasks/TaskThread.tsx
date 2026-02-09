@@ -223,6 +223,10 @@ export function TaskThread({
   const hasTypingIndicatorsActive =
     hasReceiptsInTypingWindow || fallbackTypingAgents.length > 0;
 
+  /** Ensure typing indicator never renders before "Seen by". */
+  const shouldShowTypingIndicator =
+    effectiveTypingAgents.length > 0 && effectiveReadByAgents.length > 0;
+
   useEffect(() => {
     if (!hasTypingIndicatorsActive) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -303,7 +307,7 @@ export function TaskThread({
       </div>
 
       {/* Typing indicator - single row above input */}
-      {effectiveTypingAgents.length > 0 && (
+      {shouldShowTypingIndicator && (
         <div className="shrink-0 px-4 py-3 max-w-3xl mx-auto w-full">
           <div className="inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-muted/40 border border-border/30 shadow-sm">
             {/* Agent avatars */}

@@ -29,6 +29,21 @@ export interface AgentForProfile {
   }>;
 }
 
+/**
+ * Resolves SOUL content for writing to SOUL.md. Uses effectiveSoulContent when non-empty;
+ * logs a warning if the content is empty.
+ */
+function resolveSoulContent(agent: AgentForProfile): string {
+  const trimmed = agent.effectiveSoulContent?.trim() ?? "";
+  if (trimmed.length > 0) return trimmed;
+  log.warn("SOUL content empty for agent; writing empty SOUL.md", {
+    agentId: agent._id,
+    slug: agent.slug,
+    name: agent.name,
+  });
+  return "";
+}
+
 /** Options for syncOpenClawProfiles. */
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -496,7 +511,7 @@ export function syncOpenClawProfiles(
     validAgents.push({ agent, agentDir });
     ensureDir(agentDir);
 
-    writeIfChanged(path.join(agentDir, "SOUL.md"), agent.effectiveSoulContent);
+    writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
     writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(
