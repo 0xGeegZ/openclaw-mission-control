@@ -140,8 +140,10 @@ describe("getToolCapabilitiesAndSchemas", () => {
       canCreateDocuments: false,
       hasTaskContext: false,
     });
-    expect(result.capabilityLabels).toEqual([]);
-    expect(result.schemas).toEqual([]);
+    // get_agent_skills is available to all agents
+    expect(result.capabilityLabels).toEqual(["query agent skills (get_agent_skills tool)"]);
+    expect(result.schemas.length).toBe(1);
+    expect(result.schemas[0]).toHaveProperty("function.name", "get_agent_skills");
     expect(result.hasTaskStatus).toBe(false);
   });
 });
