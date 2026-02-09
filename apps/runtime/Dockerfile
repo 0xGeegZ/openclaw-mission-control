@@ -1,5 +1,8 @@
 FROM node:24-alpine
 
+# Ensure HTTPS to Convex (and other services) works; Alpine can miss CA certs.
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /app
 
 # Copy workspace files

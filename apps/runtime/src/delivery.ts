@@ -558,8 +558,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
     } catch (error) {
       state.consecutiveFailures++;
       state.lastErrorAt = Date.now();
-      state.lastErrorMessage =
-        error instanceof Error ? error.message : String(error);
+      const msg = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : error instanceof Error && error.cause != null
+            ? String(error.cause)
+            : null;
+      state.lastErrorMessage = cause ? `${msg} (cause: ${cause})` : msg;
       const pollDuration = Date.now() - pollStart;
       recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
       log.error("Poll error:", state.lastErrorMessage);
