@@ -204,23 +204,23 @@ export function TaskDetailSheet({
           </div>
         ) : (
           <>
-            <SheetHeader className="p-4 pb-3 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-2">
+            <SheetHeader className="px-4 pt-3 pb-2 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
                 <div
-                  className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
+                  className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
                 />
                 <span className="uppercase tracking-widest font-medium text-[10px]">
                   Task Detail
                 </span>
               </div>
 
-              <SheetTitle className="text-xl font-bold leading-tight text-balance pr-16">
+              <SheetTitle className="text-lg font-bold leading-tight text-balance pr-16">
                 {task.title}
               </SheetTitle>
             </SheetHeader>
 
-            <div className="p-4 space-y-3 shrink-0 border-b border-border/50">
-              {/* Status and priority */}
+            <div className="px-4 py-2 space-y-2 shrink-0 border-b border-border/50">
+              {/* Status, priority, and inline metadata */}
               <div
                 className="flex items-center gap-2 flex-wrap"
                 role="group"
@@ -232,9 +232,9 @@ export function TaskDetailSheet({
                   <Button
                     size="sm"
                     onClick={handleMarkAsDone}
-                    className="gap-1.5"
+                    className="gap-1.5 h-7 text-xs"
                   >
-                    <CheckCircle2 className="h-4 w-4" />
+                    <CheckCircle2 className="h-3.5 w-3.5" />
                     Mark as done
                   </Button>
                 )}
@@ -242,7 +242,7 @@ export function TaskDetailSheet({
                 {task.priority && (
                   <Badge
                     variant="outline"
-                    className={`gap-1.5 border ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}
+                    className={`gap-1 border text-xs ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}
                   >
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${PRIORITY_CONFIG[task.priority]?.color || PRIORITY_CONFIG[3].color}`}
@@ -254,108 +254,88 @@ export function TaskDetailSheet({
 
               {/* Description */}
               {task.description && (
-                <div className="max-h-32 overflow-y-auto pr-3 text-sm leading-relaxed">
+                <div className="max-h-20 overflow-y-auto pr-3 text-sm leading-relaxed">
                   <MarkdownRenderer content={task.description} compact />
                 </div>
               )}
 
               {/* Blocked reason */}
               {task.status === "blocked" && task.blockedReason && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-                  <Flag className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
+                  <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Blocked Reason</p>
-                    <div className="text-sm opacity-90">
+                    <p className="text-xs font-medium">Blocked</p>
+                    <div className="text-xs opacity-90">
                       <MarkdownRenderer
                         content={task.blockedReason}
                         compact
-                        className="prose-p:my-1"
+                        className="prose-p:my-0.5"
                       />
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Metadata grid - 4 cards in one row */}
-              <div className="grid grid-cols-4 gap-3 text-sm">
+              {/* Compact metadata row */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {/* Assignees */}
                 <div
-                  className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0"
+                  className="flex items-center gap-1.5"
                   role="group"
                   aria-label="Task assignees"
                 >
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
+                  <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground/60">
                     Assignees
                   </span>
-                  <div className="flex items-center gap-2">
-                    <TaskAssignees task={task} showLabel={false} />
-                  </div>
+                  <TaskAssignees task={task} showLabel={false} />
                 </div>
+
+                <span className="text-border">|</span>
 
                 {/* Due date */}
-                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
-                    Due Date
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-muted-foreground/60" />
+                  <span>
+                    {task.dueDate
+                      ? format(new Date(task.dueDate), "MMM d, yyyy")
+                      : "No due date"}
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    <span className="text-sm">
-                      {task.dueDate ? (
-                        format(new Date(task.dueDate), "MMM d, yyyy")
-                      ) : (
-                        <span className="text-muted-foreground/60 italic">
-                          No due date
-                        </span>
-                      )}
-                    </span>
-                  </div>
                 </div>
+
+                <span className="text-border">|</span>
 
                 {/* Created */}
-                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
-                    Created
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-muted-foreground/60" />
+                  <span className="tabular-nums">
+                    {formatDistanceToNow(task.createdAt, { addSuffix: true })}
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    <span className="text-sm tabular-nums">
-                      {formatDistanceToNow(task.createdAt, { addSuffix: true })}
-                    </span>
-                  </div>
                 </div>
 
+                <span className="text-border">|</span>
+
                 {/* Updated */}
-                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30 min-w-0">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium">
-                    Updated
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-muted-foreground/60" />
+                  <span className="tabular-nums">
+                    {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    <span className="text-sm tabular-nums">
-                      {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
-                    </span>
-                  </div>
                 </div>
               </div>
 
               {/* Labels */}
               {task.labels.length > 0 && (
-                <div className="space-y-2 p-2.5 rounded-xl bg-muted/30">
-                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-widest font-medium flex items-center gap-1.5">
-                    <Tag className="h-3 w-3" />
-                    Labels
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {task.labels.map((label) => (
-                      <Badge
-                        key={label}
-                        variant="secondary"
-                        className="text-xs bg-background/50 border border-border/30"
-                      >
-                        {label}
-                      </Badge>
-                    ))}
-                  </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Tag className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                  {task.labels.map((label) => (
+                    <Badge
+                      key={label}
+                      variant="secondary"
+                      className="text-[10px] h-5 bg-background/50 border border-border/30"
+                    >
+                      {label}
+                    </Badge>
+                  ))}
                 </div>
               )}
             </div>
