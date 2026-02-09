@@ -8,7 +8,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 - Writable clone (use for all work): `/root/clawd/repos/openclaw-mission-control`
 - GitHub: <https://github.com/0xGeegZ/openclaw-mission-control>
-- Before starting a task, run `git fetch origin` and `git pull --ff-only` in the writable clone.
+- Before starting a task, run `git fetch origin` and `git pull` in the writable clone.
 - If the writable clone is missing, run `git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control`
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
 - To inspect directories, use `exec` (e.g. `ls /root/clawd/repos/openclaw-mission-control`); use `read` only on files.
@@ -160,7 +160,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
-**Orchestrator (squad lead):** When a task is in REVIEW, request QA approval. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When a task is in REVIEW, you must request QA approval using the **response_request** tool. Even if you agree with QA or QA already posted, you still must request a QA response that explicitly confirms and moves the task to DONE — do not post an "Approved" reply without sending the response_request. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ### Optional HTTP fallbacks (manual/CLI)
 
@@ -189,7 +189,7 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
 
 ### Orchestrator follow-ups (tool-only)
 
-When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
 
 ## Document rules
 

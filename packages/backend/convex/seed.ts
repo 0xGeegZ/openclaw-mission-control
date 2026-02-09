@@ -321,7 +321,7 @@ const WRITING_SKILL_SLUGS = [
   "launch-strategy",
 ] as const;
 
-/** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval, icon. */
+/** Seed agents: name, slug, role, agentRole (for SOUL), description, skill slugs, heartbeat interval. */
 const seedAgents = [
   {
     name: "Squad Lead",
@@ -337,7 +337,6 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: true,
-    icon: "Crown",
   },
   {
     name: "Engineer",
@@ -353,7 +352,6 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
-    icon: "Code2",
   },
   {
     name: "QA",
@@ -369,7 +367,6 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
-    icon: "TestTube",
   },
   {
     name: "Designer",
@@ -381,7 +378,6 @@ const seedAgents = [
     skillSlugs: [...DESIGN_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
-    icon: "Palette",
   },
   {
     name: "Writer",
@@ -392,7 +388,6 @@ const seedAgents = [
     skillSlugs: [...WRITING_SKILL_SLUGS, ...CURSOR_SKILL_SLUGS] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
-    icon: "PenLine",
   },
 ] as const;
 
@@ -407,24 +402,12 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 - Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
 - GitHub: https://github.com/0xGeegZ/openclaw-mission-control
-- Before starting a task, run \`git fetch origin\` and \`git pull --ff-only\` in the writable clone.
+- Before starting a task, run \`git fetch origin\` and \`git pull\` in the writable clone.
 - If the writable clone is missing, run \`git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control\`
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
 - To inspect directories, use exec (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
 - Write artifacts to /root/clawd/deliverables and reference them in the thread.
-
-## Workspace boundaries (read/write)
-
-- Allowed root: /root/clawd only.
-- Allowed working paths:
-  - /root/clawd/agents/<slug> (your agent workspace, safe to create files/folders)
-  - /root/clawd/memory (WORKING.md, daily notes, MEMORY.md)
-  - /root/clawd/deliverables (final artifacts to share)
-  - /root/clawd/repos/openclaw-mission-control (code changes)
-  - /root/clawd/skills (only if explicitly instructed)
-- Do not read or write outside /root/clawd (no /root, /etc, /usr, /tmp, or host paths).
-- If a required path under /root/clawd is missing, create it if you can (e.g. /root/clawd/agents and your /root/clawd/agents/<slug> workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
 
 ## Runtime ownership (critical)
 
@@ -504,23 +487,12 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_status** — Update the current task's status. Call **before** posting your reply when you change status. Available only when you have a task context and the account allows it.
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
-- **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
-- **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
-- **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
-- **task_assign** (orchestrator only) — Assign agents to a task by slug.
-- **task_message** (orchestrator only) — Post a message to another task's thread.
-- **task_list** (orchestrator only) — List tasks with optional filters (status, assignee, limit).
-- **task_get** (orchestrator only) — Fetch details for a single task by ID.
-- **task_thread** (orchestrator only) — Fetch recent thread messages for a task.
-- **task_search** (orchestrator only) — Search tasks by title/description/blockers.
-- **task_delete** (orchestrator only) — Archive a task with a required reason (soft delete).
-- **task_link_pr** (orchestrator only) — Link a task to a GitHub PR bidirectionally.
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
-### Agent follow-ups (tool-only)
+### Mention gating
 
-Agent @mentions do **not** notify other agents. To request a follow-up, you must use the **response_request** tool (or the HTTP fallback below). If the tool is unavailable and HTTP is unreachable, report **BLOCKED** and state that you cannot request agent responses.
+If your capabilities do **not** include "mention other agents", then @mentions of agents (including @all for agents) are ignored by the system: no agent will be notified. User mentions still work. Do not assume agent mentions were delivered; report that you cannot mention agents if asked.
 
 ## How to update task status (required)
 
@@ -559,15 +531,12 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 - **Task status:** \`POST {TASK_STATUS_BASE_URL}/agent/task-status\` with body \`{ "taskId", "status", "blockedReason?" }\`.
 - **Task create:** \`POST {TASK_STATUS_BASE_URL}/agent/task-create\` with body \`{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }\`.
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
-- **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.
 
 All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
 
 ## Orchestrator (squad lead)
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
-
-**Never self-assign tasks.** You are the orchestrator/coordinator—only assign work to the actual agents who will execute (e.g. \`assigneeSlugs: ["engineer"]\`, not \`["squad-lead", "engineer"]\`). This keeps accountability clear.
 
 ## Communication rules
 
@@ -578,9 +547,24 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
   - the activity feed
   - your WORKING.md and recent daily notes
 
-### Orchestrator follow-ups (tool-only)
+### Mentions (Orchestrator)
 
-When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+When you are the orchestrator (squad lead), use @mentions to request follow-ups from specific agents:
+
+- Use @mentions to request follow-ups from specific agents.
+- Choose agents from the roster list shown in your notification prompt (by slug, e.g. \`@researcher\`).
+- Mention only agents who can add value to the discussion; avoid @all unless necessary.
+- If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+- **When a task is DONE:** only @mention agents to start or continue work on **other existing tasks** (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this done task thread — that causes reply loops.
+
+Example: to ask the researcher to dig deeper and the writer to draft a summary, you might post:
+
+\`\`\`
+**Summary** - Reviewing latest findings; requesting follow-up from research and writer.
+
+@researcher Please add 2-3 concrete sources for the claim in the last message.
+@writer Once that’s in, draft a one-paragraph summary for the doc.
+\`\`\`
 
 ## Document rules
 
@@ -632,8 +616,6 @@ Pick one action that can be completed quickly:
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
 
-Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
-
 ## 4) Report + persist memory (always)
 
 - Post a thread update using the required format
@@ -677,7 +659,7 @@ const DOC_REPOSITORY_CONTENT = `# Repository — Primary
 - **Name:** OpenClaw Mission Control
 - **Writable clone (use for all git work):** /root/clawd/repos/openclaw-mission-control
 - **GitHub:** https://github.com/0xGeegZ/openclaw-mission-control
-- **Usage:** Before starting a task, run \`git fetch origin\` and \`git pull --ff-only\`. Work in the writable clone for branch, commit, push, and \`gh pr create\`. Do not run \`gh auth login\` when GH_TOKEN is set.
+- **Usage:** Before starting a task, run \`git fetch origin\` and \`git pull\`. Work in the writable clone for branch, commit, push, and \`gh pr create\`. Do not run \`gh auth login\` when GH_TOKEN is set.
 - **Access note:** If you see a 404, authentication is missing; request GH_TOKEN (Contents + Pull requests write scopes).
 `;
 
@@ -763,7 +745,7 @@ Level: lead
 
 ## Mission
 
-Keep the repo healthy and the team aligned. Own scope, acceptance criteria, and release visibility. Steward team skills: periodically audit skills, improve existing ones, and create new ones when gaps appear.
+Keep the repo healthy and the team aligned. Own scope, acceptance criteria, and release visibility.
 
 ## Personality constraints
 
@@ -773,7 +755,6 @@ Keep the repo healthy and the team aligned. Own scope, acceptance criteria, and 
 - Review PRs only when there are new commits or changes since your last review to avoid loops.
 - Flag blockers early and escalate when needed.
 - Prefer short, actionable thread updates.
-- Do not narrate the checklist on heartbeat; start with a concrete action update or reply with \`HEARTBEAT_OK\`.
 - Delegate to Engineer/QA with clear acceptance criteria.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
@@ -783,16 +764,6 @@ Keep the repo healthy and the team aligned. Own scope, acceptance criteria, and 
 - GitHub issues, milestones, labels.
 - Sprint planning and priority setting.
 - Release checklists and changelogs.
-
-## Skill stewardship (orchestrator)
-
-- Part of your role is to periodically audit team skills, improve existing skills, and create new ones when needed.
-- Run a **weekly skill audit** (e.g. via OpenClaw cron or a recurring task you create for yourself). During the audit:
-  - Use the **get_agent_skills** tool to list skills per agent and assess coverage.
-  - Identify gaps, outdated or redundant skills, and improvement opportunities.
-  - Improve existing skill content or create new skills as needed (follow project skill docs and add-agent flow for new skills).
-  - Evaluate whether a **new team agent** is needed (e.g. new role to cover a gap). If so, create a task to add the agent and follow the **add-agent** skill to implement it.
-- Use get_agent_skills when planning workloads so you can assign tasks to agents that have the right skills.
 
 ## Default operating procedure
 
@@ -1274,7 +1245,6 @@ async function runSeedWithOwner(
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
         openclawConfig,
-        icon: a.icon,
       });
       agentsExisting += 1;
       continue;
@@ -1289,7 +1259,6 @@ async function runSeedWithOwner(
       sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
-      icon: a.icon,
       soulContent,
       openclawConfig,
       createdAt: now,

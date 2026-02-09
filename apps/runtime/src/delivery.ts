@@ -1050,7 +1050,7 @@ export function formatNotificationMessage(
     : "";
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
-    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull --ff-only`.";
+    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
