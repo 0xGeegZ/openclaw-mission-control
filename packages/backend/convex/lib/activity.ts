@@ -5,6 +5,8 @@ import { Id } from "../_generated/dataModel";
  * Activity type definitions.
  */
 export type ActivityType =
+  | "account_created"
+  | "account_updated"
   | "task_created"
   | "task_updated"
   | "task_status_changed"
@@ -13,7 +15,6 @@ export type ActivityType =
   | "document_updated"
   | "agent_status_changed"
   | "runtime_status_changed"
-  | "account_updated"
   | "member_added"
   | "member_removed"
   | "member_updated"
@@ -70,6 +71,8 @@ export function getActivityDescription(
   const target = targetName ?? "an item";
   
   switch (type) {
+    case "account_created":
+      return `${actorName} created account "${target}"`;
     case "task_created":
       return `${actorName} created task "${target}"`;
     case "task_updated":
