@@ -487,7 +487,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 403, {
           success: false,
           error: "Forbidden: endpoint is local-only",
-        });
+        }, correlationId);
         return;
       }
       const sessionHeader = req.headers["x-openclaw-session-key"];
@@ -499,17 +499,17 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
-        });
+        }, correlationId);
         return;
       }
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
         log.warn("[task-create] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        sendJson(res, 401, { success: false, error: "Unknown session key" }, correlationId);
         return;
       }
       if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        sendJson(res, 500, { success: false, error: "Runtime not configured" }, correlationId);
         return;
       }
       let body: {
@@ -524,7 +524,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         body = await readJsonBody<typeof body>(req);
       } catch (error) {
         log.warn("[task-create] Invalid JSON:", error);
-        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" }, correlationId);
         return;
       }
       if (!body?.title?.trim()) {
@@ -532,10 +532,11 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 400, {
           success: false,
           error: "Missing required field: title",
-        });
+        }, correlationId);
         return;
       }
       log.info("[task-create] Request:", {
+        correlationId,
         agentId,
         title: body.title.substring(0, 50),
         status: body.status,
@@ -566,21 +567,23 @@ export function startHealthServer(config: RuntimeConfig): void {
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_create", duration);
         log.info("[task-create] Success:", {
+          correlationId,
           agentId,
           taskId,
           durationMs: duration,
         });
-        sendJson(res, 200, { success: true, taskId });
+        sendJson(res, 200, { success: true, taskId }, correlationId);
       } catch (error) {
         const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
         recordFailure("agent.task_create", duration, message);
         log.error("[task-create] Failed:", {
+          correlationId,
           agentId,
           error: message,
           durationMs: duration,
         });
-        sendJson(res, 403, { success: false, error: message });
+        sendJson(res, 403, { success: false, error: message }, correlationId);
       }
       return;
     }
@@ -794,7 +797,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 403, {
           success: false,
           error: "Forbidden: endpoint is local-only",
-        });
+        }, correlationId);
         return;
       }
       const sessionHeader = req.headers["x-openclaw-session-key"];
@@ -806,17 +809,17 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
-        });
+        }, correlationId);
         return;
       }
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
         log.warn("[document] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        sendJson(res, 401, { success: false, error: "Unknown session key" }, correlationId);
         return;
       }
       if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        sendJson(res, 500, { success: false, error: "Runtime not configured" }, correlationId);
         return;
       }
       const allowedTypes = ["deliverable", "note", "template", "reference"];
@@ -831,7 +834,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         body = await readJsonBody<typeof body>(req);
       } catch (error) {
         log.warn("[document] Invalid JSON:", error);
-        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" }, correlationId);
         return;
       }
       if (
@@ -849,10 +852,11 @@ export function startHealthServer(config: RuntimeConfig): void {
           success: false,
           error:
             "Missing or invalid: title, content, and type (deliverable|note|template|reference) required",
-        });
+        }, correlationId);
         return;
       }
       log.info("[document] Request:", {
+        correlationId,
         agentId,
         title: body.title.substring(0, 50),
         type: body.type,
@@ -881,21 +885,23 @@ export function startHealthServer(config: RuntimeConfig): void {
         const duration = Date.now() - requestStart;
         recordSuccess("agent.document", duration);
         log.info("[document] Success:", {
+          correlationId,
           agentId,
           documentId,
           durationMs: duration,
         });
-        sendJson(res, 200, { success: true, documentId });
+        sendJson(res, 200, { success: true, documentId }, correlationId);
       } catch (error) {
         const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
         recordFailure("agent.document", duration, message);
         log.error("[document] Failed:", {
+          correlationId,
           agentId,
           error: message,
           durationMs: duration,
         });
-        sendJson(res, 403, { success: false, error: message });
+        sendJson(res, 403, { success: false, error: message }, correlationId);
       }
       return;
     }
