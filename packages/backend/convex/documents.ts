@@ -14,6 +14,7 @@ import {
 /**
  * List documents for an account.
  * Supports filtering by folder (parentId), type, and task.
+ * Excludes soft-deleted documents by default.
  * Returns UI shape: name (name ?? title), type (kind, default "file").
  */
 export const list = query({
@@ -23,6 +24,7 @@ export const list = query({
     type: v.optional(documentTypeValidator),
     taskId: v.optional(v.id("tasks")),
     limit: v.optional(v.number()),
+    includeSoftDeleted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
@@ -52,6 +54,11 @@ export const list = query({
       documents.sort((a, b) => b.updatedAt - a.updatedAt);
     }
 
+    // Filter out soft-deleted documents unless explicitly requested
+    if (!args.includeSoftDeleted) {
+      documents = documents.filter((d) => !d.deletedAt);
+    }
+
     if (args.type) {
       documents = documents.filter((d) => d.type === args.type);
     }
@@ -70,6 +77,7 @@ export const list = query({
 
 /**
  * List documents by type.
+ * Excludes soft-deleted documents.
  */
 export const listByType = query({
   args: {
@@ -79,17 +87,20 @@ export const listByType = query({
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
 
-    return ctx.db
+    const documents = await ctx.db
       .query("documents")
       .withIndex("by_account_type", (q) =>
         q.eq("accountId", args.accountId).eq("type", args.type),
       )
       .collect();
+
+    return documents.filter((d) => !d.deletedAt);
   },
 });
 
 /**
  * List documents linked to a specific task.
+ * Excludes soft-deleted documents.
  */
 export const listByTask = query({
   args: {
@@ -103,10 +114,12 @@ export const listByTask = query({
 
     await requireAccountMember(ctx, task.accountId);
 
-    return ctx.db
+    const documents = await ctx.db
       .query("documents")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
+
+    return documents.filter((d) => !d.deletedAt);
   },
 });
 
@@ -151,8 +164,10 @@ export const getAccountSlugForRedirect = query({
 });
 
 /**
- * Search documents by title.
+ * Search documents by name field.
+ * MVP: search name only. Content search can be a follow-up optimization.
  * Simple text search (case-insensitive contains).
+ * Excludes soft-deleted documents.
  */
 export const search = query({
   args: {
@@ -169,28 +184,13 @@ export const search = query({
       .collect();
 
     const searchLower = args.query.toLowerCase();
-    let results = documents.filter((d) => {
-      const title = d.title ?? d.name ?? "";
-      const content = d.content ?? "";
-      return (
-        title.toLowerCase().includes(searchLower) ||
-        content.toLowerCase().includes(searchLower)
-      );
-    });
-
-    results.sort((a, b) => {
-      const aTitle = (a.title ?? a.name ?? "")
-        .toLowerCase()
-        .includes(searchLower);
-      const bTitle = (b.title ?? b.name ?? "")
-        .toLowerCase()
-        .includes(searchLower);
-
-      if (aTitle && !bTitle) return -1;
-      if (!aTitle && bTitle) return 1;
-
-      return b.updatedAt - a.updatedAt;
-    });
+    let results = documents
+      .filter((d) => !d.deletedAt) // Exclude soft-deleted
+      .filter((d) => {
+        const name = d.name ?? d.title ?? "";
+        return name.toLowerCase().includes(searchLower);
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt);
 
     if (args.limit) {
       results = results.slice(0, args.limit);
@@ -203,6 +203,7 @@ export const search = query({
 /**
  * Create a new document or folder.
  * For kind "file": title, content, type required. For kind "folder": name or title, content optional.
+ * mimeType and size are optional for files (useful for uploaded files), ignored for folders.
  */
 export const create = mutation({
   args: {
@@ -214,6 +215,8 @@ export const create = mutation({
     content: v.optional(v.string()),
     type: v.optional(documentTypeValidator),
     taskId: v.optional(v.id("tasks")),
+    mimeType: v.optional(v.string()),
+    size: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountMember(
@@ -270,6 +273,8 @@ export const create = mutation({
       title: args.title,
       content: isFolder ? undefined : args.content,
       type: args.type,
+      mimeType: isFolder ? undefined : args.mimeType,
+      size: isFolder ? undefined : args.size,
       authorType: "user" as const,
       authorId: userId,
       version: isFolder ? undefined : 1,
@@ -299,6 +304,7 @@ export const create = mutation({
 /**
  * Update a document.
  * Supports moving (parentId) and kind. Increments version on content changes for files.
+ * Supports mimeType and size updates for files.
  */
 export const update = mutation({
   args: {
@@ -310,6 +316,8 @@ export const update = mutation({
     content: v.optional(v.string()),
     type: v.optional(documentTypeValidator),
     taskId: v.optional(v.id("tasks")),
+    mimeType: v.optional(v.string()),
+    size: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
@@ -354,6 +362,10 @@ export const update = mutation({
     if (args.title !== undefined) updates.title = args.title;
     if (args.type !== undefined) updates.type = args.type;
     if (args.taskId !== undefined) updates.taskId = args.taskId;
+    if (args.mimeType !== undefined && document.kind !== "folder")
+      updates.mimeType = args.mimeType;
+    if (args.size !== undefined && document.kind !== "folder")
+      updates.size = args.size;
 
     if (args.content !== undefined && document.kind !== "folder") {
       const prevContent = document.content ?? "";
@@ -468,8 +480,62 @@ async function collectDescendantIds(
 }
 
 /**
- * Delete a document. If it is a folder, cascade-deletes all descendants first.
+ * Soft delete a document (set deletedAt timestamp for audit trail).
+ * If it is a folder, cascade soft-deletes all descendants.
+ */
+export const softDelete = mutation({
+  args: {
+    documentId: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (!document) {
+      throw new Error("Not found: Document does not exist");
+    }
+
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      document.accountId,
+    );
+
+    const now = Date.now();
+
+    if (document.kind === "folder") {
+      const toDelete: Id<"documents">[] = [args.documentId];
+      await collectDescendantIds(
+        ctx,
+        document.accountId,
+        args.documentId,
+        toDelete,
+      );
+      for (const docId of toDelete) {
+        await ctx.db.patch(docId, { deletedAt: now, updatedAt: now });
+      }
+    } else {
+      await ctx.db.patch(args.documentId, { deletedAt: now, updatedAt: now });
+    }
+
+    await logActivity({
+      ctx,
+      accountId: document.accountId,
+      type: "document_updated",
+      actorType: "user",
+      actorId: userId,
+      actorName: userName,
+      targetType: "document",
+      targetId: args.documentId,
+      targetName: document.title ?? document.name ?? "Document",
+      meta: { action: "soft_delete", deletedAt: now },
+    });
+
+    return true;
+  },
+});
+
+/**
+ * Hard delete a document. If it is a folder, cascade-deletes all descendants first.
  * Order: collect all descendant IDs (depth-first), then delete from leaves to root to satisfy Convex.
+ * Use softDelete for audit trail; use remove for permanent deletion.
  */
 export const remove = mutation({
   args: {
@@ -481,7 +547,10 @@ export const remove = mutation({
       throw new Error("Not found: Document does not exist");
     }
 
-    await requireAccountMember(ctx, document.accountId);
+    const { userId, userName } = await requireAccountMember(
+      ctx,
+      document.accountId,
+    );
 
     if (document.kind === "folder") {
       const toDelete: Id<"documents">[] = [args.documentId];
@@ -497,6 +566,19 @@ export const remove = mutation({
     } else {
       await ctx.db.delete(args.documentId);
     }
+
+    await logActivity({
+      ctx,
+      accountId: document.accountId,
+      type: "document_updated",
+      actorType: "user",
+      actorId: userId,
+      actorName: userName,
+      targetType: "document",
+      targetId: args.documentId,
+      targetName: document.title ?? document.name ?? "Document",
+      meta: { action: "hard_delete" },
+    });
 
     return true;
   },
@@ -533,6 +615,8 @@ export const duplicate = mutation({
       title: `${title} (Copy)`,
       content: document.content ?? "",
       type: document.type ?? "note",
+      mimeType: document.mimeType,
+      size: document.size,
       authorType: "user",
       authorId: userId,
       version: 1,

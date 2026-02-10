@@ -640,6 +640,12 @@ export default defineSchema({
     /** Document type (deliverable/note/template/reference). Files only. */
     type: v.optional(documentTypeValidator),
 
+    /** MIME type of the file (e.g., "text/markdown"). Optional for folders. */
+    mimeType: v.optional(v.string()),
+
+    /** Size of the file in bytes. Optional for folders. */
+    size: v.optional(v.number()),
+
     /**
      * Author type.
      */
@@ -658,13 +664,17 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /** Timestamp of soft delete (for audit trail). null = not deleted. */
+    deletedAt: v.optional(v.number()),
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
     .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
-    .index("by_account_updated", ["accountId", "updatedAt"]),
+    .index("by_account_updated", ["accountId", "updatedAt"])
+    .index("by_account_deleted", ["accountId", "deletedAt"]),
 
   // ==========================================================================
   // ACTIVITIES
