@@ -5,6 +5,7 @@ import { cn } from "@packages/ui/lib/utils";
 import "@packages/ui/styles/globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { CommandPaletteProvider } from "@/components/providers/CommandPaletteProvider";
 import { Toaster } from "sonner";
 import { SkipLink } from "@/components/ui/SkipLink";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
@@ -47,6 +48,7 @@ export default function RootLayout({
             <ThemeProvider>
               <ConvexClientProvider>
                 <SkipLink />
+                <CommandPaletteProvider />
                 <div id="main-content">{children}</div>
                 <Toaster
                   position="bottom-right"

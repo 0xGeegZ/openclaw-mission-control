@@ -5,7 +5,7 @@
  * Coverage: apps/web/src/pages/settings - account and notification settings
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ============================================================================
 // Mock Settings Form E2E Tests
