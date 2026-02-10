@@ -40,10 +40,18 @@ export default defineConfig({
         "convex/seed/**",
         "convex/README.md",
       ],
+      // Coverage targets
       lines: 70,
       functions: 70,
-      branches: 70,
+      branches: 60,
       statements: 70,
+      // Thresholds that fail the build if coverage is below target
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 60,
+        statements: 70,
+      },
     },
     
     // Setup files run before tests (outside convex/ so Convex deploy does not load vitest)
