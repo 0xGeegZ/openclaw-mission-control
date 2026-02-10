@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Search, Plus, Box, FileText, Settings, Command } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAccount } from '@/lib/hooks/useAccount';
 import styles from './CommandPalette.module.css';
 import { useCommandPaletteSearch } from '@/lib/hooks/useCommandPaletteSearch';
 
@@ -26,6 +27,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onNavigate,
 }) => {
   const router = useRouter();
+  const { account } = useAccount();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -56,60 +58,60 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         description: 'Open settings',
         icon: <Settings size={16} />,
         action: () => {
-          const url = onNavigate ? '/settings' : '/settings';
+          const url = account?.slug ? `/${account.slug}/settings` : '/settings';
           onNavigate?.(url);
           if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: ['preferences', 'config'],
       },
-      // Add search results
-      ...searchResults.tasks.map(task => ({
+      // Add search results (only if we have account slug)
+      ...(account?.slug ? searchResults.tasks.map(task => ({
         id: `task-${task.id}`,
         title: task.title,
         category: 'task' as const,
         description: `Status: ${task.status}`,
         icon: <Box size={16} />,
         action: () => {
-          const url = `/document/${task.id}`;
+          const url = `/${account.slug}/tasks/${task.id}`;
           onNavigate?.(url);
           if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: [task.title.toLowerCase()],
-      })),
-      ...searchResults.documents.map(doc => ({
+      })) : []),
+      ...(account?.slug ? searchResults.documents.map(doc => ({
         id: `doc-${doc.id}`,
         title: doc.title,
         category: 'doc' as const,
         description: 'Go to document',
         icon: <FileText size={16} />,
         action: () => {
-          const url = `/document/${doc.id}`;
+          const url = `/${account.slug}/docs/${doc.id}`;
           onNavigate?.(url);
           if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: [doc.title.toLowerCase()],
-      })),
-      ...searchResults.agents.map(agent => ({
+      })) : []),
+      ...(account?.slug ? searchResults.agents.map(agent => ({
         id: `agent-${agent.id}`,
         title: agent.title,
         category: 'agent' as const,
         description: agent.role ? `Role: ${agent.role}` : 'Agent',
         icon: <Command size={16} />,
         action: () => {
-          // Navigate to agent detail or trigger assignment
-          const url = `/agents/${agent.id}`;
+          // Navigate to agent detail page
+          const url = `/${account.slug}/agents/${agent.id}`;
           onNavigate?.(url);
           if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: [agent.title.toLowerCase()],
-      })),
+      })) : []),
     ];
     return items;
-  }, [searchResults, onTaskCreate, onNavigate, router]);
+  }, [searchResults, onTaskCreate, onNavigate, router, account?.slug]);
 
   // Filter items based on query
   const filteredItems = useMemo(() => {
