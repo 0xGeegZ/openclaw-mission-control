@@ -18,6 +18,7 @@ import {
   Eye,
   AlertTriangle,
   Users,
+  Archive,
 } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import {
@@ -88,6 +89,13 @@ const statusConfig: Record<
     bgColor: "bg-destructive",
     borderColor: "border-destructive/20",
     headerBg: "bg-destructive/5",
+  },
+  archived: {
+    icon: Archive,
+    color: "text-muted-foreground",
+    bgColor: "bg-muted-foreground",
+    borderColor: "border-muted/40",
+    headerBg: "bg-muted/30",
   },
 };
 

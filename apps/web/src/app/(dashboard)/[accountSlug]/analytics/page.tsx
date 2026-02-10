@@ -41,8 +41,8 @@ import {
   PieChartIcon,
 } from "lucide-react";
 
-/** Task status display order: Kanban order plus blocked. */
-const ANALYTICS_STATUS_ORDER: TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+/** Task status display order: use canonical shared order. */
+const ANALYTICS_STATUS_ORDER: TaskStatus[] = TASK_STATUS_ORDER;
 
 /** Hex colors for task statuses in charts (not CSS vars). */
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -52,6 +52,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   review: "#f59e0b",
   done: "#22c55e",
   blocked: "#ef4444",
+  archived: "#9ca3af",
 };
 
 /** Hex colors for agent statuses in charts. */

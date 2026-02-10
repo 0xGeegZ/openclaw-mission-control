@@ -24,6 +24,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   Maximize2,
   Trash2,
+  Archive,
   CheckCircle2,
   Calendar,
   MessageSquare,
@@ -40,6 +41,7 @@ import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
 import { cn } from "@packages/ui/lib/utils";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
+import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface TaskDetailSheetProps {
@@ -47,6 +49,8 @@ interface TaskDetailSheetProps {
   accountSlug: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after task is deleted (e.g. to close sheet and clear URL). */
+  onDeleted?: () => void;
 }
 
 const PRIORITY_CONFIG: Record<
@@ -127,8 +131,10 @@ export function TaskDetailSheet({
   accountSlug,
   open,
   onOpenChange,
+  onDeleted,
 }: TaskDetailSheetProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
   const updateStatus = useMutation(api.tasks.updateStatus);
 
@@ -142,6 +148,11 @@ export function TaskDetailSheet({
         description: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  };
+
+  const handleDeleted = () => {
+    onOpenChange(false);
+    onDeleted?.();
   };
 
   return (
@@ -161,6 +172,17 @@ export function TaskDetailSheet({
                 <Maximize2 className="size-4" />
                 <span className="sr-only">Open full page</span>
               </Link>
+              {task.status !== "archived" && (
+                <button
+                  type="button"
+                  onClick={() => setArchiveDialogOpen(true)}
+                  className={headerActionClass}
+                  title="Archive task"
+                  aria-label="Archive task"
+                >
+                  <Archive className="size-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setDeleteDialogOpen(true)}
@@ -386,13 +408,22 @@ export function TaskDetailSheet({
         )}
       </SheetContent>
       {task && (
-        <DeleteTaskDialog
-          taskId={task._id}
-          taskTitle={task.title}
-          open={deleteDialogOpen}
-          onOpenChange={setDeleteDialogOpen}
-          onDeleted={() => onOpenChange(false)}
-        />
+        <>
+          <DeleteTaskDialog
+            taskId={task._id}
+            taskTitle={task.title}
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+            onDeleted={handleDeleted}
+          />
+          <ArchiveTaskDialog
+            taskId={task._id}
+            taskTitle={task.title}
+            open={archiveDialogOpen}
+            onOpenChange={setArchiveDialogOpen}
+            onArchived={handleDeleted}
+          />
+        </>
       )}
     </Sheet>
   );

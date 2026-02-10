@@ -16,6 +16,7 @@ import { v } from "convex/values";
  * Task status validator.
  * Canonical workflow: inbox → assigned → in_progress → review → done
  * Special state: blocked (can be entered from assigned or in_progress)
+ * Archived: terminal state for deleted/removed tasks (soft delete with audit trail)
  */
 const taskStatusValidator = v.union(
   v.literal("inbox"),
@@ -24,6 +25,7 @@ const taskStatusValidator = v.union(
   v.literal("review"),
   v.literal("done"),
   v.literal("blocked"),
+  v.literal("archived"),
 );
 
 /**
@@ -360,6 +362,9 @@ export default defineSchema({
     /** Avatar/icon URL */
     avatarUrl: v.optional(v.string()),
 
+    /** Lucide icon name for UI when avatarUrl is not set (e.g. "Crown", "Code2") */
+    icon: v.optional(v.string()),
+
     /**
      * SOUL file content.
      * Contains personality, constraints, and operating procedures.
@@ -480,6 +485,12 @@ export default defineSchema({
      * Required when status is "blocked".
      */
     blockedReason: v.optional(v.string()),
+
+    /**
+     * Timestamp when task was archived (soft delete).
+     * Set only when status is "archived"; used for audit trail.
+     */
+    archivedAt: v.optional(v.number()),
 
     /**
      * Metadata for external integrations.

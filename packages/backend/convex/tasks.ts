@@ -124,6 +124,7 @@ export const listByStatus = query({
       review: [],
       done: [],
       blocked: [],
+      archived: [],
     };
 
     for (const task of tasks) {
@@ -422,6 +423,11 @@ export const updateStatus = mutation({
       updates.blockedReason = args.blockedReason;
     } else if (currentStatus === "blocked") {
       updates.blockedReason = undefined;
+    }
+
+    // Set archivedAt when transitioning to archived (audit trail)
+    if (nextStatus === "archived") {
+      updates.archivedAt = Date.now();
     }
 
     await ctx.db.patch(args.taskId, updates);

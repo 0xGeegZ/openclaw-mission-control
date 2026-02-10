@@ -651,7 +651,17 @@ export const updateTaskStatusFromAgent = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<{ success: true }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: true;
+    taskId: Id<"tasks">;
+    requestedStatus: TaskStatus;
+    status: TaskStatus;
+    updatedAt: number;
+    changed: boolean;
+  }> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
     if (serviceContext.accountId !== args.accountId) {
@@ -695,6 +705,10 @@ export const updateTaskStatusFromAgent = action({
       "blocked",
     ]);
 
+    let changed = false;
+    let finalStatus: TaskStatus | null = null;
+    let finalUpdatedAt: number | null = null;
+
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
@@ -713,7 +727,11 @@ export const updateTaskStatusFromAgent = action({
         args.expectedStatus &&
         currentStatus !== args.expectedStatus
       )
-        return { success: true };
+      {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
       if (
         i === 0 &&
         targetStatus === "done" &&
@@ -724,7 +742,11 @@ export const updateTaskStatusFromAgent = action({
           "Forbidden: Task must be in review before marking done",
         );
       }
-      if (currentStatus === targetStatus) break;
+      if (currentStatus === targetStatus) {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
 
       const path = findStatusPath({
         from: currentStatus,
@@ -748,9 +770,28 @@ export const updateTaskStatusFromAgent = action({
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
+      changed = true;
     }
 
-    return { success: true };
+    if (!finalStatus || finalUpdatedAt == null) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task) throw new Error("Not found: Task does not exist");
+      if (task.accountId !== args.accountId)
+        throw new Error("Forbidden: Task belongs to different account");
+      finalStatus = task.status as TaskStatus;
+      finalUpdatedAt = task.updatedAt;
+    }
+
+    return {
+      success: true,
+      taskId: args.taskId,
+      requestedStatus: targetStatus,
+      status: finalStatus,
+      updatedAt: finalUpdatedAt,
+      changed,
+    };
   },
 });
 
@@ -1073,6 +1114,69 @@ export const createTaskMessageForAgentTool = action({
     );
 
     return { messageId };
+  },
+});
+
+/**
+ * Search tasks for orchestrator tools (service-only).
+ * Returns matching tasks with relevance scores.
+ */
+export const searchTasksForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      _id: Id<"tasks">;
+      title: string;
+      status: string;
+      priority: number;
+      blockedReason?: string;
+      assignedAgentIds: Id<"agents">[];
+      assignedUserIds: string[];
+      createdAt: number;
+      updatedAt: number;
+      relevanceScore: number;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can search tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.searchTasksForAgentTool, {
+      accountId: args.accountId,
+      agentId: args.agentId,
+      query: args.query,
+      limit: args.limit,
+    });
   },
 });
 
@@ -1469,6 +1573,130 @@ export const recordUpgradeResult = action({
 });
 
 /**
+ * Load full task details with thread summary for agents (service-only).
+ * Returns task metadata plus recent thread messages in one call.
+ */
+export const loadTaskDetailsForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    messageLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    task: Doc<"tasks">;
+    thread: Array<{
+      messageId: Id<"messages">;
+      authorType: "user" | "agent";
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>;
+  }> => {
+    // Validate service token
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify agent belongs to this account
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify task belongs to this account
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Fetch thread messages with validated limit (1-200, default 10)
+    const messageLimit =
+      args.messageLimit != null
+        ? Math.min(Math.max(1, args.messageLimit), 200)
+        : 10;
+    const thread = await ctx.runQuery(
+      internal.service.messages.listThreadForTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: messageLimit,
+      },
+    );
+
+    return { task, thread };
+  },
+});
+
+/**
+ * Delete/archive a task on behalf of an agent (service action).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; enforces that agent is the account orchestrator.
+ * Messages and documents are preserved for audit trail.
+ * Called by the task_delete runtime tool.
+ */
+export const deleteTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify orchestrator status
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    // Perform soft-delete via internal mutation
+    await ctx.runMutation(internal.service.tasks.deleteTaskFromAgent, {
+      taskId: args.taskId,
+      agentId: args.agentId,
+      reason: args.reason,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
  * Link a task to a GitHub PR bidirectionally.
  * Updates task metadata with prNumber and attempts to add task reference to PR description.
  * Orchestrator-only access.
@@ -1497,9 +1725,14 @@ export const linkTaskToPrForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    // Only orchestrator agents can link tasks to PRs
-    if (agent.slug !== "orchestrator") {
-      throw new Error("Forbidden: Only orchestrator can link tasks to PRs");
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can link tasks to PRs");
     }
 
     const task = await ctx.runQuery(internal.service.tasks.getInternal, {
@@ -1519,13 +1752,27 @@ export const linkTaskToPrForAgentTool = action({
     });
 
     // Attempt to update PR description with task reference via GitHub API
-    // Note: This requires GITHUB_TOKEN in environment; graceful degradation if missing
+    // Note: This requires GITHUB_TOKEN and GITHUB_REPO in environment; graceful degradation if missing
     const ghToken = process.env.GITHUB_TOKEN;
+    const repo = process.env.GITHUB_REPO;
+    if (!ghToken) {
+      console.warn("GitHub API call skipped: GITHUB_TOKEN not set");
+      return { success: true };
+    }
+    if (!repo) {
+      console.warn("GitHub API call skipped: GITHUB_REPO not set");
+      return { success: true };
+    }
+    const [owner, repoName] = repo.split("/");
+    if (!owner || !repoName) {
+      console.warn(
+        "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+      );
+      return { success: true };
+    }
     if (ghToken) {
       try {
         const taskMarker = `<!-- task: ${task._id} -->`;
-        const repo = process.env.GITHUB_REPO || "0xGeegZ/openclaw-mission-control";
-        const [owner, repoName] = repo.split("/");
 
         // Fetch current PR details
         const prResponse = await fetch(
@@ -1535,11 +1782,13 @@ export const linkTaskToPrForAgentTool = action({
               Authorization: `Bearer ${ghToken}`,
               Accept: "application/vnd.github.v3+json",
             },
-          }
+          },
         );
 
         if (!prResponse.ok) {
-          console.warn(`Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`);
+          console.warn(
+            `Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`,
+          );
           return { success: true };
         }
 
@@ -1562,12 +1811,12 @@ export const linkTaskToPrForAgentTool = action({
               Accept: "application/vnd.github.v3+json",
             },
             body: JSON.stringify({ body: newBody }),
-          }
+          },
         );
 
         if (!updateResponse.ok) {
           console.warn(
-            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`
+            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`,
           );
         }
       } catch (err) {
@@ -1582,8 +1831,7 @@ export const linkTaskToPrForAgentTool = action({
 
 /**
  * Get agent skills for query tool.
- * All agents can query own or all agents' skills.
- * Orchestrator has enhanced visibility for detailed skill audits.
+ * All agents can query any agent's skills or all agents (not orchestrator-only).
  */
 export const getAgentSkillsForTool = action({
   args: {
@@ -1592,8 +1840,16 @@ export const getAgentSkillsForTool = action({
     serviceToken: v.string(),
     queryAgentId: v.optional(v.id("agents")), // Which agent to query; undefined = all agents
   },
-  handler: async (ctx, args): Promise<
-    Array<{ agentId: string; skillIds: string[]; skillCount: number; lastUpdated: number }>
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      agentId: string;
+      skillIds: string[];
+      skillCount: number;
+      lastUpdated: string;
+    }>
   > => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
     if (serviceContext.accountId !== args.accountId) {
@@ -1611,9 +1867,9 @@ export const getAgentSkillsForTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const isOrchestrator = requestingAgent.slug === "orchestrator";
+    const toIso = (ts: number) => new Date(ts).toISOString();
 
-    // If queryAgentId specified, verify access
+    // If queryAgentId specified, return that agent's skills (any agent may query any other)
     if (args.queryAgentId) {
       const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
         agentId: args.queryAgentId,
@@ -1625,25 +1881,19 @@ export const getAgentSkillsForTool = action({
         throw new Error("Forbidden: Target agent belongs to different account");
       }
 
-      // Non-orchestrator agents can only query their own skills
-      if (!isOrchestrator && args.queryAgentId !== args.agentId) {
-        throw new Error(
-          "Forbidden: Only orchestrator can query other agents' skills"
-        );
-      }
-
-      // Return single agent's skills
       return [
         {
           agentId: targetAgent.slug || String(targetAgent._id),
           skillIds: targetAgent.openclawConfig?.skillIds || [],
           skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
-          lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+          lastUpdated: toIso(
+            targetAgent.lastHeartbeat || targetAgent._creationTime,
+          ),
         },
       ];
     }
 
-    // No queryAgentId: return all agents' skills (all agents can access this)
+    // No queryAgentId: return all agents' skills
     const allAgents = await ctx.runQuery(internal.service.agents.listInternal, {
       accountId: args.accountId,
     });
@@ -1652,7 +1902,7 @@ export const getAgentSkillsForTool = action({
       agentId: agent.slug || String(agent._id),
       skillIds: agent.openclawConfig?.skillIds || [],
       skillCount: agent.openclawConfig?.skillIds?.length || 0,
-      lastUpdated: agent.lastHeartbeat || agent._creationTime,
+      lastUpdated: toIso(agent.lastHeartbeat || agent._creationTime),
     }));
   },
 });

@@ -40,6 +40,15 @@ Action scope rules:
 - If you discover out-of-scope improvements, create a follow-up task instead
 - Use your available skills as much as possible while working.
 
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or `HEARTBEAT_OK`.
+ 
+Action scope rules:
+
+- Only do work that is strictly required by the current task
+- Do not add cleanup, refactors, or "nice-to-have" changes
+- If you discover out-of-scope improvements, create a follow-up task instead
+- Use your available skills as much as possible while working.
+
 ## 4) Report + persist memory (always)
 
 - If you took a concrete action on a task:

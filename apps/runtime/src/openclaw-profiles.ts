@@ -29,6 +29,21 @@ export interface AgentForProfile {
   }>;
 }
 
+/**
+ * Resolves SOUL content for writing to SOUL.md. Uses effectiveSoulContent when non-empty;
+ * logs a warning if the content is empty.
+ */
+function resolveSoulContent(agent: AgentForProfile): string {
+  const trimmed = agent.effectiveSoulContent?.trim() ?? "";
+  if (trimmed.length > 0) return trimmed;
+  log.warn("SOUL content empty for agent; writing empty SOUL.md", {
+    agentId: agent._id,
+    slug: agent.slug,
+    name: agent.name,
+  });
+  return "";
+}
+
 /** Options for syncOpenClawProfiles. */
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -66,6 +81,23 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
 - After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>).
+
+## Capabilities and tools
+
+- **task_status** — Update the current task's status before posting a reply.
+- **task_create** — Create a new task when you need to spawn follow-up work.
+- **document_upsert** — Create or update a document (deliverable, note, template, reference).
+- **response_request** — Request a response from other agents; use instead of @mentions.
+- **task_load** — Load full task details with recent thread messages.
+- **get_agent_skills** — List skills per agent; orchestrator can query specific agents.
+- **task_assign** (orchestrator only) — Assign agents to a task by slug.
+- **task_message** (orchestrator only) — Post a message to another task's thread.
+- **task_list** (orchestrator only) — List tasks with optional filters.
+- **task_get** (orchestrator only) — Fetch task details by ID.
+- **task_thread** (orchestrator only) — Fetch recent task thread messages.
+- **task_search** (orchestrator only) — Search tasks by title/description/blockers.
+- **task_delete** (orchestrator only) — Archive a task with a required reason.
+- **task_link_pr** (orchestrator only) — Link a task to a GitHub PR bidirectionally.
 
 ## Task state rules
 
@@ -111,6 +143,8 @@ Pick one action that can be completed quickly:
 - update a task status with explanation
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
+
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
 
 Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes. Use your available skills as much as possible.
 
@@ -477,7 +511,7 @@ export function syncOpenClawProfiles(
     validAgents.push({ agent, agentDir });
     ensureDir(agentDir);
 
-    writeIfChanged(path.join(agentDir, "SOUL.md"), agent.effectiveSoulContent);
+    writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
     writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(

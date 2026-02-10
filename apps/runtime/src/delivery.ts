@@ -558,8 +558,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
     } catch (error) {
       state.consecutiveFailures++;
       state.lastErrorAt = Date.now();
-      state.lastErrorMessage =
-        error instanceof Error ? error.message : String(error);
+      const msg = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : error instanceof Error && error.cause != null
+            ? String(error.cause)
+            : null;
+      state.lastErrorMessage = cause ? `${msg} (cause: ${cause})` : msg;
       const pollDuration = Date.now() - pollStart;
       recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
       log.error("Poll error:", state.lastErrorMessage);
@@ -629,19 +635,36 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const taskStatus = context.task?.status;
   const isOrchestratorChat = isOrchestratorChatTask(context.task);
   const orchestratorAgentId = context.orchestratorAgentId;
+  const messageAuthorId = context.message?.authorId;
+  const isOrchestratorAuthor =
+    orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
+  const isBlockedTask = taskStatus === "blocked";
 
+  // Orchestrator chat: only the designated orchestrator receives agent notifications for that task.
   if (isOrchestratorChat && context.notification?.recipientType === "agent") {
     return context.notification?.recipientId === context.orchestratorAgentId;
   }
 
+  // Any thread_update when task is done/blocked: skip to avoid reply loops and redundant pings.
+  if (
+    notificationType === "thread_update" &&
+    taskStatus != null &&
+    TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+  ) {
+    return false;
+  }
+
+  // status_change to an agent: apply task-state and review-role rules.
   if (
     notificationType === "status_change" &&
     context.notification?.recipientType === "agent" &&
     taskStatus != null
   ) {
+    // Skip status_change when task is done/blocked (no need for agents to react).
     if (TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)) {
       return false;
     }
+    // In REVIEW: deliver to orchestrator or to reviewers (e.g. QA); others skip.
     if (taskStatus === "review") {
       const recipientId = context.notification?.recipientId;
       if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
@@ -651,31 +674,50 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     }
   }
 
+  /**
+   * Agent-authored thread_update delivery rules:
+   * - Orchestrator receives replies from other agents (coordination).
+   * - Everyone else is blocked when the reply was triggered by a thread_update (loop prevention).
+   * - Reviewers still receive updates during REVIEW.
+   */
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
     const recipientId = context.notification?.recipientId;
     const assignedAgentIds = context.task?.assignedAgentIds;
     const sourceNotificationType = context.sourceNotificationType;
     const agentRole = context.agent?.role;
+    const messageAuthorId = context.message?.authorId;
+    const isOrchestratorRecipient =
+      orchestratorAgentId != null && recipientId === orchestratorAgentId;
+    const isOrchestratorAuthor =
+      orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
+
+    // Skip when task is done/blocked to avoid redundant notifications.
     if (
       taskStatus != null &&
-      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus)
+      TASK_STATUSES_SKIP_STATUS_CHANGE.has(taskStatus) &&
+      !(isBlockedTask && isOrchestratorAuthor)
     ) {
       return false;
     }
+    // Orchestrator receives other agents' replies (not their own) to coordinate and create follow-up tasks.
+    if (isOrchestratorRecipient && !isOrchestratorAuthor) {
+      return true;
+    }
+    // Block thread_update → thread_update cascade for everyone else to avoid ping-pong loops.
     if (sourceNotificationType === "thread_update") {
       return false;
     }
-    if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
-      return true;
-    }
+    // During REVIEW, deliver to reviewers (e.g. QA) so they can approve.
     if (taskStatus === "review" && isReviewerRole(agentRole)) {
       return true;
     }
+    // Only deliver to agents who are assigned to the task (no bystanders).
     if (!Array.isArray(assignedAgentIds) || typeof recipientId !== "string")
       return false;
     return assignedAgentIds.includes(recipientId);
   }
 
+  // Default: deliver (e.g. assignment, mention, user-authored thread_update, status_change when not review).
   return true;
 }
 
@@ -918,8 +960,17 @@ function buildHttpCapabilityLabels(options: {
   if (options.hasTaskContext && options.canMentionAgents) {
     labels.push("request agent responses via HTTP (POST /agent/response-request)");
   }
+  labels.push("load task details via HTTP (POST /agent/task-load)");
+  labels.push("query agent skills via HTTP (POST /agent/get-agent-skills)");
   if (options.isOrchestrator) {
     labels.push("assign agents via HTTP (POST /agent/task-assign)");
+    labels.push("list tasks via HTTP (POST /agent/task-list)");
+    labels.push("get task details via HTTP (POST /agent/task-get)");
+    labels.push("read task threads via HTTP (POST /agent/task-thread)");
+    labels.push("search tasks via HTTP (POST /agent/task-search)");
+    labels.push("post task messages via HTTP (POST /agent/task-message)");
+    labels.push("archive tasks via HTTP (POST /agent/task-delete)");
+    labels.push("link tasks to PRs via HTTP (POST /agent/task-link-pr)");
   }
   return labels;
 }
@@ -1006,7 +1057,7 @@ export function formatNotificationMessage(
     : "";
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
-    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull --ff-only`.";
+    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
@@ -1020,6 +1071,7 @@ export function formatNotificationMessage(
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n")
     : [
         "Repository context: not found.",
@@ -1027,6 +1079,7 @@ export function formatNotificationMessage(
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n");
   const globalContextSection = globalBriefingDoc?.content?.trim()
     ? [
@@ -1064,8 +1117,8 @@ export function formatNotificationMessage(
     : "";
   const taskCreateInstructions = canCreateTasks
     ? hasRuntimeTools
-      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
-      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "..." }\`.`
+      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
+      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
     : "";
   const documentInstructions = canCreateDocuments
     ? hasRuntimeTools
@@ -1079,12 +1132,12 @@ export function formatNotificationMessage(
     : "";
   const orchestratorToolInstructions = isOrchestrator
     ? hasRuntimeTools
-      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_assign to add agent assignees by slug, and task_message to post updates to other tasks. Include a taskId for task_get, task_thread, task_assign, and task_message. If any tool fails, report BLOCKED and include the error message."
-      : `Orchestrator tools are unavailable. Use the HTTP fallback to assign agents: POST ${runtimeBaseUrl}/agent/task-assign with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<task id>", "assigneeSlugs": ["qa","engineer"] }\`.`
+      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_search to find related work, task_assign to add agent assignees by slug, task_message to post updates to other tasks, task_delete to archive tasks, and task_link_pr to connect tasks to PRs. Include a taskId for task_get, task_thread, task_assign, task_message, task_delete, and task_link_pr. If any tool fails, report BLOCKED and include the error message."
+      : `Orchestrator tools are unavailable. Use the HTTP fallback endpoints: task_list (POST ${runtimeBaseUrl}/agent/task-list), task_get (POST ${runtimeBaseUrl}/agent/task-get), task_thread (POST ${runtimeBaseUrl}/agent/task-thread), task_search (POST ${runtimeBaseUrl}/agent/task-search), task_assign (POST ${runtimeBaseUrl}/agent/task-assign), task_message (POST ${runtimeBaseUrl}/agent/task-message), task_delete (POST ${runtimeBaseUrl}/agent/task-delete), and task_link_pr (POST ${runtimeBaseUrl}/agent/task-link-pr). Include header \`x-openclaw-session-key: ${sessionKey}\` and the JSON body described in the tool schemas.`
     : "";
   const orchestratorChatInstruction =
     isOrchestrator && isOrchestratorChat
-      ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. If you plan to work on a task yourself, create/assign it to yourself and move the discussion to that task thread."
+      ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. Never self-assign: you are the coordinator—only assign to the agents who will execute (e.g. assigneeSlugs: [\"engineer\"], not [\"squad-lead\", \"engineer\"]). This keeps accountability clear."
       : "";
   const followupTaskInstruction =
     isOrchestrator && task

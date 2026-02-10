@@ -60,16 +60,23 @@ export async function logActivity(params: LogActivityParams): Promise<Id<"activi
   });
 }
 
+/** Capitalize status for display (e.g. "online" -> "Online"). */
+function formatStatus(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
 /**
  * Get human-readable description for an activity.
+ * @param meta - Optional activity meta; for agent_status_changed, meta.oldStatus and meta.newStatus are used for "from X to Y".
  */
 export function getActivityDescription(
   type: ActivityType,
   actorName: string,
-  targetName?: string
+  targetName?: string,
+  meta?: Record<string, unknown>
 ): string {
   const target = targetName ?? "an item";
-  
+
   switch (type) {
     case "account_created":
       return `${actorName} created account "${target}"`;
@@ -85,8 +92,14 @@ export function getActivityDescription(
       return `${actorName} created document "${target}"`;
     case "document_updated":
       return `${actorName} updated document "${target}"`;
-    case "agent_status_changed":
-      return `${actorName} status changed`;
+    case "agent_status_changed": {
+      const oldS = meta?.oldStatus as string | undefined;
+      const newS = meta?.newStatus as string | undefined;
+      if (oldS != null && newS != null) {
+        return `status changed from ${formatStatus(oldS)} to ${formatStatus(newS)}`;
+      }
+      return "status changed";
+    }
     case "runtime_status_changed":
       return `Runtime status changed`;
     case "account_updated":

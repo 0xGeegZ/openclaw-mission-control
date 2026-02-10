@@ -25,7 +25,17 @@ export async function checkRestartRequested(config: RuntimeConfig): Promise<bool
     }
     return result?.restartRequested ?? false;
   } catch (error) {
-    log.error("Failed to check restart request:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    const cause =
+      error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : error instanceof Error && error.cause != null
+          ? String(error.cause)
+          : null;
+    log.error(
+      "Failed to check restart request:",
+      cause ? `${msg} (cause: ${cause})` : msg,
+    );
     return false;
   }
 }

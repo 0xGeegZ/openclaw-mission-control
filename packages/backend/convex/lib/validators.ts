@@ -12,6 +12,7 @@ export const taskStatusValidator = v.union(
   v.literal("review"),
   v.literal("done"),
   v.literal("blocked"),
+  v.literal("archived"),
 );
 
 /** Agent status validator */
