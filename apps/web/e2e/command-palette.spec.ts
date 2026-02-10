@@ -9,16 +9,11 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Command Palette (Cmd+K)', () => {
-  test.skip('should open with Cmd+K on macOS', async ({ page, browserName }) => {
-    // Skip on non-macOS browsers
-    if (browserName !== 'chromium') {
-      test.skip();
-    }
-    
+  test('should open with Cmd+K or Ctrl+K', async ({ page }) => {
     await page.goto('/');
     
-    // Press Cmd+K
-    await page.keyboard.press('Meta+K');
+    // Press Ctrl+K (works cross-platform)
+    await page.keyboard.press('Control+K');
     
     // Verify palette modal is visible
     const modal = page.locator('dialog[open]');
@@ -44,7 +39,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(input).toBeFocused();
   });
 
-  test.skip('should display default commands', async ({ page }) => {
+  test('should display default commands', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -55,7 +50,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(page.getByText('Settings')).toBeVisible();
   });
 
-  test.skip('should filter commands by search query', async ({ page }) => {
+  test('should filter commands by search query', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -75,7 +70,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(page.getByText('Settings')).toBeVisible();
   });
 
-  test.skip('should show "no results" message for empty query', async ({ page }) => {
+  test('should show "no results" message for non-matching query', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -88,7 +83,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(page.getByText(/no results found/i)).toBeVisible();
   });
 
-  test.skip('should navigate results with arrow keys', async ({ page }) => {
+  test('should navigate results with arrow keys', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -116,7 +111,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(firstItem).toHaveClass(/selected/);
   });
 
-  test.skip('should execute command on Enter key', async ({ page }) => {
+  test('should execute command on Enter key', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -136,7 +131,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(page).toHaveURL(/\/settings/);
   });
 
-  test.skip('should close palette with Escape key', async ({ page }) => {
+  test('should close palette with Escape key', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -153,7 +148,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(modal).not.toBeVisible();
   });
 
-  test.skip('should close palette when clicking overlay', async ({ page }) => {
+  test('should close palette when clicking overlay', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -171,7 +166,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(modal).not.toBeVisible();
   });
 
-  test.skip('should create new task from palette', async ({ page }) => {
+  test('should create new task from palette', async ({ page }) => {
     await page.goto('/');
     
     // Open palette
@@ -188,7 +183,7 @@ test.describe('Command Palette (Cmd+K)', () => {
     await expect(page).toHaveURL(/\/tasks\/new/);
   });
 
-  test.skip('should reset search when reopened', async ({ page }) => {
+  test('should reset search when reopened', async ({ page }) => {
     await page.goto('/');
     
     // Open palette and type search

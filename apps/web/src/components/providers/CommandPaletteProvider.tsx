@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConvex } from 'convex/react';
+import { useQuery } from 'convex/react';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { api } from '@packages/backend/convex/_generated/api';
+import { useAccount } from '@/hooks/useAccount';
 
 /**
  * CommandPaletteProvider: Wraps CommandPalette with Convex data fetching and navigation.
@@ -12,7 +13,53 @@ import { api } from '@packages/backend/convex/_generated/api';
  */
 export function CommandPaletteProvider() {
   const router = useRouter();
-  const convex = useConvex();
+  const { accountId } = useAccount();
+
+  // Fetch tasks for command palette - using Convex query
+  const tasksData = useQuery(
+    api.tasks.list,
+    accountId ? { accountId, limit: 20 } : 'skip'
+  );
+
+  // Fetch documents for command palette
+  const docsData = useQuery(
+    api.documents.list,
+    accountId ? { accountId, limit: 20 } : 'skip'
+  );
+
+  // Fetch agents for command palette (team members)
+  const agentsData = useQuery(
+    api.agents.list,
+    accountId ? { accountId } : 'skip'
+  );
+
+  // Transform and normalize data for CommandPalette component
+  const tasks = useMemo(
+    () =>
+      tasksData?.map((task) => ({
+        id: task._id,
+        title: task.title || 'Untitled Task',
+      })) || [],
+    [tasksData]
+  );
+
+  const docs = useMemo(
+    () =>
+      docsData?.map((doc) => ({
+        id: doc._id,
+        title: doc.title || 'Untitled Document',
+      })) || [],
+    [docsData]
+  );
+
+  const agents = useMemo(
+    () =>
+      agentsData?.map((agent) => ({
+        id: agent._id,
+        name: agent.name || 'Unknown Agent',
+      })) || [],
+    [agentsData]
+  );
 
   // Fetch tasks for command palette
   const handleTaskCreate = useCallback(() => {
@@ -27,13 +74,6 @@ export function CommandPaletteProvider() {
     },
     [router]
   );
-
-  // Fetch tasks, docs, and agents on mount
-  // Note: In a real implementation, you'd use useQuery hooks from Convex
-  // For now, we're passing empty arrays and the component handles them gracefully
-  const tasks = [];
-  const docs = [];
-  const agents = [];
 
   return (
     <CommandPalette

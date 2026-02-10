@@ -5,7 +5,6 @@ import { SyncAccountTheme } from "@/components/dashboard/SyncAccountTheme";
 import { AccountProvider } from "@/components/providers/AccountProvider";
 import { SidebarProvider } from "@/components/providers/SidebarProvider";
 import { OrchestratorChat } from "@/components/orchestrator/OrchestratorChat";
-import { CommandPalette } from "@/components/ui/CommandPalette";
 
 interface AccountLayoutProps {
   children: ReactNode;
@@ -41,7 +40,6 @@ export default async function AccountLayout({
             <main className="flex-1 overflow-hidden">{children}</main>
           </div>
         </div>
-        <CommandPalette />
         <OrchestratorChat />
       </SidebarProvider>
     </AccountProvider>
