@@ -13,9 +13,11 @@ export type ActivityType =
   | "document_updated"
   | "agent_status_changed"
   | "runtime_status_changed"
+  | "account_updated"
   | "member_added"
   | "member_removed"
-  | "member_updated";
+  | "member_updated"
+  | "role_changed";
 
 /**
  * Parameters for logging an activity.
@@ -26,7 +28,7 @@ export interface LogActivityParams {
   type: ActivityType;
   actorType: "user" | "agent" | "system";
   actorId: string;
-  actorName: string;
+  actorName?: string;
   targetType: "task" | "message" | "document" | "agent" | "account" | "membership";
   targetId: string;
   targetName?: string;
@@ -48,7 +50,7 @@ export async function logActivity(params: LogActivityParams): Promise<Id<"activi
     type,
     actorType,
     actorId,
-    actorName,
+    actorName: actorName ?? actorId, // Use actorId as fallback if name not provided
     targetType,
     targetId,
     targetName,
@@ -84,12 +86,16 @@ export function getActivityDescription(
       return `${actorName} status changed`;
     case "runtime_status_changed":
       return `Runtime status changed`;
+    case "account_updated":
+      return `${actorName} updated account settings`;
     case "member_added":
-      return `${actorName} joined the account`;
+      return `${actorName} added ${targetName ?? "a member"}`;
     case "member_removed":
-      return `${actorName} left the account`;
+      return `${actorName} removed ${targetName ?? "a member"}`;
     case "member_updated":
-      return `${actorName} changed a member's role`;
+      return `${actorName} updated member "${target}"`;
+    case "role_changed":
+      return `${actorName} changed role of ${targetName ?? "a member"}`;
     default:
       return `${actorName} performed an action`;
   }
