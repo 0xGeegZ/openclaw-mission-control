@@ -4,7 +4,10 @@ import { RuntimeConfig } from "./config";
 import { sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
-import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
+import {
+  HEARTBEAT_OK_RESPONSE,
+  isHeartbeatOkResponse,
+} from "./heartbeat-constants";
 
 const log = createLogger("[Heartbeat]");
 
@@ -326,7 +329,7 @@ function runHeartbeatCycle(
 
       const result = await sendToOpenClaw(agent.sessionKey, heartbeatMessage);
       const responseText = result.text?.trim() ?? "";
-      const isHeartbeatOk = responseText === HEARTBEAT_OK_RESPONSE;
+      const isHeartbeatOk = isHeartbeatOkResponse(responseText);
       const responseTaskId =
         responseText && !isHeartbeatOk
           ? (extractTaskIdFromHeartbeatResponse(responseText) ??
