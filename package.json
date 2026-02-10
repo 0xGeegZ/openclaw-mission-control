@@ -8,14 +8,15 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "turbo run test --filter=@packages/shared",
+    "test": "node scripts/test-arm64.js",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "turbo run test"
+    "test:all": "node scripts/test-arm64.js all",
+    "test:turbo": "turbo run test --filter=@packages/shared"
   },
   "devDependencies": {
     "prettier": "3.7.4",
-    "turbo": "2.8.2"
+    "turbo": "2.8.3"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.57.1",
