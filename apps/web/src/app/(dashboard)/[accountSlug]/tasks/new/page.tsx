@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { CreateTaskDialog } from "@/components/tasks/CreateTaskDialog";
 
 interface TasksNewPageProps {
@@ -15,7 +15,6 @@ interface TasksNewPageProps {
  */
 export default function TasksNewPage({ params }: TasksNewPageProps) {
   const router = useRouter();
-  const routerParams = useParams();
   const [isOpen, setIsOpen] = useState(true);
   const [accountSlug, setAccountSlug] = useState<string | null>(null);
 

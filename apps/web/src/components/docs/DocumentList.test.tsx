@@ -5,8 +5,7 @@
  * Coverage: apps/web/src/components/docs/DocumentList.tsx
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ReactElement } from "react";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // ============================================================================
 // Mock DocumentList Component & Props
@@ -189,8 +188,6 @@ describe("DocumentList Component", () => {
     const { onCreateFolder } = mockProps;
 
     // Simulate create folder action
-    const folderName = "New Folder";
-
     // onCreateFolder should be called with folder name
     expect(onCreateFolder).toBeDefined();
   });
@@ -281,7 +278,7 @@ describe("DocumentList Component", () => {
   });
 
   it("should handle rapid clicks without errors", () => {
-    const { onSelectDocument, documents } = mockProps;
+    const { documents } = mockProps;
 
     // Clicking multiple items rapidly should not error
     documents.forEach((doc) => {

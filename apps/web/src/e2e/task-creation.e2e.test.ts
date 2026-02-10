@@ -5,7 +5,7 @@
  * Coverage: apps/web/src/pages - full task creation workflow
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ============================================================================
 // Mock Task Creation E2E Tests

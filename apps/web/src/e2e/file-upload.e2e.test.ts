@@ -5,7 +5,7 @@
  * Coverage: apps/web/src/pages - file upload from document/message creation
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ============================================================================
 // Mock File Upload E2E Tests
