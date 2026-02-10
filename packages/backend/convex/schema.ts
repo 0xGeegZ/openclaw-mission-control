@@ -1073,4 +1073,59 @@ export default defineSchema({
   })
     .index("by_account_period", ["accountId", "period"])
     .index("by_period", ["period"]),
+
+  // ==========================================================================
+  // BILLING ACTIONS / AUDIT TRAIL
+  // Track user actions related to billing (upgrades, downgrades, cancellations).
+  // ==========================================================================
+  billingActions: defineTable({
+    /** Account this action belongs to */
+    accountId: v.id("accounts"),
+
+    /** User ID who performed the action */
+    userId: v.string(),
+
+    /** Type of billing action */
+    action: v.union(
+      v.literal("upgrade"),
+      v.literal("downgrade"),
+      v.literal("cancel"),
+      v.literal("reactivate"),
+      v.literal("plan_change"),
+      v.literal("payment_method_updated"),
+      v.literal("usage_limit_change"),
+      v.literal("trial_started"),
+      v.literal("trial_ended"),
+    ),
+
+    /** Plan before the action (null for new subscriptions) */
+    fromPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+
+    /** Plan after the action */
+    toPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+
+    /** User-provided reason (e.g., cancellation feedback) */
+    reason: v.optional(v.string()),
+
+    /** Additional context about the action */
+    metadata: v.optional(
+      v.object({
+        stripeSubscriptionId: v.optional(v.string()),
+        stripeCustomerId: v.optional(v.string()),
+        stripePriceId: v.optional(v.string()),
+        reasonCode: v.optional(v.string()), // e.g., "too_expensive", "unused", "switching"
+        feedbackText: v.optional(v.string()),
+        ipAddress: v.optional(v.string()),
+        userAgent: v.optional(v.string()),
+      }),
+    ),
+
+    /** Timestamp of the action */
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_user", ["userId"])
+    .index("by_action", ["action"])
+    .index("by_account_action", ["accountId", "action"]),
 });
