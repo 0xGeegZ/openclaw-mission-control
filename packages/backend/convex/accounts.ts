@@ -212,7 +212,7 @@ export const update = mutation({
     settings: v.optional(accountSettingsValidator),
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
+    const { userId } = await requireAccountAdmin(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
       throw new Error("Not found: Account does not exist");
@@ -314,6 +314,19 @@ export const update = mutation({
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.accountId, updates);
+
+      // Log account update activity
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "account_updated",
+        actorType: "user",
+        actorId: userId,
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: updates,
+      });
     }
 
     return args.accountId;
