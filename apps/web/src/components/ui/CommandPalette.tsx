@@ -1,6 +1,10 @@
+"use client";
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Search, Plus, Box, FileText, Settings, Command } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import styles from './CommandPalette.module.css';
+import { useCommandPaletteSearch } from '@/lib/hooks/useCommandPaletteSearch';
 
 interface CommandItem {
   id: string;
@@ -15,24 +19,22 @@ interface CommandItem {
 interface CommandPaletteProps {
   onTaskCreate?: () => void;
   onNavigate?: (path: string) => void;
-  tasks?: Array<{ id: string; title: string }>;
-  docs?: Array<{ id: string; title: string }>;
-  agents?: Array<{ id: string; name: string }>;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onTaskCreate,
   onNavigate,
-  tasks = [],
-  docs = [],
-  agents = [],
 }) => {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Build command items
+  // Fetch search results from Convex
+  const searchResults = useCommandPaletteSearch(query);
+
+  // Build command items with static actions + dynamic search results
   const commandItems = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
       {
@@ -54,51 +56,60 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         description: 'Open settings',
         icon: <Settings size={16} />,
         action: () => {
-          onNavigate?.('/settings');
+          const url = onNavigate ? '/settings' : '/settings';
+          onNavigate?.(url);
+          if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: ['preferences', 'config'],
       },
-      ...tasks.map(task => ({
+      // Add search results
+      ...searchResults.tasks.map(task => ({
         id: `task-${task.id}`,
         title: task.title,
         category: 'task' as const,
-        description: 'Go to task',
+        description: `Status: ${task.status}`,
         icon: <Box size={16} />,
         action: () => {
-          onNavigate?.(`/tasks/${task.id}`);
+          const url = `/document/${task.id}`;
+          onNavigate?.(url);
+          if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: [task.title.toLowerCase()],
       })),
-      ...docs.map(doc => ({
+      ...searchResults.documents.map(doc => ({
         id: `doc-${doc.id}`,
         title: doc.title,
         category: 'doc' as const,
         description: 'Go to document',
         icon: <FileText size={16} />,
         action: () => {
-          onNavigate?.(`/docs/${doc.id}`);
+          const url = `/document/${doc.id}`;
+          onNavigate?.(url);
+          if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
         keywords: [doc.title.toLowerCase()],
       })),
-      ...agents.map(agent => ({
+      ...searchResults.agents.map(agent => ({
         id: `agent-${agent.id}`,
-        title: agent.name,
+        title: agent.title,
         category: 'agent' as const,
-        description: 'Assign to agent',
+        description: agent.role ? `Role: ${agent.role}` : 'Agent',
         icon: <Command size={16} />,
         action: () => {
-          // Trigger agent selection for mention/assignment
-          console.log('Agent selected:', agent.id);
+          // Navigate to agent detail or trigger assignment
+          const url = `/agents/${agent.id}`;
+          onNavigate?.(url);
+          if (!onNavigate) router.push(url);
           setIsOpen(false);
         },
-        keywords: [agent.name.toLowerCase()],
+        keywords: [agent.title.toLowerCase()],
       })),
     ];
     return items;
-  }, [tasks, docs, agents, onTaskCreate, onNavigate]);
+  }, [searchResults, onTaskCreate, onNavigate, router]);
 
   // Filter items based on query
   const filteredItems = useMemo(() => {
