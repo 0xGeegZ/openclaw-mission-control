@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Box, FileText, Settings, Command } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from '@/lib/hooks/useAccount';
@@ -111,7 +111,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       })) : []),
     ];
     return items;
-  }, [searchResults, onTaskCreate, onNavigate, router, account?.slug]);
+  }, [searchResults, onTaskCreate, onNavigate, router, account]);
 
   // Filter items based on query
   const filteredItems = useMemo(() => {
@@ -173,9 +173,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [isOpen]);
 
-  // Reset selected index when filtered items change
+  // Reset selected index when query changes
   useEffect(() => {
-    setSelectedIndex(0);
+    // Deferred to avoid synchronous setState in effect
+    const timer = setTimeout(() => {
+      setSelectedIndex(0);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [query]);
 
   return (
@@ -249,7 +253,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </ul>
             ) : (
               <div className={styles.empty}>
-                <p>No results found for "{query}"</p>
+                <p>No results found for &quot;{query}&quot;</p>
                 <span>Try searching for tasks, docs, or agents</span>
               </div>
             )}

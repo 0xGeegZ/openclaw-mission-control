@@ -1,4 +1,6 @@
 import http from "http";
+import net from "net";
+import { randomUUID } from "crypto";
 import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
 import { getAgentSyncState } from "./agent-sync";
@@ -21,6 +23,7 @@ import {
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
+let isShuttingDown = false;
 
 /**
  * Read and parse JSON body from an HTTP request.
@@ -46,8 +49,13 @@ function sendJson(
   res: http.ServerResponse,
   status: number,
   payload: unknown,
+  correlationId?: string,
 ): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (correlationId) {
+    headers["x-correlation-id"] = correlationId;
+  }
+  res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
 }
 
@@ -126,6 +134,58 @@ function mapTaskStatusError(message: string): {
 }
 
 /**
+ * Get or generate correlation ID for a request.
+ * Reads x-correlation-id header or generates UUID if not present.
+ */
+function getOrGenerateCorrelationId(
+  req: http.IncomingMessage
+): string {
+  const headerValue = req.headers["x-correlation-id"];
+  if (typeof headerValue === "string") {
+    return headerValue;
+  }
+  return randomUUID();
+}
+
+/**
+ * Check gateway connectivity for readiness probe.
+ * Attempts a simple TCP connection to gateway.
+ */
+async function checkGatewayConnectivity(config: RuntimeConfig): Promise<boolean> {
+  if (!config.gatewayUrl) {
+    return false;
+  }
+
+  try {
+    // Parse gateway URL to get hostname and port
+    const url = new URL(config.gatewayUrl);
+    const hostname = url.hostname;
+    const port = parseInt(url.port || (url.protocol === "https:" ? "443" : "80"), 10);
+
+    return await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection({ host: hostname, port });
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, 5000); // 5 second timeout
+
+      socket.on("connect", () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on("error", () => {
+        clearTimeout(timeout);
+        resolve(false);
+      });
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Start health check HTTP endpoint.
  *
  * Endpoints:
@@ -136,6 +196,8 @@ export function startHealthServer(config: RuntimeConfig): void {
   runtimeConfig = config;
 
   server = http.createServer(async (req, res) => {
+    const correlationId = getOrGenerateCorrelationId(req);
+
     // Version endpoint - lightweight, just returns versions
     if (req.url === "/version") {
       const versionInfo = {
@@ -147,6 +209,74 @@ export function startHealthServer(config: RuntimeConfig): void {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(versionInfo));
+      return;
+    }
+
+    // Liveness probe endpoint (Kubernetes)
+    // Returns 200 OK if service is alive, 503 if shutting down
+    // Does NOT check dependencies - fast response required (<100ms)
+    if (req.url === "/live") {
+      if (isShuttingDown) {
+        sendJson(res, 503, {
+          status: "dying",
+          timestamp: Date.now(),
+        });
+      } else {
+        sendJson(res, 200, {
+          status: "ok",
+          timestamp: Date.now(),
+        });
+      }
+      return;
+    }
+
+    // Readiness probe endpoint (Kubernetes)
+    // Returns 200 OK only when all dependencies are healthy
+    // Returns 503 if any dependency fails or service is shutting down
+    if (req.url === "/ready") {
+      if (isShuttingDown) {
+        sendJson(res, 503, {
+          ready: false,
+          checks: {
+            gateway: false,
+          },
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      const gateway = getGatewayState();
+      const gatewayHealthy = gateway.isRunning;
+
+      // Check actual gateway connectivity
+      let gatewayConnected = gatewayHealthy;
+      try {
+        if (gatewayHealthy && config.gatewayUrl) {
+          gatewayConnected = await checkGatewayConnectivity(config);
+        }
+      } catch {
+        gatewayConnected = false;
+      }
+
+      const allReady = gatewayConnected;
+
+      if (allReady) {
+        sendJson(res, 200, {
+          ready: true,
+          checks: {
+            gateway: true,
+          },
+          timestamp: Date.now(),
+        });
+      } else {
+        sendJson(res, 503, {
+          ready: false,
+          checks: {
+            gateway: gatewayConnected,
+          },
+          timestamp: Date.now(),
+        });
+      }
       return;
     }
 
@@ -221,7 +351,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 403, {
           success: false,
           error: "Forbidden: endpoint is local-only",
-        });
+        }, correlationId);
         return;
       }
 
@@ -234,19 +364,19 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 401, {
           success: false,
           error: "Missing x-openclaw-session-key header",
-        });
+        }, correlationId);
         return;
       }
 
       const agentId = getAgentIdForSessionKey(sessionKey);
       if (!agentId) {
         log.warn("[task-status] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
+        sendJson(res, 401, { success: false, error: "Unknown session key" }, correlationId);
         return;
       }
 
       if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
+        sendJson(res, 500, { success: false, error: "Runtime not configured" }, correlationId);
         return;
       }
 
@@ -259,7 +389,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         }>(req);
       } catch (error) {
         log.warn("[task-status] Invalid JSON:", error);
-        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" }, correlationId);
         return;
       }
 
@@ -272,7 +402,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 400, {
           success: false,
           error: "Missing required fields: taskId, status",
-        });
+        }, correlationId);
         return;
       }
 
@@ -288,7 +418,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           success: false,
           error:
             "Invalid status: must be in_progress, review, done, or blocked",
-        });
+        }, correlationId);
         return;
       }
 
@@ -297,11 +427,12 @@ export function startHealthServer(config: RuntimeConfig): void {
         sendJson(res, 422, {
           success: false,
           error: "blockedReason is required when status is blocked",
-        });
+        }, correlationId);
         return;
       }
 
       log.info("[task-status] Request:", {
+        correlationId,
         agentId,
         taskId: body.taskId,
         status: body.status,
@@ -320,17 +451,19 @@ export function startHealthServer(config: RuntimeConfig): void {
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_status", duration);
         log.info("[task-status] Success:", {
+          correlationId,
           agentId,
           taskId: body.taskId,
           status: body.status,
           durationMs: duration,
         });
-        sendJson(res, 200, { success: true });
+        sendJson(res, 200, { success: true }, correlationId);
       } catch (error) {
         const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
         recordFailure("agent.task_status", duration, message);
         log.error("[task-status] Failed:", {
+          correlationId,
           agentId,
           taskId: body.taskId,
           status: body.status,
@@ -338,7 +471,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           durationMs: duration,
         });
         const mapped = mapTaskStatusError(message);
-        sendJson(res, mapped.status, { success: false, error: mapped.message });
+        sendJson(res, mapped.status, { success: false, error: mapped.message }, correlationId);
       }
       return;
     }
@@ -861,4 +994,13 @@ export function startHealthServer(config: RuntimeConfig): void {
 export function stopHealthServer(): void {
   server?.close();
   server = null;
+}
+
+/**
+ * Trigger graceful shutdown mode.
+ * This makes /live return 503 to signal Kubernetes to stop sending traffic.
+ */
+export function beginGracefulShutdown(): void {
+  isShuttingDown = true;
+  log.info("Graceful shutdown initiated - /live will return 503");
 }

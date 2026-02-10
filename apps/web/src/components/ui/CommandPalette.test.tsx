@@ -156,7 +156,7 @@ describe("CommandPalette Component", () => {
 
   it("should filter by category search (e.g., 'task:')", () => {
     // Typing "task:" should filter to only task items
-    const query = "task:";
+    const _query = "task:";
     const filtered = mockProps.items!.filter(
       (item) => item.category === "task"
     );
