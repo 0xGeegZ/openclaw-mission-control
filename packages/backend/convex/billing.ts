@@ -288,6 +288,44 @@ export const getBillingActionHistory = query({
   },
 });
 
+/**
+ * Log usage limit exceeded event.
+ * Called from the billing enforcement layer when a usage limit is breached.
+ */
+export const logUsageLimitExceeded = mutation({
+  args: {
+    accountId: v.id("accounts"),
+    resourceType: v.string(), // e.g., "agents", "tasks", "messages", "documents", "storage"
+    currentUsage: v.number(),
+    limit: v.number(),
+    period: v.optional(v.string()), // e.g., "2026-02"
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    await requireAccountMember(ctx, args.accountId);
+
+    const actionId = await ctx.db.insert("billingActions", {
+      accountId: args.accountId,
+      userId: identity.tokenIdentifier,
+      actionType: "usage_limit_exceeded",
+      description: `Usage limit exceeded for ${args.resourceType}: ${args.currentUsage} / ${args.limit}`,
+      details: undefined,
+      metadata: {
+        reason: `Exceeded ${args.resourceType} limit`,
+        reason_code: "usage_limit_exceeded",
+        feedback_text: `Current usage: ${args.currentUsage}, Limit: ${args.limit}, Period: ${args.period || "current"}`,
+      },
+      timestamp: Date.now(),
+    });
+
+    return actionId;
+  },
+});
+
 // ============================================================================
 // INTERNAL MUTATIONS (called from webhooks and actions)
 // ============================================================================
