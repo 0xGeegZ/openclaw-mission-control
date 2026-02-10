@@ -33,6 +33,11 @@ jobs:
       - name: Run linter
         run: npm run lint
 
+      - name: Regenerate Convex types (if auth available)
+        working-directory: packages/backend
+        run: npx convex codegen 2>/dev/null || echo "Convex auth not available; skipping codegen (types will be stale)"
+        continue-on-error: true
+
       - name: Run typecheck
         run: npm run typecheck
 
