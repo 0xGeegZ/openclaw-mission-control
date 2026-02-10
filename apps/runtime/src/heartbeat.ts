@@ -1,13 +1,18 @@
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
-import { sendToOpenClaw } from "./gateway";
+import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
 import {
   HEARTBEAT_OK_RESPONSE,
   isHeartbeatOkResponse,
 } from "./heartbeat-constants";
+import {
+  executeAgentTool,
+  getToolCapabilitiesAndSchemas,
+} from "./tooling/agentTools";
+import { DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 const log = createLogger("[Heartbeat]");
 
@@ -26,11 +31,24 @@ const state: HeartbeatState = {
 
 export { HEARTBEAT_OK_RESPONSE };
 const HEARTBEAT_TASK_LIMIT = 12;
+const ORCHESTRATOR_HEARTBEAT_TASK_LIMIT = 200;
 const HEARTBEAT_DESCRIPTION_MAX_CHARS = 240;
-const HEARTBEAT_STATUS_PRIORITY = ["in_progress", "assigned"];
+const HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = ["in_progress", "assigned"];
+const ORCHESTRATOR_HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = [
+  "in_progress",
+  "blocked",
+  "assigned",
+];
 const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
   "in_progress",
+  "blocked",
   "assigned",
+];
+const ORCHESTRATOR_ASSIGNEE_STALE_MS = 3 * 60 * 60 * 1000;
+const ORCHESTRATOR_AUTO_REQUEST_STATUSES: HeartbeatStatus[] = [
+  "assigned",
+  "in_progress",
+  "blocked",
 ];
 const TASK_ID_PATTERN = /Task ID:\s*([A-Za-z0-9_-]+)/i;
 
@@ -38,17 +56,27 @@ type HeartbeatTask = Doc<"tasks">;
 type HeartbeatStatus = HeartbeatTask["status"];
 
 /**
- * Sort tasks by heartbeat priority (in_progress > assigned) and recency.
+ * Sort tasks by explicit status priority, then by recency (or staleness).
  */
-function sortHeartbeatTasks(tasks: HeartbeatTask[]): HeartbeatTask[] {
+export function sortHeartbeatTasks(
+  tasks: HeartbeatTask[],
+  options?: {
+    statusPriority?: HeartbeatStatus[];
+    preferStale?: boolean;
+  },
+): HeartbeatTask[] {
+  const statusPriority = options?.statusPriority ?? HEARTBEAT_STATUS_PRIORITY;
+  const preferStale = options?.preferStale === true;
   const statusRank = new Map<string, number>(
-    HEARTBEAT_STATUS_PRIORITY.map((status, index) => [status, index]),
+    statusPriority.map((status, index) => [status, index]),
   );
   return [...tasks].sort((a, b) => {
     const rankA = statusRank.get(a.status) ?? 999;
     const rankB = statusRank.get(b.status) ?? 999;
     if (rankA !== rankB) return rankA - rankB;
-    return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    return preferStale
+      ? (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
+      : (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
   });
 }
 
@@ -123,7 +151,7 @@ export function buildHeartbeatMessage(options: {
 }): string {
   const { focusTask, tasks, isOrchestrator, taskStatusBaseUrl } = options;
   const orchestratorLine = isOrchestrator
-    ? "- As the orchestrator, follow up on in_progress/assigned tasks (even if assigned to other agents)."
+    ? "- As the orchestrator, follow up on assigned/in_progress/blocked tasks (even if assigned to other agents)."
     : null;
   const orchestratorFollowUpBlock = buildOrchestratorFollowUpBlock(
     isOrchestrator,
@@ -179,7 +207,7 @@ function buildOrchestratorFollowUpBlock(
   if (!isOrchestrator) return "";
   const base = taskStatusBaseUrl?.trim() ?? "";
   const toolLine =
-    "For each tracked task, use the task_search or task_get / task_load tool to load task context (or search related work); then perform one follow-up using response_request to the assignee (use task_message only for a general thread update).";
+    "For each tracked task, use the task_search or task_get / task_load tool to load task context (or search related work); then perform one follow-up using response_request to the assignee (use task_message only for a general thread update). You must request a response from assignees when waiting on them.";
   const httpLine = base
     ? ` If tools are unavailable, use HTTP: POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), or POST ${base}/agent/task-load for full task + thread.`
     : " If tools are unavailable, use the HTTP fallback endpoints (task-search, task-get, task-load) with the base URL from your notification prompt.";
@@ -187,10 +215,201 @@ function buildOrchestratorFollowUpBlock(
     "Still take only one atomic action per heartbeat (one task follow-up per run).";
   if (!hasTrackedTasks) return "";
   return [
-    "- Do a follow-up in each tracked task when relevant:",
+    "- Across tracked tasks, keep follow-ups moving and avoid starvation:",
     `  ${toolLine}${httpLine}`,
+    "  Prioritize the stalest blocked/in_progress/assigned task first.",
     `  ${oneAction}`,
   ].join("\n");
+}
+
+interface HeartbeatBehaviorFlags {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  canMentionAgents: boolean;
+}
+
+interface ThreadMessageForHeartbeatFollowUp {
+  authorType: "user" | "agent";
+  authorId: string;
+  createdAt: number;
+}
+
+/**
+ * Resolve behavior flags for heartbeat tool usage.
+ * Falls back to shared defaults when no explicit agent override exists.
+ */
+function resolveHeartbeatBehaviorFlags(
+  agent: AgentForHeartbeat,
+): HeartbeatBehaviorFlags {
+  const defaults = DEFAULT_OPENCLAW_CONFIG.behaviorFlags;
+  const effectiveFlags = agent.effectiveBehaviorFlags ?? {};
+  const flags = agent.openclawConfig?.behaviorFlags ?? {};
+  return {
+    canCreateTasks:
+      effectiveFlags.canCreateTasks ??
+      flags.canCreateTasks ??
+      defaults.canCreateTasks,
+    canModifyTaskStatus:
+      effectiveFlags.canModifyTaskStatus ??
+      flags.canModifyTaskStatus ??
+      defaults.canModifyTaskStatus,
+    canCreateDocuments:
+      effectiveFlags.canCreateDocuments ??
+      flags.canCreateDocuments ??
+      defaults.canCreateDocuments,
+    canMentionAgents:
+      effectiveFlags.canMentionAgents ??
+      flags.canMentionAgents ??
+      defaults.canMentionAgents,
+  };
+}
+
+/**
+ * Resolve the latest assignee-authored message timestamp from a task thread.
+ */
+function getLastAssigneeReplyTimestamp(
+  task: HeartbeatTask,
+  thread: ThreadMessageForHeartbeatFollowUp[],
+): number | null {
+  const assigneeIds = new Set(task.assignedAgentIds);
+  for (let index = thread.length - 1; index >= 0; index -= 1) {
+    const message = thread[index];
+    if (message.authorType !== "agent") continue;
+    if (assigneeIds.has(message.authorId as Id<"agents">)) {
+      return message.createdAt;
+    }
+  }
+  return null;
+}
+
+/**
+ * Decide if orchestrator should auto-request an assignee follow-up.
+ */
+export function shouldRequestAssigneeResponse(options: {
+  task: HeartbeatTask | null;
+  lastAssigneeReplyAt: number | null;
+  nowMs: number;
+  staleMs?: number;
+}): boolean {
+  const { task, lastAssigneeReplyAt, nowMs } = options;
+  const staleMs = options.staleMs ?? ORCHESTRATOR_ASSIGNEE_STALE_MS;
+  if (!task) return false;
+  if (!ORCHESTRATOR_AUTO_REQUEST_STATUSES.includes(task.status)) return false;
+  if (!task.assignedAgentIds || task.assignedAgentIds.length === 0) return false;
+  const referenceTimestamp =
+    lastAssigneeReplyAt ?? task.updatedAt ?? task.createdAt ?? 0;
+  return nowMs - referenceTimestamp >= staleMs;
+}
+
+/**
+ * Resolve assignee slugs for response_request recipients, excluding requester.
+ */
+function getAssigneeRecipientSlugs(options: {
+  task: HeartbeatTask;
+  agents: AgentForHeartbeat[];
+  requesterAgentId: Id<"agents">;
+}): string[] {
+  const { task, agents, requesterAgentId } = options;
+  const agentsById = new Map(
+    agents.map((candidate) => [candidate._id, candidate]),
+  );
+  const slugs = new Set<string>();
+  for (const assigneeId of task.assignedAgentIds) {
+    if (assigneeId === requesterAgentId) continue;
+    const assignee = agentsById.get(assigneeId);
+    const slug = assignee?.slug?.trim();
+    if (!slug) continue;
+    slugs.add(slug);
+  }
+  return Array.from(slugs);
+}
+
+/**
+ * Fallback follow-up: if the orchestrator didn't request a response and assignees are stale,
+ * enqueue a response_request to assigned agents.
+ */
+async function maybeAutoRequestAssigneeFollowUp(options: {
+  client: ReturnType<typeof getConvexClient>;
+  config: RuntimeConfig;
+  agent: AgentForHeartbeat;
+  focusTask: HeartbeatTask | null;
+  canMentionAgents: boolean;
+  hasResponseRequestToolCall: boolean;
+}): Promise<void> {
+  const {
+    client,
+    config,
+    agent,
+    focusTask,
+    canMentionAgents,
+    hasResponseRequestToolCall,
+  } = options;
+  if (!focusTask || !canMentionAgents || hasResponseRequestToolCall) return;
+
+  try {
+    const thread = (await client.action(
+      api.service.actions.listTaskThreadForAgentTool,
+      {
+        accountId: config.accountId,
+        serviceToken: config.serviceToken,
+        agentId: agent._id,
+        taskId: focusTask._id,
+        limit: 50,
+      },
+    )) as ThreadMessageForHeartbeatFollowUp[];
+    const lastAssigneeReplyAt = getLastAssigneeReplyTimestamp(focusTask, thread);
+    const nowMs = Date.now();
+    if (
+      !shouldRequestAssigneeResponse({
+        task: focusTask,
+        lastAssigneeReplyAt,
+        nowMs,
+      })
+    ) {
+      return;
+    }
+
+    const agents = (await client.action(api.service.actions.listAgents, {
+      accountId: config.accountId,
+      serviceToken: config.serviceToken,
+    })) as AgentForHeartbeat[];
+    const recipientSlugs = getAssigneeRecipientSlugs({
+      task: focusTask,
+      agents,
+      requesterAgentId: agent._id,
+    });
+    if (recipientSlugs.length === 0) return;
+
+    const referenceTimestamp =
+      lastAssigneeReplyAt ?? focusTask.updatedAt ?? focusTask.createdAt ?? nowMs;
+    const staleMinutes = Math.max(
+      1,
+      Math.floor((nowMs - referenceTimestamp) / (60 * 1000)),
+    );
+    const responseRequestMessage = `Heartbeat follow-up: no assignee update for about ${staleMinutes} minutes on "${focusTask.title}". Please post a progress or blocker update in this task thread.`;
+    const result = (await client.action(
+      api.service.actions.createResponseRequestNotifications,
+      {
+        accountId: config.accountId,
+        serviceToken: config.serviceToken,
+        requesterAgentId: agent._id,
+        taskId: focusTask._id,
+        recipientSlugs,
+        message: responseRequestMessage,
+      },
+    )) as { notificationIds: Id<"notifications">[] };
+    if ((result.notificationIds?.length ?? 0) > 0) {
+      log.info(
+        "Queued auto assignee follow-up request",
+        focusTask._id,
+        `recipients=${recipientSlugs.join(",")}`,
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn("Failed to queue auto assignee follow-up:", message);
+  }
 }
 
 /**
@@ -221,8 +440,23 @@ const STAGGER_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 export interface AgentForHeartbeat {
   _id: Id<"agents">;
   name: string;
+  slug?: string;
   sessionKey: string;
   heartbeatInterval?: number;
+  effectiveBehaviorFlags?: {
+    canCreateTasks?: boolean;
+    canModifyTaskStatus?: boolean;
+    canCreateDocuments?: boolean;
+    canMentionAgents?: boolean;
+  };
+  openclawConfig?: {
+    behaviorFlags?: {
+      canCreateTasks?: boolean;
+      canModifyTaskStatus?: boolean;
+      canCreateDocuments?: boolean;
+      canMentionAgents?: boolean;
+    };
+  };
 }
 
 /**
@@ -301,7 +535,7 @@ function runHeartbeatCycle(
               accountId: config.accountId,
               serviceToken: config.serviceToken,
               statuses: ORCHESTRATOR_HEARTBEAT_STATUSES,
-              limit: HEARTBEAT_TASK_LIMIT,
+              limit: ORCHESTRATOR_HEARTBEAT_TASK_LIMIT,
             },
           )) as HeartbeatTask[];
         } catch (error) {
@@ -315,10 +549,16 @@ function runHeartbeatCycle(
         assignedTasks,
         orchestratorTasks,
       ]);
+      const statusPriority = isOrchestrator
+        ? ORCHESTRATOR_HEARTBEAT_STATUS_PRIORITY
+        : HEARTBEAT_STATUS_PRIORITY;
       const filteredTasks = mergedTasks.filter((task) =>
-        HEARTBEAT_STATUS_PRIORITY.includes(task.status),
+        statusPriority.includes(task.status),
       );
-      const sortedTasks = sortHeartbeatTasks(filteredTasks);
+      const sortedTasks = sortHeartbeatTasks(filteredTasks, {
+        statusPriority,
+        preferStale: isOrchestrator,
+      });
       const focusTask = selectHeartbeatFocusTask(sortedTasks);
       const heartbeatMessage = buildHeartbeatMessage({
         focusTask,
@@ -327,8 +567,79 @@ function runHeartbeatCycle(
         taskStatusBaseUrl: config.taskStatusBaseUrl,
       });
 
-      const result = await sendToOpenClaw(agent.sessionKey, heartbeatMessage);
-      const responseText = result.text?.trim() ?? "";
+      const behaviorFlags = resolveHeartbeatBehaviorFlags(agent);
+      const rawToolCapabilities = getToolCapabilitiesAndSchemas({
+        canCreateTasks: behaviorFlags.canCreateTasks,
+        canModifyTaskStatus: behaviorFlags.canModifyTaskStatus,
+        canCreateDocuments: behaviorFlags.canCreateDocuments,
+        hasTaskContext: focusTask != null,
+        canMentionAgents: behaviorFlags.canMentionAgents,
+        canMarkDone: false,
+        isOrchestrator,
+      });
+      const toolCapabilities = config.openclawClientToolsEnabled
+        ? rawToolCapabilities
+        : { ...rawToolCapabilities, schemas: [] };
+      const sendOptions =
+        toolCapabilities.schemas.length > 0
+          ? {
+              tools: toolCapabilities.schemas,
+              toolChoice: "auto" as const,
+            }
+          : undefined;
+
+      const result = await sendToOpenClaw(
+        agent.sessionKey,
+        heartbeatMessage,
+        sendOptions,
+      );
+      let responseText = result.text?.trim() ?? "";
+      const hasResponseRequestToolCall = result.toolCalls.some(
+        (call) => call.name === "response_request",
+      );
+
+      if (result.toolCalls.length > 0) {
+        const outputs: { call_id: string; output: string }[] = [];
+        for (const call of result.toolCalls) {
+          const toolResult = await executeAgentTool({
+            name: call.name,
+            arguments: call.arguments,
+            agentId: agent._id,
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            taskId: focusTask?._id,
+            canMarkDone: toolCapabilities.canMarkDone,
+            isOrchestrator,
+          });
+          if (!toolResult.success) {
+            log.warn(
+              "Heartbeat tool execution failed",
+              call.name,
+              toolResult.error ?? "unknown",
+            );
+          }
+          outputs.push({
+            call_id: call.call_id,
+            output: JSON.stringify(toolResult),
+          });
+        }
+        if (outputs.length > 0) {
+          try {
+            const finalText = await sendOpenClawToolResults(
+              agent.sessionKey,
+              outputs,
+            );
+            if (finalText?.trim()) {
+              responseText = finalText.trim();
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            log.warn("Failed to send heartbeat tool results:", message);
+          }
+        }
+      }
+
       const isHeartbeatOk = isHeartbeatOkResponse(responseText);
       const responseTaskId =
         responseText && !isHeartbeatOk
@@ -352,6 +663,17 @@ function runHeartbeatCycle(
             agent.name,
           );
         }
+      }
+
+      if (isOrchestrator) {
+        await maybeAutoRequestAssigneeFollowUp({
+          client,
+          config,
+          agent,
+          focusTask,
+          canMentionAgents: behaviorFlags.canMentionAgents,
+          hasResponseRequestToolCall,
+        });
       }
 
       await client.action(api.service.actions.updateAgentHeartbeat, {

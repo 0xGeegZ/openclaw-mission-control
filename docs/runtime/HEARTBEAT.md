@@ -8,14 +8,14 @@
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
-- If you are the orchestrator: also review in_progress tasks across the account.
+- If you are the orchestrator: also review assigned / in_progress / blocked tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on in_progress tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others.
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -34,7 +34,7 @@ Pick one action that can be completed quickly:
 - produce a small deliverable chunk
 
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or `HEARTBEAT_OK`.
- 
+
 Action scope rules:
 
 - Only do work that is strictly required by the current task
