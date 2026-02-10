@@ -1082,50 +1082,56 @@ export default defineSchema({
     /** Account this action belongs to */
     accountId: v.id("accounts"),
 
-    /** User ID who performed the action */
+    /** User ID who performed the action (or "system" for webhook events) */
     userId: v.string(),
 
-    /** Type of billing action */
-    action: v.union(
-      v.literal("upgrade"),
-      v.literal("downgrade"),
-      v.literal("cancel"),
-      v.literal("reactivate"),
-      v.literal("plan_change"),
-      v.literal("payment_method_updated"),
-      v.literal("usage_limit_change"),
-      v.literal("trial_started"),
-      v.literal("trial_ended"),
+    /** Type of billing action (spec: plan_upgraded, plan_downgraded, plan_renewed, plan_cancelled, payment_failed, invoice_paid, usage_limit_exceeded, customer_portal_accessed) */
+    actionType: v.union(
+      v.literal("plan_upgraded"),
+      v.literal("plan_downgraded"),
+      v.literal("plan_renewed"),
+      v.literal("plan_cancelled"),
+      v.literal("payment_failed"),
+      v.literal("invoice_paid"),
+      v.literal("usage_limit_exceeded"),
+      v.literal("customer_portal_accessed"),
     ),
 
-    /** Plan before the action (null for new subscriptions) */
-    fromPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+    /** Human-readable description of the action */
+    description: v.optional(v.string()),
 
-    /** Plan after the action */
-    toPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
-
-    /** User-provided reason (e.g., cancellation feedback) */
-    reason: v.optional(v.string()),
-
-    /** Additional context about the action */
-    metadata: v.optional(
+    /** Detailed context about the action */
+    details: v.optional(
       v.object({
-        stripeSubscriptionId: v.optional(v.string()),
-        stripeCustomerId: v.optional(v.string()),
-        stripePriceId: v.optional(v.string()),
-        reasonCode: v.optional(v.string()), // e.g., "too_expensive", "unused", "switching"
-        feedbackText: v.optional(v.string()),
-        ipAddress: v.optional(v.string()),
-        userAgent: v.optional(v.string()),
+        old_plan: v.optional(v.string()), // e.g., "free", "pro", "enterprise"
+        new_plan: v.optional(v.string()), // e.g., "free", "pro", "enterprise"
+        amount: v.optional(v.number()), // Amount in cents
+        amount_currency: v.optional(v.string()), // e.g., "usd"
+        invoice_id: v.optional(v.string()), // Stripe invoice ID
+        stripe_subscription_id: v.optional(v.string()), // Stripe subscription ID
+        stripe_customer_id: v.optional(v.string()), // Stripe customer ID
+        stripe_price_id: v.optional(v.string()), // Stripe price ID
+        stripe_event_id: v.optional(v.string()), // Stripe event ID for webhook tracking
       }),
     ),
 
-    /** Timestamp of the action */
-    createdAt: v.number(),
+    /** Additional metadata and context */
+    metadata: v.optional(
+      v.object({
+        reason: v.optional(v.string()), // User-provided reason (e.g., cancellation feedback)
+        reason_code: v.optional(v.string()), // e.g., "too_expensive", "unused", "switching"
+        feedback_text: v.optional(v.string()), // Extended user feedback
+        ip_address: v.optional(v.string()),
+        user_agent: v.optional(v.string()),
+      }),
+    ),
+
+    /** Timestamp of the action (Unix milliseconds) */
+    timestamp: v.number(),
   })
     .index("by_account", ["accountId"])
-    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_account_timestamp", ["accountId", "timestamp"])
     .index("by_user", ["userId"])
-    .index("by_action", ["action"])
-    .index("by_account_action", ["accountId", "action"]),
+    .index("by_action_type", ["actionType"])
+    .index("by_account_action", ["accountId", "actionType"]),
 });

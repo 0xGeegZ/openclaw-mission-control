@@ -200,29 +200,37 @@ export const incrementUsage = mutation({
 export const logBillingAction = mutation({
   args: {
     accountId: v.id("accounts"),
-    action: v.union(
-      v.literal("upgrade"),
-      v.literal("downgrade"),
-      v.literal("cancel"),
-      v.literal("reactivate"),
-      v.literal("plan_change"),
-      v.literal("payment_method_updated"),
-      v.literal("usage_limit_change"),
-      v.literal("trial_started"),
-      v.literal("trial_ended"),
+    actionType: v.union(
+      v.literal("plan_upgraded"),
+      v.literal("plan_downgraded"),
+      v.literal("plan_renewed"),
+      v.literal("plan_cancelled"),
+      v.literal("payment_failed"),
+      v.literal("invoice_paid"),
+      v.literal("usage_limit_exceeded"),
+      v.literal("customer_portal_accessed"),
     ),
-    fromPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
-    toPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
-    reason: v.optional(v.string()),
+    description: v.optional(v.string()),
+    details: v.optional(
+      v.object({
+        old_plan: v.optional(v.string()),
+        new_plan: v.optional(v.string()),
+        amount: v.optional(v.number()),
+        amount_currency: v.optional(v.string()),
+        invoice_id: v.optional(v.string()),
+        stripe_subscription_id: v.optional(v.string()),
+        stripe_customer_id: v.optional(v.string()),
+        stripe_price_id: v.optional(v.string()),
+        stripe_event_id: v.optional(v.string()),
+      }),
+    ),
     metadata: v.optional(
       v.object({
-        stripeSubscriptionId: v.optional(v.string()),
-        stripeCustomerId: v.optional(v.string()),
-        stripePriceId: v.optional(v.string()),
-        reasonCode: v.optional(v.string()),
-        feedbackText: v.optional(v.string()),
-        ipAddress: v.optional(v.string()),
-        userAgent: v.optional(v.string()),
+        reason: v.optional(v.string()),
+        reason_code: v.optional(v.string()),
+        feedback_text: v.optional(v.string()),
+        ip_address: v.optional(v.string()),
+        user_agent: v.optional(v.string()),
       }),
     ),
   },
@@ -238,12 +246,11 @@ export const logBillingAction = mutation({
     const actionId = await ctx.db.insert("billingActions", {
       accountId: args.accountId,
       userId: identity.tokenIdentifier,
-      action: args.action,
-      fromPlan: args.fromPlan,
-      toPlan: args.toPlan,
-      reason: args.reason,
+      actionType: args.actionType,
+      description: args.description,
+      details: args.details,
       metadata: args.metadata,
-      createdAt: Date.now(),
+      timestamp: Date.now(),
     });
 
     return actionId;
@@ -252,28 +259,28 @@ export const logBillingAction = mutation({
 
 /**
  * Get billing action history for an account.
- * Returns audit trail of billing changes.
+ * Returns audit trail of billing changes, sorted by timestamp (newest first).
  */
 export const getBillingActionHistory = query({
   args: {
     accountId: v.id("accounts"),
     limit: v.optional(v.number()),
-    action: v.optional(v.string()),
+    actionType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
 
     let query = ctx.db
       .query("billingActions")
-      .withIndex("by_account_created", (q) =>
+      .withIndex("by_account_timestamp", (q) =>
         q.eq("accountId", args.accountId),
       );
 
-    if (args.action) {
+    if (args.actionType) {
       // Filter by action type if specified
       const allActions = await query.order("desc").collect();
       return allActions
-        .filter((a) => a.action === args.action)
+        .filter((a) => a.actionType === args.actionType)
         .slice(0, args.limit ?? 50);
     }
 
@@ -445,30 +452,38 @@ export const updateAccountPlanInternal = internalMutation({
 export const logBillingActionInternal = internalMutation({
   args: {
     accountId: v.id("accounts"),
-    action: v.union(
-      v.literal("upgrade"),
-      v.literal("downgrade"),
-      v.literal("cancel"),
-      v.literal("reactivate"),
-      v.literal("plan_change"),
-      v.literal("payment_method_updated"),
-      v.literal("usage_limit_change"),
-      v.literal("trial_started"),
-      v.literal("trial_ended"),
+    actionType: v.union(
+      v.literal("plan_upgraded"),
+      v.literal("plan_downgraded"),
+      v.literal("plan_renewed"),
+      v.literal("plan_cancelled"),
+      v.literal("payment_failed"),
+      v.literal("invoice_paid"),
+      v.literal("usage_limit_exceeded"),
+      v.literal("customer_portal_accessed"),
     ),
     userId: v.optional(v.string()),
-    fromPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
-    toPlan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
-    reason: v.optional(v.string()),
+    description: v.optional(v.string()),
+    details: v.optional(
+      v.object({
+        old_plan: v.optional(v.string()),
+        new_plan: v.optional(v.string()),
+        amount: v.optional(v.number()),
+        amount_currency: v.optional(v.string()),
+        invoice_id: v.optional(v.string()),
+        stripe_subscription_id: v.optional(v.string()),
+        stripe_customer_id: v.optional(v.string()),
+        stripe_price_id: v.optional(v.string()),
+        stripe_event_id: v.optional(v.string()),
+      }),
+    ),
     metadata: v.optional(
       v.object({
-        stripeSubscriptionId: v.optional(v.string()),
-        stripeCustomerId: v.optional(v.string()),
-        stripePriceId: v.optional(v.string()),
-        reasonCode: v.optional(v.string()),
-        feedbackText: v.optional(v.string()),
-        ipAddress: v.optional(v.string()),
-        userAgent: v.optional(v.string()),
+        reason: v.optional(v.string()),
+        reason_code: v.optional(v.string()),
+        feedback_text: v.optional(v.string()),
+        ip_address: v.optional(v.string()),
+        user_agent: v.optional(v.string()),
       }),
     ),
   },
@@ -476,12 +491,11 @@ export const logBillingActionInternal = internalMutation({
     const actionId = await ctx.db.insert("billingActions", {
       accountId: args.accountId,
       userId: args.userId || "system",
-      action: args.action,
-      fromPlan: args.fromPlan,
-      toPlan: args.toPlan,
-      reason: args.reason,
+      actionType: args.actionType,
+      description: args.description,
+      details: args.details,
       metadata: args.metadata,
-      createdAt: Date.now(),
+      timestamp: Date.now(),
     });
 
     return actionId;
@@ -592,25 +606,30 @@ export const handleStripeWebhook = action({
             : "canceled";
 
         // Determine action type based on event and subscription state
-        let actionType: "upgrade" | "downgrade" | "plan_change" | "trial_started" =
-          "plan_change";
+        let actionType: "plan_upgraded" | "plan_downgraded" | "plan_renewed" = "plan_renewed";
+        let oldPlan = "free";
+
         if (event.type === "customer.subscription.created") {
-          if (subscription.status === "trialing") {
-            actionType = "trial_started";
-          } else if (plan !== "free") {
-            actionType = "upgrade";
+          // New subscription
+          if (plan !== "free") {
+            actionType = "plan_upgraded";
+            oldPlan = "free";
           }
         } else if (event.type === "customer.subscription.updated") {
           // Check if this is a plan change by comparing with previous subscription state
           const prevData = event.data.previous_attributes as any;
           if (prevData?.items?.data?.[0]?.price?.id) {
             const prevPriceId = prevData.items.data[0].price.id;
-            const prevPlan = getPlanFromPriceId(prevPriceId);
-            if (plan === "free" && prevPlan !== "free") {
-              actionType = "downgrade";
-            } else if (plan !== "free" && prevPlan === "free") {
-              actionType = "upgrade";
+            oldPlan = getPlanFromPriceId(prevPriceId);
+            if (plan === "free" && oldPlan !== "free") {
+              actionType = "plan_downgraded";
+            } else if (plan !== "free" && oldPlan === "free") {
+              actionType = "plan_upgraded";
+            } else if (plan !== oldPlan) {
+              // Plan changed within paid tiers
+              actionType = oldPlan === "free" ? "plan_upgraded" : "plan_downgraded";
             }
+            // Otherwise it's a renewal with no plan change
           }
         }
 
@@ -637,12 +656,15 @@ export const handleStripeWebhook = action({
         // Log the billing action for audit trail
         await ctx.runMutation(internal.billing.logBillingActionInternal, {
           accountId: accountId as any,
-          action: actionType,
-          toPlan: plan,
-          metadata: {
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: subscription.customer as string,
-            stripePriceId: priceId,
+          actionType,
+          description: `Subscription ${actionType.replace("plan_", "").replace(/_/g, " ")} from ${oldPlan} to ${plan}`,
+          details: {
+            old_plan: oldPlan,
+            new_plan: plan,
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: subscription.customer as string,
+            stripe_price_id: priceId,
+            stripe_event_id: event.id,
           },
         });
         break;
@@ -688,13 +710,15 @@ export const handleStripeWebhook = action({
         // Log the cancellation action for audit trail
         await ctx.runMutation(internal.billing.logBillingActionInternal, {
           accountId: accountId as any,
-          action: "cancel",
-          fromPlan: prevPlan,
-          toPlan: "free",
-          metadata: {
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: subscription.customer as string,
-            stripePriceId: priceId,
+          actionType: "plan_cancelled",
+          description: `Subscription cancelled from ${prevPlan} to free`,
+          details: {
+            old_plan: prevPlan,
+            new_plan: "free",
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: subscription.customer as string,
+            stripe_price_id: priceId,
+            stripe_event_id: event.id,
           },
         });
         break;
@@ -727,6 +751,8 @@ export const handleStripeWebhook = action({
         }
 
         const status = invoice.status === "paid" ? "paid" : "open";
+        const actionType =
+          event.type === "invoice.payment_succeeded" ? "invoice_paid" : "payment_failed";
 
         await ctx.runMutation(internal.billing.recordInvoiceInternal, {
           accountId: accountId as any,
@@ -740,6 +766,24 @@ export const handleStripeWebhook = action({
           invoicePdf: invoice.invoice_pdf || undefined,
           periodStart: invoice.period_start * 1000,
           periodEnd: invoice.period_end * 1000,
+        });
+
+        // Log the billing action for audit trail
+        await ctx.runMutation(internal.billing.logBillingActionInternal, {
+          accountId: accountId as any,
+          actionType: actionType as "invoice_paid" | "payment_failed",
+          description:
+            actionType === "invoice_paid"
+              ? `Invoice ${invoice.id} paid: $${(invoice.amount_paid / 100).toFixed(2)} ${invoice.currency.toUpperCase()}`
+              : `Invoice ${invoice.id} payment failed: $${(invoice.amount_due / 100).toFixed(2)} ${invoice.currency.toUpperCase()}`,
+          details: {
+            amount: actionType === "invoice_paid" ? invoice.amount_paid : invoice.amount_due,
+            amount_currency: invoice.currency,
+            invoice_id: invoice.id,
+            stripe_subscription_id: subscriptionId,
+            stripe_customer_id: invoice.customer as string,
+            stripe_event_id: event.id,
+          },
         });
         break;
       }
@@ -879,6 +923,16 @@ export const createCustomerPortalSession = action({
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
       return_url: args.returnUrl,
+    });
+
+    // Log customer portal access for audit trail
+    await ctx.runMutation(internal.billing.logBillingActionInternal, {
+      accountId: args.accountId,
+      actionType: "customer_portal_accessed",
+      description: "User accessed Stripe customer portal",
+      details: {
+        stripe_customer_id: subscription.stripeCustomerId,
+      },
     });
 
     return session.url;
