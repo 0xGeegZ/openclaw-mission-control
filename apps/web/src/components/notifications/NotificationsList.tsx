@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@packages/ui/components/button";
+import { Badge } from "@packages/ui/components/badge";
 import {
   AlertCircle,
   Bell,
@@ -12,7 +12,7 @@ import {
   Users,
   Shield,
   Trash2,
-  MarkEmailReadOutlined,
+  MailCheck,
 } from "lucide-react";
 
 interface Notification {
@@ -160,7 +160,7 @@ export function NotificationsList({
             onClick={onMarkAllAsRead}
             className="gap-2"
           >
-            <MarkEmailReadOutlined className="w-4 h-4" />
+            <MailCheck className="w-4 h-4" />
             Mark all as read
           </Button>
         </div>
@@ -226,7 +226,7 @@ export function NotificationsList({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                       e.stopPropagation();
                       onMarkAsRead?.(notification._id);
                     }}
@@ -238,10 +238,10 @@ export function NotificationsList({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDismiss(notification._id);
-                  }}
+onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      handleDismiss(notification._id);
+                    }}
                   title="Dismiss"
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />

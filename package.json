@@ -14,8 +14,7 @@
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "node scripts/test-arm64.js all",
-    "test:turbo": "turbo run test --filter=@packages/shared"
+    "test:all": "turbo run test"
   },
   "devDependencies": {
     "prettier": "3.7.4",

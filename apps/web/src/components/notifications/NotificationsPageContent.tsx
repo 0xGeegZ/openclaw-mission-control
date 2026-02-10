@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { api } from "@packages/backend/convex/_generated/api";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { NotificationsList } from "./NotificationsList";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@packages/ui/components/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
 interface NotificationsPageContentProps {
@@ -22,7 +22,7 @@ export function NotificationsPageContent({
   const router = useRouter();
   const [filterBy, setFilterBy] = useState<"all" | "unread">("unread");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [allNotifications, setAllNotifications] = useState<any[]>([]);
+  const [allNotifications, setAllNotifications] = useState<Doc<"notifications">[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch notifications
@@ -38,14 +38,13 @@ export function NotificationsPageContent({
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
   const dismissNotification = useMutation(api.notifications.remove);
 
-  // Load initial notifications
+  // Sync Convex query result to local state for pagination and optimistic updates.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional sync from query to local state for pagination. */
   useEffect(() => {
     if (notificationsData) {
       if (cursor === undefined) {
-        // First load - replace all
         setAllNotifications(notificationsData.notifications || []);
       } else {
-        // Pagination - append
         setAllNotifications((prev) => [
           ...prev,
           ...(notificationsData.notifications || []),
@@ -53,6 +52,7 @@ export function NotificationsPageContent({
       }
     }
   }, [notificationsData, cursor]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
@@ -158,7 +158,7 @@ export function NotificationsPageContent({
           {/* Tabs */}
           <Tabs
             value={filterBy}
-            onValueChange={(value) => {
+            onValueChange={(value: string) => {
               setFilterBy(value as "all" | "unread");
               setCursor(undefined);
               setAllNotifications([]);

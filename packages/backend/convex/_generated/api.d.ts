@@ -29,6 +29,7 @@ import type * as lib_skills_validation from "../lib/skills_validation.js";
 import type * as lib_task_workflow from "../lib/task_workflow.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as memberships from "../memberships.js";
+import type * as mentions from "../mentions.js";
 import type * as messages from "../messages.js";
 import type * as notifications from "../notifications.js";
 import type * as runtimes from "../runtimes.js";
@@ -74,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   "lib/task_workflow": typeof lib_task_workflow;
   "lib/validators": typeof lib_validators;
   memberships: typeof memberships;
+  mentions: typeof mentions;
   messages: typeof messages;
   notifications: typeof notifications;
   runtimes: typeof runtimes;
