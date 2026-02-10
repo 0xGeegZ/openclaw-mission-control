@@ -93,8 +93,8 @@ export async function resolveMentions(
     // Try to match user by name (case-insensitive)
     const matchedMember = memberships.find(
       (m) =>
-        m.userName.toLowerCase() === mentionStr ||
-        m.userEmail.toLowerCase().split("@")[0] === mentionStr,
+        m.userName.toLowerCase() === mentionStr.toLowerCase() ||
+        m.userEmail.toLowerCase().split("@")[0] === mentionStr.toLowerCase(),
     );
 
     if (matchedMember) {
@@ -110,8 +110,8 @@ export async function resolveMentions(
     // Try to match agent by slug or name
     const matchedAgent = agents.find(
       (a) =>
-        a.slug.toLowerCase() === mentionStr ||
-        a.name.toLowerCase() === mentionStr,
+        a.slug.toLowerCase() === mentionStr.toLowerCase() ||
+        a.name.toLowerCase() === mentionStr.toLowerCase(),
     );
 
     if (matchedAgent) {
