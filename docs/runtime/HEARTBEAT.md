@@ -40,7 +40,8 @@ Action scope rules:
 - Only do work that is strictly required by the current task
 - Do not add cleanup, refactors, or "nice-to-have" changes
 - If you discover out-of-scope improvements, create a follow-up task instead
-- Use your available skills as much as possible while working.
+- Before executing the action, check your assigned skills and use every relevant skill.
+- If no assigned skill applies, include `No applicable skill` in your task update.
 
 ## 4) Report + persist memory (always)
 

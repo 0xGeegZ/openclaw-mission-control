@@ -2,10 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   buildHeartbeatMessage,
   mergeHeartbeatTasks,
+  normalizeHeartbeatResponse,
   shouldRequestAssigneeResponse,
   sortHeartbeatTasks,
 } from "./heartbeat";
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 type TaskDoc = Doc<"tasks">;
 
@@ -104,6 +105,37 @@ describe("sortHeartbeatTasks", () => {
       "task-in-progress",
     ]);
   });
+
+  it("keeps in_progress first for orchestrator ordering", () => {
+    const blockedVeryStale = buildTask({
+      _id: "task-blocked-very-stale" as TaskDoc["_id"],
+      status: "blocked",
+      updatedAt: 1000,
+    });
+    const inProgressLessStale = buildTask({
+      _id: "task-in-progress-less-stale" as TaskDoc["_id"],
+      status: "in_progress",
+      updatedAt: 2000,
+    });
+    const assignedStale = buildTask({
+      _id: "task-assigned-stale" as TaskDoc["_id"],
+      status: "assigned",
+      updatedAt: 500,
+    });
+
+    const sorted = sortHeartbeatTasks(
+      [blockedVeryStale, assignedStale, inProgressLessStale],
+      {
+        statusPriority: ["in_progress", "assigned", "blocked"],
+        preferStale: true,
+      },
+    );
+    expect(sorted.map((task) => task._id)).toEqual([
+      "task-in-progress-less-stale",
+      "task-assigned-stale",
+      "task-blocked-very-stale",
+    ]);
+  });
 });
 
 describe("shouldRequestAssigneeResponse", () => {
@@ -170,7 +202,7 @@ describe("buildHeartbeatMessage", () => {
     });
     expect(message).toContain("Tracked tasks:");
     expect(message).toContain(
-      "As the orchestrator, follow up on assigned/in_progress/blocked tasks",
+      "As the orchestrator, follow up on in_progress/assigned/blocked tasks",
     );
     expect(message).toContain("Task ID: task-orch");
   });
@@ -201,11 +233,73 @@ describe("buildHeartbeatMessage", () => {
     expect(message).toContain(
       "Across tracked tasks, keep follow-ups moving and avoid starvation",
     );
-    expect(message).toContain("Prioritize the stalest blocked/in_progress");
-    expect(message).toContain("task_search or task_get / task_load");
+    expect(message).toContain("Prioritize the stalest in_progress task first");
+    expect(message).toContain("task_load (or task_get/task_thread/task_search)");
+    expect(message).toContain("task_message thread comment");
     expect(message).toContain("response_request");
-    expect(message).toContain("You must request a response from assignees");
+    expect(message).toContain("If either step fails, report BLOCKED");
     expect(message).toContain("http://runtime:3000/agent/task-search");
-    expect(message).toContain("only one atomic action per heartbeat");
+    expect(message).toContain("http://runtime:3000/agent/task-message");
+    expect(message).toContain("http://runtime:3000/agent/response-request");
+    expect(message).toContain("Take up to 3 atomic follow-ups per heartbeat");
+  });
+
+  it("includes recent focus task thread updates when provided", () => {
+    const task = buildTask({
+      _id: "task-thread" as TaskDoc["_id"],
+      title: "Task with thread",
+      status: "in_progress",
+    });
+    const message = buildHeartbeatMessage({
+      focusTask: task,
+      tasks: [task],
+      isOrchestrator: false,
+      focusTaskThread: [
+        {
+          messageId: "msg1" as unknown as Id<"messages">,
+          authorType: "user",
+          authorId: "user_1",
+          authorName: "Guillaume",
+          content: "Please prioritize this now.",
+          createdAt: 1000,
+        },
+      ],
+    });
+    expect(message).toContain("Recent focus task thread updates:");
+    expect(message).toContain("Guillaume [user]");
+    expect(message).toContain("Please prioritize this now.");
+  });
+});
+
+describe("normalizeHeartbeatResponse", () => {
+  it("keeps strict HEARTBEAT_OK as no-op", () => {
+    const normalized = normalizeHeartbeatResponse("HEARTBEAT_OK");
+    expect(normalized).toEqual({
+      responseText: "HEARTBEAT_OK",
+      isHeartbeatOk: true,
+      wasAmbiguousHeartbeatOk: false,
+    });
+  });
+
+  it("normalizes ambiguous HEARTBEAT_OK mixed output to strict no-op", () => {
+    const normalized = normalizeHeartbeatResponse(
+      "Did some checks.\nHEARTBEAT_OK",
+    );
+    expect(normalized).toEqual({
+      responseText: "HEARTBEAT_OK",
+      isHeartbeatOk: true,
+      wasAmbiguousHeartbeatOk: true,
+    });
+  });
+
+  it("keeps normal action text as non-noop", () => {
+    const normalized = normalizeHeartbeatResponse(
+      "Implemented fix and posted update.\nTask ID: task1",
+    );
+    expect(normalized).toEqual({
+      responseText: "Implemented fix and posted update.\nTask ID: task1",
+      isHeartbeatOk: false,
+      wasAmbiguousHeartbeatOk: false,
+    });
   });
 });

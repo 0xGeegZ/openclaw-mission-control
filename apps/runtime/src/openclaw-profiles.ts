@@ -74,7 +74,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 4. Always include evidence when you claim facts.
 5. Prefer small, finished increments over large vague progress.
 6. Only change code that is strictly required by the current task: do not add nice-to-have changes, refactors, cleanup, or dummy code; if you discover related improvements, create a follow-up task instead.
-7. Use your available skills as much as possible when working on a task.
+7. Skill usage is mandatory for in-scope operations:
+   - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
+   - if one or more skills apply, use them instead of ad-hoc behavior
+   - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
 8. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
 ## Document sharing (critical)
@@ -90,8 +93,8 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - **response_request** — Request a response from other agents; use instead of @mentions.
 - **task_load** — Load full task details with recent thread messages.
 - **get_agent_skills** — List skills per agent; orchestrator can query specific agents.
-- **task_assign** (orchestrator only) — Assign agents to a task by slug.
-- **task_message** (orchestrator only) — Post a message to another task's thread.
+- **task_assign** — Assign agents to a task by slug. Use it to update current task assignees when another agent is better suited for the next step.
+- **task_message** — Post a message to another task's thread.
 - **task_list** (orchestrator only) — List tasks with optional filters.
 - **task_get** (orchestrator only) — Fetch task details by ID.
 - **task_thread** (orchestrator only) — Fetch recent task thread messages.
@@ -106,6 +109,15 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - If blocked: move to BLOCKED and explain.
 - If done: move to DONE only after QA review passes (QA marks done when configured).
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
+
+## Orchestrator ping requests (required)
+
+When the primary user asks the orchestrator to "ping" one or more agents or tasks:
+
+- Post a task-thread comment on each target task requesting an explicit response from the target agent(s). Use task_message for non-current tasks.
+- Send response_request for the same task and recipients so notifications are delivered.
+- For multiple tasks, repeat both actions per task.
+- If either step fails for any task, report BLOCKED with the failed task IDs/agent slugs.
 `;
 
 /** Default HEARTBEAT.md content when file path is not available (e.g. in Docker runtime container). */
@@ -146,7 +158,9 @@ Pick one action that can be completed quickly:
 
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
 
-Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes. Use your available skills as much as possible.
+Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes.
+Before executing the action, check your assigned skills and use every relevant skill.
+If no assigned skill applies, include "No applicable skill" in your task update.
 
 ## 4) Report + persist memory (always)
 
@@ -204,7 +218,7 @@ export function buildToolsMd(
   resolvedSkills: AgentForProfile["resolvedSkills"],
 ): string {
   const header =
-    "# Assigned skills\n\nUse these capabilities when relevant. Some skills have real SKILL.md files in this workspace.\n\n";
+    "# Assigned skills\n\nSkill usage policy: before each operation, check this list and use every relevant skill. If no listed skill applies, explicitly state `No applicable skill` in your task update. Some skills have real SKILL.md files in this workspace.\n\n";
   if (!resolvedSkills || resolvedSkills.length === 0) {
     return header + "- No assigned skills\n";
   }

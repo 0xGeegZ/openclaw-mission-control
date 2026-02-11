@@ -95,8 +95,14 @@ export function getActivityDescription(
       }
       return "status changed";
     }
-    case "runtime_status_changed":
-      return `Runtime status changed`;
+    case "runtime_status_changed": {
+      const oldS = meta?.oldStatus as string | undefined;
+      const newS = meta?.newStatus as string | undefined;
+      if (oldS != null && newS != null) {
+        return `status changed from ${formatStatus(oldS)} to ${formatStatus(newS)}`;
+      }
+      return "runtime status changed";
+    }
     case "member_added":
       return `${actorName} joined the account`;
     case "member_removed":
