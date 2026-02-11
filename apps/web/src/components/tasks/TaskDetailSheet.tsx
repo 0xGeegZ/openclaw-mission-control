@@ -32,11 +32,13 @@ import {
   Clock,
   Flag,
   Tag,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
+import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
 import { cn } from "@packages/ui/lib/utils";
@@ -371,6 +373,10 @@ export function TaskDetailSheet({
                     <MessageSquare className="h-3.5 w-3.5" />
                     Thread
                   </TabsTrigger>
+                  <TabsTrigger value="activity" className="px-4 gap-2 text-sm">
+                    <History className="h-3.5 w-3.5" />
+                    Activity
+                  </TabsTrigger>
                   <TabsTrigger value="documents" className="px-4 gap-2 text-sm">
                     <FileText className="h-3.5 w-3.5" />
                     Documents
@@ -387,6 +393,16 @@ export function TaskDetailSheet({
                   accountSlug={accountSlug}
                   accountId={task.accountId}
                   useReadByFallback
+                />
+              </TabsContent>
+
+              <TabsContent
+                value="activity"
+                className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
+              >
+                <TaskActivityTimeline
+                  taskId={task._id}
+                  accountSlug={accountSlug}
                 />
               </TabsContent>
 
