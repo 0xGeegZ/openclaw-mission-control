@@ -157,15 +157,43 @@ describe("billing integration", () => {
   describe("incrementUsage", () => {
     it("should create new usage record for current period", async () => {
       const accountId = "account_test123" as Id<"accounts">;
+      const userId = "user_test123";
       let createdRecord: any = null;
 
       const mockCtx: any = {
-        db: {
-          query: (table: string) => ({
-            withIndex: () => ({
-              first: async () => null, // No existing record
-            }),
+        auth: {
+          getUserIdentity: async () => ({
+            subject: userId,
+            name: "Test User",
+            email: "test@example.com",
           }),
+        },
+        db: {
+          get: async (id: Id<any>) => {
+            if (id === accountId) {
+              return { _id: accountId, slug: "test", name: "Test", plan: "free" };
+            }
+            return null;
+          },
+          query: (table: string) => {
+            if (table === "memberships") {
+              return {
+                withIndex: () => ({
+                  unique: async () => ({
+                    userId,
+                    accountId,
+                    role: "member",
+                  }),
+                }),
+              };
+            }
+            // For usageRecords query
+            return {
+              withIndex: () => ({
+                first: async () => null, // No existing record
+              }),
+            };
+          },
           insert: async (table: string, doc: any) => {
             createdRecord = doc;
             return "usage_new_123" as Id<"usageRecords">;
@@ -194,23 +222,51 @@ describe("billing integration", () => {
     it("should accumulate usage on existing record", async () => {
       const accountId = "account_test123" as Id<"accounts">;
       const usageRecordId = "usage_existing_123" as Id<"usageRecords">;
+      const userId = "user_test123";
       let updatedValues: any = {};
 
       const mockCtx: any = {
-        db: {
-          query: (table: string) => ({
-            withIndex: () => ({
-              first: async () => ({
-                _id: usageRecordId,
-                accountId,
-                agents: 2,
-                tasks: 5,
-                messages: 10,
-                documents: 3,
-                storageBytes: 0,
-              }),
-            }),
+        auth: {
+          getUserIdentity: async () => ({
+            subject: userId,
+            name: "Test User",
+            email: "test@example.com",
           }),
+        },
+        db: {
+          get: async (id: Id<any>) => {
+            if (id === accountId) {
+              return { _id: accountId, slug: "test", name: "Test", plan: "free" };
+            }
+            return null;
+          },
+          query: (table: string) => {
+            if (table === "memberships") {
+              return {
+                withIndex: () => ({
+                  unique: async () => ({
+                    userId,
+                    accountId,
+                    role: "member",
+                  }),
+                }),
+              };
+            }
+            // For usageRecords query
+            return {
+              withIndex: () => ({
+                first: async () => ({
+                  _id: usageRecordId,
+                  accountId,
+                  agents: 2,
+                  tasks: 5,
+                  messages: 10,
+                  documents: 3,
+                  storageBytes: 0,
+                }),
+              }),
+            };
+          },
           patch: async (id: any, updates: any) => {
             expect(id).toBe(usageRecordId);
             updatedValues = updates;
@@ -231,23 +287,51 @@ describe("billing integration", () => {
     it("should track storage bytes independently", async () => {
       const accountId = "account_test123" as Id<"accounts">;
       const usageRecordId = "usage_existing_123" as Id<"usageRecords">;
+      const userId = "user_test123";
       let updatedValues: any = {};
 
       const mockCtx: any = {
-        db: {
-          query: (table: string) => ({
-            withIndex: () => ({
-              first: async () => ({
-                _id: usageRecordId,
-                accountId,
-                agents: 0,
-                tasks: 0,
-                messages: 0,
-                documents: 1,
-                storageBytes: 500 * 1024, // 500 KB
-              }),
-            }),
+        auth: {
+          getUserIdentity: async () => ({
+            subject: userId,
+            name: "Test User",
+            email: "test@example.com",
           }),
+        },
+        db: {
+          get: async (id: Id<any>) => {
+            if (id === accountId) {
+              return { _id: accountId, slug: "test", name: "Test", plan: "free" };
+            }
+            return null;
+          },
+          query: (table: string) => {
+            if (table === "memberships") {
+              return {
+                withIndex: () => ({
+                  unique: async () => ({
+                    userId,
+                    accountId,
+                    role: "member",
+                  }),
+                }),
+              };
+            }
+            // For usageRecords query
+            return {
+              withIndex: () => ({
+                first: async () => ({
+                  _id: usageRecordId,
+                  accountId,
+                  agents: 0,
+                  tasks: 0,
+                  messages: 0,
+                  documents: 1,
+                  storageBytes: 500 * 1024, // 500 KB
+                }),
+              }),
+            };
+          },
           patch: async (id: any, updates: any) => {
             updatedValues = updates;
           },
@@ -268,15 +352,43 @@ describe("billing integration", () => {
 
     it("should handle multiple usage types", async () => {
       const accountId = "account_test123" as Id<"accounts">;
+      const userId = "user_test123";
       let createdRecord: any = null;
 
       const mockCtx: any = {
-        db: {
-          query: (table: string) => ({
-            withIndex: () => ({
-              first: async () => null,
-            }),
+        auth: {
+          getUserIdentity: async () => ({
+            subject: userId,
+            name: "Test User",
+            email: "test@example.com",
           }),
+        },
+        db: {
+          get: async (id: Id<any>) => {
+            if (id === accountId) {
+              return { _id: accountId, slug: "test", name: "Test", plan: "free" };
+            }
+            return null;
+          },
+          query: (table: string) => {
+            if (table === "memberships") {
+              return {
+                withIndex: () => ({
+                  unique: async () => ({
+                    userId,
+                    accountId,
+                    role: "member",
+                  }),
+                }),
+              };
+            }
+            // For usageRecords query
+            return {
+              withIndex: () => ({
+                first: async () => null,
+              }),
+            };
+          },
           insert: async (table: string, doc: any) => {
             createdRecord = doc;
             return "usage_new_123" as Id<"usageRecords">;
