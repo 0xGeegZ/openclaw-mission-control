@@ -11,6 +11,8 @@ import { PlanCard } from "./PlanCard";
 import { SubscriptionCard } from "./SubscriptionCard";
 import { UsageCard } from "./UsageCard";
 import { InvoiceList } from "./InvoiceList";
+import { BillingActivityTimeline } from "./BillingActivityTimeline";
+import { ActionTypeFilter } from "./ActionTypeFilter";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { toast } from "sonner";
 
@@ -27,6 +29,7 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
   const router = useRouter();
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
+  const [actionTypeFilter, setActionTypeFilter] = useState<string>();
 
   // Queries
   const subscription = useQuery(api.billing.getSubscription, { accountId });
@@ -191,6 +194,28 @@ export function BillingTab({ accountId, accountSlug }: BillingTabProps) {
 
       {/* Invoice History */}
       <InvoiceList invoices={invoiceSummaries} />
+
+      {/* Billing Activity Timeline */}
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold tracking-tight">
+              Activity Timeline
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Complete audit trail of billing changes and actions
+            </p>
+          </div>
+          <ActionTypeFilter
+            selectedFilter={actionTypeFilter}
+            onFilterChange={setActionTypeFilter}
+          />
+        </div>
+        <BillingActivityTimeline
+          accountId={accountId}
+          actionTypeFilter={actionTypeFilter}
+        />
+      </div>
     </div>
   );
 }
