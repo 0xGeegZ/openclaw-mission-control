@@ -190,11 +190,7 @@ export async function executeTaskUpdateTool(params: {
       accountId,
       serviceToken,
       agentId,
-<<<<<<< Current (Your changes)
       taskId: trimmedTaskId as Id<"tasks">,
-=======
-      taskId: taskId.trim() as Id<"tasks">,
->>>>>>> Incoming (Background Agent changes)
       title: title?.trim(),
       description: description?.trim(),
       priority,
