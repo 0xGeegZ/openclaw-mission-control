@@ -57,6 +57,7 @@ import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
 import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
 import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
+import { AgentConfigurationCard } from "./_components/AgentConfigurationCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -278,7 +279,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
           </div>
         ) : agent ? (
           <div className="space-y-6 max-w-4xl">
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -326,6 +327,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   )}
                 </CardContent>
               </Card>
+              <AgentConfigurationCard agent={agent} />
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
