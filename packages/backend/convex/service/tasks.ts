@@ -469,6 +469,7 @@ export const assignFromAgent = internalMutation({
  * Update a task status on behalf of an agent (service-only).
  * Enforces workflow rules and logs activity.
  * Optionally guard against unexpected current status changes.
+ * @returns { taskId, previousStatus, newStatus, changedAt } for all paths (no-change or applied).
  */
 export const updateStatusFromAgent = internalMutation({
   args: {
@@ -501,12 +502,24 @@ export const updateStatusFromAgent = internalMutation({
     const nextStatus = args.status;
     const expectedStatus = args.expectedStatus;
 
+    const noChangeResponse = (): {
+      taskId: Id<"tasks">;
+      previousStatus: TaskStatus;
+      newStatus: TaskStatus;
+      changedAt: number;
+    } => ({
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: currentStatus,
+      changedAt: task.updatedAt,
+    });
+
     if (expectedStatus && currentStatus !== expectedStatus) {
-      return args.taskId;
+      return noChangeResponse();
     }
 
     if (currentStatus === nextStatus) {
-      return args.taskId;
+      return noChangeResponse();
     }
 
     if (nextStatus === "done") {
@@ -557,9 +570,10 @@ export const updateStatusFromAgent = internalMutation({
       throw new Error(`Invalid status change: ${requirementError}`);
     }
 
+    const changedAt = Date.now();
     const updates: Record<string, unknown> = {
       status: nextStatus,
-      updatedAt: Date.now(),
+      updatedAt: changedAt,
     };
 
     if (nextStatus === "blocked") {
@@ -621,7 +635,12 @@ export const updateStatusFromAgent = internalMutation({
       });
     }
 
-    return args.taskId;
+    return {
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: nextStatus,
+      changedAt,
+    };
   },
 });
 
