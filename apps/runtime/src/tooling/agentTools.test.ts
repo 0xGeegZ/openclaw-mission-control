@@ -16,6 +16,9 @@ vi.mock("../convex-client", () => ({
   api: {
     service: {
       actions: {
+        listAgents: "listAgents",
+        createTaskFromAgent: "createTaskFromAgent",
+        assignTaskFromAgent: "assignTaskFromAgent",
         searchTasksForAgentTool: "searchTasksForAgentTool",
         loadTaskDetailsForAgentTool: "loadTaskDetailsForAgentTool",
         linkTaskToPrForAgentTool: "linkTaskToPrForAgentTool",
@@ -345,6 +348,69 @@ describe("executeAgentTool", () => {
         message: "Need review",
       }),
     );
+  });
+
+  it("keeps orchestrator out of delegated task assignees", async () => {
+    mockAction
+      .mockResolvedValueOnce([
+        { _id: "agent1", slug: "orchestrator" },
+        { _id: "agent2", slug: "engineer" },
+      ])
+      .mockResolvedValueOnce({ taskId: "task1" })
+      .mockResolvedValueOnce({ taskId: "task1" });
+
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_create",
+      arguments: JSON.stringify({
+        title: "Delegate implementation",
+        status: "in_progress",
+        assigneeSlugs: ["orchestrator", "engineer"],
+      }),
+      isOrchestrator: true,
+    });
+
+    expect(result).toEqual({ success: true, taskId: "task1" });
+    expect(mockAction).toHaveBeenCalledTimes(3);
+
+    const createCall = mockAction.mock.calls.find(([, payload]) => {
+      return (payload as { title?: string }).title === "Delegate implementation";
+    });
+    expect(createCall).toBeDefined();
+    expect(createCall?.[1]).toMatchObject({
+      title: "Delegate implementation",
+      status: "inbox",
+    });
+
+    const assignCall = mockAction.mock.calls.find(([, payload]) => {
+      return (payload as { taskId?: string }).taskId === "task1";
+    });
+    expect(assignCall).toBeDefined();
+    expect(assignCall?.[1]).toMatchObject({
+      taskId: "task1",
+      assignedAgentIds: ["agent2"],
+    });
+  });
+
+  it("forces orchestrator-created assigned tasks to start in inbox", async () => {
+    mockAction.mockResolvedValueOnce({ taskId: "task2" });
+
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_create",
+      arguments: JSON.stringify({
+        title: "Backlog triage",
+        status: "assigned",
+      }),
+      isOrchestrator: true,
+    });
+
+    expect(result).toEqual({ success: true, taskId: "task2" });
+    expect(mockAction).toHaveBeenCalledTimes(1);
+    expect(mockAction.mock.calls[0]?.[1]).toMatchObject({
+      title: "Backlog triage",
+      status: "inbox",
+    });
   });
 
   it("executes get_agent_skills with optional agentId", async () => {

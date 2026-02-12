@@ -40,12 +40,7 @@ export default defineConfig({
         "convex/seed/**",
         "convex/README.md",
       ],
-      // Coverage targets
-      lines: 70,
-      functions: 70,
-      branches: 60,
-      statements: 70,
-      // Thresholds that fail the build if coverage is below target
+      // Coverage targets for backend core logic
       thresholds: {
         lines: 70,
         functions: 70,

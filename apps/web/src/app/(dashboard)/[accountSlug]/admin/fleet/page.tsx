@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
+import { RUNTIME_V2_STATUS } from "@packages/shared";
 
 interface FleetPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -69,15 +70,15 @@ export default function FleetPage({ params }: FleetPageProps) {
 
   const getStatusIcon = (status: string | undefined) => {
     switch (status) {
-      case "online":
+      case RUNTIME_V2_STATUS.ONLINE:
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case "degraded":
+      case RUNTIME_V2_STATUS.DEGRADED:
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case "offline":
-      case "error":
+      case RUNTIME_V2_STATUS.OFFLINE:
+      case RUNTIME_V2_STATUS.ERROR:
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case "provisioning":
-      case "upgrading":
+      case RUNTIME_V2_STATUS.PROVISIONING:
+      case RUNTIME_V2_STATUS.UPGRADING:
         return <Clock className="h-4 w-4 text-blue-500 animate-pulse" />;
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -86,12 +87,12 @@ export default function FleetPage({ params }: FleetPageProps) {
 
   const getStatusBadge = (status: string | undefined) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      online: "default",
-      degraded: "secondary",
-      offline: "destructive",
-      error: "destructive",
-      provisioning: "outline",
-      upgrading: "outline",
+      [RUNTIME_V2_STATUS.ONLINE]: "default",
+      [RUNTIME_V2_STATUS.DEGRADED]: "secondary",
+      [RUNTIME_V2_STATUS.OFFLINE]: "destructive",
+      [RUNTIME_V2_STATUS.ERROR]: "destructive",
+      [RUNTIME_V2_STATUS.PROVISIONING]: "outline",
+      [RUNTIME_V2_STATUS.UPGRADING]: "outline",
     };
     return variants[status || ""] || "outline";
   };

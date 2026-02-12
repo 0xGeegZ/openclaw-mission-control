@@ -40,6 +40,31 @@ function isQaAgent(
 }
 
 /**
+ * Calculate search relevance score for a task with weighted field matching.
+ * title (3x) > description (2x) > blockedReason (1x)
+ */
+export function scoreTaskSearchRelevance(
+  task: Pick<Doc<"tasks">, "title" | "description" | "blockedReason">,
+  query: string,
+): number {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  let score = 0;
+  const titleLower = task.title.toLowerCase();
+  const descLower = (task.description ?? "").toLowerCase();
+  const blockerLower = (task.blockedReason ?? "").toLowerCase();
+
+  if (titleLower.includes(normalizedQuery)) score += 3;
+  if (descLower.includes(normalizedQuery)) score += 2;
+  if (blockerLower.includes(normalizedQuery)) score += 1;
+
+  return score;
+}
+
+/**
  * Returns true when the account has at least one QA agent configured.
  */
 async function hasQaAgent(
@@ -264,7 +289,7 @@ export const createFromAgent = internalMutation({
 
     const assignedUserIds: string[] = [];
     let assignedAgentIds: Id<"agents">[] = [];
-    const requestedStatus = (args.status ?? "inbox") as TaskStatus;
+    const requestedStatus = args.status ?? "inbox";
     if (
       (requestedStatus === "assigned" || requestedStatus === "in_progress") &&
       assignedUserIds.length === 0
@@ -444,6 +469,7 @@ export const assignFromAgent = internalMutation({
  * Update a task status on behalf of an agent (service-only).
  * Enforces workflow rules and logs activity.
  * Optionally guard against unexpected current status changes.
+ * @returns { taskId, previousStatus, newStatus, changedAt } for all paths (no-change or applied).
  */
 export const updateStatusFromAgent = internalMutation({
   args: {
@@ -472,16 +498,28 @@ export const updateStatusFromAgent = internalMutation({
       throw new Error("Forbidden: Task belongs to different account");
     }
 
-    const currentStatus = task.status as TaskStatus;
-    const nextStatus = args.status as TaskStatus;
-    const expectedStatus = args.expectedStatus as TaskStatus | undefined;
+    const currentStatus = task.status;
+    const nextStatus = args.status;
+    const expectedStatus = args.expectedStatus;
+
+    const noChangeResponse = (): {
+      taskId: Id<"tasks">;
+      previousStatus: TaskStatus;
+      newStatus: TaskStatus;
+      changedAt: number;
+    } => ({
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: currentStatus,
+      changedAt: task.updatedAt,
+    });
 
     if (expectedStatus && currentStatus !== expectedStatus) {
-      return args.taskId;
+      return noChangeResponse();
     }
 
     if (currentStatus === nextStatus) {
-      return args.taskId;
+      return noChangeResponse();
     }
 
     if (nextStatus === "done") {
@@ -532,9 +570,10 @@ export const updateStatusFromAgent = internalMutation({
       throw new Error(`Invalid status change: ${requirementError}`);
     }
 
+    const changedAt = Date.now();
     const updates: Record<string, unknown> = {
       status: nextStatus,
-      updatedAt: Date.now(),
+      updatedAt: changedAt,
     };
 
     if (nextStatus === "blocked") {
@@ -596,7 +635,12 @@ export const updateStatusFromAgent = internalMutation({
       });
     }
 
-    return args.taskId;
+    return {
+      taskId: args.taskId,
+      previousStatus: currentStatus,
+      newStatus: nextStatus,
+      changedAt,
+    };
   },
 });
 
@@ -633,30 +677,11 @@ export const searchTasksForAgentTool = internalQuery({
       return [];
     }
 
-    /**
-     * Calculate relevance score for a task based on substring matches.
-     * Uses safe substring matching (no regex), weighted by field:
-     * title (3x) > description (2x) > blocker text (1x)
-     */
-    function scoreTask(task: (typeof tasks)[0]): number {
-      let score = 0;
-      const titleLower = task.title.toLowerCase();
-      const descLower = (task.description ?? "").toLowerCase();
-      const blockerLower = (task.blockedReason ?? "").toLowerCase();
-
-      // Count matches: simple presence test for each field
-      if (titleLower.includes(q)) score += 3;
-      if (descLower.includes(q)) score += 2;
-      if (blockerLower.includes(q)) score += 1;
-
-      return score;
-    }
-
     // Score and filter all tasks
     const scored = tasks
       .map((task) => ({
         task,
-        score: scoreTask(task),
+        score: scoreTaskSearchRelevance(task, q),
       }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -750,7 +775,7 @@ export const deleteTaskFromAgent = internalMutation({
 
     // Soft-delete: transition to "archived" status
     await ctx.db.patch(args.taskId, {
-      status: "archived" as TaskStatus,
+      status: "archived",
       archivedAt: now,
       updatedAt: now,
     });

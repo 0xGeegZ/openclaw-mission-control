@@ -20,6 +20,7 @@ import type * as lib_activity from "../lib/activity.js";
 import type * as lib_agent_soul from "../lib/agent_soul.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_behavior_flags from "../lib/behavior_flags.js";
+import type * as lib_constants from "../lib/constants.js";
 import type * as lib_mentions from "../lib/mentions.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_reference_validation from "../lib/reference_validation.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   "lib/agent_soul": typeof lib_agent_soul;
   "lib/auth": typeof lib_auth;
   "lib/behavior_flags": typeof lib_behavior_flags;
+  "lib/constants": typeof lib_constants;
   "lib/mentions": typeof lib_mentions;
   "lib/notifications": typeof lib_notifications;
   "lib/reference_validation": typeof lib_reference_validation;

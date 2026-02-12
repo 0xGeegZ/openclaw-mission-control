@@ -14,7 +14,10 @@ import {
   type ToolCapabilitiesAndSchemas,
 } from "./tooling/agentTools";
 import { recordSuccess, recordFailure } from "./metrics";
-import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
+import {
+  HEARTBEAT_OK_RESPONSE,
+  isHeartbeatOkResponse,
+} from "./heartbeat-constants";
 
 const log = createLogger("[Delivery]");
 
@@ -135,7 +138,9 @@ const NO_REPLY_SIGNAL_VALUES = new Set([
  * Detect explicit "no reply" signals from OpenClaw output.
  */
 function isNoReplySignal(value: string): boolean {
-  return NO_REPLY_SIGNAL_VALUES.has(value.trim());
+  return (
+    NO_REPLY_SIGNAL_VALUES.has(value.trim()) || isHeartbeatOkResponse(value)
+  );
 }
 
 interface DeliveryState {
@@ -364,7 +369,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               ? parseNoResponsePlaceholder(textToPost)
               : null;
             const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
-            const isHeartbeatOk = textToPost?.trim() === HEARTBEAT_OK_RESPONSE;
+            const isHeartbeatOk = isHeartbeatOkResponse(textToPost);
             if ((isNoReply || isHeartbeatOk) && result.toolCalls.length === 0) {
               log.info(
                 isHeartbeatOk
