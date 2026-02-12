@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, type ReactNode } from "react";
+import { use, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -30,6 +30,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
 import {
   BarChart3,
@@ -40,6 +42,7 @@ import {
   ArrowUpRight,
   PieChartIcon,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 
 /** Task status display order: use canonical shared order. */
 const ANALYTICS_STATUS_ORDER: TaskStatus[] = TASK_STATUS_ORDER;
@@ -106,16 +109,25 @@ interface AnalyticsPageProps {
   params: Promise<{ accountSlug: string }>;
 }
 
+type TimeRange = "day" | "week" | "month";
+
 /**
  * Analytics dashboard: task/agent counts, status charts, and pipeline view.
  */
 export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { accountSlug } = use(params);
   const { accountId } = useAccount();
+  const [timeRange, setTimeRange] = useState<TimeRange>("week");
 
+  // Fetch both summary and metrics
   const summary = useQuery(
     api.analytics.getSummary,
     accountId ? { accountId } : "skip",
+  );
+
+  const metrics = useQuery(
+    api.analytics.getMetrics,
+    accountId ? { timeRange } : "skip",
   );
 
   const taskChartData = !summary
@@ -149,23 +161,37 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   return (
     <div className="flex flex-col h-full">
       <header className="px-4 sm:px-6 py-4 border-b bg-card">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <BarChart3 className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-              Analytics
-            </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Task and agent overview for this workspace
-            </p>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <BarChart3 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                Analytics
+              </h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Task and agent overview for this workspace
+              </p>
+            </div>
           </div>
         </div>
+        {/* Date range selector */}
+        <Tabs
+          defaultValue="week"
+          value={timeRange}
+          onValueChange={(value) => setTimeRange(value as TimeRange)}
+        >
+          <TabsList className="grid w-fit grid-cols-3">
+            <TabsTrigger value="day">Day</TabsTrigger>
+            <TabsTrigger value="week">Week</TabsTrigger>
+            <TabsTrigger value="month">Month</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </header>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {summary === undefined ? (
+        {summary === undefined || metrics === undefined ? (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats skeleton */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -476,6 +502,71 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Metrics summary */}
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 pt-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Total Tasks ({timeRange})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics.totalTasks}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    in selected period
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Completed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.completedTasks}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    tasks done
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    In Progress
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.inProgressCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    active now
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Avg Time
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.avgCompletionTime.toFixed(1)}h
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    to complete
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
       </div>
