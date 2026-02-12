@@ -130,6 +130,7 @@ export const ACTIVITY_TYPE = {
   MESSAGE_CREATED: "message_created",
   DOCUMENT_CREATED: "document_created",
   DOCUMENT_UPDATED: "document_updated",
+  DOCUMENT_DELETED: "document_deleted",
   AGENT_STATUS_CHANGED: "agent_status_changed",
   RUNTIME_STATUS_CHANGED: "runtime_status_changed",
   MEMBER_ADDED: "member_added",

@@ -5,6 +5,7 @@ import {
   type DatabaseReader,
 } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import type { RecipientType, TaskStatus } from "@packages/shared";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -20,7 +21,7 @@ export interface GetForDeliveryResult {
   message: Doc<"messages"> | null;
   thread: Array<{
     messageId: Id<"messages">;
-    authorType: "user" | "agent";
+    authorType: RecipientType;
     authorId: string;
     authorName: string | null;
     content: string;
@@ -60,13 +61,13 @@ export interface GetForDeliveryResult {
   } | null;
 }
 
-const TASK_OVERVIEW_STATUSES = [
+const TASK_OVERVIEW_STATUSES: TaskStatus[] = [
   "inbox",
   "assigned",
   "in_progress",
   "review",
   "blocked",
-] as const;
+];
 const TASK_OVERVIEW_LIMIT = 3;
 const TASK_OVERVIEW_SCAN_LIMIT = 100;
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
@@ -247,7 +248,7 @@ export const getForDelivery = internalQuery({
 
     let thread: {
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;

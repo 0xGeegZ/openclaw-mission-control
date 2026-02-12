@@ -80,6 +80,8 @@ export function getActivityDescription(
       return `${actorName} created document "${target}"`;
     case "document_updated":
       return `${actorName} updated document "${target}"`;
+    case "document_deleted":
+      return `${actorName} deleted document "${target}"`;
     case "agent_status_changed": {
       const oldS = meta?.oldStatus as string | undefined;
       const newS = meta?.newStatus as string | undefined;

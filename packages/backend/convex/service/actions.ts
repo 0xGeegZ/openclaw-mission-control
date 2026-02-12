@@ -18,6 +18,7 @@ import {
   TASK_STATUS_TRANSITIONS,
   type TaskStatus,
 } from "../lib/task_workflow";
+import type { RecipientType } from "@packages/shared";
 
 export type { BehaviorFlags };
 
@@ -918,6 +919,227 @@ export const assignTaskFromAgent = action({
 });
 
 /**
+ * Update task fields on behalf of an agent (service-only).
+ * Unified tool for updating title, description, priority, labels, assignees, status, dueDate.
+ * Gated by canModifyTaskStatus behavior flag.
+ */
+export const updateTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
+    assignedUserIds: v.optional(v.array(v.string())),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    taskId: Id<"tasks">;
+    changedFields: string[];
+  }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canModifyTaskStatus) {
+      throw new Error("Forbidden: Agent is not allowed to modify tasks");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Validate at least one field is being updated
+    const hasUpdates =
+      args.title !== undefined ||
+      args.description !== undefined ||
+      args.priority !== undefined ||
+      args.labels !== undefined ||
+      args.assignedAgentIds !== undefined ||
+      args.assignedUserIds !== undefined ||
+      args.status !== undefined ||
+      args.dueDate !== undefined;
+
+    if (!hasUpdates) {
+      return { taskId: args.taskId, changedFields: [] };
+    }
+
+    // Validate priority range (schema: 1 = highest, 5 = lowest)
+    if (args.priority !== undefined && (args.priority < 1 || args.priority > 5)) {
+      throw new Error("Invalid priority: must be between 1 (highest) and 5 (lowest)");
+    }
+
+    // Validate status and blockedReason
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
+    ]);
+    if (args.status && !allowedStatuses.has(args.status)) {
+      throw new Error(
+        "Invalid status: must be in_progress, review, done, or blocked",
+      );
+    }
+    if (args.status === TASK_STATUS.BLOCKED && !args.blockedReason?.trim()) {
+      throw new Error("blockedReason is required when status is 'blocked'");
+    }
+
+    const changedFields: string[] = [];
+    const updates: Record<string, unknown> = {};
+
+    if (args.title !== undefined) {
+      updates.title = args.title.trim();
+      changedFields.push("title");
+    }
+
+    if (args.description !== undefined) {
+      updates.description = args.description.trim();
+      changedFields.push("description");
+    }
+
+    if (args.priority !== undefined) {
+      updates.priority = args.priority;
+      changedFields.push("priority");
+    }
+
+    if (args.labels !== undefined) {
+      updates.labels = args.labels;
+      changedFields.push("labels");
+    }
+
+    if (args.assignedAgentIds !== undefined) {
+      updates.assignedAgentIds = args.assignedAgentIds;
+      changedFields.push("assignedAgentIds");
+    }
+
+    if (args.assignedUserIds !== undefined) {
+      updates.assignedUserIds = args.assignedUserIds;
+      changedFields.push("assignedUserIds");
+    }
+
+    if (args.dueDate !== undefined) {
+      updates.dueDate = args.dueDate;
+      changedFields.push("dueDate");
+    }
+
+    const hasNonStatusUpdates = Object.keys(updates).length > 0;
+    const hasAssigneeUpdates =
+      args.assignedAgentIds !== undefined || args.assignedUserIds !== undefined;
+    const applyUpdatesBeforeStatus =
+      hasNonStatusUpdates &&
+      hasAssigneeUpdates &&
+      args.status === TASK_STATUS.IN_PROGRESS &&
+      task.status !== TASK_STATUS.IN_PROGRESS;
+
+    if (applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    // If status is being changed, handle status transitions
+    if (args.status && args.status !== task.status) {
+      const allowedNextStatuses = new Set<TaskStatus>([
+        TASK_STATUS.IN_PROGRESS,
+        TASK_STATUS.REVIEW,
+        TASK_STATUS.DONE,
+        TASK_STATUS.BLOCKED,
+      ]);
+
+      const targetStatus = args.status;
+      const currentStatus = task.status;
+
+      // Validate task must be in review before marking done
+      if (
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
+      ) {
+        throw new Error(
+          "Forbidden: Task must be in review before marking done",
+        );
+      }
+
+      // Apply status change through transitions
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      for (let i = 0; i < path.length; i++) {
+        const nextStatus = path[i];
+        const isFinalStep = i === path.length - 1;
+        await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+          taskId: args.taskId,
+          agentId: args.agentId,
+          status: nextStatus,
+          blockedReason:
+            nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
+          suppressNotifications: !isFinalStep,
+          suppressActivity: !isFinalStep,
+        });
+      }
+      changedFields.push("status");
+    }
+
+    // Only patch if there are non-status updates
+    if (hasNonStatusUpdates && !applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    return {
+      taskId: args.taskId,
+      changedFields,
+    };
+  },
+});
+
+/**
  * List tasks for orchestrator tools (service-only).
  */
 export const listTasksForAgentTool = action({
@@ -1025,7 +1247,7 @@ export const listTaskThreadForAgentTool = action({
   ): Promise<
     Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -1602,7 +1824,7 @@ export const loadTaskDetailsForAgentTool = action({
     task: Doc<"tasks">;
     thread: Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;

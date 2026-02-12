@@ -17,10 +17,20 @@ import {
   getAllMetrics,
   formatPrometheusMetrics,
 } from "./metrics";
+import type { TaskStatus } from "@packages/shared";
 
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
+
+type RuntimeTaskStatus = Extract<
+  TaskStatus,
+  "in_progress" | "review" | "done" | "blocked"
+>;
+type CreatableTaskStatus = Extract<
+  TaskStatus,
+  "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked"
+>;
 
 /**
  * Read and parse JSON body from an HTTP request.
@@ -119,7 +129,8 @@ function mapTaskStatusError(message: string): {
   if (
     normalized.includes("invalid transition") ||
     normalized.includes("invalid status change") ||
-    normalized.includes("invalid status")
+    normalized.includes("invalid status") ||
+    normalized.includes("invalid priority")
   ) {
     return { status: 422, message };
   }
@@ -388,7 +399,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             serviceToken: config.serviceToken,
             agentId,
             taskId: body.taskId as Id<"tasks">,
-            status: body.status as "in_progress" | "review" | "done" | "blocked",
+            status: body.status as RuntimeTaskStatus,
             blockedReason: body.blockedReason,
           },
         );
@@ -409,6 +420,159 @@ export function startHealthServer(config: RuntimeConfig): void {
           agentId,
           taskId: body.taskId,
           status: body.status,
+          error: message,
+          durationMs: duration,
+        });
+        const mapped = mapTaskStatusError(message);
+        sendJson(res, mapped.status, { success: false, error: mapped.message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-update") {
+      const requestStart = Date.now();
+      const session = requireLocalAgentSession(req, res, "task-update");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      let body: {
+        taskId?: string;
+        title?: string;
+        description?: string;
+        priority?: number;
+        labels?: string[];
+        assignedAgentIds?: string[];
+        assignedUserIds?: string[];
+        status?: string;
+        blockedReason?: string;
+        dueDate?: number;
+      };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch (error) {
+        log.warn("[task-update] Invalid JSON:", error);
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+
+      if (!body?.taskId?.trim()) {
+        log.warn("[task-update] Missing taskId");
+        sendJson(res, 400, {
+          success: false,
+          error: "Missing required field: taskId",
+        });
+        return;
+      }
+
+      const hasUpdates =
+        body.title !== undefined ||
+        body.description !== undefined ||
+        body.priority !== undefined ||
+        body.labels !== undefined ||
+        body.assignedAgentIds !== undefined ||
+        body.assignedUserIds !== undefined ||
+        body.status !== undefined ||
+        body.dueDate !== undefined;
+
+      if (!hasUpdates) {
+        log.warn("[task-update] No fields to update");
+        sendJson(res, 400, {
+          success: false,
+          error:
+            "At least one field (title, description, priority, labels, assignedAgentIds, assignedUserIds, status, dueDate) must be provided",
+        });
+        return;
+      }
+
+      if (body.status) {
+        const allowedStatuses = new Set([
+          "in_progress",
+          "review",
+          "done",
+          "blocked",
+        ]);
+        if (!allowedStatuses.has(body.status)) {
+          log.warn("[task-update] Invalid status:", body.status);
+          sendJson(res, 422, {
+            success: false,
+            error: "Invalid status: must be in_progress, review, done, or blocked",
+          });
+          return;
+        }
+        if (body.status === "blocked" && !body.blockedReason?.trim()) {
+          log.warn("[task-update] Missing blockedReason for blocked status");
+          sendJson(res, 422, {
+            success: false,
+            error: "blockedReason is required when status is blocked",
+          });
+          return;
+        }
+      }
+
+      if (body.priority !== undefined && (body.priority < 1 || body.priority > 5)) {
+        log.warn("[task-update] Invalid priority:", body.priority);
+        sendJson(res, 422, {
+          success: false,
+          error: "priority must be between 1 (highest) and 5 (lowest)",
+        });
+        return;
+      }
+
+      log.info("[task-update] Request:", {
+        agentId,
+        taskId: body.taskId,
+        fields: [
+          body.title && "title",
+          body.description && "description",
+          body.priority !== undefined && "priority",
+          body.labels && "labels",
+          body.assignedAgentIds && "assignedAgentIds",
+          body.assignedUserIds && "assignedUserIds",
+          body.status && "status",
+          body.dueDate !== undefined && "dueDate",
+        ]
+          .filter(Boolean)
+          .join(", "),
+      });
+
+      try {
+        const client = getConvexClient();
+        const result = await client.action(
+          api.service.actions.updateTaskFromAgent,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId.trim() as Id<"tasks">,
+            title: body.title?.trim(),
+            description: body.description?.trim(),
+            priority: body.priority,
+            labels: body.labels,
+            assignedAgentIds: body.assignedAgentIds as
+              | Id<"agents">[]
+              | undefined,
+            assignedUserIds: body.assignedUserIds,
+            status: body.status as RuntimeTaskStatus | undefined,
+            blockedReason: body.blockedReason?.trim(),
+            dueDate: body.dueDate,
+          },
+        );
+        const duration = Date.now() - requestStart;
+        recordSuccess("agent.task_update", duration);
+        log.info("[task-update] Success:", {
+          agentId,
+          taskId: body.taskId,
+          changedFields: result.changedFields.length,
+          durationMs: duration,
+        });
+        sendJson(res, 200, { ...result, success: true, durationMs: duration });
+      } catch (error) {
+        const duration = Date.now() - requestStart;
+        const message = error instanceof Error ? error.message : String(error);
+        recordFailure("agent.task_update", duration, message);
+        log.error("[task-update] Failed:", {
+          agentId,
+          taskId: body.taskId,
           error: message,
           durationMs: duration,
         });
@@ -495,14 +659,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             description: body.description?.trim(),
             priority: body.priority,
             labels: body.labels,
-            status: body.status as
-              | "inbox"
-              | "assigned"
-              | "in_progress"
-              | "review"
-              | "done"
-              | "blocked"
-              | undefined,
+            status: body.status as CreatableTaskStatus | undefined,
             blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
           },
@@ -882,15 +1039,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             accountId: config.accountId,
             serviceToken: config.serviceToken,
             agentId,
-            status: body.status as
-              | "inbox"
-              | "assigned"
-              | "in_progress"
-              | "review"
-              | "done"
-              | "blocked"
-              | "archived"
-              | undefined,
+            status: body.status as TaskStatus | undefined,
             assigneeAgentId,
             limit: body.limit,
           },

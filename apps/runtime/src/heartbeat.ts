@@ -12,7 +12,7 @@ import {
   executeAgentTool,
   getToolCapabilitiesAndSchemas,
 } from "./tooling/agentTools";
-import { DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
+import { DEFAULT_OPENCLAW_CONFIG, type RecipientType } from "@packages/shared";
 
 const log = createLogger("[Heartbeat]");
 
@@ -50,7 +50,7 @@ type HeartbeatTask = Doc<"tasks">;
 type HeartbeatStatus = HeartbeatTask["status"];
 type HeartbeatThreadMessagePreview = {
   messageId: Id<"messages">;
-  authorType: "user" | "agent";
+  authorType: RecipientType;
   authorId: string;
   authorName: string | null;
   content: string;
@@ -320,7 +320,7 @@ interface HeartbeatBehaviorFlags {
 }
 
 interface ThreadMessageForHeartbeatFollowUp {
-  authorType: "user" | "agent";
+  authorType: RecipientType;
   authorId: string;
   createdAt: number;
 }

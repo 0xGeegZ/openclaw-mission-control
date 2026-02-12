@@ -425,7 +425,7 @@ export interface SendToOpenClawOptions {
  *
  * Session key and tools: The gateway must run this request in the session identified by
  * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
- * task_create, document_upsert) are applied to that run. If the gateway runs the request under a
+ * task_update, task_create, document_upsert) are applied to that run. If the gateway runs the request under a
  * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
  * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
  *

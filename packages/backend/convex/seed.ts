@@ -526,6 +526,7 @@ When you receive a new **assignment** notification, reply first with a short ack
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.
 
 - **task_status** — Update the current task's status. Call **before** posting your reply when you change status. Available only when you have a task context and the account allows it.
+- **task_update** — Update task fields (title, description, priority, labels, assignees, status, dueDate). Call **before** posting your reply when you modify the task. Available when you have task context and can modify tasks (same as task_status).
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. Available when the account allows agents to create documents.
 - **response_request** — Request responses from specific agents on a task. Use this to notify agents for follow-ups.
@@ -572,6 +573,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 ### Optional HTTP fallbacks (manual/CLI)
 
 - **Task status:** \`POST {TASK_STATUS_BASE_URL}/agent/task-status\` with body \`{ "taskId", "status", "blockedReason?" }\`.
+- **Task update:** \`POST {TASK_STATUS_BASE_URL}/agent/task-update\` with body \`{ "taskId", "title?", "description?", "priority?", "labels?", "assignedAgentIds?", "assignedUserIds?", "status?", "blockedReason?", "dueDate?" }\` (at least one field required).
 - **Task create:** \`POST {TASK_STATUS_BASE_URL}/agent/task-create\` with body \`{ "title", "description?", "priority?", "labels?", "status?", "blockedReason?" }\`.
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
 - **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.

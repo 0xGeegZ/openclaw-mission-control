@@ -217,6 +217,7 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   [ACTIVITY_TYPE.MESSAGE_CREATED]: "Comment",
   [ACTIVITY_TYPE.DOCUMENT_CREATED]: "Document created",
   [ACTIVITY_TYPE.DOCUMENT_UPDATED]: "Document updated",
+  [ACTIVITY_TYPE.DOCUMENT_DELETED]: "Document deleted",
   [ACTIVITY_TYPE.AGENT_STATUS_CHANGED]: "Agent status",
   [ACTIVITY_TYPE.RUNTIME_STATUS_CHANGED]: "Runtime status",
   [ACTIVITY_TYPE.MEMBER_ADDED]: "Member added",

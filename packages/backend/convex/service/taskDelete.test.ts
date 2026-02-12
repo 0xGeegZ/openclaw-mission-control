@@ -278,12 +278,6 @@ describe("deleteTaskFromAgent action (HTTP service)", () => {
       expect(isOrchestrator).toBe(false);
     });
 
-    it("delegates to internal mutation after validation", () => {
-      // Action layer validates auth, then delegates to safe internal mutation
-      // Expected flow: service token ✓ → orchestrator status ✓ → internal mutation
-      const validatedByAction = true;
-      expect(validatedByAction).toBe(true);
-    });
   });
 });
 
