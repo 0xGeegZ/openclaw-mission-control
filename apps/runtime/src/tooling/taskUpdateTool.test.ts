@@ -45,6 +45,15 @@ describe("taskUpdateTool", () => {
       expect(result.error).toContain("taskId is required");
     });
 
+    it("returns error when taskId is whitespace-only", async () => {
+      const result = await executeTaskUpdateTool({
+        ...baseParams,
+        taskId: "   \t  ",
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("taskId is required");
+    });
+
     it("returns error when no fields are provided", async () => {
       const result = await executeTaskUpdateTool({
         ...baseParams,
@@ -54,12 +63,19 @@ describe("taskUpdateTool", () => {
     });
 
     it("returns error when priority is out of range", async () => {
-      const result = await executeTaskUpdateTool({
+      const resultHigh = await executeTaskUpdateTool({
         ...baseParams,
         priority: 6,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
+      expect(resultHigh.success).toBe(false);
+      expect(resultHigh.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
+
+      const resultLow = await executeTaskUpdateTool({
+        ...baseParams,
+        priority: 0,
+      });
+      expect(resultLow.success).toBe(false);
+      expect(resultLow.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
     });
 
     it("returns error when status is invalid", async () => {
@@ -97,6 +113,27 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           title: "New Title",
+        })
+      );
+    });
+
+    it("trims taskId before calling the action", async () => {
+      mockAction.mockResolvedValue({
+        taskId: "task123",
+        changedFields: ["title"],
+      });
+
+      await executeTaskUpdateTool({
+        ...baseParams,
+        taskId: "  task123  ",
+        title: "Trimmed",
+      });
+
+      expect(mockAction).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskId: "task123",
+          title: "Trimmed",
         })
       );
     });
@@ -215,6 +252,26 @@ describe("taskUpdateTool", () => {
       );
     });
 
+    it("preserves assignedUserIds and passes to action", async () => {
+      mockAction.mockResolvedValue({
+        taskId: baseParams.taskId,
+        changedFields: ["assignedUserIds"],
+      });
+
+      const userIds = ["user_abc", "user_def"];
+      await executeTaskUpdateTool({
+        ...baseParams,
+        assignedUserIds: userIds,
+      });
+
+      expect(mockAction).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          assignedUserIds: userIds,
+        })
+      );
+    });
+
     it("handles dueDate as optional unix timestamp", async () => {
       mockAction.mockResolvedValue({
         taskId: baseParams.taskId,
@@ -232,6 +289,26 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           dueDate: futureDate,
+        })
+      );
+    });
+
+    it("trims taskId when calling the action", async () => {
+      mockAction.mockResolvedValue({
+        taskId: "task123",
+        changedFields: ["title"],
+      });
+
+      await executeTaskUpdateTool({
+        ...baseParams,
+        taskId: "  task123  ",
+        title: "New Title",
+      });
+
+      expect(mockAction).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskId: "task123",
         })
       );
     });
