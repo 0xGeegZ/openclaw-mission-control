@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 import {
   Card,
@@ -72,12 +71,9 @@ export function AgentStatusHistoryCard({
   agent,
 }: AgentStatusHistoryCardProps) {
   // If no history, create a placeholder showing current status
-  // Use useMemo to prevent Date.now() from being called on every render
-  const displayHistory = useMemo(() => {
-    return statusHistory.length > 0
-      ? statusHistory
-      : [{ timestamp: agent.createdAt || Date.now(), status: agent.status, actorName: "System" }];
-  }, [statusHistory, agent.createdAt, agent.status]);
+  const displayHistory = statusHistory.length > 0
+    ? statusHistory
+    : [{ timestamp: agent.createdAt ?? 0, status: agent.status, actorName: "System" }];
 
   return (
     <Card className="md:col-span-2">
