@@ -12,6 +12,7 @@ import { Infer, v } from "convex/values";
 import {
   TASK_STATUS,
   AGENT_STATUS,
+  ANALYTICS_TIME_RANGE,
   MEMBER_ROLE,
   RECIPIENT_TYPE,
   DOCUMENT_TYPE,
@@ -72,6 +73,25 @@ export const agentStatusValidator = v.union(
  * Agent status type inferred from validator.
  */
 export type AgentStatus = Infer<typeof agentStatusValidator>;
+
+// ============================================================================
+// ANALYTICS TIME RANGE
+// ============================================================================
+
+/**
+ * Analytics time range validator for Convex queries (getMetrics, getAgentStats, getMemberActivity).
+ */
+export const analyticsTimeRangeValidator = v.union(
+  v.literal(ANALYTICS_TIME_RANGE.DAY),
+  v.literal(ANALYTICS_TIME_RANGE.WEEK),
+  v.literal(ANALYTICS_TIME_RANGE.MONTH),
+  v.literal(ANALYTICS_TIME_RANGE.CUSTOM),
+);
+
+/**
+ * Analytics time range type inferred from validator.
+ */
+export type AnalyticsTimeRange = Infer<typeof analyticsTimeRangeValidator>;
 
 // ============================================================================
 // MEMBER ROLE

@@ -3,11 +3,22 @@ import {
   TASK_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_TRANSITIONS,
+  AGENT_STATUS_ORDER,
   AVAILABLE_MODELS,
   SKILL_CATEGORY_LABELS,
   DEFAULT_OPENCLAW_CONFIG,
+  ANALYTICS_TIME_RANGE,
+  ANALYTICS_TIME_RANGE_ORDER,
+  ANALYTICS_TIME_RANGE_LABELS,
+  TASK_STATUS_CHART_COLORS,
+  AGENT_STATUS_CHART_COLORS,
 } from "../index";
-import type { TaskStatus, LLMModel, SkillCategory } from "../../types";
+import type {
+  TaskStatus,
+  AnalyticsTimeRange,
+  LLMModel,
+  SkillCategory,
+} from "../../types";
 
 // ============================================================================
 // Task Status Constants Tests
@@ -383,5 +394,67 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("canCreateTasks is disabled by default for security", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(false);
+  });
+});
+
+// ============================================================================
+// Analytics Time Range Constants
+// ============================================================================
+
+describe("ANALYTICS_TIME_RANGE_ORDER", () => {
+  it("contains only day, week, month (no custom in tab order)", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER).toEqual([
+      ANALYTICS_TIME_RANGE.DAY,
+      ANALYTICS_TIME_RANGE.WEEK,
+      ANALYTICS_TIME_RANGE.MONTH,
+    ]);
+  });
+
+  it("has exactly 3 entries for dashboard tabs", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER.length).toBe(3);
+  });
+});
+
+describe("ANALYTICS_TIME_RANGE_LABELS", () => {
+  const allRanges: AnalyticsTimeRange[] = [
+    ANALYTICS_TIME_RANGE.DAY,
+    ANALYTICS_TIME_RANGE.WEEK,
+    ANALYTICS_TIME_RANGE.MONTH,
+    ANALYTICS_TIME_RANGE.CUSTOM,
+  ];
+
+  it("has an entry for every AnalyticsTimeRange", () => {
+    for (const range of allRanges) {
+      expect(ANALYTICS_TIME_RANGE_LABELS[range]).toBeDefined();
+    }
+  });
+
+  it("all labels are non-empty strings", () => {
+    for (const range of allRanges) {
+      expect(typeof ANALYTICS_TIME_RANGE_LABELS[range]).toBe("string");
+      expect(ANALYTICS_TIME_RANGE_LABELS[range].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
+// Chart Color Constants
+// ============================================================================
+
+describe("TASK_STATUS_CHART_COLORS", () => {
+  it("has an entry for every TaskStatus", () => {
+    for (const status of TASK_STATUS_ORDER) {
+      expect(TASK_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(TASK_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+});
+
+describe("AGENT_STATUS_CHART_COLORS", () => {
+  it("has an entry for every AgentStatus", () => {
+    for (const status of AGENT_STATUS_ORDER) {
+      expect(AGENT_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(AGENT_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
   });
 });
