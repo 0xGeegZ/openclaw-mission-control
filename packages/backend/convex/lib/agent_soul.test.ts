@@ -11,12 +11,11 @@ describe("generateDefaultSoul", () => {
     expect(out).toContain("Role: Backend developer");
   });
 
-  it("includes standard sections: Mission, Personality constraints, Default operating procedure", () => {
+  it("includes standard sections: Mission, Vibe, Operating rules, What you never do", () => {
     const out = generateDefaultSoul("Researcher", "Research");
     expect(out).toContain("## Mission");
-    expect(out).toContain("## Personality constraints");
-    expect(out).toContain("## Default operating procedure");
-    expect(out).toContain("## Quality checks");
+    expect(out).toContain("## Vibe");
+    expect(out).toContain("## Operating rules");
     expect(out).toContain("## What you never do");
   });
 

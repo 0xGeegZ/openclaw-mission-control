@@ -196,6 +196,24 @@ describe("shouldDeliverToAgent", () => {
     expect(shouldDeliverToAgent(ctx)).toBe(false);
   });
 
+  it("returns false for thread_update + user author when task is done", () => {
+    const ctx = buildContext({
+      message: {
+        _id: "m1",
+        authorType: "user",
+        authorId: "user-1",
+        content: "FYI",
+      },
+      task: {
+        _id: "t1",
+        status: "done",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
   it("returns false for thread_update + agent author when task is blocked", () => {
     const ctx = buildContext({
       task: {
@@ -208,8 +226,66 @@ describe("shouldDeliverToAgent", () => {
     expect(shouldDeliverToAgent(ctx)).toBe(false);
   });
 
-  it("returns false for thread_update + agent author when sourceNotificationType is thread_update", () => {
+  it("returns false for thread_update + agent author when sourceNotificationType is thread_update (non-orchestrator)", () => {
     const ctx = buildContext({ sourceNotificationType: "thread_update" });
+    expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns true for thread_update + agent author when recipient is orchestrator even if sourceNotificationType is thread_update", () => {
+    const ctx = buildContext({
+      sourceNotificationType: "thread_update",
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "writer",
+        content: "Done",
+      },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: [],
+      },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+
+  it("returns false for thread_update + agent author when recipient is orchestrator and author is orchestrator", () => {
+    const ctx = buildContext({
+      sourceNotificationType: "thread_update",
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "orch",
+        content: "Done",
+      },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: [],
+      },
+    });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
   });
 

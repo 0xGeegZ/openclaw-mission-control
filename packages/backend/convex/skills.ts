@@ -240,7 +240,13 @@ export const agentsBySkill = query({
 
     const map: Record<
       string,
-      Array<{ _id: string; name: string; slug: string; avatarUrl?: string }>
+      Array<{
+        _id: string;
+        name: string;
+        slug: string;
+        avatarUrl?: string;
+        icon?: string;
+      }>
     > = {};
 
     for (const agent of agents) {
@@ -259,6 +265,7 @@ export const agentsBySkill = query({
           name: agent.name,
           slug: agent.slug,
           avatarUrl: agent.avatarUrl,
+          icon: agent.icon,
         });
       });
     }

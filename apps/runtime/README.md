@@ -49,8 +49,8 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                           |
 | `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
 | `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                     |
-| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `180000`). Agent replies are written back to task threads; increase for long agent runs.                                                                                           |
-| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled.                                                                |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `300000`). Clamped to 5000–600000; invalid values are adjusted and a warning is logged.                                                                                           |
+| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled. Set `OPENCLAW_PROFILE_SYNC=true` to populate these workspace files. |
 | `OPENCLAW_CONFIG_PATH`                                | No       | Path to generated `openclaw.json` (default `/root/clawd/openclaw.json`).                                                                                                                                                               |
 | `OPENCLAW_AGENTS_MD_PATH`                             | No       | Optional path to `AGENTS.md` to copy into each agent workspace; unset uses embedded default.                                                                                                                                           |
 | `OPENCLAW_HEARTBEAT_MD_PATH`                          | No       | Optional path to `HEARTBEAT.md` to copy into each agent workspace; defaults to `/root/clawd/HEARTBEAT.md`.                                                                                                                             |
@@ -62,7 +62,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 
 ### Applying updates to agent prompts (AGENTS.md, HEARTBEAT.md)
 
-Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “use skills as much as possible”):
+Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
 
 1. **Restart the runtime** so profile sync runs again. Sync writes the current AGENTS.md and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
 
@@ -132,6 +132,27 @@ Upgrade workflow (pull new images and restart):
 - **`GET /version`** — Lightweight: runtime version, OpenClaw version, droplet id/region.
 
 Both return JSON. Default port: `3000`.
+
+## Agent HTTP endpoints (fallback)
+
+These endpoints are **local-only** (loopback) and require the header `x-openclaw-session-key`. They are used as HTTP fallbacks when client-side tools are disabled or unavailable.
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/agent/task-status` | POST | Update task status. Response includes `status`, `requestedStatus`, `changed`, `updatedAt`. |
+| `/agent/task-create` | POST | Create a task. Returns `taskId`. |
+| `/agent/task-assign` | POST | Assign agents to a task (orchestrator-only). |
+| `/agent/response-request` | POST | Request a response from other agents. |
+| `/agent/document` | POST | Create or update a document. |
+| `/agent/task-message` | POST | Post a message to another task (orchestrator-only). |
+| `/agent/task-list` | POST | List tasks (orchestrator-only). |
+| `/agent/task-get` | POST | Fetch task details (orchestrator-only). |
+| `/agent/task-thread` | POST | Fetch task thread messages (most recent, returned oldest-to-newest). |
+| `/agent/task-search` | POST | Search tasks (orchestrator-only). |
+| `/agent/task-load` | POST | Load task + thread in one call. |
+| `/agent/get-agent-skills` | POST | Fetch skills for one or all agents. |
+| `/agent/task-delete` | POST | Archive/delete a task (orchestrator-only). |
+| `/agent/task-link-pr` | POST | Link a task to a GitHub PR (orchestrator-only). |
 
 ### Tools and session key
 

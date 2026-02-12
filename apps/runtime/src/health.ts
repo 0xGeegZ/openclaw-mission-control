@@ -53,8 +53,9 @@ function sendJson(
 
 /**
  * Check whether a remote address is loopback or private network.
+ * Exported for unit tests.
  */
-function isLocalAddress(address: string | undefined): boolean {
+export function isLocalAddress(address: string | undefined): boolean {
   if (!address) return false;
   const normalized = address.toLowerCase();
   if (normalized === "::1") return true;
@@ -123,6 +124,112 @@ function mapTaskStatusError(message: string): {
     return { status: 422, message };
   }
   return { status: 500, message: "Failed to update task status" };
+}
+
+/**
+ * Fetch orchestrator agent id for the account.
+ */
+async function getOrchestratorAgentId(
+  config: RuntimeConfig,
+): Promise<Id<"agents"> | null> {
+  const client = getConvexClient();
+  const result = (await client.action(
+    api.service.actions.getOrchestratorAgentId,
+    {
+      accountId: config.accountId,
+      serviceToken: config.serviceToken,
+    },
+  )) as { orchestratorAgentId: Id<"agents"> | null };
+  return result?.orchestratorAgentId ?? null;
+}
+
+/**
+ * Check whether the given agent id is the account orchestrator.
+ */
+async function isOrchestratorAgent(
+  agentId: string,
+  config: RuntimeConfig,
+): Promise<boolean> {
+  const orchestratorAgentId = await getOrchestratorAgentId(config);
+  return orchestratorAgentId != null && orchestratorAgentId === agentId;
+}
+
+/**
+ * Resolve agent slugs to ids (lowercased, @ stripped).
+ */
+async function resolveAgentSlugs(
+  config: RuntimeConfig,
+  slugs: string[],
+): Promise<Map<string, string>> {
+  const client = getConvexClient();
+  const agents = await client.action(api.service.actions.listAgents, {
+    accountId: config.accountId,
+    serviceToken: config.serviceToken,
+  });
+  const map = new Map<string, string>();
+  for (const agent of agents) {
+    if (agent?.slug) {
+      map.set(String(agent.slug).toLowerCase(), String(agent._id));
+    }
+  }
+  return new Map(
+    slugs
+      .map((slug) => slug.trim().replace(/^@/, "").toLowerCase())
+      .filter((slug) => slug.length > 0)
+      .map((slug) => [slug, map.get(slug) ?? ""]),
+  );
+}
+
+/**
+ * Require POST, local-only, valid session key and runtime config for agent endpoints.
+ * Sends the appropriate error response and returns null if any check fails.
+ * Returns { agentId, config } so the handler can proceed.
+ */
+function requireLocalAgentSession(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  endpointLabel: string,
+): { agentId: Id<"agents">; config: RuntimeConfig } | null {
+  if (req.method !== "POST") {
+    res.writeHead(405, { Allow: "POST" });
+    res.end("Method Not Allowed");
+    return null;
+  }
+  const remoteAddress = req.socket?.remoteAddress;
+  if (!remoteAddress || !isLocalAddress(remoteAddress)) {
+    sendJson(res, 403, {
+      success: false,
+      error: "Forbidden: endpoint is local-only",
+    });
+    return null;
+  }
+  const sessionHeader = req.headers["x-openclaw-session-key"];
+  const sessionKey = Array.isArray(sessionHeader)
+    ? sessionHeader[0]
+    : sessionHeader;
+  if (!sessionKey) {
+    log.warn(`[${endpointLabel}] Missing session key`);
+    sendJson(res, 401, {
+      success: false,
+      error: "Missing x-openclaw-session-key header",
+    });
+    return null;
+  }
+  const agentId = getAgentIdForSessionKey(sessionKey);
+  if (!agentId) {
+    const redacted =
+      typeof sessionKey === "string" && sessionKey.length > 4
+        ? `${sessionKey.slice(0, 4)}…`
+        : "(redacted)";
+    log.warn(`[${endpointLabel}] Unknown session: ${redacted}`);
+    sendJson(res, 401, { success: false, error: "Unknown session key" });
+    return null;
+  }
+  if (!runtimeConfig) {
+    sendJson(res, 500, { success: false, error: "Runtime not configured" });
+    return null;
+  }
+  return { agentId, config: runtimeConfig };
 }
 
 /**
@@ -211,44 +318,9 @@ export function startHealthServer(config: RuntimeConfig): void {
 
     if (req.url === "/agent/task-status") {
       const requestStart = Date.now();
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-
-      if (!isLocalAddress(req.socket.remoteAddress)) {
-        sendJson(res, 403, {
-          success: false,
-          error: "Forbidden: endpoint is local-only",
-        });
-        return;
-      }
-
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        log.warn("[task-status] Missing session key");
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        log.warn("[task-status] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
-        return;
-      }
+      const session = requireLocalAgentSession(req, res, "task-status");
+      if (!session) return;
+      const { agentId, config } = session;
 
       let body: { taskId?: string; status?: string; blockedReason?: string };
       try {
@@ -309,14 +381,17 @@ export function startHealthServer(config: RuntimeConfig): void {
 
       try {
         const client = getConvexClient();
-        await client.action(api.service.actions.updateTaskStatusFromAgent, {
-          accountId: runtimeConfig.accountId,
-          serviceToken: runtimeConfig.serviceToken,
-          agentId,
-          taskId: body.taskId as Id<"tasks">,
-          status: body.status as "in_progress" | "review" | "done" | "blocked",
-          blockedReason: body.blockedReason,
-        });
+        const result = await client.action(
+          api.service.actions.updateTaskStatusFromAgent,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+            status: body.status as "in_progress" | "review" | "done" | "blocked",
+            blockedReason: body.blockedReason,
+          },
+        );
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_status", duration);
         log.info("[task-status] Success:", {
@@ -325,7 +400,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           status: body.status,
           durationMs: duration,
         });
-        sendJson(res, 200, { success: true });
+        sendJson(res, 200, { ...result, durationMs: duration });
       } catch (error) {
         const duration = Date.now() - requestStart;
         const message = error instanceof Error ? error.message : String(error);
@@ -345,40 +420,10 @@ export function startHealthServer(config: RuntimeConfig): void {
 
     if (req.url === "/agent/task-create") {
       const requestStart = Date.now();
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-      if (!isLocalAddress(req.socket.remoteAddress)) {
-        sendJson(res, 403, {
-          success: false,
-          error: "Forbidden: endpoint is local-only",
-        });
-        return;
-      }
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        log.warn("[task-create] Missing session key");
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        log.warn("[task-create] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
-        return;
-      }
+      const session = requireLocalAgentSession(req, res, "task-create");
+      if (!session) return;
+      const { agentId, config } = session;
+
       let body: {
         title?: string;
         description?: string;
@@ -386,6 +431,8 @@ export function startHealthServer(config: RuntimeConfig): void {
         labels?: string[];
         status?: string;
         blockedReason?: string;
+        dueDate?: number;
+        assigneeSlugs?: string[];
       };
       try {
         body = await readJsonBody<typeof body>(req);
@@ -407,13 +454,42 @@ export function startHealthServer(config: RuntimeConfig): void {
         title: body.title.substring(0, 50),
         status: body.status,
       });
+      let assigneeIds: Id<"agents">[] | undefined;
+      if (body.assigneeSlugs?.length) {
+        const canAssign = await isOrchestratorAgent(agentId, config);
+        if (!canAssign) {
+          sendJson(res, 403, {
+            success: false,
+            error:
+              "Forbidden: Only the orchestrator can assign agents during task creation",
+          });
+          return;
+        }
+        const assigneeMap = await resolveAgentSlugs(
+          config,
+          body.assigneeSlugs,
+        );
+        assigneeIds = Array.from(assigneeMap.values()).filter(
+          Boolean,
+        ) as Id<"agents">[];
+        const missing = Array.from(assigneeMap.entries())
+          .filter((entry) => !entry[1])
+          .map((entry) => entry[0]);
+        if (missing.length > 0) {
+          sendJson(res, 422, {
+            success: false,
+            error: `Unknown assignee slugs: ${missing.join(", ")}`,
+          });
+          return;
+        }
+      }
       try {
         const client = getConvexClient();
         const { taskId } = await client.action(
           api.service.actions.createTaskFromAgent,
           {
-            accountId: runtimeConfig.accountId,
-            serviceToken: runtimeConfig.serviceToken,
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
             agentId,
             title: body.title.trim(),
             description: body.description?.trim(),
@@ -428,8 +504,18 @@ export function startHealthServer(config: RuntimeConfig): void {
               | "blocked"
               | undefined,
             blockedReason: body.blockedReason?.trim(),
+            dueDate: body.dueDate,
           },
         );
+        if (assigneeIds?.length) {
+          await client.action(api.service.actions.assignTaskFromAgent, {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: taskId as Id<"tasks">,
+            assignedAgentIds: assigneeIds,
+          });
+        }
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_create", duration);
         log.info("[task-create] Success:", {
@@ -453,36 +539,16 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     if (req.url === "/agent/task-assign") {
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-      if (!isLocalAddress(req.socket.remoteAddress)) {
+      const session = requireLocalAgentSession(req, res, "task-assign");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canAssign = await isOrchestratorAgent(agentId, config);
+      if (!canAssign) {
         sendJson(res, 403, {
           success: false,
-          error: "Forbidden: endpoint is local-only",
+          error: "Forbidden: Only the orchestrator can assign agents",
         });
-        return;
-      }
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
         return;
       }
       let body: { taskId?: string; assigneeSlugs?: string[] };
@@ -511,20 +577,16 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
       try {
         const client = getConvexClient();
-        const agents = await client.action(api.service.actions.listAgents, {
-          accountId: runtimeConfig.accountId,
-          serviceToken: runtimeConfig.serviceToken,
-        });
-        const slugToId = new Map<string, string>();
-        for (const agent of agents) {
-          if (agent?.slug) {
-            slugToId.set(String(agent.slug).toLowerCase(), String(agent._id));
-          }
-        }
-        const assigneeIds = normalizedSlugs
-          .map((slug) => slugToId.get(slug) ?? "")
-          .filter(Boolean) as Id<"agents">[];
-        const missing = normalizedSlugs.filter((slug) => !slugToId.get(slug));
+        const assigneeMap = await resolveAgentSlugs(
+          config,
+          normalizedSlugs,
+        );
+        const assigneeIds = Array.from(assigneeMap.values()).filter(
+          Boolean,
+        ) as Id<"agents">[];
+        const missing = Array.from(assigneeMap.entries())
+          .filter((entry) => !entry[1])
+          .map((entry) => entry[0]);
         if (missing.length > 0) {
           sendJson(res, 422, {
             success: false,
@@ -533,8 +595,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           return;
         }
         await client.action(api.service.actions.assignTaskFromAgent, {
-          accountId: runtimeConfig.accountId,
-          serviceToken: runtimeConfig.serviceToken,
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
           agentId,
           taskId: body.taskId as Id<"tasks">,
           assignedAgentIds: assigneeIds,
@@ -548,38 +610,10 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     if (req.url === "/agent/response-request") {
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-      if (!isLocalAddress(req.socket.remoteAddress)) {
-        sendJson(res, 403, {
-          success: false,
-          error: "Forbidden: endpoint is local-only",
-        });
-        return;
-      }
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
-        return;
-      }
+      const session = requireLocalAgentSession(req, res, "response-request");
+      if (!session) return;
+      const { agentId, config } = session;
+
       let body: {
         taskId?: string;
         recipientSlugs?: string[];
@@ -634,8 +668,8 @@ export function startHealthServer(config: RuntimeConfig): void {
         const { notificationIds } = await client.action(
           api.service.actions.createResponseRequestNotifications,
           {
-            accountId: runtimeConfig.accountId,
-            serviceToken: runtimeConfig.serviceToken,
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
             requesterAgentId: agentId,
             taskId: body.taskId as Id<"tasks">,
             recipientSlugs: normalizedSlugs,
@@ -652,40 +686,10 @@ export function startHealthServer(config: RuntimeConfig): void {
 
     if (req.url === "/agent/document") {
       const requestStart = Date.now();
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-      if (!isLocalAddress(req.socket.remoteAddress)) {
-        sendJson(res, 403, {
-          success: false,
-          error: "Forbidden: endpoint is local-only",
-        });
-        return;
-      }
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        log.warn("[document] Missing session key");
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        log.warn("[document] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
-        return;
-      }
+      const session = requireLocalAgentSession(req, res, "document");
+      if (!session) return;
+      const { agentId, config } = session;
+
       const allowedTypes = ["deliverable", "note", "template", "reference"];
       let body: {
         documentId?: string;
@@ -731,8 +735,8 @@ export function startHealthServer(config: RuntimeConfig): void {
         const { documentId } = await client.action(
           api.service.actions.createDocumentFromAgent,
           {
-            accountId: runtimeConfig.accountId,
-            serviceToken: runtimeConfig.serviceToken,
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
             agentId,
             documentId: body.documentId as Id<"documents"> | undefined,
             taskId: body.taskId as Id<"tasks"> | undefined,
@@ -762,6 +766,431 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-message") {
+      const session = requireLocalAgentSession(req, res, "task-message");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canPost = await isOrchestratorAgent(agentId, config);
+      if (!canPost) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can post task messages",
+        });
+        return;
+      }
+      let body: { taskId?: string; content?: string };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim() || !body?.content?.trim()) {
+        sendJson(res, 400, {
+          success: false,
+          error: "Missing required fields: taskId, content",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const { messageId } = await client.action(
+          api.service.actions.createTaskMessageForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+            content: body.content.trim(),
+          },
+        );
+        sendJson(res, 200, { success: true, messageId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-list") {
+      const session = requireLocalAgentSession(req, res, "task-list");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canList = await isOrchestratorAgent(agentId, config);
+      if (!canList) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can list tasks",
+        });
+        return;
+      }
+      let body: { status?: string; assigneeSlug?: string; limit?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (
+        body.status &&
+        body.status !== "inbox" &&
+        body.status !== "assigned" &&
+        body.status !== "in_progress" &&
+        body.status !== "review" &&
+        body.status !== "done" &&
+        body.status !== "blocked" &&
+        body.status !== "archived"
+      ) {
+        sendJson(res, 422, {
+          success: false,
+          error:
+            "Invalid status: must be inbox, assigned, in_progress, review, done, blocked, or archived",
+        });
+        return;
+      }
+      const rawSlug = body.assigneeSlug?.trim();
+      const assigneeSlug = rawSlug
+        ? rawSlug.replace(/^@/, "").toLowerCase()
+        : undefined;
+      let assigneeAgentId: Id<"agents"> | undefined;
+      if (assigneeSlug) {
+        const assigneeMap = await resolveAgentSlugs(config, [
+          assigneeSlug,
+        ]);
+        const resolvedId = assigneeMap.get(assigneeSlug) ?? "";
+        if (!resolvedId) {
+          sendJson(res, 422, {
+            success: false,
+            error: `Unknown assignee slug: ${assigneeSlug}`,
+          });
+          return;
+        }
+        assigneeAgentId = resolvedId as Id<"agents">;
+      }
+      try {
+        const client = getConvexClient();
+        const tasks = await client.action(
+          api.service.actions.listTasksForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            status: body.status as
+              | "inbox"
+              | "assigned"
+              | "in_progress"
+              | "review"
+              | "done"
+              | "blocked"
+              | "archived"
+              | undefined,
+            assigneeAgentId,
+            limit: body.limit,
+          },
+        );
+        sendJson(res, 200, { success: true, data: { tasks } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-get") {
+      const session = requireLocalAgentSession(req, res, "task-get");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canGet = await isOrchestratorAgent(agentId, config);
+      if (!canGet) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can get tasks",
+        });
+        return;
+      }
+      let body: { taskId?: string };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim()) {
+        sendJson(res, 400, { success: false, error: "taskId is required" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const task = await client.action(
+          api.service.actions.getTaskForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+          },
+        );
+        sendJson(res, 200, { success: true, data: { task } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-thread") {
+      const session = requireLocalAgentSession(req, res, "task-thread");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canReadThread = await isOrchestratorAgent(agentId, config);
+      if (!canReadThread) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can read task threads",
+        });
+        return;
+      }
+      let body: { taskId?: string; limit?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim()) {
+        sendJson(res, 400, { success: false, error: "taskId is required" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const thread = await client.action(
+          api.service.actions.listTaskThreadForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+            limit: body.limit,
+          },
+        );
+        sendJson(res, 200, { success: true, data: { thread } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-search") {
+      const session = requireLocalAgentSession(req, res, "task-search");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canSearch = await isOrchestratorAgent(agentId, config);
+      if (!canSearch) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can search tasks",
+        });
+        return;
+      }
+      let body: { query?: string; limit?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.query?.trim()) {
+        sendJson(res, 400, { success: false, error: "query is required" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const results = await client.action(
+          api.service.actions.searchTasksForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            query: body.query.trim(),
+            limit: body.limit,
+          },
+        );
+        sendJson(res, 200, { success: true, data: { results } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-load") {
+      const session = requireLocalAgentSession(req, res, "task-load");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      let body: { taskId?: string; messageLimit?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim()) {
+        sendJson(res, 400, { success: false, error: "taskId is required" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const data = await client.action(
+          api.service.actions.loadTaskDetailsForAgentTool,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            agentId,
+            taskId: body.taskId as Id<"tasks">,
+            messageLimit: body.messageLimit,
+          },
+        );
+        sendJson(res, 200, { success: true, data });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/get-agent-skills") {
+      const session = requireLocalAgentSession(req, res, "get-agent-skills");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      let body: { agentId?: string };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const queryAgentId = body.agentId
+          ? (body.agentId as Id<"agents">)
+          : undefined;
+        const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
+          accountId: config.accountId,
+          agentId,
+          serviceToken: config.serviceToken,
+          queryAgentId,
+        });
+        sendJson(res, 200, { success: true, data: { agents: skills } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-delete") {
+      const session = requireLocalAgentSession(req, res, "task-delete");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canDelete = await isOrchestratorAgent(agentId, config);
+      if (!canDelete) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can delete tasks",
+        });
+        return;
+      }
+      let body: { taskId?: string; reason?: string };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim() || !body?.reason?.trim()) {
+        sendJson(res, 400, {
+          success: false,
+          error: "Missing required fields: taskId, reason",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        await client.action(api.service.actions.deleteTaskFromAgent, {
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
+          agentId,
+          taskId: body.taskId as Id<"tasks">,
+          reason: body.reason.trim(),
+        });
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
+    if (req.url === "/agent/task-link-pr") {
+      const session = requireLocalAgentSession(req, res, "task-link-pr");
+      if (!session) return;
+      const { agentId, config } = session;
+
+      const canLink = await isOrchestratorAgent(agentId, config);
+      if (!canLink) {
+        sendJson(res, 403, {
+          success: false,
+          error: "Forbidden: Only the orchestrator can link tasks to PRs",
+        });
+        return;
+      }
+      let body: { taskId?: string; prNumber?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      if (!body?.taskId?.trim()) {
+        sendJson(res, 400, { success: false, error: "taskId is required" });
+        return;
+      }
+      if (body.prNumber == null || !Number.isFinite(body.prNumber)) {
+        sendJson(res, 400, {
+          success: false,
+          error: "prNumber is required and must be numeric",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        await client.action(api.service.actions.linkTaskToPrForAgentTool, {
+          accountId: config.accountId,
+          serviceToken: config.serviceToken,
+          agentId,
+          taskId: body.taskId as Id<"tasks">,
+          prNumber: body.prNumber,
+        });
+        sendJson(res, 200, {
+          success: true,
+          data: { taskId: body.taskId, prNumber: body.prNumber },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         sendJson(res, 403, { success: false, error: message });
       }
       return;

@@ -5,7 +5,11 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { Button } from "@packages/ui/components/button";
-import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
 import {
   Popover,
   PopoverContent,
@@ -15,7 +19,9 @@ import { Checkbox } from "@packages/ui/components/checkbox";
 import { useAccount } from "@/lib/hooks/useAccount";
 import { toast } from "sonner";
 import { UserPlus, Bot, Loader2 } from "lucide-react";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 import { cn } from "@packages/ui/lib/utils";
+import { AGENT_STATUS } from "@packages/shared";
 
 interface TaskAssigneesProps {
   task: Doc<"tasks">;
@@ -75,17 +81,30 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
       {/* Display assigned agents */}
       <div className="flex -space-x-2">
         {assignedAgents.length > 0 ? (
-          assignedAgents.slice(0, 5).map((agent) => (
-            <Avatar
-              key={agent._id}
-              className="h-7 w-7 border-2 border-background"
-              title={agent.name}
-            >
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                {agent.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          ))
+          assignedAgents.slice(0, 5).map((agent) => {
+            const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
+            return (
+              <Avatar
+                key={agent._id}
+                className="h-7 w-7 border-2 border-background"
+                title={agent.name}
+              >
+                {agent.avatarUrl ? (
+                  <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+                ) : null}
+                <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                  {FallbackIcon ? (
+                    <FallbackIcon
+                      className="h-3.5 w-3.5 text-primary"
+                      aria-hidden
+                    />
+                  ) : (
+                    agent.name.slice(0, 2).toUpperCase()
+                  )}
+                </AvatarFallback>
+              </Avatar>
+            );
+          })
         ) : (
           <span className="text-sm text-muted-foreground">None</span>
         )}
@@ -133,6 +152,9 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
               <div className="p-2">
                 {agents.map((agent) => {
                   const isAssigned = task.assignedAgentIds.includes(agent._id);
+                  const FallbackIcon = agent.icon
+                    ? AGENT_ICON_MAP[agent.icon]
+                    : null;
                   return (
                     <button
                       key={agent._id}
@@ -149,8 +171,18 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
                         className="pointer-events-none"
                       />
                       <Avatar className="h-8 w-8">
+                        {agent.avatarUrl ? (
+                          <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+                        ) : null}
                         <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {agent.name.slice(0, 2).toUpperCase()}
+                          {FallbackIcon ? (
+                            <FallbackIcon
+                              className="h-4 w-4 text-primary"
+                              aria-hidden
+                            />
+                          ) : (
+                            agent.name.slice(0, 2).toUpperCase()
+                          )}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
@@ -164,12 +196,12 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
                       <div
                         className={cn(
                           "w-2 h-2 rounded-full shrink-0",
-                          agent.status === "online" && "bg-emerald-500",
-                          agent.status === "busy" && "bg-amber-500",
-                          agent.status === "idle" && "bg-blue-400",
-                          agent.status === "offline" &&
+                          agent.status === AGENT_STATUS.ONLINE && "bg-emerald-500",
+                          agent.status === AGENT_STATUS.BUSY && "bg-amber-500",
+                          agent.status === AGENT_STATUS.IDLE && "bg-blue-400",
+                          agent.status === AGENT_STATUS.OFFLINE &&
                             "bg-muted-foreground/40",
-                          agent.status === "error" && "bg-destructive",
+                          agent.status === AGENT_STATUS.ERROR && "bg-destructive",
                         )}
                         title={agent.status}
                       />
