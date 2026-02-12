@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useRef } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -16,6 +16,10 @@ import {
   Eye,
   FileText,
   Save,
+  Paperclip,
+  Download,
+  X,
+  Loader2,
 } from "lucide-react";
 import { useCopyToClipboard } from "usehooks-ts";
 import Link from "next/link";
@@ -39,10 +43,15 @@ export default function DocumentDetailPage({
     isAuthenticated ? { documentId: documentId as Id<"documents"> } : "skip",
   );
   const updateDoc = useMutation(api.documents.update);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const registerUpload = useMutation(api.files.registerUpload);
   const [, copyToClipboard] = useCopyToClipboard();
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ fileId: string; name: string; size: number; mimeType: string }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!document) return;
@@ -54,6 +63,12 @@ export default function DocumentDetailPage({
       setEditTitle(title);
       setEditContent(content);
       setIsEditMode(nextEditMode);
+      
+      // Load attached files from document fileIds
+      if (document.fileIds && document.fileIds.length > 0) {
+        // TODO: Fetch file metadata for each fileId from files.getFileById
+        // For now, initialize empty and fetch on mount
+      }
     });
   }, [document]);
 
@@ -64,6 +79,79 @@ export default function DocumentDetailPage({
     copyToClipboard(editContent)
       .then(() => toast.success("Content copied"))
       .catch(() => toast.error("Failed to copy"));
+  };
+
+  /**
+   * Handle file attachment upload for document.
+   */
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.currentTarget.files;
+    if (!files || !document) return;
+
+    setIsUploading(true);
+    const newAttachments: typeof attachedFiles = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // 1. Get upload URL
+        const uploadUrl = await generateUploadUrl({
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+        });
+
+        // 2. Upload to Convex storage
+        const uploadResult = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+
+        if (!uploadResult.ok) {
+          throw new Error(`Upload failed for ${file.name}`);
+        }
+
+        const { storageId } = await uploadResult.json();
+
+        // 3. Register upload with account isolation
+        const fileRecord = await registerUpload({
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          storageId,
+        });
+
+        newAttachments.push({
+          fileId: fileRecord.fileId,
+          name: file.name,
+          size: file.size,
+          mimeType: file.type,
+        });
+      }
+
+      // 4. Update document with new fileIds
+      if (newAttachments.length > 0 && document.kind === "file") {
+        const currentFileIds = document.fileIds ?? [];
+        const updatedFileIds = [...currentFileIds, ...newAttachments.map(f => f.fileId)];
+        
+        await updateDoc({
+          documentId: document._id,
+          fileIds: updatedFileIds,
+        });
+
+        setAttachedFiles((prev) => [...prev, ...newAttachments]);
+        toast.success(`${newAttachments.length} file(s) attached`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   /**
@@ -159,6 +247,28 @@ export default function DocumentDetailPage({
             >
               <Copy className="h-4 w-4" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              aria-label="Attach file"
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Paperclip className="h-4 w-4" />
+              )}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleAttachFile}
+              disabled={isUploading}
+            />
             <Button onClick={handleSaveDoc}>
               <Save className="mr-2 h-4 w-4" />
               Save
@@ -194,10 +304,51 @@ export default function DocumentDetailPage({
             />
           </div>
         ) : (
-          <div className="p-6">
-            {editContent.trim() ? (
-              <MarkdownRenderer content={editContent} />
-            ) : (
+          <div className="p-6 space-y-6">
+            {editContent.trim() && (
+              <div>
+                <MarkdownRenderer content={editContent} />
+              </div>
+            )}
+            
+            {attachedFiles.length > 0 && (
+              <div className="border-t pt-6">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  <Paperclip className="h-4 w-4" />
+                  Attachments ({attachedFiles.length})
+                </h3>
+                <div className="space-y-2">
+                  {attachedFiles.map((file) => (
+                    <div
+                      key={file.fileId}
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg hover:bg-muted/80"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className="h-4 w-4 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 flex-shrink-0"
+                        aria-label={`Download ${file.name}`}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {!editContent.trim() && attachedFiles.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                 <FileText className="h-12 w-12 mb-3 opacity-50" />
                 <p>No content yet</p>
