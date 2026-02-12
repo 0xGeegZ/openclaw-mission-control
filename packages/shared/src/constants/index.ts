@@ -7,6 +7,7 @@
 import {
   TASK_STATUS,
   AGENT_STATUS,
+  ANALYTICS_TIME_RANGE,
   ACTIVITY_TYPE,
   NOTIFICATION_TYPE,
   SKILL_CATEGORY,
@@ -15,6 +16,7 @@ import {
   RUNTIME_V2_STATUS,
   type TaskStatus,
   type AgentStatus,
+  type AnalyticsTimeRange,
   type ActivityType,
   type NotificationType,
   type LLMModel,
@@ -25,6 +27,7 @@ import {
 export {
   TASK_STATUS,
   AGENT_STATUS,
+  ANALYTICS_TIME_RANGE,
   ACTIVITY_TYPE,
   NOTIFICATION_TYPE,
   SKILL_CATEGORY,
@@ -148,6 +151,54 @@ export const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
   [AGENT_STATUS.IDLE]: "Idle",
   [AGENT_STATUS.OFFLINE]: "Offline",
   [AGENT_STATUS.ERROR]: "Error",
+};
+
+/**
+ * Hex colors for task status in analytics charts (not CSS variables).
+ */
+export const TASK_STATUS_CHART_COLORS: Record<TaskStatus, string> = {
+  [TASK_STATUS.INBOX]: "#6b7280",
+  [TASK_STATUS.ASSIGNED]: "#8b5cf6",
+  [TASK_STATUS.IN_PROGRESS]: "#3b82f6",
+  [TASK_STATUS.REVIEW]: "#f59e0b",
+  [TASK_STATUS.DONE]: "#22c55e",
+  [TASK_STATUS.BLOCKED]: "#ef4444",
+  [TASK_STATUS.ARCHIVED]: "#9ca3af",
+};
+
+/**
+ * Hex colors for agent status in analytics charts (not CSS variables).
+ */
+export const AGENT_STATUS_CHART_COLORS: Record<AgentStatus, string> = {
+  [AGENT_STATUS.ONLINE]: "#22c55e",
+  [AGENT_STATUS.BUSY]: "#f59e0b",
+  [AGENT_STATUS.IDLE]: "#6b7280",
+  [AGENT_STATUS.OFFLINE]: "#9ca3af",
+  [AGENT_STATUS.ERROR]: "#ef4444",
+};
+
+// ============================================================================
+// ANALYTICS TIME RANGE
+// ============================================================================
+
+/**
+ * Time range values shown in analytics dashboard tabs (day, week, month).
+ * "custom" is API-only and not in the tab list.
+ */
+export const ANALYTICS_TIME_RANGE_ORDER: AnalyticsTimeRange[] = [
+  ANALYTICS_TIME_RANGE.DAY,
+  ANALYTICS_TIME_RANGE.WEEK,
+  ANALYTICS_TIME_RANGE.MONTH,
+];
+
+/**
+ * Human-readable labels for analytics time range (tabs and tooltips).
+ */
+export const ANALYTICS_TIME_RANGE_LABELS: Record<AnalyticsTimeRange, string> = {
+  [ANALYTICS_TIME_RANGE.DAY]: "Day",
+  [ANALYTICS_TIME_RANGE.WEEK]: "Week",
+  [ANALYTICS_TIME_RANGE.MONTH]: "Month",
+  [ANALYTICS_TIME_RANGE.CUSTOM]: "Custom",
 };
 
 // ============================================================================

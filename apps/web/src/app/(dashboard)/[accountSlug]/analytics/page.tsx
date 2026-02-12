@@ -19,8 +19,13 @@ import {
   TASK_STATUS_ORDER,
   AGENT_STATUS_ORDER,
   AGENT_STATUS_LABELS,
+  ANALYTICS_TIME_RANGE,
+  ANALYTICS_TIME_RANGE_ORDER,
+  ANALYTICS_TIME_RANGE_LABELS,
+  TASK_STATUS_CHART_COLORS,
+  AGENT_STATUS_CHART_COLORS,
 } from "@packages/shared";
-import type { TaskStatus, AgentStatus } from "@packages/shared";
+import type { TaskStatus, AnalyticsTimeRange } from "@packages/shared";
 import {
   ChartContainer,
   ChartTooltipContent,
@@ -50,29 +55,6 @@ import {
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 
-/** Task status display order: use canonical shared order. */
-const ANALYTICS_STATUS_ORDER: TaskStatus[] = TASK_STATUS_ORDER;
-
-/** Hex colors for task statuses in charts (not CSS vars). */
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  inbox: "#6b7280",
-  assigned: "#8b5cf6",
-  in_progress: "#3b82f6",
-  review: "#f59e0b",
-  done: "#22c55e",
-  blocked: "#ef4444",
-  archived: "#9ca3af",
-};
-
-/** Hex colors for agent statuses in charts. */
-const AGENT_STATUS_COLORS: Record<AgentStatus, string> = {
-  online: "#22c55e",
-  busy: "#f59e0b",
-  idle: "#6b7280",
-  offline: "#9ca3af",
-  error: "#ef4444",
-};
-
 interface AnalyticsEmptyStateProps {
   icon: ReactNode;
   message: string;
@@ -80,7 +62,10 @@ interface AnalyticsEmptyStateProps {
   actionLabel: string;
 }
 
-/** Empty state for chart cards when there is no data to display. */
+/**
+ * Empty state for chart cards when there is no data to display.
+ * Renders icon, message, and a link to the relevant section.
+ */
 function AnalyticsEmptyState({
   icon,
   message,
@@ -107,15 +92,15 @@ interface AnalyticsPageProps {
   params: Promise<{ accountSlug: string }>;
 }
 
-type TimeRange = "day" | "week" | "month";
-
 /**
  * Analytics dashboard: task/agent counts, status charts, and pipeline view.
  */
 export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { accountSlug } = use(params);
   const { accountId } = useAccount();
-  const [timeRange, setTimeRange] = useState<TimeRange>("week");
+  const [timeRange, setTimeRange] = useState<AnalyticsTimeRange>(
+    ANALYTICS_TIME_RANGE.WEEK,
+  );
 
   // Fetch analytics data
   const summary = useQuery(
@@ -125,21 +110,21 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
   const metrics = useQuery(
     api.analytics.getMetrics,
-    accountId ? { timeRange } : "skip",
+    accountId ? { accountId, timeRange } : "skip",
   );
 
   const agentStats = useQuery(
     api.analytics.getAgentStats,
-    accountId ? { timeRange } : "skip",
+    accountId ? { accountId, timeRange } : "skip",
   );
 
   const taskChartData = !summary
     ? []
-    : ANALYTICS_STATUS_ORDER.map((status) => ({
+    : TASK_STATUS_ORDER.map((status) => ({
         status,
         label: TASK_STATUS_LABELS[status],
         count: summary.taskCountByStatus[status] ?? 0,
-        fill: STATUS_COLORS[status],
+        fill: TASK_STATUS_CHART_COLORS[status],
       }));
 
   const agentChartData = !summary
@@ -148,7 +133,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
         status,
         label: AGENT_STATUS_LABELS[status],
         count: summary.agentCountByStatus[status] ?? 0,
-        fill: AGENT_STATUS_COLORS[status],
+        fill: AGENT_STATUS_CHART_COLORS[status],
       })).filter((item) => item.count > 0);
 
   const completionRate = useMemo(() => {
@@ -181,20 +166,22 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
         </div>
         {/* Date range selector */}
         <Tabs
-          defaultValue="week"
+          defaultValue={ANALYTICS_TIME_RANGE.WEEK}
           value={timeRange}
-          onValueChange={(value) => setTimeRange(value as TimeRange)}
+          onValueChange={(value) => setTimeRange(value as AnalyticsTimeRange)}
         >
           <TabsList className="grid w-fit grid-cols-3">
-            <TabsTrigger value="day">Day</TabsTrigger>
-            <TabsTrigger value="week">Week</TabsTrigger>
-            <TabsTrigger value="month">Month</TabsTrigger>
+            {ANALYTICS_TIME_RANGE_ORDER.map((range: AnalyticsTimeRange) => (
+              <TabsTrigger key={range} value={range}>
+                {ANALYTICS_TIME_RANGE_LABELS[range]}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
       </header>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {summary === undefined || metrics === undefined ? (
+        {summary === undefined || metrics === undefined || agentStats === undefined ? (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats skeleton */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -587,7 +574,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {ANALYTICS_STATUS_ORDER.map((status: TaskStatus) => {
+                  {TASK_STATUS_ORDER.map((status: TaskStatus) => {
                     const count = summary.taskCountByStatus[status] ?? 0;
                     const percentage =
                       summary.totalTasks > 0
@@ -599,7 +586,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                           <span className="flex items-center gap-2">
                             <div
                               className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: STATUS_COLORS[status] }}
+                              style={{ backgroundColor: TASK_STATUS_CHART_COLORS[status] }}
                             />
                             {TASK_STATUS_LABELS[status]}
                           </span>
@@ -615,7 +602,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                             className="h-full rounded-full transition-all duration-500 ease-out"
                             style={{
                               width: `${percentage}%`,
-                              backgroundColor: STATUS_COLORS[status],
+                              backgroundColor: TASK_STATUS_CHART_COLORS[status],
                             }}
                           />
                         </div>

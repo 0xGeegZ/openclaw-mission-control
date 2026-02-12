@@ -205,6 +205,24 @@ export const LLM_MODEL = {
 export type LLMModel = (typeof LLM_MODEL)[keyof typeof LLM_MODEL];
 
 // ============================================================================
+// ANALYTICS TIME RANGE
+// ============================================================================
+
+/**
+ * Time range options for analytics queries (dashboard and API).
+ * "custom" is API-only; UI tabs use day, week, month.
+ */
+export const ANALYTICS_TIME_RANGE = {
+  DAY: "day",
+  WEEK: "week",
+  MONTH: "month",
+  CUSTOM: "custom",
+} as const;
+
+export type AnalyticsTimeRange =
+  (typeof ANALYTICS_TIME_RANGE)[keyof typeof ANALYTICS_TIME_RANGE];
+
+// ============================================================================
 // OPENCLAW CONFIG
 // ============================================================================
 

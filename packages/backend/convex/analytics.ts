@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
+import { ANALYTICS_TIME_RANGE, TASK_STATUS_ORDER } from "./lib/constants";
+import type { AnalyticsTimeRange } from "./lib/validators";
+import { analyticsTimeRangeValidator } from "./lib/validators";
 import type { TaskStatus } from "./lib/task_workflow";
 
 /**
@@ -14,21 +17,42 @@ export type AnalyticsSummary = {
   recentActivityCount: number;
 };
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+/** Args for resolveTimeRange; exported for tests. */
+export interface TimeRangeArgs {
+  timeRange: AnalyticsTimeRange;
+  fromDate?: number;
+  toDate?: number;
+}
 
 /**
- * Analytics metrics computation.
- * Queries tasks table to compute team activity metrics for a given time range.
+ * Resolves time range args to fromDate and end timestamp (now).
+ * Used by getMetrics, getAgentStats, getMemberActivity for tenant-scoped analytics.
+ * Exported for unit tests.
  */
-
-/**
- * Time range type.
- * "day" = last 24 hours
- * "week" = last 7 days
- * "month" = last 30 days
- * "custom" = requires fromDate and toDate in ms
- */
-type TimeRange = "day" | "week" | "month" | "custom";
+export function resolveTimeRange(args: TimeRangeArgs): { fromDate: number; now: number } {
+  const now = args.toDate ?? Date.now();
+  let fromDate: number;
+  switch (args.timeRange) {
+    case ANALYTICS_TIME_RANGE.DAY:
+      fromDate = now - ONE_DAY_IN_MS;
+      break;
+    case ANALYTICS_TIME_RANGE.WEEK:
+      fromDate = now - 7 * ONE_DAY_IN_MS;
+      break;
+    case ANALYTICS_TIME_RANGE.MONTH:
+      fromDate = now - 30 * ONE_DAY_IN_MS;
+      break;
+    case ANALYTICS_TIME_RANGE.CUSTOM:
+      if (args.fromDate == null) {
+        throw new Error("fromDate is required for custom time range");
+      }
+      fromDate = args.fromDate;
+      break;
+  }
+  return { fromDate, now };
+}
 
 interface AgentStats {
   agentId: string;
@@ -65,7 +89,7 @@ interface AnalyticsMetrics {
   avgCompletionTime: number;
 
   /** Time range used for calculation */
-  timeRange: TimeRange;
+  timeRange: AnalyticsTimeRange;
 
   /** Start timestamp (ms) */
   fromDate: number;
@@ -79,67 +103,28 @@ interface AnalyticsMetrics {
 
 /**
  * Get analytics metrics for a given time range.
+ * Requires the caller to be a member of the account.
  *
+ * @param accountId - Account to compute metrics for
  * @param timeRange - "day", "week", "month", or "custom"
  * @param fromDate - Start date (ms), required if timeRange is "custom"
  * @param toDate - End date (ms), defaults to now
  */
 export const getMetrics = query({
   args: {
-    timeRange: v.union(
-      v.literal("day"),
-      v.literal("week"),
-      v.literal("month"),
-      v.literal("custom"),
-    ),
+    accountId: v.id("accounts"),
+    timeRange: analyticsTimeRangeValidator,
     fromDate: v.optional(v.number()),
     toDate: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    // Get the current user's account
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    // Find the user's account membership
-    const membership = await ctx.db
-      .query("memberships")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .first();
-
-    if (!membership) {
-      throw new Error("User not found in any account");
-    }
-
-    const accountId = membership.accountId;
-
-    // Calculate time boundaries
-    const now = args.toDate || Date.now();
-    let fromDate: number;
-
-    switch (args.timeRange) {
-      case "day":
-        fromDate = now - 24 * 60 * 60 * 1000;
-        break;
-      case "week":
-        fromDate = now - 7 * 24 * 60 * 60 * 1000;
-        break;
-      case "month":
-        fromDate = now - 30 * 24 * 60 * 60 * 1000;
-        break;
-      case "custom":
-        if (!args.fromDate) {
-          throw new Error("fromDate is required for custom time range");
-        }
-        fromDate = args.fromDate;
-        break;
-    }
+    await requireAccountMember(ctx, args.accountId);
+    const { fromDate, now } = resolveTimeRange(args);
 
     // Fetch all tasks for the account
     const allTasks = await ctx.db
       .query("tasks")
-      .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
       .collect();
 
     // Filter tasks by time range
@@ -192,17 +177,19 @@ export const getMetrics = query({
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Count completed tasks per date
+    // Count completed tasks per date; only include dates within the selected range
     tasksInRange
       .filter((task) => task.status === "done")
       .forEach((task) => {
         const completedDate = new Date(task.updatedAt)
           .toISOString()
           .split("T")[0];
-        completionTrendMap.set(
-          completedDate,
-          (completionTrendMap.get(completedDate) || 0) + 1,
-        );
+        if (completionTrendMap.has(completedDate)) {
+          completionTrendMap.set(
+            completedDate,
+            (completionTrendMap.get(completedDate) ?? 0) + 1,
+          );
+        }
       });
 
     // Convert map to sorted time series points
@@ -228,67 +215,29 @@ export const getMetrics = query({
 /**
  * Get agent statistics for a given time range.
  * Computes tasks assigned to each agent and completion metrics.
+ *
+ * @param accountId - Account to compute stats for
+ * @param timeRange - "day", "week", "month", or "custom"
  */
 export const getAgentStats = query({
   args: {
-    timeRange: v.union(
-      v.literal("day"),
-      v.literal("week"),
-      v.literal("month"),
-      v.literal("custom"),
-    ),
+    accountId: v.id("accounts"),
+    timeRange: analyticsTimeRangeValidator,
     fromDate: v.optional(v.number()),
     toDate: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
+    await requireAccountMember(ctx, args.accountId);
+    const { fromDate, now } = resolveTimeRange(args);
 
-    const membership = await ctx.db
-      .query("memberships")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .first();
-
-    if (!membership) {
-      throw new Error("User not found in any account");
-    }
-
-    const accountId = membership.accountId;
-
-    // Calculate time boundaries
-    const now = args.toDate || Date.now();
-    let fromDate: number;
-
-    switch (args.timeRange) {
-      case "day":
-        fromDate = now - 24 * 60 * 60 * 1000;
-        break;
-      case "week":
-        fromDate = now - 7 * 24 * 60 * 60 * 1000;
-        break;
-      case "month":
-        fromDate = now - 30 * 24 * 60 * 60 * 1000;
-        break;
-      case "custom":
-        if (!args.fromDate) {
-          throw new Error("fromDate is required for custom time range");
-        }
-        fromDate = args.fromDate;
-        break;
-    }
-
-    // Fetch all tasks for the account
     const allTasks = await ctx.db
       .query("tasks")
-      .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
       .collect();
 
-    // Fetch all agents for the account
     const allAgents = await ctx.db
       .query("agents")
-      .withIndex("by_account", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
 
     // Filter tasks by time range and compute agent stats
@@ -341,71 +290,35 @@ export const getAgentStats = query({
 /**
  * Get member activity for a given time range.
  * Computes messages sent and tasks assigned per user.
+ * Reserved for future use (e.g. member activity section or exports).
+ *
+ * @param accountId - Account to compute activity for
+ * @param timeRange - "day", "week", "month", or "custom"
  */
 export const getMemberActivity = query({
   args: {
-    timeRange: v.union(
-      v.literal("day"),
-      v.literal("week"),
-      v.literal("month"),
-      v.literal("custom"),
-    ),
+    accountId: v.id("accounts"),
+    timeRange: analyticsTimeRangeValidator,
     fromDate: v.optional(v.number()),
     toDate: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
+    await requireAccountMember(ctx, args.accountId);
+    const { fromDate, now } = resolveTimeRange(args);
 
-    const membership = await ctx.db
-      .query("memberships")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .first();
-
-    if (!membership) {
-      throw new Error("User not found in any account");
-    }
-
-    const accountId = membership.accountId;
-
-    // Calculate time boundaries
-    const now = args.toDate || Date.now();
-    let fromDate: number;
-
-    switch (args.timeRange) {
-      case "day":
-        fromDate = now - 24 * 60 * 60 * 1000;
-        break;
-      case "week":
-        fromDate = now - 7 * 24 * 60 * 60 * 1000;
-        break;
-      case "month":
-        fromDate = now - 30 * 24 * 60 * 60 * 1000;
-        break;
-      case "custom":
-        if (!args.fromDate) {
-          throw new Error("fromDate is required for custom time range");
-        }
-        fromDate = args.fromDate;
-        break;
-    }
-
-    // Fetch all messages, tasks, and memberships for the account
     const allMessages = await ctx.db
       .query("messages")
-      .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
       .collect();
 
     const allTasks = await ctx.db
       .query("tasks")
-      .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account_created", (q) => q.eq("accountId", args.accountId))
       .collect();
 
     const allMemberships = await ctx.db
       .query("memberships")
-      .withIndex("by_account", (q) => q.eq("accountId", accountId))
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
 
     // Filter by time range
@@ -464,7 +377,7 @@ export const getSummary = query({
   handler: async (ctx, args): Promise<AnalyticsSummary> => {
     await requireAccountMember(ctx, args.accountId);
 
-    const since = Date.now() - ONE_DAY_MS;
+    const since = Date.now() - ONE_DAY_IN_MS;
 
     const [tasks, agents, recentActivities] = await Promise.all([
       ctx.db
@@ -483,14 +396,9 @@ export const getSummary = query({
         .collect(),
     ]);
 
-    const taskCountByStatus: Record<string, number> = {
-      inbox: 0,
-      assigned: 0,
-      in_progress: 0,
-      review: 0,
-      done: 0,
-      blocked: 0,
-    };
+    const taskCountByStatus: Record<TaskStatus, number> = Object.fromEntries(
+      TASK_STATUS_ORDER.map((status) => [status, 0]),
+    ) as Record<TaskStatus, number>;
     for (const t of tasks) {
       taskCountByStatus[t.status] = (taskCountByStatus[t.status] ?? 0) + 1;
     }
@@ -503,8 +411,7 @@ export const getSummary = query({
     const recentActivityCount = recentActivities.length;
 
     return {
-      taskCountByStatus:
-        taskCountByStatus as AnalyticsSummary["taskCountByStatus"],
+      taskCountByStatus,
       agentCountByStatus,
       totalTasks: tasks.length,
       totalAgents: agents.length,
