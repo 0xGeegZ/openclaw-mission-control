@@ -479,6 +479,9 @@ export default defineSchema({
       ),
     ),
 
+    /** File IDs from files table (optional, for new file upload flow). */
+    fileIds: v.optional(v.array(v.id("files"))),
+
     /** Timestamp of creation */
     createdAt: v.number(),
 
@@ -575,6 +578,9 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /** Attached file IDs (optional). Array of file IDs from files table. */
+    fileIds: v.optional(v.array(v.id("files"))),
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
@@ -849,4 +855,23 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // ==========================================================================
+  // FILES (Convex Storage)
+  // Metadata for uploaded files. storageId references Convex file storage.
+  // Max 25 MB per file. No MIME type restrictions for MVP.
+  // Auth: Inherited from parent resource (task/document). No re-auth on download.
+  // ==========================================================================
+  files: defineTable({
+    accountId: v.id("accounts"),
+    uploadedBy: v.string(), // userId or agent slug
+    fileName: v.string(),
+    mimeType: v.string(),
+    size: v.number(), // bytes
+    storageId: v.string(), // Convex file storage ID
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_uploaded_by", ["uploadedBy"])
+    .index("by_account_created", ["accountId", "createdAt"]),
 });
