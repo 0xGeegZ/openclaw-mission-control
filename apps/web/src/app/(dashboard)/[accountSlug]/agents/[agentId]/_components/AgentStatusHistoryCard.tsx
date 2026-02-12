@@ -32,6 +32,38 @@ const statusColors: Record<string, "default" | "secondary" | "destructive" | "ou
 };
 
 /**
+ * StatusHistoryEntry: sub-component that calls useRelativeTime in its own component body.
+ * Fixes React Hooks rule violation by calling hook at component level, not in parent callback.
+ */
+function StatusHistoryEntry({ entry }: { entry: StatusHistory }) {
+  const relativeTime = useRelativeTime(entry.timestamp, { addSuffix: true });
+  const variant = statusColors[entry.status as keyof typeof statusColors] ?? "outline";
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex-shrink-0 mt-1">
+        <CircleDot className="h-3 w-3 text-muted-foreground" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant={variant} className="text-xs capitalize">
+            {entry.status}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {relativeTime}
+          </span>
+        </div>
+        {entry.actorName && (
+          <p className="text-xs text-muted-foreground mt-1">
+            via {entry.actorName}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Display agent status change history.
  */
 export function AgentStatusHistoryCard({
@@ -59,33 +91,9 @@ export function AgentStatusHistoryCard({
           <p className="text-sm text-muted-foreground">No status history available</p>
         ) : (
           <div className="space-y-3">
-            {displayHistory.map((entry, idx) => {
-              const relativeTime = useRelativeTime(entry.timestamp, { addSuffix: true });
-              const variant = statusColors[entry.status as keyof typeof statusColors] ?? "outline";
-
-              return (
-                <div key={idx} className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-1">
-                    <CircleDot className="h-3 w-3 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant={variant} className="text-xs capitalize">
-                        {entry.status}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {relativeTime}
-                      </span>
-                    </div>
-                    {entry.actorName && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        via {entry.actorName}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {displayHistory.map((entry, idx) => (
+              <StatusHistoryEntry key={idx} entry={entry} />
+            ))}
           </div>
         )}
       </CardContent>
