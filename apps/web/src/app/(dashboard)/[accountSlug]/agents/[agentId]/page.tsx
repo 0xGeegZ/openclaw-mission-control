@@ -58,6 +58,7 @@ import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
 import { AgentConfigurationCard } from "./_components/AgentConfigurationCard";
 import { AgentStatisticsCard } from "./_components/AgentStatisticsCard";
 import { AgentActivityTimeline } from "./_components/AgentActivityTimeline";
+import { AgentControlsCard } from "./_components/AgentControlsCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -342,25 +343,28 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
             />
 
             {isAdmin && (
-              <AgentBehaviorFlagsCard
-                agent={agent}
-                accountDefaults={
-                  (
-                    account?.settings as
-                      | {
-                          agentDefaults?: {
-                            behaviorFlags?: {
-                              canCreateTasks?: boolean;
-                              canModifyTaskStatus?: boolean;
-                              canCreateDocuments?: boolean;
-                              canMentionAgents?: boolean;
+              <>
+                <AgentControlsCard agent={agent} isAdmin={isAdmin} />
+                <AgentBehaviorFlagsCard
+                  agent={agent}
+                  accountDefaults={
+                    (
+                      account?.settings as
+                        | {
+                            agentDefaults?: {
+                              behaviorFlags?: {
+                                canCreateTasks?: boolean;
+                                canModifyTaskStatus?: boolean;
+                                canCreateDocuments?: boolean;
+                                canMentionAgents?: boolean;
+                              };
                             };
-                          };
-                        }
-                      | undefined
-                  )?.agentDefaults?.behaviorFlags ?? null
-                }
-              />
+                          }
+                        | undefined
+                    )?.agentDefaults?.behaviorFlags ?? null
+                  }
+                />
+              </>
             )}
 
             {/* Assigned Tasks */}
