@@ -7,6 +7,7 @@
 
 import { getConvexClient, api } from "../convex-client";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 import {
   TASK_STATUS_TOOL_SCHEMA,
   createTaskStatusToolSchema,
@@ -23,6 +24,22 @@ import {
   executeTaskDeleteTool,
   type TaskDeleteToolResult,
 } from "./taskDeleteTool";
+
+const ALL_TASK_STATUSES = [
+  TASK_STATUS.INBOX,
+  TASK_STATUS.ASSIGNED,
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+  TASK_STATUS.ARCHIVED,
+] as const satisfies readonly TaskStatus[];
+
+const TASK_STATUS_SET = new Set<TaskStatus>(ALL_TASK_STATUSES);
+
+function isTaskStatus(value: string): value is TaskStatus {
+  return TASK_STATUS_SET.has(value as TaskStatus);
+}
 
 /** OpenResponses function tool schema: create a new task */
 export const TASK_CREATE_TOOL_SCHEMA = {
@@ -50,15 +67,7 @@ export const TASK_CREATE_TOOL_SCHEMA = {
         },
         status: {
           type: "string",
-          enum: [
-            "inbox",
-            "assigned",
-            "in_progress",
-            "review",
-            "done",
-            "blocked",
-            "archived",
-          ],
+          enum: [...ALL_TASK_STATUSES],
           description:
             "Initial status; default inbox. Non-orchestrator creators are auto-assigned for assigned/in_progress; orchestrator-created tasks stay unassigned unless assigneeSlugs are provided. blocked requires blockedReason. archived is for cleanup (soft-delete).",
         },
@@ -134,15 +143,7 @@ export const TASK_LIST_TOOL_SCHEMA = {
       properties: {
         status: {
           type: "string",
-          enum: [
-            "inbox",
-            "assigned",
-            "in_progress",
-            "review",
-            "done",
-            "blocked",
-            "archived",
-          ],
+          enum: [...ALL_TASK_STATUSES],
           description: "Optional status filter",
         },
         assigneeSlug: {
@@ -392,7 +393,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("change task status (task_status tool)");
     schemas.push(createTaskStatusToolSchema({ allowDone: canMarkDone }));
     capabilityLabels.push(
-      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)"
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate"
     );
     schemas.push(TASK_UPDATE_TOOL_SCHEMA);
   }
@@ -489,30 +490,16 @@ function normalizeTaskPriority(value: unknown): number | undefined {
 function normalizeTaskCreateStatusForOrchestrator(
   status: unknown,
   isOrchestrator: boolean | undefined,
-):
-  | "inbox"
-  | "assigned"
-  | "in_progress"
-  | "review"
-  | "done"
-  | "blocked"
-  | "archived"
-  | undefined {
+): TaskStatus | undefined {
   if (typeof status !== "string") return undefined;
+  if (!isTaskStatus(status)) return undefined;
   if (
     isOrchestrator === true &&
-    (status === "assigned" || status === "in_progress")
+    (status === TASK_STATUS.ASSIGNED || status === TASK_STATUS.IN_PROGRESS)
   ) {
-    return "inbox";
+    return TASK_STATUS.INBOX;
   }
-  return status as
-    | "inbox"
-    | "assigned"
-    | "in_progress"
-    | "review"
-    | "done"
-    | "blocked"
-    | "archived";
+  return status;
 }
 
 /**
@@ -603,7 +590,7 @@ export async function executeAgentTool(params: {
       return { success: false, error: "Invalid JSON arguments" };
     }
     // When invoked from delivery, taskId param is the current notification's task; LLM may also send taskId in args.
-    if (args.status === "done" && canMarkDone !== true) {
+    if (args.status === TASK_STATUS.DONE && canMarkDone !== true) {
       return {
         success: false,
         error: "Forbidden: Not allowed to mark tasks as done",
@@ -643,7 +630,7 @@ export async function executeAgentTool(params: {
       return { success: false, error: "Invalid JSON arguments" };
     }
 
-    if (args.status === "done" && canMarkDone !== true) {
+    if (args.status === TASK_STATUS.DONE && canMarkDone !== true) {
       return {
         success: false,
         error: "Forbidden: Not allowed to mark tasks as done",
@@ -969,15 +956,10 @@ export async function executeAgentTool(params: {
           accountId,
           serviceToken,
           agentId,
-          status: args.status as
-            | "inbox"
-            | "assigned"
-            | "in_progress"
-            | "review"
-            | "done"
-            | "blocked"
-            | "archived"
-            | undefined,
+          status:
+            typeof args.status === "string" && isTaskStatus(args.status)
+              ? args.status
+              : undefined,
           assigneeAgentId,
           limit: args.limit,
         },

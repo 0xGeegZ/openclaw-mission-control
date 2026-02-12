@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { TASK_STATUS } from "@packages/shared";
 
 // ============================================================================
 // Mock Task Creation E2E Tests
@@ -23,14 +24,18 @@ describe("E2E: Task Creation Flow", () => {
 
     const newTask = {
       title: "Implement user profile page",
-      status: "assigned",
+      status: TASK_STATUS.ASSIGNED,
       created: true,
     };
 
     expect(newTask.title).toBeTruthy();
-    expect(["assigned", "in_progress", "review", "done", "blocked"]).toContain(
-      newTask.status
-    );
+    expect([
+      TASK_STATUS.ASSIGNED,
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
+    ]).toContain(newTask.status);
   });
 
   it("should validate task title is required", async () => {
@@ -207,12 +212,12 @@ describe("E2E: Task Status Transitions", () => {
     // 5. Subscribers notified
 
     const statusChange = {
-      oldStatus: "assigned",
-      newStatus: "in_progress",
+      oldStatus: TASK_STATUS.ASSIGNED,
+      newStatus: TASK_STATUS.IN_PROGRESS,
       timestamp: Date.now(),
     };
 
-    expect(statusChange.newStatus).toBe("in_progress");
+    expect(statusChange.newStatus).toBe(TASK_STATUS.IN_PROGRESS);
   });
 
   it("should transition task from in_progress → review", async () => {
@@ -222,11 +227,11 @@ describe("E2E: Task Status Transitions", () => {
     // 4. Reviewers notified: "Task ready for review"
 
     const toReview = {
-      status: "review",
+      status: TASK_STATUS.REVIEW,
       readyForReview: true,
     };
 
-    expect(toReview.status).toBe("review");
+    expect(toReview.status).toBe(TASK_STATUS.REVIEW);
   });
 
   it("should transition task from review → done", async () => {
@@ -237,11 +242,11 @@ describe("E2E: Task Status Transitions", () => {
     // 5. Completion timestamp recorded
 
     const completed = {
-      status: "done",
+      status: TASK_STATUS.DONE,
       completedAt: Date.now(),
     };
 
-    expect(completed.status).toBe("done");
+    expect(completed.status).toBe(TASK_STATUS.DONE);
   });
 
   it("should transition task from any status → blocked", async () => {
@@ -252,12 +257,12 @@ describe("E2E: Task Status Transitions", () => {
     // 5. Subscribers notified of blocker
 
     const blocked = {
-      previousStatus: "in_progress",
-      currentStatus: "blocked",
+      previousStatus: TASK_STATUS.IN_PROGRESS,
+      currentStatus: TASK_STATUS.BLOCKED,
       blockerReason: "Waiting for API",
     };
 
-    expect(blocked.currentStatus).toBe("blocked");
+    expect(blocked.currentStatus).toBe(TASK_STATUS.BLOCKED);
   });
 
   it("should allow task to be reopened from done → in_progress", async () => {
@@ -267,8 +272,8 @@ describe("E2E: Task Status Transitions", () => {
     // 4. Activity logged: "Reopened task"
 
     const reopened = {
-      previousStatus: "done",
-      newStatus: "in_progress",
+      previousStatus: TASK_STATUS.DONE,
+      newStatus: TASK_STATUS.IN_PROGRESS,
       reopened: true,
     };
 
@@ -304,7 +309,7 @@ describe("E2E: Task List Navigation", () => {
 
     const newTaskInList = {
       title: "New Task",
-      status: "assigned",
+      status: TASK_STATUS.ASSIGNED,
       assignedTo: "Squad Lead",
       visible: true,
     };
@@ -318,10 +323,14 @@ describe("E2E: Task List Navigation", () => {
     // 3. List shows only "assigned" tasks
     // 4. Other statuses hidden
 
-    const filterStatus = "assigned";
-    expect(["assigned", "in_progress", "review", "done", "blocked"]).toContain(
-      filterStatus
-    );
+    const filterStatus = TASK_STATUS.ASSIGNED;
+    expect([
+      TASK_STATUS.ASSIGNED,
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
+    ]).toContain(filterStatus);
   });
 
   it("should navigate to task detail by clicking task", async () => {

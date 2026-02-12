@@ -999,74 +999,22 @@ export const updateTaskFromAgent = action({
     }
 
     // Validate status and blockedReason
-    const allowedStatuses = new Set([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
     if (args.status && !allowedStatuses.has(args.status)) {
       throw new Error(
         "Invalid status: must be in_progress, review, done, or blocked",
       );
     }
-    if (args.status === "blocked" && !args.blockedReason?.trim()) {
+    if (args.status === TASK_STATUS.BLOCKED && !args.blockedReason?.trim()) {
       throw new Error("blockedReason is required when status is 'blocked'");
     }
 
-    // If status is being changed, handle status transitions
     const changedFields: string[] = [];
-    if (args.status && args.status !== task.status) {
-      const allowedNextStatuses = new Set<TaskStatus>([
-        "in_progress",
-        "review",
-        "done",
-        "blocked",
-      ]);
-
-      const targetStatus = args.status as TaskStatus;
-      const currentStatus = task.status as TaskStatus;
-
-      // Validate task must be in review before marking done
-      if (
-        targetStatus === "done" &&
-        currentStatus !== "review" &&
-        currentStatus !== "done"
-      ) {
-        throw new Error(
-          "Forbidden: Task must be in review before marking done",
-        );
-      }
-
-      // Apply status change through transitions
-      const path = findStatusPath({
-        from: currentStatus,
-        to: targetStatus,
-        allowedNextStatuses,
-      });
-      if (!path || path.length === 0) {
-        throw new Error(
-          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
-        );
-      }
-
-      for (let i = 0; i < path.length; i++) {
-        const nextStatus = path[i];
-        const isFinalStep = i === path.length - 1;
-        await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
-          taskId: args.taskId,
-          agentId: args.agentId,
-          status: nextStatus,
-          blockedReason:
-            nextStatus === "blocked" ? args.blockedReason : undefined,
-          suppressNotifications: !isFinalStep,
-          suppressActivity: !isFinalStep,
-        });
-      }
-      changedFields.push("status");
-    }
-
-    // Update other fields
     const updates: Record<string, unknown> = {};
 
     if (args.title !== undefined) {
@@ -1104,8 +1052,77 @@ export const updateTaskFromAgent = action({
       changedFields.push("dueDate");
     }
 
+    const hasNonStatusUpdates = Object.keys(updates).length > 0;
+    const hasAssigneeUpdates =
+      args.assignedAgentIds !== undefined || args.assignedUserIds !== undefined;
+    const applyUpdatesBeforeStatus =
+      hasNonStatusUpdates &&
+      hasAssigneeUpdates &&
+      args.status === TASK_STATUS.IN_PROGRESS &&
+      task.status !== TASK_STATUS.IN_PROGRESS;
+
+    if (applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    // If status is being changed, handle status transitions
+    if (args.status && args.status !== task.status) {
+      const allowedNextStatuses = new Set<TaskStatus>([
+        TASK_STATUS.IN_PROGRESS,
+        TASK_STATUS.REVIEW,
+        TASK_STATUS.DONE,
+        TASK_STATUS.BLOCKED,
+      ]);
+
+      const targetStatus = args.status;
+      const currentStatus = task.status;
+
+      // Validate task must be in review before marking done
+      if (
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
+      ) {
+        throw new Error(
+          "Forbidden: Task must be in review before marking done",
+        );
+      }
+
+      // Apply status change through transitions
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      for (let i = 0; i < path.length; i++) {
+        const nextStatus = path[i];
+        const isFinalStep = i === path.length - 1;
+        await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+          taskId: args.taskId,
+          agentId: args.agentId,
+          status: nextStatus,
+          blockedReason:
+            nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
+          suppressNotifications: !isFinalStep,
+          suppressActivity: !isFinalStep,
+        });
+      }
+      changedFields.push("status");
+    }
+
     // Only patch if there are non-status updates
-    if (Object.keys(updates).length > 0) {
+    if (hasNonStatusUpdates && !applyUpdatesBeforeStatus) {
       updates.updatedAt = Date.now();
       await ctx.runMutation(internal.service.tasks.updateFromAgent, {
         taskId: args.taskId,

@@ -7,10 +7,24 @@
 import { getConvexClient, api } from "../convex-client";
 import { createLogger } from "../logger";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 
 const log = createLogger("[TaskUpdateTool]");
 
-const ALLOWED_STATUSES = new Set(["in_progress", "review", "done", "blocked"]);
+const TASK_UPDATE_ALLOWED_STATUSES = [
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+] as const satisfies readonly TaskStatus[];
+
+type TaskUpdateStatus = (typeof TASK_UPDATE_ALLOWED_STATUSES)[number];
+
+const ALLOWED_STATUSES = new Set<TaskUpdateStatus>(TASK_UPDATE_ALLOWED_STATUSES);
+
+function isTaskUpdateStatus(value: string): value is TaskUpdateStatus {
+  return ALLOWED_STATUSES.has(value as TaskUpdateStatus);
+}
 
 /**
  * OpenResponses function tool schema for task_update.
@@ -60,7 +74,7 @@ export const TASK_UPDATE_TOOL_SCHEMA = {
         },
         status: {
           type: "string",
-          enum: ["in_progress", "review", "done", "blocked"],
+          enum: [...TASK_UPDATE_ALLOWED_STATUSES],
           description: "New status for the task",
         },
         blockedReason: {
@@ -144,12 +158,14 @@ export async function executeTaskUpdateTool(params: {
   }
 
   // Validate status if provided
-  if (status && !ALLOWED_STATUSES.has(status)) {
+  if (status && !isTaskUpdateStatus(status)) {
     return {
       success: false,
       error: `Invalid status: must be one of in_progress, review, done, blocked`,
     };
   }
+  const validatedStatus: TaskUpdateStatus | undefined =
+    status && isTaskUpdateStatus(status) ? status : undefined;
 
   // Validate blockedReason requirement
   if (status === "blocked" && !blockedReason?.trim()) {
@@ -180,7 +196,7 @@ export async function executeTaskUpdateTool(params: {
       labels,
       assignedAgentIds: assignedAgentIds ? (assignedAgentIds as Id<"agents">[]) : undefined,
       assignedUserIds,
-      status: (status as "in_progress" | "review" | "done" | "blocked" | undefined) || undefined,
+      status: validatedStatus,
       blockedReason: blockedReason?.trim(),
       dueDate,
     });

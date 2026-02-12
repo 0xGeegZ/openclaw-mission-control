@@ -64,7 +64,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       "change task status (task_status tool)",
     );
     expect(withTask.capabilityLabels).toContain(
-      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)",
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
     );
     expect(schemaNames(withTask.schemas)).toContain("task_status");
     expect(schemaNames(withTask.schemas)).toContain("task_update");
@@ -80,7 +80,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       "change task status (task_status tool)",
     );
     expect(noTask.capabilityLabels).not.toContain(
-      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)",
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
     );
     expect(schemaNames(noTask.schemas)).not.toContain("task_status");
     expect(schemaNames(noTask.schemas)).not.toContain("task_update");

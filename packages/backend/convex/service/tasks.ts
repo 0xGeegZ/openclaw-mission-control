@@ -7,6 +7,7 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
+  TASK_STATUS,
   isValidTransition,
   validateStatusRequirements,
   TaskStatus,
@@ -26,6 +27,13 @@ import {
 } from "../search";
 
 const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
+
+/**
+ * Returns true when the task status requires at least one assignee.
+ */
+function requiresAssignee(status: TaskStatus): boolean {
+  return status === TASK_STATUS.ASSIGNED || status === TASK_STATUS.IN_PROGRESS;
+}
 
 /**
  * Returns true when an agent is considered QA based on role or slug.
@@ -123,7 +131,7 @@ export const listAssignedForAgent = internalQuery({
     );
     const filtered = includeDone
       ? assignedTasks
-      : assignedTasks.filter((task) => task.status !== "done");
+      : assignedTasks.filter((task) => task.status !== TASK_STATUS.DONE);
 
     const limit = Math.min(args.limit ?? 50, 200);
     return filtered.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
@@ -173,13 +181,13 @@ export const listByStatusForAccount = internalQuery({
 
 const TOOL_ASSIGNEE_SCAN_LIMIT = 200;
 const TOOL_TASK_STATUSES: TaskStatus[] = [
-  "inbox",
-  "assigned",
-  "in_progress",
-  "review",
-  "done",
-  "blocked",
-  "archived",
+  TASK_STATUS.INBOX,
+  TASK_STATUS.ASSIGNED,
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+  TASK_STATUS.ARCHIVED,
 ];
 
 /**
@@ -289,9 +297,10 @@ export const createFromAgent = internalMutation({
 
     const assignedUserIds: string[] = [];
     let assignedAgentIds: Id<"agents">[] = [];
-    const requestedStatus = args.status ?? "inbox";
+    const requestedStatus = args.status ?? TASK_STATUS.INBOX;
     if (
-      (requestedStatus === "assigned" || requestedStatus === "in_progress") &&
+      (requestedStatus === TASK_STATUS.ASSIGNED ||
+        requestedStatus === TASK_STATUS.IN_PROGRESS) &&
       assignedUserIds.length === 0
     ) {
       assignedAgentIds = [args.agentId];
@@ -318,7 +327,7 @@ export const createFromAgent = internalMutation({
       labels: args.labels ?? [],
       dueDate: args.dueDate,
       blockedReason:
-        requestedStatus === "blocked" ? args.blockedReason : undefined,
+        requestedStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
       createdBy: args.agentId,
       createdAt: now,
       updatedAt: now,
@@ -383,12 +392,12 @@ export const assignFromAgent = internalMutation({
 
     const hasAssignees =
       task.assignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
-    const shouldAssign = task.status === "inbox" && hasAssignees;
+    const shouldAssign = task.status === TASK_STATUS.INBOX && hasAssignees;
     const nextStatus: TaskStatus | null =
       shouldAssign && nextAssignedAgentIds.length > 0
-        ? "in_progress"
+        ? TASK_STATUS.IN_PROGRESS
         : shouldAssign
-          ? "assigned"
+          ? TASK_STATUS.ASSIGNED
           : null;
 
     const updates: Record<string, unknown> = {
@@ -522,7 +531,7 @@ export const updateStatusFromAgent = internalMutation({
       return noChangeResponse();
     }
 
-    if (nextStatus === "done") {
+    if (nextStatus === TASK_STATUS.DONE) {
       const hasQaReviewer = await hasQaAgent(ctx, task.accountId);
       if (hasQaReviewer && !isQaAgent(agent)) {
         throw new Error("Forbidden: QA must approve and mark tasks as done");
@@ -576,9 +585,9 @@ export const updateStatusFromAgent = internalMutation({
       updatedAt: changedAt,
     };
 
-    if (nextStatus === "blocked") {
+    if (nextStatus === TASK_STATUS.BLOCKED) {
       updates.blockedReason = args.blockedReason;
-    } else if (currentStatus === "blocked") {
+    } else if (currentStatus === TASK_STATUS.BLOCKED) {
       updates.blockedReason = undefined;
     }
 
@@ -711,7 +720,34 @@ export const updateFromAgent = internalMutation({
       const valid = safeUpdates.assignedUserIds.filter(
         (id): id is string => typeof id === "string" && id.trim().length > 0,
       );
+      for (const userId of valid) {
+        const membership = await ctx.db
+          .query("memberships")
+          .withIndex("by_account_user", (q) =>
+            q.eq("accountId", task.accountId).eq("userId", userId)
+          )
+          .unique();
+        if (!membership) {
+          throw new Error(`Invalid user: ${userId} is not a member of this account`);
+        }
+      }
       safeUpdates.assignedUserIds = valid;
+    }
+
+    const nextAssignedUserIds =
+      safeUpdates.assignedUserIds !== undefined
+        ? (safeUpdates.assignedUserIds as string[])
+        : task.assignedUserIds;
+    const nextAssignedAgentIds =
+      safeUpdates.assignedAgentIds !== undefined
+        ? (safeUpdates.assignedAgentIds as Id<"agents">[])
+        : task.assignedAgentIds;
+    const nextHasAssignees =
+      nextAssignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
+    if (requiresAssignee(task.status) && !nextHasAssignees) {
+      throw new Error(
+        `Invalid assignees: status '${task.status}' requires at least one assignee`,
+      );
     }
 
     await ctx.db.patch(args.taskId, safeUpdates);
@@ -869,7 +905,7 @@ export const deleteTaskFromAgent = internalMutation({
 
     // Soft-delete: transition to "archived" status
     await ctx.db.patch(args.taskId, {
-      status: "archived",
+      status: TASK_STATUS.ARCHIVED,
       archivedAt: now,
       updatedAt: now,
     });
@@ -887,7 +923,7 @@ export const deleteTaskFromAgent = internalMutation({
       targetName: task.title,
       meta: {
         oldStatus: task.status,
-        newStatus: "archived",
+        newStatus: TASK_STATUS.ARCHIVED,
         reason: args.reason,
         action: "task_deleted",
       },

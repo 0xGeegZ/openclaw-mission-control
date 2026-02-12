@@ -9,6 +9,13 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 vi.mock("../convex-client", () => ({
   getConvexClient: vi.fn(),
+  api: {
+    service: {
+      actions: {
+        updateTaskFromAgent: "updateTaskFromAgent",
+      },
+    },
+  },
 }));
 
 const mockAction = vi.fn();
@@ -52,7 +59,7 @@ describe("taskUpdateTool", () => {
         priority: 6,
       });
       expect(result.success).toBe(false);
-      expect(result.error).toContain("priority must be between 1 and 5");
+      expect(result.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
     });
 
     it("returns error when status is invalid", async () => {
