@@ -88,8 +88,8 @@ export function MessageInput({
 
   const createMessage = useMutation(api.messages.create);
   const pauseAgentsOnTask = useMutation(api.tasks.pauseAgentsOnTask);
-  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
-  const registerUpload = useMutation(api.messages.registerUpload);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const registerUpload = useMutation(api.files.registerUpload);
 
   const [showSlashDropdown, setShowSlashDropdown] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -309,8 +309,12 @@ export function MessageInput({
         attachments = [];
         for (const attachedFile of attachedFiles) {
           try {
-            // 1. Get upload URL
-            const uploadUrl = await generateUploadUrl({ taskId });
+            // 1. Get upload URL (pass file metadata for validation)
+            const uploadUrl = await generateUploadUrl({
+              fileName: attachedFile.file.name,
+              mimeType: attachedFile.file.type,
+              size: attachedFile.file.size,
+            });
             
             // 2. Upload file to Convex storage
             const result = await fetch(uploadUrl, {
@@ -325,8 +329,13 @@ export function MessageInput({
 
             const { storageId } = await result.json();
 
-            // 3. Register upload
-            await registerUpload({ taskId, storageId });
+            // 3. Register upload (save metadata to files table with account isolation)
+            const fileRecord = await registerUpload({
+              fileName: attachedFile.file.name,
+              mimeType: attachedFile.file.type,
+              size: attachedFile.file.size,
+              storageId,
+            });
 
             // 4. Add to attachments array
             attachments.push({
