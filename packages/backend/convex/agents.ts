@@ -206,6 +206,7 @@ export const create = mutation({
     description: v.optional(v.string()),
     heartbeatInterval: v.optional(v.number()),
     avatarUrl: v.optional(v.string()),
+    icon: v.optional(v.string()),
     soulContent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -249,6 +250,7 @@ export const create = mutation({
       status: "offline",
       heartbeatInterval: args.heartbeatInterval ?? 15, // Default 15 minutes
       avatarUrl: args.avatarUrl,
+      icon: args.icon,
       soulContent,
       openclawConfig,
       createdAt: Date.now(),
@@ -284,6 +286,7 @@ export const update = mutation({
     description: v.optional(v.string()),
     heartbeatInterval: v.optional(v.number()),
     avatarUrl: v.optional(v.string()),
+    icon: v.optional(v.string()),
     soulContent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -305,6 +308,7 @@ export const update = mutation({
     if (args.heartbeatInterval !== undefined)
       updates.heartbeatInterval = args.heartbeatInterval;
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
+    if (args.icon !== undefined) updates.icon = args.icon;
     if (args.soulContent !== undefined) updates.soulContent = args.soulContent;
 
     if (Object.keys(updates).length > 0) {

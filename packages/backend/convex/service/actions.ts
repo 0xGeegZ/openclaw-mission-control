@@ -445,10 +445,19 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
-    return await ctx.runQuery(internal.service.agents.listInternal, {
-      accountId: args.accountId,
-    });
+    const [agents, account] = await Promise.all([
+      ctx.runQuery(internal.service.agents.listInternal, {
+        accountId: args.accountId,
+      }),
+      ctx.runQuery(internal.accounts.getInternal, {
+        accountId: args.accountId,
+      }),
+    ]);
+
+    return agents.map((agent) => ({
+      ...agent,
+      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+    }));
   },
 });
 
@@ -651,7 +660,17 @@ export const updateTaskStatusFromAgent = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<{ success: true }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: true;
+    taskId: Id<"tasks">;
+    requestedStatus: TaskStatus;
+    status: TaskStatus;
+    updatedAt: number;
+    changed: boolean;
+  }> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
     if (serviceContext.accountId !== args.accountId) {
@@ -695,10 +714,14 @@ export const updateTaskStatusFromAgent = action({
       "blocked",
     ]);
 
+    let changed = false;
+    let finalStatus: TaskStatus | null = null;
+    let finalUpdatedAt: number | null = null;
+
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
-    const targetStatus = args.status as TaskStatus;
+    const targetStatus = args.status;
     for (let i = 0; i < 10; i++) {
       const task = await ctx.runQuery(internal.service.tasks.getInternal, {
         taskId: args.taskId,
@@ -707,13 +730,17 @@ export const updateTaskStatusFromAgent = action({
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
 
-      const currentStatus = task.status as TaskStatus;
+      const currentStatus = task.status;
       if (
         i === 0 &&
         args.expectedStatus &&
         currentStatus !== args.expectedStatus
       )
-        return { success: true };
+      {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
       if (
         i === 0 &&
         targetStatus === "done" &&
@@ -724,7 +751,11 @@ export const updateTaskStatusFromAgent = action({
           "Forbidden: Task must be in review before marking done",
         );
       }
-      if (currentStatus === targetStatus) break;
+      if (currentStatus === targetStatus) {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
 
       const path = findStatusPath({
         from: currentStatus,
@@ -748,9 +779,28 @@ export const updateTaskStatusFromAgent = action({
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
+      changed = true;
     }
 
-    return { success: true };
+    if (!finalStatus || finalUpdatedAt == null) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task) throw new Error("Not found: Task does not exist");
+      if (task.accountId !== args.accountId)
+        throw new Error("Forbidden: Task belongs to different account");
+      finalStatus = task.status;
+      finalUpdatedAt = task.updatedAt;
+    }
+
+    return {
+      success: true,
+      taskId: args.taskId,
+      requestedStatus: targetStatus,
+      status: finalStatus,
+      updatedAt: finalUpdatedAt,
+      changed,
+    };
   },
 });
 

@@ -3,6 +3,7 @@ import {
   buildNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
 } from "./gateway";
+import { isHeartbeatOkResponse } from "./heartbeat-constants";
 
 describe("parseNoResponsePlaceholder", () => {
   it("detects the plain placeholder", () => {
@@ -32,5 +33,23 @@ describe("buildNoResponseFallbackMessage", () => {
   it("includes mention prefix when provided", () => {
     const message = buildNoResponseFallbackMessage("@squad-lead");
     expect(message.startsWith("@squad-lead\n\n")).toBe(true);
+  });
+});
+
+describe("isHeartbeatOkResponse", () => {
+  it("detects exact HEARTBEAT_OK", () => {
+    expect(isHeartbeatOkResponse("HEARTBEAT_OK")).toBe(true);
+  });
+
+  it("detects HEARTBEAT_OK with heartbeat loading prelude", () => {
+    expect(
+      isHeartbeatOkResponse("Loading context for heartbeat...\n\nHEARTBEAT_OK"),
+    ).toBe(true);
+  });
+
+  it("does not suppress non-heartbeat responses", () => {
+    expect(
+      isHeartbeatOkResponse("Loading context for notification...\nHEARTBEAT_OK"),
+    ).toBe(false);
   });
 });

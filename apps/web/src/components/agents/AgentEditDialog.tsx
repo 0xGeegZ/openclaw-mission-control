@@ -15,9 +15,17 @@ import {
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@packages/ui/components/select";
 import { Textarea } from "@packages/ui/components/textarea";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { AGENT_ICON_NAMES, getAgentIconComponent } from "@/lib/agentIcons";
 
 interface AgentEditDialogProps {
   agent: Doc<"agents">;
@@ -32,7 +40,10 @@ export function AgentEditDialog({ agent, open, onOpenChange }: AgentEditDialogPr
   const [name, setName] = useState(agent.name);
   const [role, setRole] = useState(agent.role);
   const [description, setDescription] = useState(agent.description ?? "");
-  const [heartbeatInterval, setHeartbeatInterval] = useState(String(agent.heartbeatInterval ?? 15));
+  const [heartbeatInterval, setHeartbeatInterval] = useState(
+    String(agent.heartbeatInterval ?? 15),
+  );
+  const [icon, setIcon] = useState(agent.icon ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const updateAgent = useMutation(api.agents.update);
@@ -43,6 +54,7 @@ export function AgentEditDialog({ agent, open, onOpenChange }: AgentEditDialogPr
     setRole(agent.role);
     setDescription(agent.description ?? "");
     setHeartbeatInterval(String(agent.heartbeatInterval ?? 15));
+    setIcon(agent.icon ?? "");
   }, [agent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,6 +69,7 @@ export function AgentEditDialog({ agent, open, onOpenChange }: AgentEditDialogPr
         role: role.trim(),
         description: description.trim() || undefined,
         heartbeatInterval: parseInt(heartbeatInterval, 10) || 15,
+        icon: icon.trim() || undefined,
       });
       toast.success("Agent updated");
       onOpenChange(false);
@@ -112,6 +125,35 @@ export function AgentEditDialog({ agent, open, onOpenChange }: AgentEditDialogPr
               rows={3}
               className="resize-none"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="agent-icon">Icon</Label>
+            <Select
+              value={icon || "__none__"}
+              onValueChange={(v) => setIcon(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger id="agent-icon">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {AGENT_ICON_NAMES.map((iconName) => {
+                  const IconComponent = getAgentIconComponent(iconName);
+                  return (
+                    <SelectItem key={iconName} value={iconName}>
+                      <span className="flex items-center gap-2">
+                        <IconComponent className="h-4 w-4" aria-hidden />
+                        {iconName}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Icon shown when the agent has no avatar image.
+            </p>
           </div>
 
           <div className="space-y-2">

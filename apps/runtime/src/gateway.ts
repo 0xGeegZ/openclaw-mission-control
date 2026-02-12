@@ -3,7 +3,7 @@ import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
-import { HEARTBEAT_OK_RESPONSE } from "./heartbeat-constants";
+import { isHeartbeatOkResponse } from "./heartbeat-constants";
 
 const log = createLogger("[Gateway]");
 
@@ -242,7 +242,7 @@ const state: GatewayState = {
   sessions: new Map(),
   openclawGatewayUrl: "",
   openclawGatewayToken: undefined,
-  openclawRequestTimeoutMs: 60000,
+  openclawRequestTimeoutMs: 300000,
   lastSendAt: null,
   lastSendError: null,
 };
@@ -604,7 +604,7 @@ export async function receiveFromOpenClaw(
     log.warn("OpenClaw returned empty response; skipping message", sessionKey);
     return;
   }
-  if (trimmedResponse === HEARTBEAT_OK_RESPONSE) {
+  if (isHeartbeatOkResponse(trimmedResponse)) {
     log.debug(
       "OpenClaw returned HEARTBEAT_OK; not posting to thread",
       sessionKey,

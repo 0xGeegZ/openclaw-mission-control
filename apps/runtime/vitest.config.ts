@@ -9,10 +9,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      lines: 5,
-      functions: 5,
-      branches: 5,
-      statements: 5,
+      all: true,
       exclude: [
         'node_modules/',
         'dist/',
@@ -20,6 +17,14 @@ export default defineConfig({
         '**/*.d.ts',
         '**/index.ts',
       ],
+      // Thresholds that fail the build if coverage is below target
+      // TODO: Improve coverage and raise thresholds
+      thresholds: {
+        lines: 45,
+        functions: 45,
+        branches: 45,
+        statements: 45,
+      },
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', '.idea', '.git', '.cache'],
