@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@packages/ui/components/card";
 import { Badge } from "@packages/ui/components/badge";
-import { Clock, CircleDot } from "lucide-react";
+import { CircleDot } from "lucide-react";
 import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 
 interface StatusHistory {
