@@ -14,6 +14,7 @@ import {
 } from "./lib/auth";
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
+import { logActivity } from "./lib/activity";
 
 /**
  * Create a new account.
@@ -375,6 +376,12 @@ export const updateRuntimeStatusInternal = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const previousRuntimeStatus = account.runtimeStatus;
     const updates: Record<string, unknown> = {
       runtimeStatus: args.status,
     };
@@ -384,6 +391,24 @@ export const updateRuntimeStatusInternal = internalMutation({
     }
 
     await ctx.db.patch(args.accountId, updates);
+
+    if (previousRuntimeStatus !== args.status) {
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "runtime_status_changed",
+        actorType: "system",
+        actorId: "system",
+        actorName: "System",
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: {
+          oldStatus: previousRuntimeStatus,
+          newStatus: args.status,
+        },
+      });
+    }
 
     /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
     if (args.status === "offline") {

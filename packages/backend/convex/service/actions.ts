@@ -445,10 +445,19 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
-    return await ctx.runQuery(internal.service.agents.listInternal, {
-      accountId: args.accountId,
-    });
+    const [agents, account] = await Promise.all([
+      ctx.runQuery(internal.service.agents.listInternal, {
+        accountId: args.accountId,
+      }),
+      ctx.runQuery(internal.accounts.getInternal, {
+        accountId: args.accountId,
+      }),
+    ]);
+
+    return agents.map((agent) => ({
+      ...agent,
+      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+    }));
   },
 });
 
