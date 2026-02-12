@@ -241,27 +241,32 @@ describe("syncOpenClawProfiles", () => {
   });
 
   it("includes per-agent model when mapped", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
-    const configPath = path.join(tmp, "openclaw.json");
-    const agents: AgentForProfile[] = [
-      {
-        _id: "a1",
-        name: "GPT-5 Nano",
-        slug: "gpt-5-nano",
-        role: "R",
-        sessionKey: "agent:gpt-5-nano:acc1",
-        openclawConfig: { model: "gpt-5-nano" },
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [],
+    withTempEnv(
+      { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
+      () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+        const configPath = path.join(tmp, "openclaw.json");
+        const agents: AgentForProfile[] = [
+          {
+            _id: "a1",
+            name: "GPT-5 Nano",
+            slug: "gpt-5-nano",
+            role: "R",
+            sessionKey: "agent:gpt-5-nano:acc1",
+            openclawConfig: { model: "gpt-5-nano" },
+            effectiveSoulContent: "# SOUL",
+            resolvedSkills: [],
+          },
+        ];
+        syncOpenClawProfiles(agents, {
+          workspaceRoot: path.join(tmp, "agents"),
+          configPath,
+        });
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        expect(config.agents.list[0].model).toBe("openai/gpt-5-nano");
+        fs.rmSync(tmp, { recursive: true, force: true });
       },
-    ];
-    syncOpenClawProfiles(agents, {
-      workspaceRoot: path.join(tmp, "agents"),
-      configPath,
-    });
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    expect(config.agents.list[0].model).toBe("openai/gpt-5-nano");
-    fs.rmSync(tmp, { recursive: true, force: true });
+    );
   });
 
   it("writes SKILL.md for resolved skills with contentMarkdown (OpenClaw frontmatter ensured)", () => {
