@@ -7,6 +7,7 @@ import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Label } from "@packages/ui/components/label";
+import { ACTIVITY_TYPE } from "@packages/shared";
 import { ActivityItem } from "@/components/feed/ActivityItem";
 
 interface TaskActivityTimelineProps {
@@ -48,14 +49,14 @@ export function TaskActivityTimeline({
 
         switch (filter) {
           case "status_changes":
-            return actType === "task_status_changed";
+            return actType === ACTIVITY_TYPE.TASK_STATUS_CHANGED;
           case "assignments":
-            return actType === "task_updated";
+            return actType === ACTIVITY_TYPE.TASK_UPDATED;
           case "comments_documents":
             return (
-              actType === "message_created" ||
-              actType === "document_created" ||
-              actType === "document_updated"
+              actType === ACTIVITY_TYPE.MESSAGE_CREATED ||
+              actType === ACTIVITY_TYPE.DOCUMENT_CREATED ||
+              actType === ACTIVITY_TYPE.DOCUMENT_UPDATED
             );
           default:
             return true;
