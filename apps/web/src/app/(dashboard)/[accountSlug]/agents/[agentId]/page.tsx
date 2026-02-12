@@ -58,6 +58,7 @@ import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
 import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
 import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
 import { AgentConfigurationCard } from "./_components/AgentConfigurationCard";
+import { AgentStatisticsCard } from "./_components/AgentStatisticsCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -328,16 +329,23 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 </CardContent>
               </Card>
               <AgentConfigurationCard agent={agent} />
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    Recent activity
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    {agentActivities.length} recent actions
-                  </CardDescription>
-                </CardHeader>
+              <AgentStatisticsCard
+                agent={agent}
+                taskCount={agentTasks?.length ?? 0}
+                activityCount={agentActivities.length}
+              />
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Recent activity
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  {agentActivities.length} recent actions
+                </CardDescription>
+              </CardHeader>
                 <CardContent>
                   {agentActivities.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
@@ -357,7 +365,6 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   )}
                 </CardContent>
               </Card>
-            </div>
 
             {isAdmin && (
               <AgentBehaviorFlagsCard
