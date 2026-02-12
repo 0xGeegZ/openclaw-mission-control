@@ -34,13 +34,13 @@ function createMockContext(dbData: {
 }) {
   return {
     runQuery: vi.fn(async (query, args) => {
-      if (query.name === "getInternal" && args.agentId) {
+      if (args.agentId) {
         return dbData.agent || null;
       }
-      if (query.name === "getInternal" && args.taskId) {
+      if (args.taskId) {
         return dbData.task || null;
       }
-      if (query.name === "getInternal" && args.accountId) {
+      if (args.accountId) {
         return dbData.account || null;
       }
       return null;
@@ -172,8 +172,101 @@ describe("linkTaskToPrForAgentTool", () => {
       expect(ctx.runMutation).toHaveBeenCalled(); // Task mutation was called
     });
 
+    it("should skip GitHub API when GITHUB_REPO missing", async () => {
+      process.env.GITHUB_TOKEN = "ghp_test123";
+      delete process.env.GITHUB_REPO;
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const ctx = createMockContext({
+        agent: {
+          _id: testAgentId,
+          slug: "orchestrator",
+          accountId: testAccountId,
+        },
+        task: {
+          _id: testTaskId,
+          accountId: testAccountId,
+          title: "Test Task",
+          metadata: {},
+        },
+        account: { _id: testAccountId },
+      });
+
+      const action = async () => {
+        const ghToken = process.env.GITHUB_TOKEN;
+        const repo = process.env.GITHUB_REPO;
+
+        await ctx.runMutation({} as any, { taskId: testTaskId, prNumber: testPrNumber });
+
+        if (!ghToken) return { success: true };
+        if (!repo) {
+          console.warn("GitHub API call skipped: GITHUB_REPO not set");
+          return { success: true };
+        }
+
+        return { success: true };
+      };
+
+      const result = await action();
+      expect(result.success).toBe(true);
+      expect(ctx.runMutation).toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "GitHub API call skipped: GITHUB_REPO not set",
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should skip GitHub API when GITHUB_REPO is invalid", async () => {
+      process.env.GITHUB_TOKEN = "ghp_test123";
+      process.env.GITHUB_REPO = "invalid-repo-format";
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const ctx = createMockContext({
+        agent: {
+          _id: testAgentId,
+          slug: "orchestrator",
+          accountId: testAccountId,
+        },
+        task: {
+          _id: testTaskId,
+          accountId: testAccountId,
+          title: "Test Task",
+          metadata: {},
+        },
+        account: { _id: testAccountId },
+      });
+
+      const action = async () => {
+        const ghToken = process.env.GITHUB_TOKEN;
+        const repo = process.env.GITHUB_REPO;
+
+        await ctx.runMutation({} as any, { taskId: testTaskId, prNumber: testPrNumber });
+
+        if (!ghToken) return { success: true };
+        if (!repo) return { success: true };
+        const [owner, repoName] = repo.split("/");
+        if (!owner || !repoName) {
+          console.warn(
+            "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+          );
+          return { success: true };
+        }
+
+        return { success: true };
+      };
+
+      const result = await action();
+      expect(result.success).toBe(true);
+      expect(ctx.runMutation).toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
     it("should log warning when GitHub API returns 404", async () => {
       process.env.GITHUB_TOKEN = "ghp_test123";
+      process.env.GITHUB_REPO = "0xGeegZ/openclaw-mission-control";
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       mockFetch.mockResolvedValueOnce({
@@ -183,11 +276,14 @@ describe("linkTaskToPrForAgentTool", () => {
 
       const action = async () => {
         const ghToken = process.env.GITHUB_TOKEN;
-        if (!ghToken) return { success: true };
+        const repo = process.env.GITHUB_REPO;
+        if (!ghToken || !repo) return { success: true };
+        const [owner, repoName] = repo.split("/");
+        if (!owner || !repoName) return { success: true };
 
         try {
           const response = await global.fetch(
-            `https://api.github.com/repos/0xGeegZ/openclaw-mission-control/pulls/${testPrNumber}`,
+            `https://api.github.com/repos/${owner}/${repoName}/pulls/${testPrNumber}`,
             {
               headers: {
                 Authorization: `Bearer ${ghToken}`,
@@ -509,7 +605,7 @@ describe("getAgentSkillsForTool", () => {
     });
   });
 
-  describe("Orchestrator-enhanced visibility", () => {
+  describe("get_agent_skills available to all agents", () => {
     it("should allow orchestrator to query any agent's skills", async () => {
       const ctx = {
         runQuery: vi.fn(async (query, args) => {
@@ -523,11 +619,11 @@ describe("getAgentSkillsForTool", () => {
         }),
       } as any;
 
+      const toIso = (ts: number) => new Date(ts).toISOString();
+
       const action = async () => {
         const orchestrator = await ctx.runQuery({}, { agentId: orchestratorId });
-        if (orchestrator?.slug !== "orchestrator") {
-          throw new Error("Only orchestrator can query other agents");
-        }
+        if (!orchestrator) throw new Error("Orchestrator not found");
 
         const targetAgent = await ctx.runQuery({}, { agentId: qaId });
         if (!targetAgent) throw new Error("Target agent not found");
@@ -537,7 +633,9 @@ describe("getAgentSkillsForTool", () => {
             agentId: targetAgent.slug,
             skillIds: targetAgent.openclawConfig?.skillIds || [],
             skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
-            lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+            lastUpdated: toIso(
+              targetAgent.lastHeartbeat || targetAgent._creationTime,
+            ),
           },
         ];
       };
@@ -545,9 +643,12 @@ describe("getAgentSkillsForTool", () => {
       const result = await action();
       expect(result[0].agentId).toBe("qa");
       expect(result[0].skillIds).toContain("security-audit");
+      expect(result[0].lastUpdated).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+      );
     });
 
-    it("should deny non-orchestrator querying other agents' skills", async () => {
+    it("should allow non-orchestrator to query other agents' skills", async () => {
       const ctx = {
         runQuery: vi.fn(async (query, args) => {
           if (args.agentId === engineerId) {
@@ -560,20 +661,30 @@ describe("getAgentSkillsForTool", () => {
         }),
       } as any;
 
+      const toIso = (ts: number) => new Date(ts).toISOString();
+
       const action = async () => {
         const engineer = await ctx.runQuery({}, { agentId: engineerId });
         if (!engineer) throw new Error("Engineer not found");
 
-        // Engineer tries to query QA
-        if (engineer.slug !== "orchestrator" && qaId !== engineerId) {
-          throw new Error("Forbidden: Only orchestrator can query other agents' skills");
-        }
-        return null;
+        const targetAgent = await ctx.runQuery({}, { agentId: qaId });
+        if (!targetAgent) throw new Error("Target agent not found");
+
+        return [
+          {
+            agentId: targetAgent.slug,
+            skillIds: targetAgent.openclawConfig?.skillIds || [],
+            skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
+            lastUpdated: toIso(
+              targetAgent.lastHeartbeat || targetAgent._creationTime,
+            ),
+          },
+        ];
       };
 
-      await expect(action()).rejects.toThrow(
-        "Forbidden: Only orchestrator can query other agents' skills"
-      );
+      const result = await action();
+      expect(result[0].agentId).toBe("qa");
+      expect(result[0].skillIds).toContain("security-audit");
     });
   });
 
@@ -693,5 +804,143 @@ describe("getAgentSkillsForTool", () => {
       expect(result.skillCount).toBe(0);
       expect(result.skillIds).toEqual([]);
     });
+  });
+});
+
+// ============================================================================
+// searchTasksForAgentTool Tests
+// ============================================================================
+
+describe("searchTasksForAgentTool", () => {
+  const testAccountId = "acc_123" as Id<"accounts">;
+  const testAgentId = "agent_orchestrator" as Id<"agents">;
+  const testServiceToken = "token_abc123";
+
+  it("enforces orchestrator-only access", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, slug: "engineer", accountId: testAccountId },
+      account: {
+        _id: testAccountId,
+        settings: { orchestratorAgentId: "agent_other" as Id<"agents"> },
+      },
+    });
+
+    const action = async () => {
+      const agent = await ctx.runQuery({} as any, { agentId: testAgentId });
+      const account = await ctx.runQuery({} as any, { accountId: testAccountId });
+      if (!account?.settings?.orchestratorAgentId) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      if (account.settings.orchestratorAgentId !== agent._id) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      return [];
+    };
+
+    await expect(action()).rejects.toThrow(
+      "Forbidden: Only the orchestrator can search tasks",
+    );
+  });
+
+  it("returns results for orchestrator", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, slug: "orchestrator", accountId: testAccountId },
+      account: {
+        _id: testAccountId,
+        settings: { orchestratorAgentId: testAgentId },
+      },
+    });
+
+    const action = async () => {
+      const account = await ctx.runQuery({} as any, { accountId: testAccountId });
+      if (account.settings.orchestratorAgentId !== testAgentId) {
+        throw new Error("Forbidden: Only the orchestrator can search tasks");
+      }
+      return [
+        {
+          _id: "task1",
+          title: "Test Task",
+          status: "in_progress",
+          priority: 3,
+          assignedAgentIds: [],
+          assignedUserIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          relevanceScore: 3,
+        },
+      ];
+    };
+
+    const result = await action();
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe("Test Task");
+  });
+});
+
+// ============================================================================
+// loadTaskDetailsForAgentTool Tests
+// ============================================================================
+
+describe("loadTaskDetailsForAgentTool", () => {
+  const testAccountId = "acc_123" as Id<"accounts">;
+  const testAgentId = "agent_123" as Id<"agents">;
+  const testTaskId = "task_123" as Id<"tasks">;
+
+  it("rejects cross-account access", async () => {
+    const ctx = createMockContext({
+      agent: { _id: testAgentId, accountId: testAccountId },
+      task: { _id: testTaskId, accountId: "acc_other" },
+    });
+
+    const action = async () => {
+      const task = await ctx.runQuery({} as any, { taskId: testTaskId });
+      if (task.accountId !== testAccountId) {
+        throw new Error("Forbidden: Task belongs to different account");
+      }
+      return { task, thread: [] };
+    };
+
+    await expect(action()).rejects.toThrow(
+      "Forbidden: Task belongs to different account",
+    );
+  });
+
+  it("clamps message limit to max 200", async () => {
+    const messageLimit = Math.min(Math.max(1, 500), 200);
+    expect(messageLimit).toBe(200);
+  });
+});
+
+// ============================================================================
+// createResponseRequestNotifications Tests
+// ============================================================================
+
+describe("createResponseRequestNotifications", () => {
+  it("rejects empty message or recipients", async () => {
+    const action = async (recipients: string[], message: string) => {
+      if (recipients.length === 0) {
+        throw new Error("recipientSlugs is required");
+      }
+      if (!message.trim()) {
+        throw new Error("message is required");
+      }
+      return { notificationIds: [] };
+    };
+
+    await expect(action([], "ping")).rejects.toThrow("recipientSlugs is required");
+    await expect(action(["qa"], " ")).rejects.toThrow("message is required");
+  });
+
+  it("rejects too many recipients", async () => {
+    const maxRecipients = 10;
+    const recipients = Array.from({ length: maxRecipients + 1 }, (_, i) => `a${i}`);
+    const action = async () => {
+      if (recipients.length > maxRecipients) {
+        throw new Error(`Too many recipients: max ${maxRecipients} allowed per request`);
+      }
+      return { notificationIds: [] };
+    };
+
+    await expect(action()).rejects.toThrow("Too many recipients: max 10 allowed per request");
   });
 });

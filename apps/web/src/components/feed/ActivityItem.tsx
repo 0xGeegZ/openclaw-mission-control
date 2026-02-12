@@ -1,11 +1,11 @@
 "use client";
 
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
-import { formatDistanceToNow } from "date-fns";
 import {
   getActivityDescription,
   type ActivityType,
 } from "@packages/backend/convex/lib/activity";
+import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
 import {
   User,
@@ -83,9 +83,10 @@ function getActivityTaskHref(
 }
 
 /**
- * Single activity item in feed.
+ * Single activity item in feed. Relative time updates on a 60s tick so "1 min ago" advances without refresh.
  */
 export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
+  const relativeTime = useRelativeTime(activity.createdAt, { addSuffix: true });
   const config = actorConfig[activity.actorType] || actorConfig.system;
   const Icon = config.icon;
   const typeConfig = activityTypeConfig[activity.type as string];
@@ -135,13 +136,14 @@ export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
               activity.type as ActivityType,
               activity.actorName,
               activity.targetName,
+              activity.meta as Record<string, unknown> | undefined,
             )}
           </span>
         </p>
 
         <div className="flex items-center gap-2 mt-1.5">
           <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-            {formatDistanceToNow(activity.createdAt, { addSuffix: true })}
+            {relativeTime}
           </span>
         </div>
       </div>

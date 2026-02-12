@@ -8,12 +8,24 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 - Writable clone (use for all work): `/root/clawd/repos/openclaw-mission-control`
 - GitHub: <https://github.com/0xGeegZ/openclaw-mission-control>
-- Before starting a task, run `git fetch origin` and `git pull --ff-only` in the writable clone.
+- Before starting a task, run `git fetch origin` and `git pull` in the writable clone.
 - If the writable clone is missing, run `git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control`
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
 - To inspect directories, use `exec` (e.g. `ls /root/clawd/repos/openclaw-mission-control`); use `read` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run `gh auth login`; when GH_TOKEN is set, use `gh` and `git` directly.
 - Write artifacts to `/root/clawd/deliverables` and reference them in the thread.
+
+## Workspace boundaries (read/write)
+
+- Allowed root: `/root/clawd` only.
+- Allowed working paths:
+  - `/root/clawd/agents/<slug>` (your agent workspace, safe to create files/folders)
+  - `/root/clawd/memory` (WORKING.md, daily notes, MEMORY.md)
+  - `/root/clawd/deliverables` (final artifacts to share)
+  - `/root/clawd/repos/openclaw-mission-control` (code changes)
+  - `/root/clawd/skills` (only if explicitly instructed)
+- Do not read or write outside `/root/clawd` (no `/root`, `/etc`, `/usr`, `/tmp`, or host paths).
+- If a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents` and your `/root/clawd/agents/<slug>` workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
 
 ## Runtime ownership (critical)
 
@@ -39,7 +51,10 @@ Only include changes that directly support the current task. If any change is no
    - do not add "nice-to-have" changes, refactors, cleanup, or dummy code
    - if you discover related improvements, create a follow-up task instead
    - if you are unsure whether a change is in scope, do not include it
-7. Use your available skills as much as possible when working on a task.
+7. Skill usage is mandatory for in-scope operations:
+   - before each operation, check your assigned skills (`TOOLS.md` + `skills/*/SKILL.md`)
+   - if one or more skills apply, use them instead of ad-hoc behavior
+   - in your update, name the skill(s) you used; if none apply, explicitly write `No applicable skill`
 
 ## Where to store memory
 
@@ -100,6 +115,16 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. This is the document sharing tool — always use it when you produce docs so the primary user can see them. After calling it, include the returned documentId and a Markdown link in your reply: `[Document](/document/<documentId>)`. Available when the account allows agents to create documents.
 - **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
+- **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
+- **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
+- **task_assign** — Assign agents to a task by slug. Use it to update current task assignees when another agent is better suited for the next step.
+- **task_message** — Post a message to another task's thread. Use it to reference related tasks, hand off work from a DONE task into another active task, or ping agents in that other thread; pair with `response_request` when you need guaranteed agent notification.
+- **task_list** (orchestrator only) — List tasks with optional filters (status, assignee, limit).
+- **task_get** (orchestrator only) — Fetch details for a single task by ID.
+- **task_thread** (orchestrator only) — Fetch recent thread messages for a task.
+- **task_search** (orchestrator only) — Search tasks by title/description/blockers.
+- **task_delete** (orchestrator only) — Archive a task with a required reason (soft delete).
+- **task_link_pr** (orchestrator only) — Link a task to a GitHub PR bidirectionally.
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
@@ -138,7 +163,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
-**Orchestrator (squad lead):** When a task is in REVIEW, request QA approval. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** When a task is in REVIEW, you must request QA approval using the **response_request** tool. Even if you agree with QA or QA already posted, you still must request a QA response that explicitly confirms and moves the task to DONE — do not post an "Approved" reply without sending the response_request. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
 
 ### Optional HTTP fallbacks (manual/CLI)
 
@@ -153,6 +178,8 @@ All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are lo
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
 
+**Never self-assign tasks.** You are the orchestrator/coordinator—only assign work to the actual agents who will execute (e.g. `assigneeSlugs: ["engineer"]`, not `["squad-lead", "engineer"]`). This keeps accountability clear.
+
 ## Communication rules
 
 - Be short and concrete in threads.
@@ -165,7 +192,16 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
 
 ### Orchestrator follow-ups (tool-only)
 
-When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+
+### Orchestrator ping requests (required behavior)
+
+When the primary user asks you to "ping" one or more agents or tasks:
+
+- Add a thread comment on each target task explicitly requesting a response from the target agent(s). Use **task_message** for tasks other than the current task.
+- Send a **response_request** for the same task and recipients so agents are actually notified.
+- For multiple tasks, repeat both actions per task (comment + response_request).
+- If either step fails for any task, report **BLOCKED** and list the failed task IDs/agent slugs.
 
 ## Document rules
 

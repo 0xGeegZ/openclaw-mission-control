@@ -18,14 +18,16 @@ import { TASK_STATUS, AGENT_STATUSES, MEMBER_ROLES } from "./lib/enums";
  * Uses shared enum from lib/enums.ts to prevent duplication.
  * Workflow: inbox → assigned → in_progress → review → done
  * Special state: blocked (can be entered from assigned or in_progress)
+ * Archived: terminal state for deleted/removed tasks (soft delete with audit trail)
  */
 const taskStatusValidator = v.union(
-  v.literal('inbox'),
-  v.literal('assigned'),
-  v.literal('in_progress'),
-  v.literal('review'),
-  v.literal('done'),
-  v.literal('blocked')
+  v.literal("inbox"),
+  v.literal("assigned"),
+  v.literal("in_progress"),
+  v.literal("review"),
+  v.literal("done"),
+  v.literal("blocked"),
+  v.literal("archived"),
 );
 
 /**
@@ -87,8 +89,11 @@ const notificationTypeValidator = v.union(
 
 /**
  * Activity type validator.
+ * Must match lib/validators.activityTypeValidator and lib/activity.ActivityType.
  */
 const activityTypeValidator = v.union(
+  v.literal("account_created"),
+  v.literal("account_updated"),
   v.literal("task_created"),
   v.literal("task_updated"),
   v.literal("task_status_changed"),
@@ -100,6 +105,7 @@ const activityTypeValidator = v.union(
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("member_updated"),
+  v.literal("role_changed"),
 );
 
 /**
@@ -362,6 +368,9 @@ export default defineSchema({
     /** Avatar/icon URL */
     avatarUrl: v.optional(v.string()),
 
+    /** Lucide icon name for UI when avatarUrl is not set (e.g. "Crown", "Code2") */
+    icon: v.optional(v.string()),
+
     /**
      * SOUL file content.
      * Contains personality, constraints, and operating procedures.
@@ -482,6 +491,12 @@ export default defineSchema({
      * Required when status is "blocked".
      */
     blockedReason: v.optional(v.string()),
+
+    /**
+     * Timestamp when task was archived (soft delete).
+     * Set only when status is "archived"; used for audit trail.
+     */
+    archivedAt: v.optional(v.number()),
 
     /**
      * Metadata for external integrations.

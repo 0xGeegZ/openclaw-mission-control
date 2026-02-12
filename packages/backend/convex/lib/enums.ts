@@ -18,6 +18,7 @@
 /**
  * Task status workflow: inbox → assigned → in_progress → review → done
  * Special state: blocked (can be entered from assigned or in_progress)
+ * Terminal state: archived (soft delete with audit trail)
  */
 export const TASK_STATUS = [
   'inbox',
@@ -25,7 +26,8 @@ export const TASK_STATUS = [
   'in_progress',
   'review',
   'done',
-  'blocked'
+  'blocked',
+  'archived'
 ] as const;
 
 export type TaskStatus = typeof TASK_STATUS[number];

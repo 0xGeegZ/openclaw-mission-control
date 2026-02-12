@@ -29,7 +29,7 @@ services:
       - OPENCLAW_CLIENT_TOOLS_ENABLED=0
     volumes:
       # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
-      - ../../.runtime/openclaw-workspace:/root/clawd
+      - ../../.runtime/openclaw-workspace:/root/clawd:delegated
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -51,6 +51,10 @@ services:
       context: ./openclaw
       dockerfile: Dockerfile
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     profiles:
       - openclaw
     env_file:
@@ -61,7 +65,7 @@ services:
     networks:
       - default
     volumes:
-      - ../../.runtime/openclaw-data:/root/.openclaw
-      - ../../.runtime/openclaw-workspace:/root/clawd
+      - ../../.runtime/openclaw-data:/root/.openclaw:delegated
+      - ../../.runtime/openclaw-workspace:/root/clawd:delegated
     ports:
       - "127.0.0.1:18789:18789"

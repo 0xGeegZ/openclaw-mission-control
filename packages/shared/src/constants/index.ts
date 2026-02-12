@@ -2,6 +2,7 @@ import type { TaskStatus, LLMModel } from "../types";
 
 /**
  * Ordered list of task statuses for Kanban columns.
+ * Archived tasks are typically hidden from main board but accessible in history/archive views.
  */
 export const TASK_STATUS_ORDER: TaskStatus[] = [
   "inbox",
@@ -9,6 +10,8 @@ export const TASK_STATUS_ORDER: TaskStatus[] = [
   "in_progress",
   "review",
   "done",
+  "blocked",
+  "archived",
 ];
 
 /**
@@ -21,19 +24,22 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   review: "Review",
   done: "Done",
   blocked: "Blocked",
+  archived: "Archived",
 };
 
 /**
  * Valid status transitions.
  * Key = current status, Value = array of allowed next statuses.
+ * Archived is a terminal state reachable from most statuses (soft-delete).
  */
 export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  inbox: ["assigned"],
-  assigned: ["in_progress", "blocked"],
-  in_progress: ["review", "blocked"],
-  review: ["done", "in_progress"],
-  done: [],
-  blocked: ["assigned", "in_progress"],
+  inbox: ["assigned", "archived"],
+  assigned: ["in_progress", "blocked", "inbox", "archived"],
+  in_progress: ["review", "blocked", "archived"],
+  review: ["done", "in_progress", "blocked", "archived"],
+  done: ["archived"],
+  blocked: ["assigned", "in_progress", "archived"],
+  archived: [],
 };
 
 /**

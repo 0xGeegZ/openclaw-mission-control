@@ -24,6 +24,8 @@ CONFIG_DIR="/root/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 # Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
 OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
+# Per-agent workspace root used by OpenClaw sessions. Must exist before first delivery.
+OPENCLAW_WORKSPACE_ROOT="${OPENCLAW_WORKSPACE_ROOT:-/root/clawd/agents}"
 TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -406,7 +408,11 @@ if [ -f "$BOOTSTRAP_FILE" ]; then
   rm -f "$BOOTSTRAP_FILE"
 fi
 
-mkdir -p "$WORKSPACE_DIR/memory" "$WORKSPACE_DIR/deliverables" "$WORKSPACE_DIR/repos"
+mkdir -p \
+  "$WORKSPACE_DIR/memory" \
+  "$WORKSPACE_DIR/deliverables" \
+  "$WORKSPACE_DIR/repos" \
+  "$OPENCLAW_WORKSPACE_ROOT"
 touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md"
 DAILY_MEMORY_FILE="$WORKSPACE_DIR/memory/$(date +%F).md"
 touch "$DAILY_MEMORY_FILE"

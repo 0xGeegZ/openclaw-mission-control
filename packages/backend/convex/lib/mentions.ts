@@ -87,14 +87,14 @@ export async function resolveMentions(
     .collect();
 
   for (const mentionStr of mentionStrings) {
-    // Skip if already resolved
-    if (resolved.has(mentionStr)) continue;
+    const normalized = mentionStr.toLowerCase();
+    if (resolved.has(normalized)) continue;
 
     // Try to match user by name (case-insensitive)
     const matchedMember = memberships.find(
       (m) =>
-        m.userName.toLowerCase() === mentionStr ||
-        m.userEmail.toLowerCase().split("@")[0] === mentionStr,
+        m.userName.toLowerCase() === normalized ||
+        m.userEmail.toLowerCase().split("@")[0] === normalized,
     );
 
     if (matchedMember) {
@@ -103,15 +103,15 @@ export async function resolveMentions(
         id: matchedMember.userId,
         name: matchedMember.userName,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
       continue;
     }
 
-    // Try to match agent by slug or name
+    // Try to match agent by slug or name (case-insensitive)
     const matchedAgent = agents.find(
       (a) =>
-        a.slug.toLowerCase() === mentionStr ||
-        a.name.toLowerCase() === mentionStr,
+        a.slug.toLowerCase() === normalized ||
+        a.name.toLowerCase() === normalized,
     );
 
     if (matchedAgent) {
@@ -121,7 +121,7 @@ export async function resolveMentions(
         name: matchedAgent.name,
         slug: matchedAgent.slug,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
     }
 
     // If no match, skip (don't include unresolved mentions)
@@ -174,4 +174,50 @@ export async function getAllMentions(
   }
 
   return mentions;
+}
+
+/**
+ * List all mentionable candidates for @mention autocomplete.
+ * Returns workspace members and agents, grouped by type for UI.
+ *
+ * @param ctx - Convex context
+ * @param accountId - Account to search within
+ * @returns Object with users and agents arrays
+ */
+export async function listCandidates(
+  ctx: QueryCtx,
+  accountId: Id<"accounts">,
+): Promise<{
+  users: Array<{ id: string; name: string; email: string; avatarUrl?: string }>;
+  agents: Array<{ id: string; name: string; slug: string }>;
+}> {
+  // Fetch all members
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const users = memberships.map((m) => ({
+    id: m.userId,
+    name: m.userName,
+    email: m.userEmail,
+    avatarUrl: m.userAvatarUrl,
+  }));
+
+  // Fetch all agents
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const agentList = agents.map((a) => ({
+    id: a._id,
+    name: a.name,
+    slug: a.slug,
+  }));
+
+  return {
+    users,
+    agents: agentList,
+  };
 }

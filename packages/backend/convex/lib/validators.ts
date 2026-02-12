@@ -12,6 +12,7 @@ export const taskStatusValidator = v.union(
   v.literal("review"),
   v.literal("done"),
   v.literal("blocked"),
+  v.literal("archived"),
 );
 
 /** Agent status validator */
@@ -64,6 +65,8 @@ export const notificationTypeValidator = v.union(
 
 /** Activity type validator */
 export const activityTypeValidator = v.union(
+  v.literal("account_created"),
+  v.literal("account_updated"),
   v.literal("task_created"),
   v.literal("task_updated"),
   v.literal("task_status_changed"),
@@ -75,6 +78,7 @@ export const activityTypeValidator = v.union(
   v.literal("member_added"),
   v.literal("member_removed"),
   v.literal("member_updated"),
+  v.literal("role_changed"),
 );
 
 /** Runtime status validator */
