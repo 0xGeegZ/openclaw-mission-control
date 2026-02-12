@@ -59,6 +59,7 @@ import { AgentConfigurationCard } from "./_components/AgentConfigurationCard";
 import { AgentStatisticsCard } from "./_components/AgentStatisticsCard";
 import { AgentActivityTimeline } from "./_components/AgentActivityTimeline";
 import { AgentControlsCard } from "./_components/AgentControlsCard";
+import { AgentStatusHistoryCard } from "./_components/AgentStatusHistoryCard";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -331,8 +332,9 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               <AgentConfigurationCard agent={agent} />
               <AgentStatisticsCard
                 agent={agent}
-                taskCount={agentTasks?.length ?? 0}
-                activityCount={agentActivities.length}
+                sessionsCreated={0}
+                tasksCompleted={0}
+                avgResponseTime={0}
               />
             </div>
 
@@ -340,6 +342,11 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               activities={agentActivities}
               accountSlug={accountSlug}
               limit={15}
+            />
+
+            <AgentStatusHistoryCard
+              agent={agent}
+              statusHistory={[]}
             />
 
             {isAdmin && (

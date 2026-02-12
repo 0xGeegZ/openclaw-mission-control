@@ -9,44 +9,44 @@ import {
 } from "@packages/ui/components/card";
 import {
   BarChart3,
-  MessageSquare,
-  ListTodo,
+  Activity,
+  Zap,
   Clock,
 } from "lucide-react";
 
 interface AgentStatisticsCardProps {
   agent: Doc<"agents">;
-  taskCount?: number;
-  activityCount?: number;
-  messageCount?: number;
+  sessionsCreated?: number;
+  tasksCompleted?: number;
+  avgResponseTime?: number;
 }
 
 /**
- * Display agent statistics: tasks assigned, sessions created, activity, etc.
+ * Display agent statistics: sessions created, tasks completed, avg response time.
  */
 export function AgentStatisticsCard({
   agent,
-  taskCount = 0,
-  activityCount = 0,
-  messageCount = 0,
+  sessionsCreated = 0,
+  tasksCompleted = 0,
+  avgResponseTime = 0,
 }: AgentStatisticsCardProps) {
   const stats = [
     {
-      label: "Tasks Assigned",
-      value: taskCount,
-      icon: ListTodo,
+      label: "Sessions Created",
+      value: sessionsCreated,
+      icon: Activity,
       color: "text-blue-500",
     },
     {
-      label: "Activity Events",
-      value: activityCount,
+      label: "Tasks Completed",
+      value: tasksCompleted,
       icon: BarChart3,
       color: "text-green-500",
     },
     {
-      label: "Messages",
-      value: messageCount,
-      icon: MessageSquare,
+      label: "Avg Response Time",
+      value: avgResponseTime > 0 ? `${avgResponseTime.toFixed(1)}s` : "—",
+      icon: Zap,
       color: "text-purple-500",
     },
     {
