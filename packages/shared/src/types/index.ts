@@ -141,6 +141,39 @@ export const ACTIVITY_TYPE = {
 export type ActivityType = (typeof ACTIVITY_TYPE)[keyof typeof ACTIVITY_TYPE];
 
 // ============================================================================
+// RUNTIME STATUS
+// ============================================================================
+
+/**
+ * Per-account runtime server status (accounts.runtimeStatus).
+ */
+export const RUNTIME_STATUS = {
+  PROVISIONING: "provisioning",
+  ONLINE: "online",
+  DEGRADED: "degraded",
+  OFFLINE: "offline",
+  ERROR: "error",
+} as const;
+
+export type RuntimeStatus =
+  (typeof RUNTIME_STATUS)[keyof typeof RUNTIME_STATUS];
+
+/**
+ * Runtime table status (runtimes table, includes "upgrading").
+ */
+export const RUNTIME_V2_STATUS = {
+  PROVISIONING: "provisioning",
+  ONLINE: "online",
+  DEGRADED: "degraded",
+  OFFLINE: "offline",
+  UPGRADING: "upgrading",
+  ERROR: "error",
+} as const;
+
+export type RuntimeV2Status =
+  (typeof RUNTIME_V2_STATUS)[keyof typeof RUNTIME_V2_STATUS];
+
+// ============================================================================
 // SKILL CATEGORY
 // ============================================================================
 

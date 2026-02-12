@@ -11,6 +11,8 @@ import {
   NOTIFICATION_TYPE,
   SKILL_CATEGORY,
   LLM_MODEL,
+  RUNTIME_STATUS,
+  RUNTIME_V2_STATUS,
   type TaskStatus,
   type AgentStatus,
   type ActivityType,
@@ -27,6 +29,8 @@ export {
   NOTIFICATION_TYPE,
   SKILL_CATEGORY,
   LLM_MODEL,
+  RUNTIME_STATUS,
+  RUNTIME_V2_STATUS,
 };
 
 /**

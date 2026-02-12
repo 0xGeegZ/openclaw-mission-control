@@ -20,6 +20,8 @@ import {
   NOTIFICATION_TYPE,
   ACTIVITY_TYPE,
   SKILL_CATEGORY,
+  RUNTIME_STATUS,
+  RUNTIME_V2_STATUS,
 } from "@packages/shared";
 
 export {
@@ -34,6 +36,8 @@ export {
   NOTIFICATION_TYPE,
   ACTIVITY_TYPE,
   SKILL_CATEGORY,
+  RUNTIME_STATUS,
+  RUNTIME_V2_STATUS,
 };
 
 // ============================================================================
@@ -59,33 +63,6 @@ export const PAUSE_ALLOWED_STATUSES = [
 export const DOCUMENT_KIND = {
   FILE: "file",
   FOLDER: "folder",
-} as const;
-
-// ============================================================================
-// RUNTIME STATUS
-// ============================================================================
-
-/**
- * Per-account runtime server status (accounts.runtimeStatus).
- */
-export const RUNTIME_STATUS = {
-  PROVISIONING: "provisioning",
-  ONLINE: "online",
-  DEGRADED: "degraded",
-  OFFLINE: "offline",
-  ERROR: "error",
-} as const;
-
-/**
- * Runtime table status (runtimes table, includes "upgrading").
- */
-export const RUNTIME_V2_STATUS = {
-  PROVISIONING: "provisioning",
-  ONLINE: "online",
-  DEGRADED: "degraded",
-  OFFLINE: "offline",
-  UPGRADING: "upgrading",
-  ERROR: "error",
 } as const;
 
 // ============================================================================
