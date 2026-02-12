@@ -40,6 +40,31 @@ function isQaAgent(
 }
 
 /**
+ * Calculate search relevance score for a task with weighted field matching.
+ * title (3x) > description (2x) > blockedReason (1x)
+ */
+export function scoreTaskSearchRelevance(
+  task: Pick<Doc<"tasks">, "title" | "description" | "blockedReason">,
+  query: string,
+): number {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  let score = 0;
+  const titleLower = task.title.toLowerCase();
+  const descLower = (task.description ?? "").toLowerCase();
+  const blockerLower = (task.blockedReason ?? "").toLowerCase();
+
+  if (titleLower.includes(normalizedQuery)) score += 3;
+  if (descLower.includes(normalizedQuery)) score += 2;
+  if (blockerLower.includes(normalizedQuery)) score += 1;
+
+  return score;
+}
+
+/**
  * Returns true when the account has at least one QA agent configured.
  */
 async function hasQaAgent(
@@ -633,30 +658,11 @@ export const searchTasksForAgentTool = internalQuery({
       return [];
     }
 
-    /**
-     * Calculate relevance score for a task based on substring matches.
-     * Uses safe substring matching (no regex), weighted by field:
-     * title (3x) > description (2x) > blocker text (1x)
-     */
-    function scoreTask(task: (typeof tasks)[0]): number {
-      let score = 0;
-      const titleLower = task.title.toLowerCase();
-      const descLower = (task.description ?? "").toLowerCase();
-      const blockerLower = (task.blockedReason ?? "").toLowerCase();
-
-      // Count matches: simple presence test for each field
-      if (titleLower.includes(q)) score += 3;
-      if (descLower.includes(q)) score += 2;
-      if (blockerLower.includes(q)) score += 1;
-
-      return score;
-    }
-
     // Score and filter all tasks
     const scored = tasks
       .map((task) => ({
         task,
-        score: scoreTask(task),
+        score: scoreTaskSearchRelevance(task, q),
       }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)

@@ -26,13 +26,12 @@ export default defineConfig({
         "src/lib/test-utils/**",
         "src/**/*.d.ts",
       ],
-      // Thresholds that fail the build if coverage is below target
-      // TODO: Improve coverage and raise thresholds
+      // Frontend critical paths: keep minimum coverage on essential components
       thresholds: {
-        lines: 0,
-        functions: 0,
-        branches: 0,
-        statements: 0,
+        lines: 50,
+        functions: 50,
+        branches: 40,
+        statements: 50,
       },
     },
   },

@@ -15,11 +15,23 @@ import {
 /**
  * Resolve display name for a document (name ?? title ?? fallback).
  */
-function getDocumentDisplayName(
+export function getDocumentDisplayName(
   doc: { name?: string | null; title?: string | null },
   fallback: string = "Document",
 ): string {
   return doc.name ?? doc.title ?? fallback;
+}
+
+/**
+ * Guard against writes on soft-deleted documents.
+ */
+export function ensureDocumentIsActive(
+  doc: { deletedAt?: number },
+  action: string,
+): void {
+  if (doc.deletedAt) {
+    throw new Error(`Cannot ${action}: Document has been deleted`);
+  }
 }
 
 /**
@@ -133,7 +145,7 @@ export const listByTask = query({
 });
 
 /**
- * Get a single document by ID. Returns null if not found or caller lacks account access.
+ * Get a single document by ID. Returns null if not found, soft-deleted, or caller lacks account access.
  */
 export const get = query({
   args: {
@@ -141,7 +153,7 @@ export const get = query({
   },
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
-    if (!document) {
+    if (!document || document.deletedAt) {
       return null;
     }
 
@@ -152,7 +164,7 @@ export const get = query({
 
 /**
  * Resolve account slug for a document (for redirects from /docs/[id] or /document/[id]).
- * Returns { accountSlug } if the user has access, null if not found or no access.
+ * Returns { accountSlug } if the user has access, null if not found, soft-deleted, or no access.
  */
 export const getAccountSlugForRedirect = query({
   args: {
@@ -160,7 +172,7 @@ export const getAccountSlugForRedirect = query({
   },
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
-    if (!document) {
+    if (!document || document.deletedAt) {
       return null;
     }
     await requireAccountMember(ctx, document.accountId);
@@ -173,9 +185,7 @@ export const getAccountSlugForRedirect = query({
 });
 
 /**
- * Search documents by name field.
- * MVP: search name only. Content search can be a follow-up optimization.
- * Simple text search (case-insensitive contains).
+ * Search documents by name/title and content (case-insensitive contains).
  * Excludes soft-deleted documents.
  */
 export const search = query({
@@ -199,12 +209,21 @@ export const search = query({
 
     const searchLower = queryTrimmed.toLowerCase();
     let results = documents
-      .filter((d) => !d.deletedAt) // Exclude soft-deleted
+      .filter((d) => !d.deletedAt)
       .filter((d) => {
-        const name = d.name ?? d.title ?? "";
-        return name.toLowerCase().includes(searchLower);
+        const name = (d.name ?? d.title ?? "").toLowerCase();
+        const content = (d.content ?? "").toLowerCase();
+        return name.includes(searchLower) || content.includes(searchLower);
       })
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => {
+        const aName = (a.name ?? a.title ?? "").toLowerCase();
+        const bName = (b.name ?? b.title ?? "").toLowerCase();
+        const aTitleMatch = aName.includes(searchLower);
+        const bTitleMatch = bName.includes(searchLower);
+        if (aTitleMatch && !bTitleMatch) return -1;
+        if (!aTitleMatch && bTitleMatch) return 1;
+        return b.updatedAt - a.updatedAt;
+      });
 
     if (args.limit) {
       results = results.slice(0, args.limit);
@@ -324,6 +343,7 @@ export const update = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "update");
 
     const { userId, userName } = await requireAccountMember(
       ctx,
@@ -408,6 +428,7 @@ export const linkToTask = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "link document to task");
 
     const { userId, userName } = await requireAccountMember(
       ctx,
@@ -578,6 +599,7 @@ export const duplicate = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "duplicate document");
     if (document.kind === "folder") {
       throw new Error("Cannot duplicate a folder");
     }
