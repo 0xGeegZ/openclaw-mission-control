@@ -304,9 +304,11 @@ export function MessageInput({
         type: string;
         size: number;
       }> | undefined;
+      let fileIds: Id<"files">[] | undefined;
 
       if (attachedFiles.length > 0) {
         attachments = [];
+        fileIds = [];
         for (const attachedFile of attachedFiles) {
           try {
             // 1. Get upload URL (pass file metadata for validation)
@@ -337,13 +339,14 @@ export function MessageInput({
               storageId,
             });
 
-            // 4. Add to attachments array
+            // 4. Add to attachments array and fileIds
             attachments.push({
               storageId,
               name: attachedFile.file.name,
               type: attachedFile.file.type,
               size: attachedFile.file.size,
             });
+            fileIds.push(fileRecord.fileId);
           } catch (uploadError) {
             toast.error(`Failed to upload ${attachedFile.file.name}`, {
               description: uploadError instanceof Error ? uploadError.message : "Unknown error",
@@ -353,11 +356,12 @@ export function MessageInput({
         }
       }
 
-      // Create message with attachments
+      // Create message with attachments and fileIds
       await createMessage({
         taskId,
         content: trimmed,
         attachments,
+        fileIds,
       });
 
       // Clear all state on success

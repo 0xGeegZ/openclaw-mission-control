@@ -18,7 +18,6 @@ import {
   Save,
   Paperclip,
   Download,
-  X,
   Loader2,
 } from "lucide-react";
 import { useCopyToClipboard } from "usehooks-ts";

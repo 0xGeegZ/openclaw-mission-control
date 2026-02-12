@@ -577,6 +577,9 @@ export default defineSchema({
       ),
     ),
 
+    /** File IDs from files table (optional, for new file upload flow). */
+    fileIds: v.optional(v.array(v.id("files"))),
+
     /** Timestamp of creation */
     createdAt: v.number(),
 

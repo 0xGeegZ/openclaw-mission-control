@@ -191,6 +191,7 @@ export const create = mutation({
     taskId: v.id("tasks"),
     content: v.string(),
     attachments: v.optional(v.array(attachmentValidator)),
+    fileIds: v.optional(v.array(v.id("files"))),
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
@@ -283,6 +284,7 @@ export const create = mutation({
       content: args.content,
       mentions,
       attachments: resolvedAttachments,
+      fileIds: args.fileIds,
       createdAt: Date.now(),
     });
 

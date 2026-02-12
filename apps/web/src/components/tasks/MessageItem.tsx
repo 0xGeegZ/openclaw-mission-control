@@ -25,7 +25,6 @@ import {
   Copy,
   CheckCheck,
   FileText,
-  Download,
 } from "lucide-react";
 import {
   DropdownMenu,
