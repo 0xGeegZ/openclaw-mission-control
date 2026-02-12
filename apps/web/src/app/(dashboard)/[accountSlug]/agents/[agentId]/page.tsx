@@ -38,7 +38,6 @@ import {
 import {
   ArrowLeft,
   Bot,
-  Activity,
   Clock,
   MoreHorizontal,
   Settings2,
@@ -52,13 +51,13 @@ import {
 import { toast } from "sonner";
 import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
-import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
 import { AgentStatusDialog } from "@/components/agents/AgentStatusDialog";
 import { AgentBehaviorFlagsCard } from "./_components/AgentBehaviorFlagsCard";
 import { AgentConfigurationCard } from "./_components/AgentConfigurationCard";
 import { AgentStatisticsCard } from "./_components/AgentStatisticsCard";
+import { AgentActivityTimeline } from "./_components/AgentActivityTimeline";
 
 interface AgentDetailPageProps {
   params: Promise<{ accountSlug: string; agentId: string }>;
@@ -336,35 +335,11 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               />
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Recent activity
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  {agentActivities.length} recent actions
-                </CardDescription>
-              </CardHeader>
-                <CardContent>
-                  {agentActivities.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No activity yet
-                    </p>
-                  ) : (
-                    <ul className="space-y-2 max-h-48 overflow-auto">
-                      {agentActivities.slice(0, 10).map((a) => (
-                        <li key={a._id}>
-                          <ActivityItem
-                            activity={a}
-                            accountSlug={accountSlug}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
+            <AgentActivityTimeline
+              activities={agentActivities}
+              accountSlug={accountSlug}
+              limit={15}
+            />
 
             {isAdmin && (
               <AgentBehaviorFlagsCard
@@ -431,29 +406,6 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Activity feed</CardTitle>
-                <CardDescription className="text-xs">
-                  All activity by this agent
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {agentActivities.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No activity yet
-                  </p>
-                ) : (
-                  <ul className="space-y-3 divide-y divide-border">
-                    {agentActivities.map((a) => (
-                      <li key={a._id} className="pt-3 first:pt-0">
-                        <ActivityItem activity={a} accountSlug={accountSlug} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
           </div>
         ) : null}
       </div>
