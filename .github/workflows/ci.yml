@@ -69,9 +69,10 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "✓ Tests passed with coverage thresholds enforced:"
-          echo "  Backend: ≥70% lines, functions, statements; ≥60% branches"
-          echo "  Frontend: ≥50% lines, functions, statements; ≥40% branches"
-          echo "  Runtime: ≥60% lines, functions, statements; ≥50% branches"
+          echo "  Backend: ≥8% lines/statements; ≥40% functions/branches (see packages/backend/vitest.config.ts)"
+          echo "  Frontend: no minimum (0%); see apps/web/vitest.config.mts"
+          echo "  Runtime: ≥45% lines, functions, branches, statements (see apps/runtime/vitest.config.ts)"
+          echo "  Note: Thresholds are temporary; TODO in configs to improve coverage and raise them."
         if: success()
 
   build:
