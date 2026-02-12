@@ -13,7 +13,11 @@ import {
   resolveBehaviorFlags,
   type BehaviorFlags,
 } from "../lib/behavior_flags";
-import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
+import {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  type TaskStatus,
+} from "../lib/task_workflow";
 
 export type { BehaviorFlags };
 
@@ -677,11 +681,11 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
     if (!allowedStatuses.has(args.status)) {
       throw new Error(
@@ -708,10 +712,10 @@ export const updateTaskStatusFromAgent = action({
     }
 
     const allowedNextStatuses = new Set<TaskStatus>([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
 
     let changed = false;
@@ -743,9 +747,9 @@ export const updateTaskStatusFromAgent = action({
       }
       if (
         i === 0 &&
-        targetStatus === "done" &&
-        currentStatus !== "review" &&
-        currentStatus !== "done"
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
       ) {
         throw new Error(
           "Forbidden: Task must be in review before marking done",
@@ -775,7 +779,7 @@ export const updateTaskStatusFromAgent = action({
         agentId: args.agentId,
         status: nextStatus,
         blockedReason:
-          nextStatus === "blocked" ? args.blockedReason : undefined,
+          nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
