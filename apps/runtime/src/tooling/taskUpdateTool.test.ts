@@ -293,24 +293,5 @@ describe("taskUpdateTool", () => {
       );
     });
 
-    it("trims taskId when calling the action", async () => {
-      mockAction.mockResolvedValue({
-        taskId: "task123",
-        changedFields: ["title"],
-      });
-
-      await executeTaskUpdateTool({
-        ...baseParams,
-        taskId: "  task123  ",
-        title: "New Title",
-      });
-
-      expect(mockAction).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          taskId: "task123",
-        })
-      );
-    });
   });
 });

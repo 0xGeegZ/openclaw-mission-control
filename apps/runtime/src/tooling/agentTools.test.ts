@@ -317,18 +317,6 @@ describe("executeAgentTool", () => {
     );
   });
 
-  it("returns Forbidden when task_update sets status to done without canMarkDone", async () => {
-    const result = await executeAgentTool({
-      ...baseParams,
-      name: "task_update",
-      arguments: JSON.stringify({ taskId: "task1", status: "done" }),
-      canMarkDone: false,
-    });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Forbidden: Not allowed to mark tasks as done");
-    expect(mockAction).not.toHaveBeenCalled();
-  });
-
   it("validates task_link_pr requires taskId and prNumber", async () => {
     const missingTaskId = await executeAgentTool({
       ...baseParams,

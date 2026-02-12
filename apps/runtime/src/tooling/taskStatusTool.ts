@@ -118,6 +118,7 @@ export async function executeTaskStatusTool(params: {
   if (taskId == null || !String(taskId).trim()) {
     return { success: false, error: "taskId is required" };
   }
+  const trimmedTaskId = String(taskId).trim();
   if (!isRuntimeTaskStatus(status)) {
     return {
       success: false,
@@ -137,7 +138,7 @@ export async function executeTaskStatusTool(params: {
       accountId,
       serviceToken,
       agentId,
-      taskId: taskId as Id<"tasks">,
+      taskId: trimmedTaskId as Id<"tasks">,
       status: status as RuntimeTaskStatus,
       blockedReason: blockedReason?.trim() || undefined,
     });
@@ -146,7 +147,7 @@ export async function executeTaskStatusTool(params: {
     const message = err instanceof Error ? err.message : String(err);
     log.warn(
       "Task status update failed (task will not move to done); check Convex connectivity",
-      { taskId, status, error: message },
+      { taskId: trimmedTaskId, status, error: message },
     );
     return { success: false, error: message };
   }

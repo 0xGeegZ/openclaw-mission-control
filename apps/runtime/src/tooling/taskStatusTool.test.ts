@@ -19,6 +19,7 @@ vi.mock("../convex-client", () => ({
 }));
 
 beforeEach(() => {
+  mockAction.mockReset();
   vi.mocked(getConvexClient).mockReturnValue({ action: mockAction } as never);
 });
 
@@ -86,6 +87,21 @@ describe("executeTaskStatusTool", () => {
     });
     expect(result).toEqual({ success: true });
     expect(mockAction).toHaveBeenCalled();
+  });
+
+  it("trims taskId before calling Convex action", async () => {
+    mockAction.mockResolvedValue(undefined);
+    await executeTaskStatusTool({
+      ...validParams,
+      taskId: "  task1  ",
+      status: "review",
+    });
+    expect(mockAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        taskId: "task1",
+      }),
+    );
   });
 
   it("returns error when Convex action rejects", async () => {
