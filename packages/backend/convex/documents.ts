@@ -5,11 +5,22 @@ import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { documentTypeValidator, documentKindValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
+import { DOCUMENT_TYPE } from "./lib/constants";
 import {
   validateDocumentParent,
-  validateDocumentReferences,
+  validateTaskBelongsToAccount,
   cascadeDeleteDocumentChildren,
 } from "./lib/reference_validation";
+
+/**
+ * Resolve display name for a document (name ?? title ?? fallback).
+ */
+function getDocumentDisplayName(
+  doc: { name?: string | null; title?: string | null },
+  fallback: string = "Document",
+): string {
+  return doc.name ?? doc.title ?? fallback;
+}
 
 /**
  * List documents for an account.
@@ -69,15 +80,14 @@ export const list = query({
 
     return documents.map((d) => ({
       ...d,
-      name: d.name ?? d.title ?? "Untitled",
+      name: getDocumentDisplayName(d, "Untitled"),
       type: d.kind ?? "file",
     }));
   },
 });
 
 /**
- * List documents by type.
- * Excludes soft-deleted documents.
+ * List documents by type for an account. Excludes soft-deleted documents.
  */
 export const listByType = query({
   args: {
@@ -99,8 +109,7 @@ export const listByType = query({
 });
 
 /**
- * List documents linked to a specific task.
- * Excludes soft-deleted documents.
+ * List documents linked to a specific task. Excludes soft-deleted documents.
  */
 export const listByTask = query({
   args: {
@@ -124,7 +133,7 @@ export const listByTask = query({
 });
 
 /**
- * Get a single document by ID.
+ * Get a single document by ID. Returns null if not found or caller lacks account access.
  */
 export const get = query({
   args: {
@@ -178,12 +187,17 @@ export const search = query({
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
 
+    const queryTrimmed = args.query.trim();
+    if (!queryTrimmed) {
+      return [];
+    }
+
     const documents = await ctx.db
       .query("documents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
 
-    const searchLower = args.query.toLowerCase();
+    const searchLower = queryTrimmed.toLowerCase();
     let results = documents
       .filter((d) => !d.deletedAt) // Exclude soft-deleted
       .filter((d) => {
@@ -243,24 +257,10 @@ export const create = mutation({
     }
 
     if (args.parentId) {
-      const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.accountId !== args.accountId) {
-        throw new Error(
-          "Invalid parent: Folder does not exist or belongs to different account",
-        );
-      }
-      if (parent.kind !== "folder") {
-        throw new Error("Parent must be a folder");
-      }
+      await validateDocumentParent(ctx.db, args.accountId, args.parentId);
     }
-
     if (args.taskId) {
-      const task = await ctx.db.get(args.taskId);
-      if (!task || task.accountId !== args.accountId) {
-        throw new Error(
-          "Invalid task: Task does not exist or belongs to different account",
-        );
-      }
+      await validateTaskBelongsToAccount(ctx.db, args.accountId, args.taskId);
     }
 
     const now = Date.now();
@@ -330,25 +330,15 @@ export const update = mutation({
       document.accountId,
     );
 
-    if (args.parentId !== undefined) {
-      if (args.parentId !== null) {
-        const parent = await ctx.db.get(args.parentId);
-        if (!parent || parent.accountId !== document.accountId) {
-          throw new Error(
-            "Invalid parent: Folder does not exist or belongs to different account",
-          );
-        }
-        if (parent.kind !== "folder") {
-          throw new Error("Parent must be a folder");
-        }
-      }
+    if (args.parentId !== undefined && args.parentId !== null) {
+      await validateDocumentParent(ctx.db, document.accountId, args.parentId);
     }
-
     if (args.taskId !== undefined && args.taskId !== null) {
-      const task = await ctx.db.get(args.taskId);
-      if (!task || task.accountId !== document.accountId) {
-        throw new Error("Invalid task");
-      }
+      await validateTaskBelongsToAccount(
+        ctx.db,
+        document.accountId,
+        args.taskId,
+      );
     }
 
     const updates: Record<string, unknown> = {
@@ -378,8 +368,10 @@ export const update = mutation({
 
     await ctx.db.patch(args.documentId, updates);
 
-    const targetName =
-      args.title ?? args.name ?? document.title ?? document.name ?? "Document";
+    const targetName = getDocumentDisplayName(
+      { title: args.title ?? document.title, name: args.name ?? document.name },
+      "Document",
+    );
     await logActivity({
       ctx,
       accountId: document.accountId,
@@ -404,7 +396,7 @@ export const update = mutation({
 });
 
 /**
- * Link/unlink a document to a task.
+ * Link or unlink a document to a task. Validates task belongs to document's account.
  */
 export const linkToTask = mutation({
   args: {
@@ -422,12 +414,12 @@ export const linkToTask = mutation({
       document.accountId,
     );
 
-    // Validate task if linking
     if (args.taskId) {
-      const task = await ctx.db.get(args.taskId);
-      if (!task || task.accountId !== document.accountId) {
-        throw new Error("Invalid task");
-      }
+      await validateTaskBelongsToAccount(
+        ctx.db,
+        document.accountId,
+        args.taskId,
+      );
     }
 
     await ctx.db.patch(args.documentId, {
@@ -445,7 +437,7 @@ export const linkToTask = mutation({
       actorName: userName,
       targetType: "document",
       targetId: args.documentId,
-      targetName: document.title ?? document.name ?? "Document",
+      targetName: getDocumentDisplayName(document),
       meta: {
         action: args.taskId ? "linked" : "unlinked",
         taskId: args.taskId,
@@ -524,7 +516,7 @@ export const softDelete = mutation({
       actorName: userName,
       targetType: "document",
       targetId: args.documentId,
-      targetName: document.title ?? document.name ?? "Document",
+      targetName: getDocumentDisplayName(document),
       meta: { action: "soft_delete", deletedAt: now },
     });
 
@@ -553,19 +545,9 @@ export const remove = mutation({
     );
 
     if (document.kind === "folder") {
-      const toDelete: Id<"documents">[] = [args.documentId];
-      await collectDescendantIds(
-        ctx,
-        document.accountId,
-        args.documentId,
-        toDelete,
-      );
-      for (let i = toDelete.length - 1; i >= 0; i--) {
-        await ctx.db.delete(toDelete[i]!);
-      }
-    } else {
-      await ctx.db.delete(args.documentId);
+      await cascadeDeleteDocumentChildren(ctx.db, ctx.db, args.documentId);
     }
+    await ctx.db.delete(args.documentId);
 
     await logActivity({
       ctx,
@@ -576,7 +558,7 @@ export const remove = mutation({
       actorName: userName,
       targetType: "document",
       targetId: args.documentId,
-      targetName: document.title ?? document.name ?? "Document",
+      targetName: getDocumentDisplayName(document),
       meta: { action: "hard_delete" },
     });
 
@@ -604,7 +586,7 @@ export const duplicate = mutation({
       ctx,
       document.accountId,
     );
-    const title = document.title ?? document.name ?? "Untitled";
+    const title = getDocumentDisplayName(document, "Untitled");
     const now = Date.now();
 
     const newDocumentId = await ctx.db.insert("documents", {
@@ -614,7 +596,7 @@ export const duplicate = mutation({
       taskId: document.taskId,
       title: `${title} (Copy)`,
       content: document.content ?? "",
-      type: document.type ?? "note",
+      type: document.type ?? DOCUMENT_TYPE.NOTE,
       mimeType: document.mimeType,
       size: document.size,
       authorType: "user",
