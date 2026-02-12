@@ -24,6 +24,8 @@ import {
   Sparkles,
   Copy,
   CheckCheck,
+  FileText,
+  Download,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -273,6 +275,27 @@ export function MessageItem({
             <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
               <MessageContent content={message.content} mentions={message.mentions} />
             </div>
+
+            {/* Attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                {message.attachments.map((attachment, idx) => (
+                  <a
+                    key={idx}
+                    href={`/api/convex/files/${attachment.storageId}`}
+                    download={attachment.name}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 border border-border/50 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    title={`Download ${attachment.name}`}
+                  >
+                    <FileText className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{attachment.name}</span>
+                    <span className="text-[11px] text-muted-foreground/60 ml-auto">
+                      {(attachment.size / 1024 / 1024).toFixed(2)} MB
+                    </span>
+                  </a>
+                ))}
+              </div>
+            )}
 
             {message.authorType === "user" &&
               readByAgents &&
