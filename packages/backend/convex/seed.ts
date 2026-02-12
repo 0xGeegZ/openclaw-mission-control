@@ -356,6 +356,22 @@ const seedAgents = [
     icon: "Code2",
   },
   {
+    name: "Engineer 2",
+    slug: "engineer-2",
+    role: "Full-stack Engineer",
+    agentRole: "engineer" as const,
+    description: "Parallelizes feature development and bug fixes.",
+    skillSlugs: [
+      "repo-architecture",
+      "frontend-nextjs",
+      "backend-convex",
+      ...CURSOR_SKILL_SLUGS,
+    ] as const,
+    heartbeatInterval: 15,
+    canCreateTasks: false,
+    icon: "Code2",
+  },
+  {
     name: "QA",
     slug: "qa",
     role: "QA / Reviewer",
