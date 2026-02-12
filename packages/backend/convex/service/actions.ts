@@ -721,7 +721,7 @@ export const updateTaskStatusFromAgent = action({
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
-    const targetStatus = args.status as TaskStatus;
+    const targetStatus = args.status;
     for (let i = 0; i < 10; i++) {
       const task = await ctx.runQuery(internal.service.tasks.getInternal, {
         taskId: args.taskId,
@@ -730,7 +730,7 @@ export const updateTaskStatusFromAgent = action({
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
 
-      const currentStatus = task.status as TaskStatus;
+      const currentStatus = task.status;
       if (
         i === 0 &&
         args.expectedStatus &&
@@ -789,7 +789,7 @@ export const updateTaskStatusFromAgent = action({
       if (!task) throw new Error("Not found: Task does not exist");
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
-      finalStatus = task.status as TaskStatus;
+      finalStatus = task.status;
       finalUpdatedAt = task.updatedAt;
     }
 

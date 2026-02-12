@@ -45,6 +45,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { TASK_STATUS } from "@packages/shared";
 
 interface TaskDetailSheetProps {
   taskId: Id<"tasks"> | null;
@@ -143,7 +144,7 @@ export function TaskDetailSheet({
   const handleMarkAsDone = async () => {
     if (!task) return;
     try {
-      await updateStatus({ taskId: task._id, status: "done" });
+      await updateStatus({ taskId: task._id, status: TASK_STATUS.DONE });
       toast.success("Status updated");
     } catch (error) {
       toast.error("Failed to update status", {
@@ -174,7 +175,7 @@ export function TaskDetailSheet({
                 <Maximize2 className="size-4" />
                 <span className="sr-only">Open full page</span>
               </Link>
-              {task.status !== "archived" && (
+              {task.status !== TASK_STATUS.ARCHIVED && (
                 <button
                   type="button"
                   onClick={() => setArchiveDialogOpen(true)}
@@ -230,7 +231,7 @@ export function TaskDetailSheet({
               >
                 <TaskStatusSelect task={task} variant="compact" />
 
-                {task.status === "review" && (
+                {task.status === TASK_STATUS.REVIEW && (
                   <Button
                     size="sm"
                     onClick={handleMarkAsDone}
@@ -262,7 +263,7 @@ export function TaskDetailSheet({
               )}
 
               {/* Blocked reason */}
-              {task.status === "blocked" && task.blockedReason && (
+              {task.status === TASK_STATUS.BLOCKED && task.blockedReason && (
                 <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
                   <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">

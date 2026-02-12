@@ -1,42 +1,38 @@
 /**
- * Task status type.
+ * Task workflow logic for status transitions and requirements.
+ * Uses shared types and constants from validators.ts and constants.ts.
  */
-export type TaskStatus =
-  | "inbox"
-  | "assigned"
-  | "in_progress"
-  | "review"
-  | "done"
-  | "blocked"
-  | "archived";
+import type { TaskStatus } from "./validators";
 
-/**
- * Valid status transitions.
- * Maps current status to array of allowed next statuses.
- * "archived" is a terminal state (soft-delete) reachable from most statuses via orchestrator action.
- */
-export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  inbox: ["assigned", "archived"],
-  assigned: ["in_progress", "blocked", "inbox", "archived"],
-  in_progress: ["review", "blocked", "archived"],
-  review: ["done", "in_progress", "blocked", "archived"],
-  done: ["archived"], // Can archive completed tasks
-  blocked: ["assigned", "in_progress", "archived"],
-  archived: [], // Terminal state; cannot transition from archived
+import {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  TASK_STATUS_ORDER,
+  TASK_STATUS_LABELS,
+  PAUSE_ALLOWED_STATUSES,
+} from "./constants";
+
+// Re-export type for convenience
+export type { TaskStatus };
+
+// Re-export constants for backward compatibility
+export {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  TASK_STATUS_ORDER,
+  TASK_STATUS_LABELS,
+  PAUSE_ALLOWED_STATUSES,
 };
 
-/**
- * Ordered list of statuses for Kanban columns.
- * Archived tasks are typically hidden from the main board but accessible in history/archive views.
- */
-export const TASK_STATUS_ORDER: TaskStatus[] = [
-  "inbox",
-  "assigned",
-  "in_progress",
-  "review",
-  "done",
-  "archived",
-];
+/** Set for O(1) lookup with proper typing - accepts any TaskStatus in .has() */
+export const PAUSE_ALLOWED_STATUS_SET = new Set<TaskStatus>(PAUSE_ALLOWED_STATUSES);
+
+/** Map of Sets for O(1) transition validation with proper typing */
+const TRANSITION_SETS = new Map<TaskStatus, Set<TaskStatus>>(
+  (Object.entries(TASK_STATUS_TRANSITIONS) as [TaskStatus, readonly TaskStatus[]][]).map(
+    ([status, targets]) => [status, new Set(targets)],
+  ),
+);
 
 /**
  * Check if a status transition is valid.
@@ -49,8 +45,7 @@ export function isValidTransition(
   currentStatus: TaskStatus,
   nextStatus: TaskStatus,
 ): boolean {
-  const allowed = TASK_STATUS_TRANSITIONS[currentStatus];
-  return allowed.includes(nextStatus);
+  return TRANSITION_SETS.get(currentStatus)?.has(nextStatus) ?? false;
 }
 
 /**
@@ -68,37 +63,27 @@ export function validateStatusRequirements(
   blockedReason?: string,
 ): string | null {
   // "assigned" requires at least one assignee
-  if (nextStatus === "assigned" && !hasAssignees) {
+  if (nextStatus === TASK_STATUS.ASSIGNED && !hasAssignees) {
     return "Cannot move to 'assigned' without at least one assignee";
   }
 
   // "inbox" requires zero assignees
-  if (nextStatus === "inbox" && hasAssignees) {
+  if (nextStatus === TASK_STATUS.INBOX && hasAssignees) {
     return "Cannot move to 'inbox' while assignees remain";
   }
 
   // "in_progress" requires at least one assignee
-  if (nextStatus === "in_progress" && !hasAssignees) {
+  if (nextStatus === TASK_STATUS.IN_PROGRESS && !hasAssignees) {
     return "Cannot move to 'in_progress' without at least one assignee";
   }
 
   // "blocked" requires a reason
-  if (nextStatus === "blocked" && !blockedReason) {
+  if (nextStatus === TASK_STATUS.BLOCKED && !blockedReason) {
     return "Cannot move to 'blocked' without providing a reason";
   }
 
   return null;
 }
-
-/**
- * Statuses from which /stop can move the task to blocked (emergency pause).
- * Used by pauseAgentsOnTask; exported for unit tests.
- */
-export const PAUSE_ALLOWED_STATUSES: readonly TaskStatus[] = [
-  "assigned",
-  "in_progress",
-  "review",
-];
 
 /**
  * Returns true if a task in this status can be paused via /stop (moved to blocked).
@@ -107,18 +92,5 @@ export const PAUSE_ALLOWED_STATUSES: readonly TaskStatus[] = [
  * @returns True if pauseAgentsOnTask will transition to blocked; false for inbox, done, or already blocked
  */
 export function isPauseAllowedStatus(status: TaskStatus): boolean {
-  return (PAUSE_ALLOWED_STATUSES as readonly string[]).includes(status);
+  return PAUSE_ALLOWED_STATUS_SET.has(status);
 }
-
-/**
- * Get human-readable label for status.
- */
-export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  inbox: "Inbox",
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  review: "Review",
-  done: "Done",
-  blocked: "Blocked",
-  archived: "Archived",
-};

@@ -1,24 +1,10 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
-/**
- * Activity type definitions.
- */
-export type ActivityType =
-  | "account_created"
-  | "account_updated"
-  | "task_created"
-  | "task_updated"
-  | "task_status_changed"
-  | "message_created"
-  | "document_created"
-  | "document_updated"
-  | "agent_status_changed"
-  | "runtime_status_changed"
-  | "member_added"
-  | "member_removed"
-  | "member_updated"
-  | "role_changed";
+import type { ActivityType, ActorType, TargetType } from "./validators";
+
+// Re-export for backward compatibility
+export type { ActivityType };
 
 /**
  * Parameters for logging an activity.
@@ -27,10 +13,10 @@ export interface LogActivityParams {
   ctx: MutationCtx;
   accountId: Id<"accounts">;
   type: ActivityType;
-  actorType: "user" | "agent" | "system";
+  actorType: ActorType;
   actorId: string;
   actorName?: string;
-  targetType: "task" | "message" | "document" | "agent" | "account" | "membership";
+  targetType: TargetType;
   targetId: string;
   targetName?: string;
   meta?: Record<string, unknown>;
@@ -80,6 +66,8 @@ export function getActivityDescription(
   switch (type) {
     case "account_created":
       return `${actorName} created account "${target}"`;
+    case "account_updated":
+      return `${actorName} updated account settings`;
     case "task_created":
       return `${actorName} created task "${target}"`;
     case "task_updated":
