@@ -341,7 +341,7 @@ describe("Workflow: Add Member → Send Notification → Member Joins", () => {
 
     // Step 1: Add member to account
     const accountId = "account_1" as Id<"accounts">;
-    const userId = "user_alice" as Id<"users">;
+    const userId = "user_alice";
 
     const membership = {
       accountId,

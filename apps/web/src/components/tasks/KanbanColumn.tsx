@@ -8,8 +8,7 @@ import {
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { TaskCard } from "./TaskCard";
 import { cn } from "@packages/ui/lib/utils";
-import { TaskStatus } from "@packages/shared";
-import { TASK_STATUS_LABELS } from "@packages/shared";
+import { TaskStatus, TASK_STATUS, TASK_STATUS_LABELS } from "@packages/shared";
 import {
   Plus,
   Inbox,
@@ -18,6 +17,7 @@ import {
   Eye,
   AlertTriangle,
   Users,
+  Archive,
 } from "lucide-react";
 import { Button } from "@packages/ui/components/button";
 import {
@@ -89,6 +89,13 @@ const statusConfig: Record<
     borderColor: "border-destructive/20",
     headerBg: "bg-destructive/5",
   },
+  archived: {
+    icon: Archive,
+    color: "text-muted-foreground",
+    bgColor: "bg-muted-foreground",
+    borderColor: "border-muted/40",
+    headerBg: "bg-muted/30",
+  },
 };
 
 /**
@@ -152,7 +159,7 @@ export function KanbanColumn({
             {tasks.length}
           </span>
         </div>
-        {status === "inbox" && onAddTask && (
+        {status === TASK_STATUS.INBOX && onAddTask && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

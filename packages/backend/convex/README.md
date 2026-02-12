@@ -89,6 +89,14 @@ Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
 
+## Environment variables
+
+Some service actions integrate with GitHub. Configure these in your Convex
+deployment environment when using the `task_link_pr` tool:
+
+- `GITHUB_TOKEN` — GitHub API token with repo read/write permissions.
+- `GITHUB_REPO` — Repository in `owner/repo` format (used for PR updates).
+
 ## Seed skills content
 
 Seed skill bodies (contentMarkdown) come from `convex/seed-skills/*.md`, and are compiled into `convex/seed_skills_content.generated.ts`.

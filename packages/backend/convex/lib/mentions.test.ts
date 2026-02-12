@@ -127,7 +127,7 @@ describe("resolveMentions", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
         },
@@ -150,7 +150,7 @@ describe("resolveMentions", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice Smith",
           userEmail: "alice.smith@example.com",
         },
@@ -208,7 +208,7 @@ describe("resolveMentions", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
         },
@@ -236,12 +236,12 @@ describe("getAllMentions", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
         },
         {
-          userId: "user_2" as Id<"users">,
+          userId: "user_2",
           userName: "Bob",
           userEmail: "bob@example.com",
         },
@@ -267,12 +267,12 @@ describe("getAllMentions", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
         },
         {
-          userId: "user_2" as Id<"users">,
+          userId: "user_2",
           userName: "Bob",
           userEmail: "bob@example.com",
         },
@@ -329,7 +329,7 @@ describe("listCandidates", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
           userAvatarUrl: "https://example.com/alice.jpg",
@@ -383,7 +383,7 @@ describe("listCandidates", () => {
     const mockCtx = createMockQueryContext(
       [
         {
-          userId: "user_1" as Id<"users">,
+          userId: "user_1",
           userName: "Alice",
           userEmail: "alice@example.com",
           userAvatarUrl: undefined,
