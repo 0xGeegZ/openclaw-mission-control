@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@packages/ui/components/select";
-import { TaskStatus, TASK_STATUS_LABELS } from "@packages/shared";
+import { TaskStatus, TASK_STATUS, TASK_STATUS_LABELS } from "@packages/shared";
 import { toast } from "sonner";
 import { RotateCcw } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
@@ -38,7 +38,7 @@ export function TaskStatusSelect({
   const reopenTask = useMutation(api.tasks.reopen);
 
   const handleStatusChange = async (newStatus: TaskStatus) => {
-    if (newStatus === "blocked") {
+    if (newStatus === TASK_STATUS.BLOCKED) {
       setShowBlockedDialog(true);
       return;
     }
@@ -60,7 +60,7 @@ export function TaskStatusSelect({
     try {
       await updateStatus({
         taskId: task._id,
-        status: "blocked",
+        status: TASK_STATUS.BLOCKED,
         blockedReason: reason,
       });
       toast.success("Task marked as blocked");
@@ -88,7 +88,7 @@ export function TaskStatusSelect({
     variant === "compact" && "h-8 w-[7.5rem] text-xs border rounded-md",
   );
 
-  const isDone = task.status === "done";
+  const isDone = task.status === TASK_STATUS.DONE;
 
   return (
     <>

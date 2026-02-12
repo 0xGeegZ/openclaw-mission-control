@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
+import { AgentStatus, AGENT_STATUS } from "@packages/shared";
 
 interface AgentStatusDialogProps {
   agent: Doc<"agents">;
@@ -31,14 +32,12 @@ interface AgentStatusDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type AgentStatus = "online" | "busy" | "idle" | "offline" | "error";
-
 const STATUS_OPTIONS: { value: AgentStatus; label: string; description: string; color: string }[] = [
-  { value: "online", label: "Online", description: "Agent is active and ready", color: "bg-emerald-500" },
-  { value: "busy", label: "Busy", description: "Agent is currently working on a task", color: "bg-amber-500" },
-  { value: "idle", label: "Idle", description: "Agent is available but not active", color: "bg-blue-400" },
-  { value: "offline", label: "Offline", description: "Agent is not running", color: "bg-muted-foreground/40" },
-  { value: "error", label: "Error", description: "Agent has encountered an error", color: "bg-destructive" },
+  { value: AGENT_STATUS.ONLINE, label: "Online", description: "Agent is active and ready", color: "bg-emerald-500" },
+  { value: AGENT_STATUS.BUSY, label: "Busy", description: "Agent is currently working on a task", color: "bg-amber-500" },
+  { value: AGENT_STATUS.IDLE, label: "Idle", description: "Agent is available but not active", color: "bg-blue-400" },
+  { value: AGENT_STATUS.OFFLINE, label: "Offline", description: "Agent is not running", color: "bg-muted-foreground/40" },
+  { value: AGENT_STATUS.ERROR, label: "Error", description: "Agent has encountered an error", color: "bg-destructive" },
 ];
 
 /**

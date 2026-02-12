@@ -20,7 +20,7 @@ import { CreateTaskDialog } from "./CreateTaskDialog";
 import { BlockedReasonDialog } from "./BlockedReasonDialog";
 import { TaskDetailSheet } from "./TaskDetailSheet";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
+import { TaskStatus, TASK_STATUS, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -29,7 +29,7 @@ const VALID_STATUS_SET = new Set<TaskStatus>(TASK_STATUS_ORDER);
 
 /** Statuses shown on the main Kanban board (archive is hidden by default). */
 const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
-  (status) => status !== "archived",
+  (status) => status !== TASK_STATUS.ARCHIVED,
 );
 
 function isValidStatus(value: string): value is TaskStatus {
@@ -206,7 +206,7 @@ export function KanbanBoard({
       if (!isValidStatus(newStatus)) return;
 
       // For blocked status, show dialog to get reason
-      if (newStatus === "blocked") {
+      if (newStatus === TASK_STATUS.BLOCKED) {
         setPendingBlockedTask(currentTask);
         setShowBlockedDialog(true);
         return;
@@ -233,7 +233,7 @@ export function KanbanBoard({
     try {
       await updateStatus({
         taskId: pendingBlockedTask._id,
-        status: "blocked",
+        status: TASK_STATUS.BLOCKED,
         blockedReason: reason,
       });
       toast.success("Task marked as blocked");
@@ -272,7 +272,7 @@ export function KanbanBoard({
               tasks={displayTasks[status] || []}
               accountSlug={accountSlug}
               onAddTask={
-                status === "inbox" ? () => setShowCreateDialog(true) : undefined
+                status === TASK_STATUS.INBOX ? () => setShowCreateDialog(true) : undefined
               }
               onTaskClick={handleTaskClick}
               agents={agents}

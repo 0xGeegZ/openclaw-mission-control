@@ -16,6 +16,7 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import { cn } from "@packages/ui/lib/utils";
 import { Users, Crown } from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import { AGENT_STATUS } from "@packages/shared";
 
 interface AgentsSidebarProps {
   accountId: Id<"accounts"> | null;
@@ -67,7 +68,7 @@ export function AgentsSidebar({
 
   const isLoading = accountId && agents === undefined;
   const activeAgents =
-    agents?.filter((a) => a.status === "online" || a.status === "busy") ?? [];
+    agents?.filter((a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY) ?? [];
 
   return (
     <div className={cn("flex flex-col h-full border-r bg-card", className)}>

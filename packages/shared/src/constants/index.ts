@@ -6,15 +6,28 @@
  */
 import {
   TASK_STATUS,
+  AGENT_STATUS,
+  ACTIVITY_TYPE,
+  NOTIFICATION_TYPE,
   SKILL_CATEGORY,
   LLM_MODEL,
   type TaskStatus,
+  type AgentStatus,
+  type ActivityType,
+  type NotificationType,
   type LLMModel,
   type SkillCategory,
 } from "../types";
 
-// Re-export from types for convenience
-export { TASK_STATUS, SKILL_CATEGORY, LLM_MODEL };
+// Re-export const objects from types for convenience
+export {
+  TASK_STATUS,
+  AGENT_STATUS,
+  ACTIVITY_TYPE,
+  NOTIFICATION_TYPE,
+  SKILL_CATEGORY,
+  LLM_MODEL,
+};
 
 /**
  * Ordered list of task statuses for Kanban columns.
@@ -105,6 +118,74 @@ export const SKILL_CATEGORY_LABELS: Record<SkillCategory, string> = {
   [SKILL_CATEGORY.TOOL]: "Tool",
   [SKILL_CATEGORY.INTEGRATION]: "Integration",
   [SKILL_CATEGORY.CUSTOM]: "Custom",
+};
+
+// ============================================================================
+// AGENT STATUS CONSTANTS
+// ============================================================================
+
+/**
+ * Ordered list of agent statuses for UI display.
+ */
+export const AGENT_STATUS_ORDER: AgentStatus[] = [
+  AGENT_STATUS.ONLINE,
+  AGENT_STATUS.BUSY,
+  AGENT_STATUS.IDLE,
+  AGENT_STATUS.OFFLINE,
+  AGENT_STATUS.ERROR,
+];
+
+/**
+ * Human-readable labels for agent statuses.
+ */
+export const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
+  [AGENT_STATUS.ONLINE]: "Online",
+  [AGENT_STATUS.BUSY]: "Busy",
+  [AGENT_STATUS.IDLE]: "Idle",
+  [AGENT_STATUS.OFFLINE]: "Offline",
+  [AGENT_STATUS.ERROR]: "Error",
+};
+
+// ============================================================================
+// ACTIVITY TYPE CONSTANTS
+// ============================================================================
+
+/**
+ * Human-readable labels for activity types.
+ */
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  [ACTIVITY_TYPE.ACCOUNT_CREATED]: "Account created",
+  [ACTIVITY_TYPE.ACCOUNT_UPDATED]: "Account updated",
+  [ACTIVITY_TYPE.TASK_CREATED]: "Task created",
+  [ACTIVITY_TYPE.TASK_UPDATED]: "Task updated",
+  [ACTIVITY_TYPE.TASK_STATUS_CHANGED]: "Status changed",
+  [ACTIVITY_TYPE.MESSAGE_CREATED]: "Comment",
+  [ACTIVITY_TYPE.DOCUMENT_CREATED]: "Document created",
+  [ACTIVITY_TYPE.DOCUMENT_UPDATED]: "Document updated",
+  [ACTIVITY_TYPE.AGENT_STATUS_CHANGED]: "Agent status",
+  [ACTIVITY_TYPE.RUNTIME_STATUS_CHANGED]: "Runtime status",
+  [ACTIVITY_TYPE.MEMBER_ADDED]: "Member added",
+  [ACTIVITY_TYPE.MEMBER_REMOVED]: "Member removed",
+  [ACTIVITY_TYPE.MEMBER_UPDATED]: "Member updated",
+  [ACTIVITY_TYPE.ROLE_CHANGED]: "Role changed",
+};
+
+// ============================================================================
+// NOTIFICATION TYPE CONSTANTS
+// ============================================================================
+
+/**
+ * Human-readable labels for notification types.
+ */
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  [NOTIFICATION_TYPE.MENTION]: "Mention",
+  [NOTIFICATION_TYPE.ASSIGNMENT]: "Assignment",
+  [NOTIFICATION_TYPE.THREAD_UPDATE]: "Thread update",
+  [NOTIFICATION_TYPE.STATUS_CHANGE]: "Status change",
+  [NOTIFICATION_TYPE.RESPONSE_REQUEST]: "Response request",
+  [NOTIFICATION_TYPE.MEMBER_ADDED]: "Member added",
+  [NOTIFICATION_TYPE.MEMBER_REMOVED]: "Member removed",
+  [NOTIFICATION_TYPE.ROLE_CHANGED]: "Role changed",
 };
 
 /**

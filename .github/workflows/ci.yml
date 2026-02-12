@@ -64,7 +64,7 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        run: npm run test:all -- --coverage
+        run: npm run test:coverage
 
       - name: Check coverage thresholds
         run: |
@@ -73,9 +73,6 @@ jobs:
           echo "  Frontend: ≥50% lines, functions, statements; ≥40% branches"
           echo "  Runtime: ≥60% lines, functions, statements; ≥50% branches"
         if: success()
-
-      - name: Run test coverage
-        run: npx turbo run test:coverage
 
   build:
     name: Build
