@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
-import type { Id } from "./_generated/dataModel";
 
 const DEFAULT_LIMIT = 15;
 const MAX_LIMIT = 50;
+
+// Task search constants (shared with service/tasks.searchTasksForAgentTool)
+export const DEFAULT_TASK_SEARCH_LIMIT = 20;
+export const MAX_TASK_SEARCH_LIMIT = 100;
 
 /**
  * Normalize search query: trim and lowercase for case-insensitive matching.

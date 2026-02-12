@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import {
   requireAuth,
   requireAccountMember,
@@ -212,7 +213,7 @@ export const update = mutation({
     settings: v.optional(accountSettingsValidator),
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
+    const { userId } = await requireAccountAdmin(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
       throw new Error("Not found: Account does not exist");
@@ -314,6 +315,19 @@ export const update = mutation({
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.accountId, updates);
+
+      // Log account update activity
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "account_updated",
+        actorType: "user",
+        actorId: userId,
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: updates,
+      });
     }
 
     return args.accountId;
@@ -387,6 +401,12 @@ export const updateRuntimeStatusInternal = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const previousRuntimeStatus = account.runtimeStatus;
     const updates: Record<string, unknown> = {
       runtimeStatus: args.status,
     };
@@ -396,6 +416,31 @@ export const updateRuntimeStatusInternal = internalMutation({
     }
 
     await ctx.db.patch(args.accountId, updates);
+
+    if (previousRuntimeStatus !== args.status) {
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "runtime_status_changed",
+        actorType: "system",
+        actorId: "system",
+        actorName: "System",
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: {
+          oldStatus: previousRuntimeStatus,
+          newStatus: args.status,
+        },
+      });
+    }
+
+    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    if (args.status === "offline") {
+      await ctx.runMutation(internal.service.agents.markAllOffline, {
+        accountId: args.accountId,
+      });
+    }
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
     const runtime = await ctx.db
@@ -487,6 +532,37 @@ export const updateRuntimeStatusInternal = internalMutation({
     }
 
     return args.accountId;
+  },
+});
+
+/** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
+const RUNTIME_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * Mark runtimes offline when lastHealthCheck is too old.
+ * Called by cron so agents show offline after ungraceful shutdown (kill, crash, Docker stop).
+ */
+export const markStaleRuntimesOffline = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const accounts = await ctx.db.query("accounts").collect();
+    let marked = 0;
+    for (const account of accounts) {
+      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+        continue;
+      }
+      const lastCheck = account.runtimeConfig?.lastHealthCheck;
+      if (lastCheck == null || now - lastCheck <= RUNTIME_STALE_MS) {
+        continue;
+      }
+      await ctx.runMutation(internal.accounts.updateRuntimeStatusInternal, {
+        accountId: account._id,
+        status: "offline",
+      });
+      marked++;
+    }
+    return { marked };
   },
 });
 

@@ -4,13 +4,19 @@ import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Id, Doc } from "@packages/backend/convex/_generated/dataModel";
-import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { cn } from "@packages/ui/lib/utils";
 import { Users, Crown } from "lucide-react";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import { AGENT_STATUS } from "@packages/shared";
 
 interface AgentsSidebarProps {
   accountId: Id<"accounts"> | null;
@@ -62,7 +68,7 @@ export function AgentsSidebar({
 
   const isLoading = accountId && agents === undefined;
   const activeAgents =
-    agents?.filter((a) => a.status === "online" || a.status === "busy") ?? [];
+    agents?.filter((a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY) ?? [];
 
   return (
     <div className={cn("flex flex-col h-full border-r bg-card", className)}>
@@ -167,6 +173,7 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
     ? STATUS_CONFIG.typing
     : (STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline);
   const isLead = isLeadRole(agent.role);
+  const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
 
   return (
     <Button
@@ -178,8 +185,18 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
       onClick={onClick}
     >
       <Avatar className="h-10 w-10 border-2 border-background">
+        {agent.avatarUrl ? (
+          <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+        ) : null}
         <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-          {agent.name.slice(0, 2).toUpperCase()}
+          {FallbackIcon ? (
+            <FallbackIcon
+              className="h-5 w-5 text-primary"
+              aria-hidden
+            />
+          ) : (
+            agent.name.slice(0, 2).toUpperCase()
+          )}
         </AvatarFallback>
       </Avatar>
 

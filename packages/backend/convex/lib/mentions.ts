@@ -87,14 +87,14 @@ export async function resolveMentions(
     .collect();
 
   for (const mentionStr of mentionStrings) {
-    // Skip if already resolved
-    if (resolved.has(mentionStr)) continue;
+    const normalized = mentionStr.toLowerCase();
+    if (resolved.has(normalized)) continue;
 
     // Try to match user by name (case-insensitive)
     const matchedMember = memberships.find(
       (m) =>
-        m.userName.toLowerCase() === mentionStr.toLowerCase() ||
-        m.userEmail.toLowerCase().split("@")[0] === mentionStr.toLowerCase(),
+        m.userName.toLowerCase() === normalized ||
+        m.userEmail.toLowerCase().split("@")[0] === normalized,
     );
 
     if (matchedMember) {
@@ -103,15 +103,15 @@ export async function resolveMentions(
         id: matchedMember.userId,
         name: matchedMember.userName,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
       continue;
     }
 
-    // Try to match agent by slug or name
+    // Try to match agent by slug or name (case-insensitive)
     const matchedAgent = agents.find(
       (a) =>
-        a.slug.toLowerCase() === mentionStr.toLowerCase() ||
-        a.name.toLowerCase() === mentionStr.toLowerCase(),
+        a.slug.toLowerCase() === normalized ||
+        a.name.toLowerCase() === normalized,
     );
 
     if (matchedAgent) {
@@ -121,7 +121,7 @@ export async function resolveMentions(
         name: matchedAgent.name,
         slug: matchedAgent.slug,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
     }
 
     // If no match, skip (don't include unresolved mentions)

@@ -162,7 +162,14 @@ export class TaskFactory {
   }
 
   static createWithStatus(
-    status: "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked",
+    status:
+      | "inbox"
+      | "assigned"
+      | "in_progress"
+      | "review"
+      | "done"
+      | "blocked"
+      | "archived",
     overrides?: Partial<Task>
   ): Task {
     return TaskFactory.create({

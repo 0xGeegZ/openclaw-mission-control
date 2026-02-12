@@ -4,15 +4,17 @@
   "scripts": {
     "dev": "(cd packages/backend && npm run dev) & (cd apps/web && npm run dev) & wait",
     "dev:openclaw": "cd apps/runtime && npm run docker:up:openclaw",
+    "dev:openclaw:light": "BUILD=0 cd apps/runtime && npm run docker:up:openclaw",
+    "logs:openclaw-gateway": "docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw logs openclaw-gateway",
     "dev:turbo": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "node scripts/test-arm64.js",
+    "test": "turbo run test --filter=@packages/shared",
+    "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "node scripts/test-arm64.js all",
-    "test:turbo": "turbo run test --filter=@packages/shared"
+    "test:all": "turbo run test"
   },
   "devDependencies": {
     "prettier": "3.7.4",
@@ -33,7 +35,6 @@
   "packageManager": "npm@11.6.1",
   "dependencies": {
     "@packages/backend": "^1.0.0",
-    "@packages/shared": "^0.1.0",
     "@packages/ui": "^0.1.0",
     "convex": "^1.31.7",
     "date-fns": "^4.1.0",

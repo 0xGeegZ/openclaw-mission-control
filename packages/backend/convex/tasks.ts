@@ -7,10 +7,12 @@ import {
   isValidTransition,
   validateStatusRequirements,
   TaskStatus,
+  TASK_STATUS,
   TASK_STATUS_ORDER,
-  PAUSE_ALLOWED_STATUSES,
+  isPauseAllowedStatus,
 } from "./lib/task_workflow";
 import { logActivity } from "./lib/activity";
+import { ACTIVITY_TYPE, AGENT_STATUS } from "./lib/constants";
 import {
   createAssignmentNotification,
   createStatusChangeNotification,
@@ -124,17 +126,18 @@ export const listByStatus = query({
       review: [],
       done: [],
       blocked: [],
+      archived: [],
     };
 
     for (const task of tasks) {
       if (isOrchestratorChatTask({ account, task })) {
         continue;
       }
-      grouped[task.status as TaskStatus].push(task);
+      grouped[task.status].push(task);
     }
 
     // Sort each group by priority then createdAt
-    for (const status of Object.keys(grouped) as TaskStatus[]) {
+    for (const status of TASK_STATUS_ORDER) {
       grouped[status].sort((a, b) => {
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
@@ -211,7 +214,7 @@ export const getOrCreateOrchestratorChat = mutation({
       accountId: args.accountId,
       title: "Orchestrator Chat",
       description: "System thread for orchestrator coordination.",
-      status: "inbox",
+      status: TASK_STATUS.INBOX,
       priority: 3,
       assignedUserIds: [],
       assignedAgentIds: [],
@@ -281,7 +284,7 @@ export const create = mutation({
       accountId: args.accountId,
       title: args.title,
       description: args.description,
-      status: "inbox",
+      status: TASK_STATUS.INBOX,
       priority: args.priority ?? 3, // Default medium priority
       assignedUserIds: [],
       assignedAgentIds: [],
@@ -296,7 +299,7 @@ export const create = mutation({
     await logActivity({
       ctx,
       accountId: args.accountId,
-      type: "task_created",
+      type: ACTIVITY_TYPE.TASK_CREATED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -354,7 +357,7 @@ export const update = mutation({
     await logActivity({
       ctx,
       accountId: task.accountId,
-      type: "task_updated",
+      type: ACTIVITY_TYPE.TASK_UPDATED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -388,8 +391,8 @@ export const updateStatus = mutation({
       task.accountId,
     );
 
-    const currentStatus = task.status as TaskStatus;
-    const nextStatus = args.status as TaskStatus;
+    const currentStatus = task.status;
+    const nextStatus = args.status;
 
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
@@ -418,10 +421,15 @@ export const updateStatus = mutation({
     };
 
     // Set or clear blocked reason
-    if (nextStatus === "blocked") {
+    if (nextStatus === TASK_STATUS.BLOCKED) {
       updates.blockedReason = args.blockedReason;
-    } else if (currentStatus === "blocked") {
+    } else if (currentStatus === TASK_STATUS.BLOCKED) {
       updates.blockedReason = undefined;
+    }
+
+    // Set archivedAt when transitioning to archived (audit trail)
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
+      updates.archivedAt = Date.now();
     }
 
     await ctx.db.patch(args.taskId, updates);
@@ -457,7 +465,7 @@ export const updateStatus = mutation({
     await logActivity({
       ctx,
       accountId: task.accountId,
-      type: "task_status_changed",
+      type: ACTIVITY_TYPE.TASK_STATUS_CHANGED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -499,13 +507,13 @@ export const pauseAgentsOnTask = mutation({
       task.accountId,
     );
 
-    const currentStatus = task.status as TaskStatus;
+    const currentStatus = task.status;
 
-    if (currentStatus === "blocked") {
+    if (currentStatus === TASK_STATUS.BLOCKED) {
       return { paused: true, alreadyBlocked: true };
     }
 
-    if (!PAUSE_ALLOWED_STATUSES.includes(currentStatus)) {
+    if (!isPauseAllowedStatus(currentStatus)) {
       throw new Error(
         "Task can only be paused when status is Assigned, In progress, or Review",
       );
@@ -514,7 +522,7 @@ export const pauseAgentsOnTask = mutation({
     const hasAssignees =
       task.assignedUserIds.length > 0 || task.assignedAgentIds.length > 0;
     const requirementError = validateStatusRequirements(
-      "blocked",
+      TASK_STATUS.BLOCKED,
       hasAssignees,
       PAUSED_BLOCKED_REASON,
     );
@@ -523,7 +531,7 @@ export const pauseAgentsOnTask = mutation({
     }
 
     await ctx.db.patch(args.taskId, {
-      status: "blocked",
+      status: TASK_STATUS.BLOCKED,
       blockedReason: PAUSED_BLOCKED_REASON,
       updatedAt: Date.now(),
     });
@@ -535,7 +543,7 @@ export const pauseAgentsOnTask = mutation({
 
       const oldStatus = agent.status;
       await ctx.db.patch(agentId, {
-        status: "idle",
+        status: AGENT_STATUS.IDLE,
         currentTaskId: undefined,
         lastHeartbeat: now,
       });
@@ -543,14 +551,14 @@ export const pauseAgentsOnTask = mutation({
       await logActivity({
         ctx,
         accountId: task.accountId,
-        type: "agent_status_changed",
+        type: ACTIVITY_TYPE.AGENT_STATUS_CHANGED,
         actorType: "user",
         actorId: userId,
         actorName: userName,
         targetType: "agent",
         targetId: agentId,
         targetName: agent.name,
-        meta: { oldStatus, newStatus: "idle", reason: "pause_task" },
+        meta: { oldStatus, newStatus: AGENT_STATUS.IDLE, reason: "pause_task" },
       });
     }
 
@@ -563,7 +571,7 @@ export const pauseAgentsOnTask = mutation({
         uid,
         userName,
         task.title,
-        "blocked",
+        TASK_STATUS.BLOCKED,
       );
     }
     for (const agentId of task.assignedAgentIds) {
@@ -577,7 +585,7 @@ export const pauseAgentsOnTask = mutation({
           agentId,
           userName,
           task.title,
-          "blocked",
+          TASK_STATUS.BLOCKED,
         );
       }
     }
@@ -585,7 +593,7 @@ export const pauseAgentsOnTask = mutation({
     await logActivity({
       ctx,
       accountId: task.accountId,
-      type: "task_status_changed",
+      type: ACTIVITY_TYPE.TASK_STATUS_CHANGED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -594,7 +602,7 @@ export const pauseAgentsOnTask = mutation({
       targetName: task.title,
       meta: {
         oldStatus: currentStatus,
-        newStatus: "blocked",
+        newStatus: TASK_STATUS.BLOCKED,
         blockedReason: PAUSED_BLOCKED_REASON,
       },
     });
@@ -652,12 +660,12 @@ export const assign = mutation({
 
     const hasAssignees =
       nextAssignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
-    const shouldAssign = task.status === "inbox" && hasAssignees;
-    const shouldUnassign = task.status === "assigned" && !hasAssignees;
+    const shouldAssign = task.status === TASK_STATUS.INBOX && hasAssignees;
+    const shouldUnassign = task.status === TASK_STATUS.ASSIGNED && !hasAssignees;
     const nextStatus: TaskStatus | null = shouldAssign
-      ? "assigned"
+      ? TASK_STATUS.ASSIGNED
       : shouldUnassign
-        ? "inbox"
+        ? TASK_STATUS.INBOX
         : null;
 
     if (nextStatus && nextStatus !== task.status) {
@@ -748,7 +756,7 @@ export const assign = mutation({
     await logActivity({
       ctx,
       accountId: task.accountId,
-      type: "task_updated",
+      type: ACTIVITY_TYPE.TASK_UPDATED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -765,7 +773,7 @@ export const assign = mutation({
       await logActivity({
         ctx,
         accountId: task.accountId,
-        type: "task_status_changed",
+        type: ACTIVITY_TYPE.TASK_STATUS_CHANGED,
         actorType: "user",
         actorId: userId,
         actorName: userName,
@@ -833,7 +841,7 @@ export const reopen = mutation({
       throw new Error("Not found: Task does not exist");
     }
 
-    if (task.status !== "done") {
+    if (task.status !== TASK_STATUS.DONE) {
       throw new Error("Invalid operation: Can only reopen done tasks");
     }
 
@@ -843,7 +851,7 @@ export const reopen = mutation({
     );
 
     await ctx.db.patch(args.taskId, {
-      status: "review",
+      status: TASK_STATUS.REVIEW,
       updatedAt: Date.now(),
     });
 
@@ -851,14 +859,18 @@ export const reopen = mutation({
     await logActivity({
       ctx,
       accountId: task.accountId,
-      type: "task_status_changed",
+      type: ACTIVITY_TYPE.TASK_STATUS_CHANGED,
       actorType: "user",
       actorId: userId,
       actorName: userName,
       targetType: "task",
       targetId: args.taskId,
       targetName: task.title,
-      meta: { oldStatus: "done", newStatus: "review", reopened: true },
+      meta: {
+        oldStatus: TASK_STATUS.DONE,
+        newStatus: TASK_STATUS.REVIEW,
+        reopened: true,
+      },
     });
 
     return args.taskId;

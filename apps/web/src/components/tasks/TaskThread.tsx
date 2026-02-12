@@ -16,7 +16,10 @@ import { MessageSquare, Sparkles } from "lucide-react";
  */
 function getMentionedAgentsForMessage(
   message: Doc<"messages"> | null,
-  agentsByAuthorId?: Record<string, { name: string; avatarUrl?: string }>,
+  agentsByAuthorId?: Record<
+    string,
+    { name: string; avatarUrl?: string; icon?: string }
+  >,
 ): ReadByAgent[] {
   if (!message?.mentions?.length) return [];
   const agentsMap = new Map<string, ReadByAgent>();
@@ -30,6 +33,7 @@ function getMentionedAgentsForMessage(
         id: mention.id,
         name,
         avatarUrl: agent?.avatarUrl,
+        icon: agent?.icon,
       });
     }
   }
@@ -92,12 +96,15 @@ export function TaskThread({
         now - r.readAt <= TYPING_WINDOW_MS,
     ) ?? false;
 
-  /** Map agent id -> { name, avatarUrl } for message author display */
+  /** Map agent id -> { name, avatarUrl, icon } for message author display */
   const agentsByAuthorId = useMemo(() => {
     if (!agents) return undefined;
-    const map: Record<string, { name: string; avatarUrl?: string }> = {};
+    const map: Record<
+      string,
+      { name: string; avatarUrl?: string; icon?: string }
+    > = {};
     for (const a of agents) {
-      map[a._id] = { name: a.name, avatarUrl: a.avatarUrl };
+      map[a._id] = { name: a.name, avatarUrl: a.avatarUrl, icon: a.icon };
     }
     return map;
   }, [agents]);
@@ -107,7 +114,7 @@ export function TaskThread({
     if (!receipts) return [];
     const agentsMap = new Map<
       string,
-      { id: string; name: string; avatarUrl?: string }
+      { id: string; name: string; avatarUrl?: string; icon?: string }
     >();
     for (const r of receipts) {
       if (
@@ -122,6 +129,7 @@ export function TaskThread({
             id: r.recipientId,
             name,
             avatarUrl: agent?.avatarUrl,
+            icon: agent?.icon,
           });
         }
       }
@@ -149,6 +157,7 @@ export function TaskThread({
             id: r.recipientId,
             name,
             avatarUrl: agent?.avatarUrl,
+            icon: agent?.icon,
           });
         }
       }
@@ -170,6 +179,7 @@ export function TaskThread({
         id: message.authorId,
         name,
         avatarUrl: agent?.avatarUrl,
+        icon: agent?.icon,
       });
     }
     return Array.from(agentsMap.values()).sort((a, b) =>
@@ -212,6 +222,10 @@ export function TaskThread({
 
   const hasTypingIndicatorsActive =
     hasReceiptsInTypingWindow || fallbackTypingAgents.length > 0;
+
+  /** Ensure typing indicator never renders before "Seen by". */
+  const shouldShowTypingIndicator =
+    effectiveTypingAgents.length > 0 && effectiveReadByAgents.length > 0;
 
   useEffect(() => {
     if (!hasTypingIndicatorsActive) return;
@@ -293,7 +307,7 @@ export function TaskThread({
       </div>
 
       {/* Typing indicator - single row above input */}
-      {effectiveTypingAgents.length > 0 && (
+      {shouldShowTypingIndicator && (
         <div className="shrink-0 px-4 py-3 max-w-3xl mx-auto w-full">
           <div className="inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-muted/40 border border-border/30 shadow-sm">
             {/* Agent avatars */}

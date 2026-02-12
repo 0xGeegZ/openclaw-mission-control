@@ -29,6 +29,21 @@ export interface AgentForProfile {
   }>;
 }
 
+/**
+ * Resolves SOUL content for writing to SOUL.md. Uses effectiveSoulContent when non-empty;
+ * logs a warning if the content is empty.
+ */
+function resolveSoulContent(agent: AgentForProfile): string {
+  const trimmed = agent.effectiveSoulContent?.trim() ?? "";
+  if (trimmed.length > 0) return trimmed;
+  log.warn("SOUL content empty for agent; writing empty SOUL.md", {
+    agentId: agent._id,
+    slug: agent.slug,
+    name: agent.name,
+  });
+  return "";
+}
+
 /** Options for syncOpenClawProfiles. */
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -59,13 +74,33 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 4. Always include evidence when you claim facts.
 5. Prefer small, finished increments over large vague progress.
 6. Only change code that is strictly required by the current task: do not add nice-to-have changes, refactors, cleanup, or dummy code; if you discover related improvements, create a follow-up task instead.
-7. Use your available skills as much as possible when working on a task.
+7. Skill usage is mandatory for in-scope operations:
+   - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
+   - if one or more skills apply, use them instead of ad-hoc behavior
+   - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
 8. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
 ## Document sharing (critical)
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
 - After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>).
+
+## Capabilities and tools
+
+- **task_status** — Update the current task's status before posting a reply.
+- **task_create** — Create a new task when you need to spawn follow-up work.
+- **document_upsert** — Create or update a document (deliverable, note, template, reference).
+- **response_request** — Request a response from other agents; use instead of @mentions.
+- **task_load** — Load full task details with recent thread messages.
+- **get_agent_skills** — List skills per agent; orchestrator can query specific agents.
+- **task_assign** — Assign agents to a task by slug. Use it to update current task assignees when another agent is better suited for the next step.
+- **task_message** — Post a message to another task's thread.
+- **task_list** (orchestrator only) — List tasks with optional filters.
+- **task_get** (orchestrator only) — Fetch task details by ID.
+- **task_thread** (orchestrator only) — Fetch recent task thread messages.
+- **task_search** (orchestrator only) — Search tasks by title/description/blockers.
+- **task_delete** (orchestrator only) — Archive a task with a required reason.
+- **task_link_pr** (orchestrator only) — Link a task to a GitHub PR bidirectionally.
 
 ## Task state rules
 
@@ -74,6 +109,15 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - If blocked: move to BLOCKED and explain.
 - If done: move to DONE only after QA review passes (QA marks done when configured).
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
+
+## Orchestrator ping requests (required)
+
+When the primary user asks the orchestrator to "ping" one or more agents or tasks:
+
+- Post a task-thread comment on each target task requesting an explicit response from the target agent(s). Use task_message for non-current tasks.
+- Send response_request for the same task and recipients so notifications are delivered.
+- For multiple tasks, repeat both actions per task.
+- If either step fails for any task, report BLOCKED with the failed task IDs/agent slugs.
 `;
 
 /** Default HEARTBEAT.md content when file path is not available (e.g. in Docker runtime container). */
@@ -87,14 +131,14 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
-- If you are the orchestrator: also review in_progress tasks across the account.
+- If you are the orchestrator: also review assigned / in_progress / blocked tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on in_progress tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others.
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -112,7 +156,11 @@ Pick one action that can be completed quickly:
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
 
-Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes. Use your available skills as much as possible.
+Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
+
+Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes.
+Before executing the action, check your assigned skills and use every relevant skill.
+If no assigned skill applies, include "No applicable skill" in your task update.
 
 ## 4) Report + persist memory (always)
 
@@ -170,7 +218,7 @@ export function buildToolsMd(
   resolvedSkills: AgentForProfile["resolvedSkills"],
 ): string {
   const header =
-    "# Assigned skills\n\nUse these capabilities when relevant. Some skills have real SKILL.md files in this workspace.\n\n";
+    "# Assigned skills\n\nSkill usage policy: before each operation, check this list and use every relevant skill. If no listed skill applies, explicitly state `No applicable skill` in your task update. Some skills have real SKILL.md files in this workspace.\n\n";
   if (!resolvedSkills || resolvedSkills.length === 0) {
     return header + "- No assigned skills\n";
   }
@@ -477,7 +525,7 @@ export function syncOpenClawProfiles(
     validAgents.push({ agent, agentDir });
     ensureDir(agentDir);
 
-    writeIfChanged(path.join(agentDir, "SOUL.md"), agent.effectiveSoulContent);
+    writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
     writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(

@@ -13,8 +13,14 @@ import {
   CardTitle,
 } from "@packages/ui/components/card";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { TASK_STATUS_LABELS, TASK_STATUS_ORDER } from "@packages/shared";
-import type { TaskStatus } from "@packages/shared";
+import {
+  TASK_STATUS,
+  TASK_STATUS_LABELS,
+  TASK_STATUS_ORDER,
+  AGENT_STATUS_ORDER,
+  AGENT_STATUS_LABELS,
+} from "@packages/shared";
+import type { TaskStatus, AgentStatus } from "@packages/shared";
 import {
   ChartContainer,
   ChartTooltipContent,
@@ -41,8 +47,8 @@ import {
   PieChartIcon,
 } from "lucide-react";
 
-/** Task status display order: Kanban order plus blocked. */
-const ANALYTICS_STATUS_ORDER: TaskStatus[] = [...TASK_STATUS_ORDER, "blocked"];
+/** Task status display order: use canonical shared order. */
+const ANALYTICS_STATUS_ORDER: TaskStatus[] = TASK_STATUS_ORDER;
 
 /** Hex colors for task statuses in charts (not CSS vars). */
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -52,24 +58,17 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   review: "#f59e0b",
   done: "#22c55e",
   blocked: "#ef4444",
+  archived: "#9ca3af",
 };
 
 /** Hex colors for agent statuses in charts. */
-const AGENT_STATUS_COLORS: Record<string, string> = {
+const AGENT_STATUS_COLORS: Record<AgentStatus, string> = {
   online: "#22c55e",
   busy: "#f59e0b",
   idle: "#6b7280",
   offline: "#9ca3af",
   error: "#ef4444",
 };
-
-const AGENT_STATUS_ORDER = [
-  "online",
-  "busy",
-  "idle",
-  "offline",
-  "error",
-] as const;
 
 interface AnalyticsEmptyStateProps {
   icon: ReactNode;
@@ -130,14 +129,14 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
     ? []
     : AGENT_STATUS_ORDER.map((status) => ({
         status,
-        label: status.charAt(0).toUpperCase() + status.slice(1),
+        label: AGENT_STATUS_LABELS[status],
         count: summary.agentCountByStatus[status] ?? 0,
         fill: AGENT_STATUS_COLORS[status],
       })).filter((item) => item.count > 0);
 
   const completionRate = useMemo(() => {
     if (!summary || summary.totalTasks === 0) return 0;
-    const done = summary.taskCountByStatus["done"] ?? 0;
+    const done = summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0;
     return Math.round((done / summary.totalTasks) * 100);
   }, [summary]);
 
@@ -262,7 +261,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                     {completionRate}%
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {summary.taskCountByStatus["done"] ?? 0} tasks done
+                    {summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0} tasks done
                   </p>
                 </CardContent>
               </Card>
