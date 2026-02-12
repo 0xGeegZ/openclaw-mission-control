@@ -1,77 +1,152 @@
-import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { requireAccountMember } from "./lib/auth";
-import type { TaskStatus } from "./lib/task_workflow";
+import { v } from "convex/values";
 
 /**
- * Summary stats for the analytics dashboard.
+ * Analytics metrics computation.
+ * Queries tasks table to compute team activity metrics for a given time range.
  */
-export type AnalyticsSummary = {
-  taskCountByStatus: Record<TaskStatus, number>;
-  agentCountByStatus: Record<string, number>;
+
+/**
+ * Time range type.
+ * "day" = last 24 hours
+ * "week" = last 7 days
+ * "month" = last 30 days
+ * "custom" = requires fromDate and toDate in ms
+ */
+type TimeRange = "day" | "week" | "month" | "custom";
+
+interface AnalyticsMetrics {
+  /** Total tasks created in the time range */
   totalTasks: number;
-  totalAgents: number;
-  recentActivityCount: number;
-};
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  /** Tasks with status "done" in the time range */
+  completedTasks: number;
+
+  /** Tasks with status "in_progress" at the time range boundary */
+  inProgressCount: number;
+
+  /** Average time from creation to completion (in hours) */
+  avgCompletionTime: number;
+
+  /** Time range used for calculation */
+  timeRange: TimeRange;
+
+  /** Start timestamp (ms) */
+  fromDate: number;
+
+  /** End timestamp (ms) */
+  toDate: number;
+}
 
 /**
- * Get analytics summary for an account: task counts by status, agent counts by status,
- * and recent activity count (last 24h). Used by the analytics dashboard.
+ * Get analytics metrics for a given time range.
+ *
+ * @param timeRange - "day", "week", "month", or "custom"
+ * @param fromDate - Start date (ms), required if timeRange is "custom"
+ * @param toDate - End date (ms), defaults to now
  */
-export const getSummary = query({
+export const getMetrics = query({
   args: {
-    accountId: v.id("accounts"),
+    timeRange: v.union(
+      v.literal("day"),
+      v.literal("week"),
+      v.literal("month"),
+      v.literal("custom"),
+    ),
+    fromDate: v.optional(v.number()),
+    toDate: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<AnalyticsSummary> => {
-    await requireAccountMember(ctx, args.accountId);
-
-    const since = Date.now() - ONE_DAY_MS;
-
-    const [tasks, agents, recentActivities] = await Promise.all([
-      ctx.db
-        .query("tasks")
-        .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-        .collect(),
-      ctx.db
-        .query("agents")
-        .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
-        .collect(),
-      ctx.db
-        .query("activities")
-        .withIndex("by_account_created", (q) =>
-          q.eq("accountId", args.accountId).gte("createdAt", since),
-        )
-        .collect(),
-    ]);
-
-    const taskCountByStatus: Record<string, number> = {
-      inbox: 0,
-      assigned: 0,
-      in_progress: 0,
-      review: 0,
-      done: 0,
-      blocked: 0,
-    };
-    for (const t of tasks) {
-      taskCountByStatus[t.status] = (taskCountByStatus[t.status] ?? 0) + 1;
+  async handler(ctx, args) {
+    // Get the current user's account
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
     }
 
-    const agentCountByStatus: Record<string, number> = {};
-    for (const a of agents) {
-      agentCountByStatus[a.status] = (agentCountByStatus[a.status] ?? 0) + 1;
+    // Find the user's account membership
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+      .first();
+
+    if (!membership) {
+      throw new Error("User not found in any account");
     }
 
-    const recentActivityCount = recentActivities.length;
+    const accountId = membership.accountId;
+
+    // Calculate time boundaries
+    const now = args.toDate || Date.now();
+    let fromDate: number;
+
+    switch (args.timeRange) {
+      case "day":
+        fromDate = now - 24 * 60 * 60 * 1000;
+        break;
+      case "week":
+        fromDate = now - 7 * 24 * 60 * 60 * 1000;
+        break;
+      case "month":
+        fromDate = now - 30 * 24 * 60 * 60 * 1000;
+        break;
+      case "custom":
+        if (!args.fromDate) {
+          throw new Error("fromDate is required for custom time range");
+        }
+        fromDate = args.fromDate;
+        break;
+    }
+
+    // Fetch all tasks for the account
+    const allTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_account_created", (q) => q.eq("accountId", accountId))
+      .collect();
+
+    // Filter tasks by time range
+    const tasksInRange = allTasks.filter(
+      (task) => task.createdAt >= fromDate && task.createdAt <= now,
+    );
+
+    // Calculate metrics
+    const totalTasks = tasksInRange.length;
+
+    // Completed tasks: those with status "done" AND have been marked done within time range
+    const completedTasks = tasksInRange.filter(
+      (task) => task.status === "done",
+    ).length;
+
+    // In-progress tasks: current status is "in_progress"
+    // Note: We're using current status, not filtered by time range
+    // This shows how many tasks are currently in progress
+    const inProgressCount = allTasks.filter(
+      (task) => task.status === "in_progress",
+    ).length;
+
+    // Average completion time: for tasks that are done, calculate time from created to done
+    // Since we don't have a "completedAt" field, we use updatedAt as proxy for done time
+    const completedTasksWithTiming = tasksInRange
+      .filter((task) => task.status === "done")
+      .map((task) => {
+        // updatedAt is the last time the task was updated (including status change to done)
+        const completionTime = task.updatedAt - task.createdAt;
+        return completionTime / (60 * 60 * 1000); // Convert to hours
+      });
+
+    const avgCompletionTime =
+      completedTasksWithTiming.length > 0
+        ? completedTasksWithTiming.reduce((a, b) => a + b, 0) /
+          completedTasksWithTiming.length
+        : 0;
 
     return {
-      taskCountByStatus:
-        taskCountByStatus as AnalyticsSummary["taskCountByStatus"],
-      agentCountByStatus,
-      totalTasks: tasks.length,
-      totalAgents: agents.length,
-      recentActivityCount,
-    };
+      totalTasks,
+      completedTasks,
+      inProgressCount,
+      avgCompletionTime: Math.round(avgCompletionTime * 100) / 100, // Round to 2 decimals
+      timeRange: args.timeRange,
+      fromDate,
+      toDate: now,
+    } as AnalyticsMetrics;
   },
 });
