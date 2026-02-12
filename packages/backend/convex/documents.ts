@@ -531,7 +531,7 @@ export const softDelete = mutation({
     await logActivity({
       ctx,
       accountId: document.accountId,
-      type: "document_updated",
+      type: "document_deleted",
       actorType: "user",
       actorId: userId,
       actorName: userName,
@@ -573,7 +573,7 @@ export const remove = mutation({
     await logActivity({
       ctx,
       accountId: document.accountId,
-      type: "document_updated",
+      type: "document_deleted",
       actorType: "user",
       actorId: userId,
       actorName: userName,

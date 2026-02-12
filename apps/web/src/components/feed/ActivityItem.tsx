@@ -17,6 +17,7 @@ import {
   Pencil,
   UserMinus,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import Link from "next/link";
@@ -63,6 +64,7 @@ const activityTypeConfig: Record<
   },
   [ACTIVITY_TYPE.DOCUMENT_CREATED]: { icon: FileText, color: "text-emerald-500" },
   [ACTIVITY_TYPE.DOCUMENT_UPDATED]: { icon: Pencil, color: "text-blue-500" },
+  [ACTIVITY_TYPE.DOCUMENT_DELETED]: { icon: Trash2, color: "text-destructive" },
   [ACTIVITY_TYPE.AGENT_STATUS_CHANGED]: { icon: Bot, color: "text-amber-500" },
   [ACTIVITY_TYPE.RUNTIME_STATUS_CHANGED]: {
     icon: AlertCircle,

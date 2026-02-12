@@ -210,6 +210,7 @@ describe("lib/validators.ts - Required Types", () => {
       "role_changed",
       "message_created",
       "document_created",
+      "document_deleted",
       "task_created",
     ];
 
