@@ -1,6 +1,5 @@
 "use client";
 
-import { type Doc } from "@packages/backend/convex/_generated/dataModel";
 import {
   Card,
   CardContent,
