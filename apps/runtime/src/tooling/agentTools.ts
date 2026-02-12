@@ -14,6 +14,11 @@ import {
   type TaskStatusToolResult,
 } from "./taskStatusTool";
 import {
+  TASK_UPDATE_TOOL_SCHEMA,
+  executeTaskUpdateTool,
+  type TaskUpdateToolResult,
+} from "./taskUpdateTool";
+import {
   TASK_DELETE_TOOL_SCHEMA,
   executeTaskDeleteTool,
   type TaskDeleteToolResult,
@@ -386,6 +391,10 @@ export function getToolCapabilitiesAndSchemas(options: {
   if (options.hasTaskContext && options.canModifyTaskStatus) {
     capabilityLabels.push("change task status (task_status tool)");
     schemas.push(createTaskStatusToolSchema({ allowDone: canMarkDone }));
+    capabilityLabels.push(
+      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)"
+    );
+    schemas.push(TASK_UPDATE_TOOL_SCHEMA);
   }
   if (options.canCreateTasks) {
     capabilityLabels.push("create tasks (task_create tool)");
@@ -557,6 +566,54 @@ export async function executeAgentTool(params: {
       taskId: args.taskId ?? taskId ?? "",
       status: args.status ?? "",
       blockedReason: args.blockedReason,
+      serviceToken,
+      accountId,
+    });
+    return result;
+  }
+
+  if (name === "task_update") {
+    let args: {
+      taskId?: string;
+      title?: string;
+      description?: string;
+      priority?: number;
+      labels?: string[];
+      assignedAgentIds?: string[];
+      assignedUserIds?: string[];
+      status?: string;
+      blockedReason?: string;
+      dueDate?: number;
+    };
+    try {
+      const parsed = JSON.parse(argsStr || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { success: false, error: "Invalid JSON arguments" };
+      }
+      args = parsed as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+
+    if (args.status === "done" && canMarkDone !== true) {
+      return {
+        success: false,
+        error: "Forbidden: Not allowed to mark tasks as done",
+      };
+    }
+
+    const result: TaskUpdateToolResult = await executeTaskUpdateTool({
+      agentId,
+      taskId: args.taskId ?? taskId ?? "",
+      title: args.title,
+      description: args.description,
+      priority: args.priority,
+      labels: args.labels,
+      assignedAgentIds: args.assignedAgentIds,
+      assignedUserIds: args.assignedUserIds,
+      status: args.status,
+      blockedReason: args.blockedReason,
+      dueDate: args.dueDate,
       serviceToken,
       accountId,
     });

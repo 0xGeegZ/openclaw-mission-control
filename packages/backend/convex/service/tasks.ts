@@ -601,6 +601,89 @@ export const updateStatusFromAgent = internalMutation({
 });
 
 /**
+ * Update task fields on behalf of an agent (service-only).
+ * Handles title, description, priority, labels, assignedAgentIds, assignedUserIds, dueDate.
+ * Status changes should be handled separately via updateStatusFromAgent.
+ */
+export const updateFromAgent = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    updates: v.record(v.string(), v.any()),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+
+    if (task.accountId !== agent.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Whitelist allowed fields to prevent unauthorized updates
+    const allowedFields = new Set([
+      "title",
+      "description",
+      "priority",
+      "labels",
+      "assignedAgentIds",
+      "assignedUserIds",
+      "dueDate",
+      "updatedAt",
+    ]);
+
+    const safeUpdates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args.updates)) {
+      if (allowedFields.has(key)) {
+        safeUpdates[key] = value;
+      }
+    }
+
+    if (Object.keys(safeUpdates).length === 0) {
+      return args.taskId;
+    }
+
+    // Validate assignedAgentIds references if provided
+    if (safeUpdates.assignedAgentIds && Array.isArray(safeUpdates.assignedAgentIds)) {
+      for (const agentId of safeUpdates.assignedAgentIds) {
+        const assignedAgent = await ctx.db.get(agentId as Id<"agents">);
+        if (!assignedAgent || assignedAgent.accountId !== task.accountId) {
+          throw new Error(`Invalid agent: ${agentId}`);
+        }
+      }
+    }
+
+    await ctx.db.patch(args.taskId, safeUpdates);
+
+    // Log activity
+    await logActivity({
+      ctx,
+      accountId: task.accountId,
+      type: "task_updated",
+      actorType: "agent",
+      actorId: args.agentId,
+      actorName: agent.name,
+      targetType: "task",
+      targetId: args.taskId,
+      targetName: task.title,
+      meta: {
+        changedFields: Object.keys(safeUpdates).filter(
+          (k) => k !== "updatedAt"
+        ),
+      },
+    });
+
+    return args.taskId;
+  },
+});
+
+/**
  * Search tasks for an account on behalf of an agent (service-only).
  * Returns tasks matching the query with relevance scores.
  */
