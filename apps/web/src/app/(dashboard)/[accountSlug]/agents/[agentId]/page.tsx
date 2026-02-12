@@ -344,7 +344,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
 
             {isAdmin && (
               <>
-                <AgentControlsCard agent={agent} isAdmin={isAdmin} />
+                <AgentControlsCard isAdmin={isAdmin} />
                 <AgentBehaviorFlagsCard
                   agent={agent}
                   accountDefaults={

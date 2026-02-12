@@ -17,7 +17,6 @@ import {
 import { RotateCw, Zap } from "lucide-react";
 
 interface AgentControlsCardProps {
-  agent: Doc<"agents">;
   isAdmin: boolean;
 }
 
@@ -27,7 +26,6 @@ interface AgentControlsCardProps {
  * Future mutations will enable these actions.
  */
 export function AgentControlsCard({
-  agent,
   isAdmin,
 }: AgentControlsCardProps) {
   // MVP: Buttons are disabled (read-only indicators)
