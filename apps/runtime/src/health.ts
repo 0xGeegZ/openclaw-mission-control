@@ -17,10 +17,20 @@ import {
   getAllMetrics,
   formatPrometheusMetrics,
 } from "./metrics";
+import type { TaskStatus } from "@packages/shared";
 
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
+
+type RuntimeTaskStatus = Extract<
+  TaskStatus,
+  "in_progress" | "review" | "done" | "blocked"
+>;
+type CreatableTaskStatus = Extract<
+  TaskStatus,
+  "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked"
+>;
 
 /**
  * Read and parse JSON body from an HTTP request.
@@ -389,7 +399,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             serviceToken: config.serviceToken,
             agentId,
             taskId: body.taskId as Id<"tasks">,
-            status: body.status as "in_progress" | "review" | "done" | "blocked",
+            status: body.status as RuntimeTaskStatus,
             blockedReason: body.blockedReason,
           },
         );
@@ -542,12 +552,7 @@ export function startHealthServer(config: RuntimeConfig): void {
               | Id<"agents">[]
               | undefined,
             assignedUserIds: body.assignedUserIds,
-            status: body.status as
-              | "in_progress"
-              | "review"
-              | "done"
-              | "blocked"
-              | undefined,
+            status: body.status as RuntimeTaskStatus | undefined,
             blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
           },
@@ -654,14 +659,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             description: body.description?.trim(),
             priority: body.priority,
             labels: body.labels,
-            status: body.status as
-              | "inbox"
-              | "assigned"
-              | "in_progress"
-              | "review"
-              | "done"
-              | "blocked"
-              | undefined,
+            status: body.status as CreatableTaskStatus | undefined,
             blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
           },
@@ -1041,15 +1039,7 @@ export function startHealthServer(config: RuntimeConfig): void {
             accountId: config.accountId,
             serviceToken: config.serviceToken,
             agentId,
-            status: body.status as
-              | "inbox"
-              | "assigned"
-              | "in_progress"
-              | "review"
-              | "done"
-              | "blocked"
-              | "archived"
-              | undefined,
+            status: body.status as TaskStatus | undefined,
             assigneeAgentId,
             limit: body.limit,
           },

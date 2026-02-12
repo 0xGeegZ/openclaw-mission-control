@@ -18,6 +18,7 @@ import {
   HEARTBEAT_OK_RESPONSE,
   isHeartbeatOkResponse,
 } from "./heartbeat-constants";
+import type { RecipientType } from "@packages/shared";
 
 const log = createLogger("[Delivery]");
 
@@ -32,7 +33,7 @@ export interface DeliveryContext {
     title: string;
     body: string;
     recipientId?: string;
-    recipientType?: "user" | "agent";
+    recipientType?: RecipientType;
     taskId?: string;
     messageId?: string;
     accountId: string;

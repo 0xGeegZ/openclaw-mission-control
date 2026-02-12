@@ -1,12 +1,13 @@
 import { QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import type { RecipientType } from "@packages/shared";
 
 /**
  * Parsed mention with resolved entity.
  * slug is set for agents so the UI can match @slug in content (e.g. @squad-lead).
  */
 export interface ParsedMention {
-  type: "user" | "agent";
+  type: RecipientType;
   id: string;
   name: string;
   slug?: string;

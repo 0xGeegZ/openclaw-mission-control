@@ -308,14 +308,6 @@ describe("Correlation ID Propagation", () => {
     expect(errorLog.traceable).toBe(true);
   });
 
-  it("should make correlation ID queryable in logs", async () => {
-    // User can search logs by correlation ID to trace entire request flow
-    // Log aggregation tool (e.g., DataDog, ELK) can filter:
-    // filter correlation_id = "550e8400-e29b-41d4-a716-446655440000"
-
-    const searchable = true;
-    expect(searchable).toBe(true);
-  });
 });
 
 // ============================================================================

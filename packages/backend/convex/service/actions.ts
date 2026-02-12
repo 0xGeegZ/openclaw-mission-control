@@ -18,6 +18,7 @@ import {
   TASK_STATUS_TRANSITIONS,
   type TaskStatus,
 } from "../lib/task_workflow";
+import type { RecipientType } from "@packages/shared";
 
 export type { BehaviorFlags };
 
@@ -1246,7 +1247,7 @@ export const listTaskThreadForAgentTool = action({
   ): Promise<
     Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -1823,7 +1824,7 @@ export const loadTaskDetailsForAgentTool = action({
     task: Doc<"tasks">;
     thread: Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;

@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
+import { isValidSlug, validateAccountName } from "@/lib/settings-validation";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -162,17 +163,30 @@ export default function SettingsPage({ params }: SettingsPageProps) {
   const handleSaveGeneral = async () => {
     if (!accountId) return;
     setSlugError(null);
+
+    const trimmedName = name.trim();
+    const trimmedSlug = slug.trim();
+
+    const nameValidation = validateAccountName(trimmedName);
+    if (!nameValidation.valid) {
+      toast.error(nameValidation.error);
+      return;
+    }
+    if (trimmedSlug && !isValidSlug(trimmedSlug)) {
+      setSlugError("URL can only contain lowercase letters, numbers, and hyphens");
+      return;
+    }
+
     setGeneralSaving(true);
     try {
       await updateAccount({
         accountId,
-        name: name.trim() || undefined,
-        slug: slug.trim() || undefined,
+        name: trimmedName || undefined,
+        slug: trimmedSlug || undefined,
       });
       toast.success("Settings saved");
-      const newSlug = slug.trim();
-      if (newSlug && newSlug !== accountSlug) {
-        router.replace(`/${newSlug}/settings`);
+      if (trimmedSlug && trimmedSlug !== accountSlug) {
+        router.replace(`/${trimmedSlug}/settings`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to save";

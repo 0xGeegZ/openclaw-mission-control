@@ -6,10 +6,25 @@
 import { getConvexClient, api } from "../convex-client";
 import { createLogger } from "../logger";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import type { TaskStatus } from "@packages/shared";
 
 const log = createLogger("[TaskStatusTool]");
 
-const ALLOWED_STATUSES = new Set(["in_progress", "review", "done", "blocked"]);
+type RuntimeTaskStatus = Extract<
+  TaskStatus,
+  "in_progress" | "review" | "done" | "blocked"
+>;
+
+const ALLOWED_STATUSES = new Set<RuntimeTaskStatus>([
+  "in_progress",
+  "review",
+  "done",
+  "blocked",
+]);
+
+function isRuntimeTaskStatus(value: string): value is RuntimeTaskStatus {
+  return ALLOWED_STATUSES.has(value as RuntimeTaskStatus);
+}
 
 /**
  * Build the task_status tool schema with optional "done" support.
@@ -104,7 +119,7 @@ export async function executeTaskStatusTool(params: {
   if (!taskId.trim()) {
     return { success: false, error: "taskId is required" };
   }
-  if (!ALLOWED_STATUSES.has(status)) {
+  if (!isRuntimeTaskStatus(status)) {
     return {
       success: false,
       error: `Invalid status: must be one of in_progress, review, done, blocked`,
@@ -124,7 +139,7 @@ export async function executeTaskStatusTool(params: {
       serviceToken,
       agentId,
       taskId: taskId as Id<"tasks">,
-      status: status as "in_progress" | "review" | "done" | "blocked",
+      status: status as RuntimeTaskStatus,
       blockedReason: blockedReason?.trim() || undefined,
     });
     return { success: true };

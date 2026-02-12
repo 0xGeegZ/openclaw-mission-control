@@ -2,6 +2,7 @@
 
 import React, { useMemo } from "react";
 import { Streamdown } from "streamdown";
+import type { RecipientType } from "@packages/shared";
 
 /**
  * Display shape for a mention. Matches Convex messages.mentions stored shape
@@ -10,7 +11,7 @@ import { Streamdown } from "streamdown";
 export interface Mention {
   name: string;
   id?: string;
-  type?: "user" | "agent";
+  type?: RecipientType;
   /** Agent slug so @slug in content matches (e.g. @squad-lead). */
   slug?: string;
 }
