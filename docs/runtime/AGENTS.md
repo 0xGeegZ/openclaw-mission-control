@@ -51,7 +51,10 @@ Only include changes that directly support the current task. If any change is no
    - do not add "nice-to-have" changes, refactors, cleanup, or dummy code
    - if you discover related improvements, create a follow-up task instead
    - if you are unsure whether a change is in scope, do not include it
-7. Use your available skills as much as possible when working on a task.
+7. Skill usage is mandatory for in-scope operations:
+   - before each operation, check your assigned skills (`TOOLS.md` + `skills/*/SKILL.md`)
+   - if one or more skills apply, use them instead of ad-hoc behavior
+   - in your update, name the skill(s) you used; if none apply, explicitly write `No applicable skill`
 
 ## Where to store memory
 
@@ -114,8 +117,8 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
 - **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
 - **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
-- **task_assign** (orchestrator only) — Assign agents to a task by slug.
-- **task_message** (orchestrator only) — Post a message to another task's thread.
+- **task_assign** — Assign agents to a task by slug. Use it to update current task assignees when another agent is better suited for the next step.
+- **task_message** — Post a message to another task's thread. Use it to reference related tasks, hand off work from a DONE task into another active task, or ping agents in that other thread; pair with `response_request` when you need guaranteed agent notification.
 - **task_list** (orchestrator only) — List tasks with optional filters (status, assignee, limit).
 - **task_get** (orchestrator only) — Fetch details for a single task by ID.
 - **task_thread** (orchestrator only) — Fetch recent thread messages for a task.
@@ -190,6 +193,15 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
 ### Orchestrator follow-ups (tool-only)
 
 When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+
+### Orchestrator ping requests (required behavior)
+
+When the primary user asks you to "ping" one or more agents or tasks:
+
+- Add a thread comment on each target task explicitly requesting a response from the target agent(s). Use **task_message** for tasks other than the current task.
+- Send a **response_request** for the same task and recipients so agents are actually notified.
+- For multiple tasks, repeat both actions per task (comment + response_request).
+- If either step fails for any task, report **BLOCKED** and list the failed task IDs/agent slugs.
 
 ## Document rules
 

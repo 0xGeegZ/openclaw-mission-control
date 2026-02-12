@@ -32,7 +32,7 @@ RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
 RUN npm install -g pnpm
 
 # Pinned versions for reproducible builds (update periodically).
-ARG OPENCLAW_VERSION=2026.2.6-3
+ARG OPENCLAW_VERSION=2026.2.9
 ARG CLAWBOT_VERSION=2026.1.24-3
 # Install OpenClaw CLI (newer) with clawdbot fallback.
 RUN npm install -g "openclaw@${OPENCLAW_VERSION}" "clawdbot@${CLAWBOT_VERSION}" \
