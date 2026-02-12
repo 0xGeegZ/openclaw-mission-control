@@ -3,7 +3,7 @@
 import { useMutation } from 'convex/react';
 import { api } from '@packages/backend/convex/_generated/api';
 import { Id } from '@packages/backend/convex/_generated/dataModel';
-import { ConfirmDeleteDialog } from '@/components/shared';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { toast } from 'sonner';
 
 interface AgentDeleteDialogProps {
