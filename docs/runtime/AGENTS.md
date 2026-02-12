@@ -62,6 +62,13 @@ Only include changes that directly support the current task. If any change is no
 - memory/YYYY-MM-DD.md: a chronological log of actions and decisions
 - MEMORY.md: stable decisions, conventions, key learnings
 
+### Memory and read tool contract
+
+- Prefer `memory_get` / `memory_set` when those tools are available.
+- Use `read` only for explicit file paths, never for directories.
+- When calling `read`, pass JSON args with `path`, for example: `{ "path": "memory/WORKING.md" }`.
+- If `memory/YYYY-MM-DD.md` does not exist, create it before trying to read it.
+
 ## Required output format for task thread updates
 
 Post updates using this exact structure:

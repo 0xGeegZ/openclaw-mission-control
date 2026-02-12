@@ -172,6 +172,18 @@ describe("safeSkillSlug", () => {
 });
 
 describe("syncOpenClawProfiles", () => {
+  /**
+   * Build a YYYY-MM-DD date string in UTC with day offset.
+   */
+  function utcDayString(now: Date, offsetDays: number): string {
+    const utc = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + offsetDays,
+    );
+    return new Date(utc).toISOString().slice(0, 10);
+  }
+
   it("writes openclaw.json with agents.list and skipBootstrap", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
@@ -502,6 +514,48 @@ description: Custom name in frontmatter
     expect(config.skills?.entries?.["no-content"]).toBeUndefined();
     expect(config.skills?.entries?.["with-content"]).toEqual({ enabled: true });
     expect(config.skills?.allowBundled).toBeUndefined();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("creates per-agent memory scaffold including rolling daily notes", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents");
+    const agentSlug = "engineer";
+    const agents: AgentForProfile[] = [
+      {
+        _id: "a1",
+        name: "Engineer",
+        slug: agentSlug,
+        role: "R",
+        sessionKey: "agent:engineer:acc1",
+        effectiveSoulContent: "# SOUL",
+        resolvedSkills: [],
+      },
+    ];
+
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configPath,
+    });
+
+    const now = new Date();
+    const memoryRoot = path.join(workspaceRoot, agentSlug);
+    const memoryDir = path.join(memoryRoot, "memory");
+    const deliverablesDir = path.join(memoryRoot, "deliverables");
+    expect(fs.existsSync(path.join(memoryRoot, "MEMORY.md"))).toBe(true);
+    expect(fs.existsSync(path.join(memoryDir, "WORKING.md"))).toBe(true);
+    expect(fs.existsSync(deliverablesDir)).toBe(true);
+    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, -1)}.md`))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, 0)}.md`))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, 1)}.md`))).toBe(
+      true,
+    );
+
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });

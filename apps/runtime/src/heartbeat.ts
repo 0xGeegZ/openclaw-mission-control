@@ -40,7 +40,6 @@ const HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = ["in_progress", "assigned"]
 const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
   "in_progress",
   "assigned",
-  "blocked",
 ];
 const ORCHESTRATOR_ASSIGNEE_STALE_MS = 3 * 60 * 60 * 1000;
 const ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT = 3;
@@ -202,7 +201,7 @@ export function buildHeartbeatMessage(options: {
     ? `- Take one concrete action if appropriate (or up to ${ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT} orchestrator follow-ups across distinct tracked tasks).`
     : "- Take one concrete action if appropriate.";
   const orchestratorLine = isOrchestrator
-    ? "- As the orchestrator, follow up on in_progress/assigned/blocked tasks (even if assigned to other agents)."
+    ? "- As the orchestrator, follow up on in_progress/assigned tasks (even if assigned to other agents)."
     : null;
   const orchestratorFollowUpBlock = buildOrchestratorFollowUpBlock(
     isOrchestrator,
@@ -246,6 +245,7 @@ export function buildHeartbeatMessage(options: {
 
 Follow the HEARTBEAT.md checklist.
 - Load context (WORKING.md, memory, mentions, assigned/tracked tasks, activity feed).
+- Prefer memory_get/memory_set for memory files. If read is needed, call read with JSON args containing path (example: {"path":"memory/WORKING.md"}) and never target a directory.
 ${actionLine}
 - Do not narrate the checklist or your intent; reply only with a concrete action update (include Task ID) or with ${HEARTBEAT_OK_RESPONSE}.
 - If you took action, post a thread update using AGENTS.md format.
@@ -278,7 +278,7 @@ function buildOrchestratorFollowUpBlock(
   const toolLine =
     "For each selected tracked task, use task_load (or task_get/task_thread/task_search) to load context. When you need assignee follow-up, do both on the same task: (1) post a task_message thread comment requesting the update, and (2) send response_request to notify assignees. If either step fails, report BLOCKED with the failed task IDs/agent slugs.";
   const httpLine = base
-    ? ` If tools are unavailable, use HTTP: POST ${base}/agent/task-load (body: { "taskId": "..." }), POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), POST ${base}/agent/task-message (body: { "taskId": "...", "content": "..." }), and POST ${base}/agent/response-request (body: { "taskId": "...", "recipientSlugs": ["..."], "message": "..." }).`
+    ? ` If tools are unavailable, use HTTP with header x-openclaw-session-key and JSON body: POST ${base}/agent/task-load (body: { "taskId": "..." }), POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), POST ${base}/agent/task-message (body: { "taskId": "...", "content": "..." }), and POST ${base}/agent/response-request (body: { "taskId": "...", "recipientSlugs": ["..."], "message": "..." }).`
     : " If tools are unavailable, use the HTTP fallback endpoints (task-load, task-search, task-get, task-message, response-request) with the base URL from your notification prompt.";
   const oneAction = `Take up to ${ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT} atomic follow-ups per heartbeat across distinct tracked tasks.`;
   if (!hasTrackedTasks) return "";

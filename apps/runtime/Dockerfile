@@ -16,6 +16,7 @@ RUN npm ci
 
 # Copy source
 COPY apps/runtime ./apps/runtime
+COPY docs/runtime ./docs/runtime
 COPY packages/shared ./packages/shared
 COPY packages/backend ./packages/backend
 

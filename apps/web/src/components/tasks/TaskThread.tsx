@@ -9,7 +9,8 @@ import { TYPING_WINDOW_MS } from "@packages/shared";
 import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { MessageSquare, Sparkles } from "lucide-react";
+import { Bot, MessageSquare, Sparkles } from "lucide-react";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 
 /**
  * Build display-ready agent info for agent mentions on a message.
@@ -327,9 +328,15 @@ export function TaskThread({
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-primary">
-                      {agent.name.charAt(0).toUpperCase()}
-                    </div>
+                    (() => {
+                      const FallbackIcon =
+                        (agent.icon && AGENT_ICON_MAP[agent.icon]) || Bot;
+                      return (
+                        <div className="h-full w-full flex items-center justify-center text-primary">
+                          <FallbackIcon className="h-4 w-4" />
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               ))}

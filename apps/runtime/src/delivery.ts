@@ -127,6 +127,11 @@ const FALLBACK_NO_REPLY_AFTER_TOOLS = [
 
 const NO_RESPONSE_RETRY_LIMIT = 3;
 const NO_RESPONSE_RETRY_RESET_MS = 10 * 60 * 1000;
+const REQUIRED_REPLY_NOTIFICATION_TYPES = new Set([
+  "assignment",
+  "mention",
+  "response_request",
+]);
 const NO_REPLY_SIGNAL_VALUES = new Set([
   "NO_REPLY",
   "NO",
@@ -141,6 +146,39 @@ function isNoReplySignal(value: string): boolean {
   return (
     NO_REPLY_SIGNAL_VALUES.has(value.trim()) || isHeartbeatOkResponse(value)
   );
+}
+
+/**
+ * Check whether a tool schema is available in the current runtime payload.
+ */
+function hasToolSchema(schemas: unknown[], toolName: string): boolean {
+  return schemas.some((schema) => {
+    if (!schema || typeof schema !== "object") return false;
+    const schemaRecord = schema as {
+      type?: unknown;
+      function?: { name?: unknown };
+    };
+    return (
+      schemaRecord.type === "function" &&
+      schemaRecord.function?.name === toolName
+    );
+  });
+}
+
+/**
+ * Decide if no-response conditions should be retried for this notification context.
+ * Required-reply notifications should retry; agent-authored passive updates should not.
+ */
+export function shouldRetryNoResponseForNotification(
+  context: DeliveryContext,
+): boolean {
+  const notificationType = context.notification?.type;
+  if (!notificationType) return false;
+  if (REQUIRED_REPLY_NOTIFICATION_TYPES.has(notificationType)) return true;
+  if (notificationType === "thread_update") {
+    return context.message?.authorType !== "agent";
+  }
+  return false;
 }
 
 interface DeliveryState {
@@ -370,11 +408,9 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               : null;
             const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
             const isHeartbeatOk = isHeartbeatOkResponse(textToPost);
-            if ((isNoReply || isHeartbeatOk) && result.toolCalls.length === 0) {
+            if (isHeartbeatOk && result.toolCalls.length === 0) {
               log.info(
-                isHeartbeatOk
-                  ? "OpenClaw returned HEARTBEAT_OK; skipping notification"
-                  : "OpenClaw returned NO_REPLY; skipping notification",
+                "OpenClaw returned HEARTBEAT_OK; skipping notification",
                 notification._id,
                 context.agent.name,
               );
@@ -393,35 +429,45 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             const needsRetry =
               result.toolCalls.length === 0 &&
-              (!textToPost || noResponsePlaceholder?.isPlaceholder);
+              (!textToPost || noResponsePlaceholder?.isPlaceholder || isNoReply);
             if (needsRetry) {
               const reason = !textToPost
                 ? "empty response"
-                : "placeholder response";
-              const decision = _getNoResponseRetryDecision(notification._id);
-              if (decision.shouldRetry) {
-                log.warn(
-                  "OpenClaw returned no response; will retry notification",
+                : noResponsePlaceholder?.isPlaceholder
+                  ? "placeholder response"
+                  : "no-reply response";
+              const shouldRetry = shouldRetryNoResponseForNotification(
+                context as DeliveryContext,
+              );
+              if (shouldRetry) {
+                const decision = _getNoResponseRetryDecision(notification._id);
+                if (decision.shouldRetry) {
+                  log.warn(
+                    "OpenClaw returned no response; will retry notification",
+                    notification._id,
+                    context.agent.name,
+                    `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+                  );
+                  throw new Error(`OpenClaw returned ${reason}`);
+                }
+                log.error(
+                  "OpenClaw returned no response after retries; not posting agent fallback message",
                   notification._id,
                   context.agent.name,
+                  taskId ? `taskId=${taskId}` : "taskId=none",
                   `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
                 );
-                throw new Error(`OpenClaw returned ${reason}`);
-              }
-              log.warn(
-                "OpenClaw returned no response; giving up",
-                notification._id,
-                context.agent.name,
-                `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-              );
-              if (taskId) {
-                textToPost = buildNoResponseFallbackMessage(
-                  noResponsePlaceholder?.mentionPrefix,
-                );
-                suppressAgentNotifications = true;
+                textToPost = null;
                 shouldPostMessage = false;
               } else {
+                log.info(
+                  "OpenClaw returned no response for non-actionable notification; skipping",
+                  notification._id,
+                  context.agent.name,
+                  reason,
+                );
                 textToPost = null;
+                shouldPostMessage = false;
               }
               clearNoResponseRetry(notification._id);
             } else {
@@ -682,7 +728,9 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   /**
    * Agent-authored thread_update delivery rules:
    * - Orchestrator receives replies from other agents (coordination).
-   * - Everyone else is blocked when the reply was triggered by a thread_update (loop prevention).
+   * - Thread_update -> thread_update is blocked by default (loop prevention).
+   * - Exception: when orchestrator authored the message, deliver to assigned/reviewer
+   *   recipients so explicit follow-ups still reach the working agent.
    * - Reviewers still receive updates during REVIEW.
    */
   if (notificationType === "thread_update" && messageAuthorType === "agent") {
@@ -708,18 +756,26 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     if (isOrchestratorRecipient && !isOrchestratorAuthor) {
       return true;
     }
-    // Block thread_update → thread_update cascade for everyone else to avoid ping-pong loops.
+    const isAssignedRecipient =
+      Array.isArray(assignedAgentIds) && typeof recipientId === "string"
+        ? assignedAgentIds.includes(recipientId)
+        : false;
+    const isReviewerRecipient =
+      taskStatus === "review" && isReviewerRole(agentRole);
+    // Block thread_update -> thread_update cascade by default to avoid ping-pong loops.
+    // Allow orchestrator-authored cascades to reach assigned/reviewer recipients.
     if (sourceNotificationType === "thread_update") {
+      if (isOrchestratorAuthor && (isAssignedRecipient || isReviewerRecipient)) {
+        return true;
+      }
       return false;
     }
     // During REVIEW, deliver to reviewers (e.g. QA) so they can approve.
-    if (taskStatus === "review" && isReviewerRole(agentRole)) {
+    if (isReviewerRecipient) {
       return true;
     }
     // Only deliver to agents who are assigned to the task (no bystanders).
-    if (!Array.isArray(assignedAgentIds) || typeof recipientId !== "string")
-      return false;
-    return assignedAgentIds.includes(recipientId);
+    return isAssignedRecipient;
   }
 
   // Default: deliver (e.g. assignment, mention, user-authored thread_update, status_change when not review).
@@ -1035,6 +1091,9 @@ export function formatNotificationMessage(
   const isOrchestrator =
     orchestratorAgentId != null && context.agent?._id === orchestratorAgentId;
   const hasRuntimeTools = toolCapabilities.schemas.length > 0;
+  const hasResponseRequestTool =
+    hasRuntimeTools &&
+    hasToolSchema(toolCapabilities.schemas, "response_request");
   const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
   const sessionKey = context.agent?.sessionKey ?? "<session-key>";
 
@@ -1074,7 +1133,10 @@ export function formatNotificationMessage(
         "",
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on concrete files.",
+        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
+        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
+        "Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ \"path\": \"memory/WORKING.md\" }`) and only target files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
         "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n")
@@ -1082,7 +1144,10 @@ export function formatNotificationMessage(
         "Repository context: not found.",
         localRepoHint,
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on concrete files.",
+        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
+        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
+        "Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ \"path\": \"memory/WORKING.md\" }`) and only target files.",
         "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
         "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
       ].join("\n");
@@ -1130,8 +1195,9 @@ export function formatNotificationMessage(
       ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
       : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`.`
     : "";
-  const responseRequestInstructions = canMentionAgents
-    ? hasRuntimeTools
+  const canRequestResponses = canMentionAgents && task != null;
+  const responseRequestInstructions = canRequestResponses
+    ? hasResponseRequestTool
       ? "If you need another agent to respond, use the **response_request** tool (see Capabilities). Provide recipientSlugs and a clear message."
       : `If you need another agent to respond, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/response-request with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "recipientSlugs": ["agent-slug"], "message": "..." }\`.`
     : "";
@@ -1140,6 +1206,14 @@ export function formatNotificationMessage(
       ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_search to find related work, task_assign to add agent assignees by slug, task_message to post updates to other tasks, task_delete to archive tasks, and task_link_pr to connect tasks to PRs. Include a taskId for task_get, task_thread, task_assign, task_message, task_delete, and task_link_pr. If any tool fails, report BLOCKED and include the error message."
       : `Orchestrator tools are unavailable. Use the HTTP fallback endpoints: task_list (POST ${runtimeBaseUrl}/agent/task-list), task_get (POST ${runtimeBaseUrl}/agent/task-get), task_thread (POST ${runtimeBaseUrl}/agent/task-thread), task_search (POST ${runtimeBaseUrl}/agent/task-search), task_assign (POST ${runtimeBaseUrl}/agent/task-assign), task_message (POST ${runtimeBaseUrl}/agent/task-message), task_delete (POST ${runtimeBaseUrl}/agent/task-delete), and task_link_pr (POST ${runtimeBaseUrl}/agent/task-link-pr). Include header \`x-openclaw-session-key: ${sessionKey}\` and the JSON body described in the tool schemas.`
     : "";
+  const orchestratorResponseRequestInstruction =
+    isOrchestrator && task
+      ? canRequestResponses
+        ? hasResponseRequestTool
+          ? "Orchestrator enforcement: if you ask any agent to do work or review (e.g. 'requesting QA review'), you MUST send a real notification with response_request before posting your summary. Plain text alone does not notify agents. Include a confirmation line in your reply: `Response request sent to: <slug(s)>`."
+          : `Orchestrator enforcement: if you ask any agent to do work or review (e.g. 'requesting QA review'), you MUST send a real notification via HTTP fallback before posting your summary: POST ${runtimeBaseUrl}/agent/response-request with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "recipientSlugs": ["qa"], "message": "..." }\`. Plain text alone does not notify agents. Include a confirmation line in your reply: \`Response request sent to: <slug(s)>\`.`
+        : "Orchestrator enforcement: do not claim you requested another agent if response_request capability is unavailable. Report BLOCKED and state that agent notification could not be sent."
+      : "";
   const orchestratorChatInstruction =
     isOrchestrator && isOrchestratorChat
       ? "Orchestrator chat is coordination-only. Do not start executing tasks from this thread. When you suggest tasks, immediately assign agents using task_assign or create tasks with assigneeSlugs before asking them to work. Never self-assign: you are the coordinator—only assign to the agents who will execute (e.g. assigneeSlugs: [\"engineer\"], not [\"squad-lead\", \"engineer\"]). This keeps accountability clear."
@@ -1218,6 +1292,7 @@ ${taskCreateInstructions}
 ${documentInstructions}
 ${responseRequestInstructions}
 ${orchestratorToolInstructions}
+${orchestratorResponseRequestInstruction}
 ${orchestratorChatInstruction}
 ${followupTaskInstruction}
 ${task?.status === "review" && toolCapabilities.canMarkDone ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}

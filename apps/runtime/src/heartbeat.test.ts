@@ -186,6 +186,22 @@ describe("shouldRequestAssigneeResponse", () => {
     });
     expect(shouldRequest).toBe(false);
   });
+
+  it("does not request follow-up for blocked tasks", () => {
+    const task = buildTask({
+      _id: "task-blocked" as TaskDoc["_id"],
+      status: "blocked",
+      assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
+      updatedAt: 1000,
+      createdAt: 1000,
+    });
+    const shouldRequest = shouldRequestAssigneeResponse({
+      task,
+      lastAssigneeReplyAt: null,
+      nowMs: 1000 + 48 * 60 * 60 * 1000,
+    });
+    expect(shouldRequest).toBe(false);
+  });
 });
 
 describe("buildHeartbeatMessage", () => {
@@ -202,7 +218,7 @@ describe("buildHeartbeatMessage", () => {
     });
     expect(message).toContain("Tracked tasks:");
     expect(message).toContain(
-      "As the orchestrator, follow up on in_progress/assigned/blocked tasks",
+      "As the orchestrator, follow up on in_progress/assigned tasks",
     );
     expect(message).toContain("Task ID: task-orch");
   });
@@ -241,7 +257,19 @@ describe("buildHeartbeatMessage", () => {
     expect(message).toContain("http://runtime:3000/agent/task-search");
     expect(message).toContain("http://runtime:3000/agent/task-message");
     expect(message).toContain("http://runtime:3000/agent/response-request");
+    expect(message).toContain("x-openclaw-session-key");
     expect(message).toContain("Take up to 3 atomic follow-ups per heartbeat");
+  });
+
+  it("includes strict memory/read contract guidance", () => {
+    const message = buildHeartbeatMessage({
+      focusTask: null,
+      tasks: [],
+      isOrchestrator: false,
+    });
+    expect(message).toContain("Prefer memory_get/memory_set for memory files");
+    expect(message).toContain('{"path":"memory/WORKING.md"}');
+    expect(message).toContain("never target a directory");
   });
 
   it("includes recent focus task thread updates when provided", () => {

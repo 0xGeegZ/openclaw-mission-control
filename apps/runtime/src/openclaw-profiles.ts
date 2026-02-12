@@ -80,6 +80,13 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
    - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
 8. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
 
+## Memory and read tool contract
+
+- Prefer memory tools first: use memory_get / memory_set when available.
+- Use read only for explicit file paths, never for directories.
+- Read arguments must include a JSON object with path, for example: {"path":"memory/WORKING.md"}.
+- If memory/YYYY-MM-DD.md is missing, create it before reading it.
+
 ## Document sharing (critical)
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
@@ -125,8 +132,12 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 
 ## 1) Load context (always)
 
-- Read memory/WORKING.md
-- Read today's note (memory/YYYY-MM-DD.md)
+- Prefer memory tools first: use memory_get / memory_set when available.
+- Read memory/WORKING.md.
+- Read today's note (memory/YYYY-MM-DD.md).
+- If today's note is missing, create it before proceeding.
+- If you must use read, pass JSON args with an explicit path key, for example: {"path":"memory/WORKING.md"}.
+- Never call read on a directory path.
 - Fetch:
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
@@ -388,6 +399,55 @@ function ensureDir(dirPath: string): void {
 }
 
 /**
+ * Ensure a file exists with default content.
+ */
+function ensureFileExists(filePath: string, content: string): void {
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, content, "utf-8");
+  }
+}
+
+/**
+ * Format YYYY-MM-DD in UTC with optional day offset.
+ */
+function formatMemoryDate(date: Date, offsetDays: number): string {
+  const utc = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + offsetDays,
+  );
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
+/**
+ * Ensure per-agent memory scaffold is present and idempotent.
+ */
+function ensureAgentMemoryScaffold(agentDir: string, now: Date = new Date()): void {
+  const memoryDir = path.join(agentDir, "memory");
+  const deliverablesDir = path.join(agentDir, "deliverables");
+  ensureDir(memoryDir);
+  ensureDir(deliverablesDir);
+
+  ensureFileExists(
+    path.join(agentDir, "MEMORY.md"),
+    "# MEMORY\n\nStable decisions and key learnings.\n",
+  );
+  ensureFileExists(
+    path.join(memoryDir, "WORKING.md"),
+    "# WORKING\n\nWhat I'm doing right now.\n",
+  );
+
+  const dayOffsets = [-1, 0, 1];
+  for (const dayOffset of dayOffsets) {
+    const dailyNotePath = path.join(
+      memoryDir,
+      `${formatMemoryDate(now, dayOffset)}.md`,
+    );
+    ensureFileExists(dailyNotePath, "# DAILY NOTES\n\n");
+  }
+}
+
+/**
  * Read AGENTS.md from path or return embedded default.
  */
 function getAgentsMdContent(agentsMdPath: string | undefined): string {
@@ -569,27 +629,7 @@ export function syncOpenClawProfiles(
       }
     }
 
-    const memoryDir = path.join(agentDir, "memory");
-    const deliverablesDir = path.join(agentDir, "deliverables");
-    ensureDir(memoryDir);
-    ensureDir(deliverablesDir);
-
-    const memoryMd = path.join(agentDir, "MEMORY.md");
-    const workingMd = path.join(memoryDir, "WORKING.md");
-    if (!fs.existsSync(memoryMd)) {
-      fs.writeFileSync(
-        memoryMd,
-        "# MEMORY\n\nStable decisions and key learnings.\n",
-        "utf-8",
-      );
-    }
-    if (!fs.existsSync(workingMd)) {
-      fs.writeFileSync(
-        workingMd,
-        "# WORKING\n\nWhat I'm doing right now.\n",
-        "utf-8",
-      );
-    }
+    ensureAgentMemoryScaffold(agentDir);
   }
 
   const openclawConfig = buildOpenClawConfig(

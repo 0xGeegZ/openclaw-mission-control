@@ -460,6 +460,13 @@ Work in /root/clawd/repos/openclaw-mission-control: create a branch, commit, pus
 - memory/YYYY-MM-DD.md: a chronological log of actions and decisions
 - MEMORY.md: stable decisions, conventions, key learnings
 
+### Memory and read tool contract
+
+- Prefer \`memory_get\` / \`memory_set\` when those tools are available.
+- Use \`read\` only for explicit file paths, never for directories.
+- When calling \`read\`, pass JSON args with \`path\`, for example: \`{ "path": "memory/WORKING.md" }\`.
+- If \`memory/YYYY-MM-DD.md\` does not exist, create it before trying to read it.
+
 ## Required output format for task thread updates
 
 Post updates using this exact structure:
@@ -628,12 +635,17 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 
 ## 1) Load context (always)
 
-- Read memory/WORKING.md
-- Read today's note (memory/YYYY-MM-DD.md)
+- Prefer memory tools first: use \`memory_get\` / \`memory_set\` when available.
+- Load \`memory/WORKING.md\`.
+- Load today's note (\`memory/YYYY-MM-DD.md\`).
+- If today's note is missing, create it under your workspace memory directory before continuing.
+- If you must use \`read\`, pass JSON arguments with an explicit file path key, for example: \`{ "path": "memory/WORKING.md" }\`.
+- Do not call \`read\` on directories.
 - Fetch:
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
+- If you are the orchestrator: also review assigned / in_progress / blocked tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
@@ -669,18 +681,20 @@ Action scope rules:
 
 ## 4) Report + persist memory (always)
 
-- Post a thread update using the required format
-- Update WORKING.md:
-  - Current task
-  - Status
-  - Next step (single)
-- Append a short entry to today's log with timestamp
+- If you took a concrete action on a task:
+  - Post a thread update using the required format
+  - Include a line: \`Task ID: <id>\` so the runtime can attach your update
+  - Update WORKING.md (current task, status, next step)
+  - Append a short entry to today's log with timestamp
+- If you did not take a concrete action:
+  - Reply with \`HEARTBEAT_OK\` only
+  - Do not post a thread update
 
 ## 5) Stand down rules
 
 If you did not act:
 
-- Post \`HEARTBEAT_OK\` only if your team wants that signal
+- Post \`HEARTBEAT_OK\` only
 - Otherwise stay silent to avoid noise
 `;
 

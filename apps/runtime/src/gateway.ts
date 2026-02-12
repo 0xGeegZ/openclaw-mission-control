@@ -128,7 +128,11 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
-const NO_RESPONSE_FROM_OPENCLAW_MESSAGE = "No response from OpenClaw.";
+const NO_RESPONSE_PLACEHOLDER_MESSAGES = [
+  "No response from OpenClaw.",
+  "No reply from agent.",
+  "No response from agent.",
+];
 const NO_RESPONSE_MENTION_PREFIX_PATTERN =
   /^(@[A-Za-z0-9_-]+)(\s+@[A-Za-z0-9_-]+)*$/;
 const NO_RESPONSE_FALLBACK_MESSAGE = [
@@ -256,14 +260,17 @@ export function parseNoResponsePlaceholder(response: string): {
 } {
   const trimmed = response.trim();
   if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
-  if (trimmed === NO_RESPONSE_FROM_OPENCLAW_MESSAGE) {
+  if (NO_RESPONSE_PLACEHOLDER_MESSAGES.includes(trimmed)) {
     return { isPlaceholder: true, mentionPrefix: null };
   }
-  if (!trimmed.endsWith(NO_RESPONSE_FROM_OPENCLAW_MESSAGE)) {
+  const matchedSuffix = NO_RESPONSE_PLACEHOLDER_MESSAGES.find((message) =>
+    trimmed.endsWith(message),
+  );
+  if (!matchedSuffix) {
     return { isPlaceholder: false, mentionPrefix: null };
   }
   const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FROM_OPENCLAW_MESSAGE.length)
+    .slice(0, trimmed.length - matchedSuffix.length)
     .trim();
   if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
   if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {

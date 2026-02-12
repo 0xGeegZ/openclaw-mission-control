@@ -312,6 +312,48 @@ function pruneSessionsIfConfigured() {
   }
 }
 
+/**
+ * Ensure per-agent session storage directories exist under /root/.openclaw.
+ * This prevents ENOENT when OpenClaw persists session JSONL files on first write.
+ */
+function ensureAgentSessionDirs(config) {
+  const list = config?.agents?.list;
+  if (!Array.isArray(list)) return;
+
+  const agentsRoot = path.join("/root/.openclaw", "agents");
+  try {
+    fs.mkdirSync(agentsRoot, { recursive: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("Failed to create agents root for session stores:", message);
+    return;
+  }
+
+  for (const entry of list) {
+    const agentIdRaw = entry && typeof entry.id === "string" ? entry.id.trim() : "";
+    if (!agentIdRaw) continue;
+    if (!/^[A-Za-z0-9_-]+$/.test(agentIdRaw)) {
+      console.warn("Skipping session dir bootstrap for invalid agent id:", agentIdRaw);
+      continue;
+    }
+    const sessionDir = path.join(agentsRoot, agentIdRaw, "sessions");
+    const sessionsIndex = path.join(sessionDir, "sessions.json");
+    try {
+      fs.mkdirSync(sessionDir, { recursive: true });
+      if (!fs.existsSync(sessionsIndex)) {
+        fs.writeFileSync(sessionsIndex, "{}\n");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        "Failed to bootstrap session store for agent:",
+        agentIdRaw,
+        message,
+      );
+    }
+  }
+}
+
 // Merge runtime-generated config if present (profile sync from mission-control runtime).
 // We merge list and defaults so existing agents.defaults.model (Vercel/legacy) is preserved; only list and runtime defaults (e.g. skipBootstrap) are taken from generated.
 function modelForVercelGateway(model) {
@@ -354,6 +396,8 @@ try {
 
 // Current clawdbot rejects top-level "load"; remove so config is valid.
 delete config.load;
+
+ensureAgentSessionDirs(config);
 
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 console.log('Configuration updated successfully');
@@ -433,6 +477,48 @@ sync_doc_if_changed() {
     cp "$src" "$dest"
   fi
 }
+
+seed_agent_memory_scaffold() {
+  local agent_dir="$1"
+  local memory_dir="$agent_dir/memory"
+  local deliverables_dir="$agent_dir/deliverables"
+
+  mkdir -p "$memory_dir" "$deliverables_dir"
+
+  if [ ! -f "$agent_dir/MEMORY.md" ]; then
+    cat > "$agent_dir/MEMORY.md" << 'EOFMEM'
+# MEMORY
+
+Stable decisions and key learnings.
+EOFMEM
+  fi
+
+  if [ ! -f "$memory_dir/WORKING.md" ]; then
+    cat > "$memory_dir/WORKING.md" << 'EOFWORK'
+# WORKING
+
+What I'm doing right now.
+EOFWORK
+  fi
+
+  now_epoch="$(date -u +%s)"
+  for day_offset in -1 0 1; do
+    day_epoch="$((now_epoch + day_offset * 86400))"
+    day_file="$(date -u -d "@$day_epoch" +%F)"
+    if [ ! -f "$memory_dir/$day_file.md" ]; then
+      cat > "$memory_dir/$day_file.md" << 'EOFDAY'
+# DAILY NOTES
+
+EOFDAY
+    fi
+  done
+}
+
+# Defensive backfill for existing per-agent workspaces.
+for agent_dir in "$OPENCLAW_WORKSPACE_ROOT"/*; do
+  [ -d "$agent_dir" ] || continue
+  seed_agent_memory_scaffold "$agent_dir"
+done
 
 # Sync runtime docs from writable clone into workspace (for agents)
 if [ -d "$WRITABLE_REPO_DIR/.git" ]; then

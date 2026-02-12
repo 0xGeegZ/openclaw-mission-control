@@ -27,6 +27,23 @@ describe("parseNoResponsePlaceholder", () => {
     expect(result.isPlaceholder).toBe(false);
     expect(result.mentionPrefix).toBe(null);
   });
+
+  it("detects alternate no-reply placeholders", () => {
+    expect(parseNoResponsePlaceholder("No reply from agent.").isPlaceholder).toBe(
+      true,
+    );
+    expect(
+      parseNoResponsePlaceholder("No response from agent.").isPlaceholder,
+    ).toBe(true);
+  });
+
+  it("detects mention prefixes with alternate placeholders", () => {
+    const result = parseNoResponsePlaceholder(
+      "@squad-lead No reply from agent.",
+    );
+    expect(result.isPlaceholder).toBe(true);
+    expect(result.mentionPrefix).toBe("@squad-lead");
+  });
 });
 
 describe("buildNoResponseFallbackMessage", () => {

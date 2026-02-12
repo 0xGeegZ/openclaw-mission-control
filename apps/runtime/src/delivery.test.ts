@@ -8,6 +8,7 @@ import {
   _resetNoResponseRetryState,
   canAgentMarkDone,
   shouldDeliverToAgent,
+  shouldRetryNoResponseForNotification,
   formatNotificationMessage,
   type DeliveryContext,
 } from "./delivery";
@@ -229,6 +230,35 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for thread_update + agent author when sourceNotificationType is thread_update (non-orchestrator)", () => {
     const ctx = buildContext({ sourceNotificationType: "thread_update" });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
+  });
+
+  it("returns true for thread_update + orchestrator author when sourceNotificationType is thread_update and recipient is assigned", () => {
+    const ctx = buildContext({
+      sourceNotificationType: "thread_update",
+      orchestratorAgentId: "orch",
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "orch",
+        content: "Please continue implementation",
+      },
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "agent-a",
+        accountId: "acc1",
+      },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+      agent: { _id: "agent-a", role: "Engineer", name: "Engineer" },
+    });
+    expect(shouldDeliverToAgent(ctx)).toBe(true);
   });
 
   it("returns true for thread_update + agent author when recipient is orchestrator even if sourceNotificationType is thread_update", () => {
@@ -467,6 +497,30 @@ describe("formatNotificationMessage", () => {
     expect(message).not.toContain("msg-0");
     expect(message).toContain(expectedTruncated);
   });
+
+  it("does not advertise response_request tool when schema is unavailable", () => {
+    const ctx = buildContext({
+      effectiveBehaviorFlags: { canMentionAgents: true },
+      agent: { _id: "agent-a", role: "Engineer", name: "Engineer" },
+    });
+    const capabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+      canMentionAgents: true,
+    });
+    const message = formatNotificationMessage(ctx, "http://runtime:3000", {
+      ...capabilities,
+      schemas: capabilities.schemas.filter((schema) => {
+        if (!schema || typeof schema !== "object") return true;
+        const name = (schema as { function?: { name?: string } }).function?.name;
+        return name !== "response_request";
+      }),
+    });
+    expect(message).not.toContain("use the **response_request** tool");
+    expect(message).toContain("/agent/response-request");
+  });
 });
 
 describe("no response retry decision", () => {
@@ -478,6 +532,57 @@ describe("no response retry decision", () => {
     expect(first.shouldRetry).toBe(true);
     expect(second.shouldRetry).toBe(true);
     expect(third.shouldRetry).toBe(false);
+  });
+});
+
+describe("shouldRetryNoResponseForNotification", () => {
+  it("retries required-reply notification types", () => {
+    expect(
+      shouldRetryNoResponseForNotification(
+        buildContext({
+          notification: { ...buildContext().notification, type: "assignment" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRetryNoResponseForNotification(
+        buildContext({
+          notification: { ...buildContext().notification, type: "mention" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("retries user-authored thread updates", () => {
+    expect(
+      shouldRetryNoResponseForNotification(
+        buildContext({
+          notification: { ...buildContext().notification, type: "thread_update" },
+          message: {
+            _id: "m1",
+            authorType: "user",
+            authorId: "user-1",
+            content: "Please do this.",
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not retry agent-authored passive thread updates", () => {
+    expect(
+      shouldRetryNoResponseForNotification(
+        buildContext({
+          notification: { ...buildContext().notification, type: "thread_update" },
+          message: {
+            _id: "m2",
+            authorType: "agent",
+            authorId: "agent-b",
+            content: "FYI",
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 });
 
