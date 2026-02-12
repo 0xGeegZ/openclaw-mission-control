@@ -31,6 +31,11 @@ interface MemberActivity {
   lastActivityAt: number;
 }
 
+interface TimeSeriesPoint {
+  date: string;
+  completed: number;
+}
+
 interface AnalyticsMetrics {
   /** Total tasks created in the time range */
   totalTasks: number;
@@ -52,6 +57,9 @@ interface AnalyticsMetrics {
 
   /** End timestamp (ms) */
   toDate: number;
+
+  /** Time-series data for task completion trend */
+  completionTrend: TimeSeriesPoint[];
 }
 
 /**
@@ -155,6 +163,40 @@ export const getMetrics = query({
           completedTasksWithTiming.length
         : 0;
 
+    // Build time-series data for completion trend
+    const completionTrendMap = new Map<string, number>();
+    const timeSeriesPoints: TimeSeriesPoint[] = [];
+
+    // Initialize date range
+    let currentDate = new Date(fromDate);
+    const endDate = new Date(now);
+
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split("T")[0];
+      completionTrendMap.set(dateStr, 0);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Count completed tasks per date
+    tasksInRange
+      .filter((task) => task.status === "done")
+      .forEach((task) => {
+        const completedDate = new Date(task.updatedAt)
+          .toISOString()
+          .split("T")[0];
+        completionTrendMap.set(
+          completedDate,
+          (completionTrendMap.get(completedDate) || 0) + 1,
+        );
+      });
+
+    // Convert map to sorted time series points
+    Array.from(completionTrendMap.entries())
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .forEach(([date, completed]) => {
+        timeSeriesPoints.push({ date, completed });
+      });
+
     return {
       totalTasks,
       completedTasks,
@@ -163,6 +205,7 @@ export const getMetrics = query({
       timeRange: args.timeRange,
       fromDate,
       toDate: now,
+      completionTrend: timeSeriesPoints,
     } as AnalyticsMetrics;
   },
 });

@@ -119,7 +119,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { accountId } = useAccount();
   const [timeRange, setTimeRange] = useState<TimeRange>("week");
 
-  // Fetch both summary and metrics
+  // Fetch analytics data
   const summary = useQuery(
     api.analytics.getSummary,
     accountId ? { accountId } : "skip",
@@ -127,6 +127,11 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
   const metrics = useQuery(
     api.analytics.getMetrics,
+    accountId ? { timeRange } : "skip",
+  );
+
+  const agentStats = useQuery(
+    api.analytics.getAgentStats,
     accountId ? { timeRange } : "skip",
   );
 
@@ -318,6 +323,126 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
             {/* Charts */}
             <div className="grid gap-6 lg:grid-cols-2">
+              {/* Task completion trend line chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                    Task Completion Trend
+                  </CardTitle>
+                  <CardDescription>
+                    Tasks completed over time ({timeRange})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!metrics || metrics.completionTrend.length === 0 ? (
+                    <AnalyticsEmptyState
+                      icon={
+                        <TrendingUp className="h-6 w-6 text-muted-foreground/50" />
+                      }
+                      message="No completed tasks in this period"
+                      actionHref={`/${accountSlug}/tasks`}
+                      actionLabel="Complete a task"
+                    />
+                  ) : (
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={metrics.completionTrend}
+                          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                        >
+                          <XAxis
+                            dataKey="date"
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip
+                            content={<ChartTooltipContent />}
+                            cursor={{ stroke: "hsl(var(--primary))", opacity: 0.5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="completed"
+                            stroke="#22c55e"
+                            dot={{ fill: "#22c55e", r: 4 }}
+                            activeDot={{ r: 6 }}
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Agent workload bar chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-blue-500" />
+                    Agent Workload
+                  </CardTitle>
+                  <CardDescription>
+                    Tasks assigned per agent ({timeRange})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!agentStats || agentStats.length === 0 ? (
+                    <AnalyticsEmptyState
+                      icon={
+                        <Bot className="h-6 w-6 text-muted-foreground/50" />
+                      }
+                      message="No agent workload data"
+                      actionHref={`/${accountSlug}/agents`}
+                      actionLabel="View agents"
+                    />
+                  ) : (
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={agentStats}
+                          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                        >
+                          <XAxis
+                            dataKey="agentName"
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip
+                            content={<ChartTooltipContent />}
+                            cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
+                          />
+                          <Bar
+                            dataKey="taskCount"
+                            fill="#3b82f6"
+                            radius={[4, 4, 0, 0]}
+                            maxBarSize={60}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Task distribution bar chart */}
               <Card>
                 <CardHeader>
