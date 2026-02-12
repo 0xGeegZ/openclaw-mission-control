@@ -92,6 +92,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate seed skills content
+        run: npm run -w @packages/backend seed-skills:generate
+
       - name: Build all packages
         run: npm run build
         env:
