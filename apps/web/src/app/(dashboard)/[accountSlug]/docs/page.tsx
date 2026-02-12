@@ -95,7 +95,7 @@ export default function DocsPage({ params }: DocsPageProps) {
   );
 
   const createDoc = useMutation(api.documents.create);
-  const removeDoc = useMutation(api.documents.remove);
+  const removeDoc = useMutation(api.documents.softDelete);
   const duplicateDoc = useMutation(api.documents.duplicate);
   const linkToTask = useMutation(api.documents.linkToTask);
   const tasks = useQuery(

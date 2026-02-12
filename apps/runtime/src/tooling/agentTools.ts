@@ -60,7 +60,7 @@ export const TASK_CREATE_TOOL_SCHEMA = {
             "archived",
           ],
           description:
-            "Initial status; default inbox. If assigned/in_progress, you are auto-assigned. blocked requires blockedReason. archived is for cleanup (soft-delete).",
+            "Initial status; default inbox. Non-orchestrator creators are auto-assigned for assigned/in_progress; orchestrator-created tasks stay unassigned unless assigneeSlugs are provided. blocked requires blockedReason. archived is for cleanup (soft-delete).",
         },
         blockedReason: {
           type: "string",
@@ -482,6 +482,54 @@ function normalizeTaskPriority(value: unknown): number | undefined {
 }
 
 /**
+ * Avoid orchestrator self-assignment on task creation when requested status implies assignees.
+ * The service createTask endpoint auto-assigns the creator for assigned/in_progress, so we
+ * downgrade to inbox for orchestrator-created tasks and let explicit assignment happen after.
+ */
+function normalizeTaskCreateStatusForOrchestrator(
+  status: unknown,
+  isOrchestrator: boolean | undefined,
+):
+  | "inbox"
+  | "assigned"
+  | "in_progress"
+  | "review"
+  | "done"
+  | "blocked"
+  | "archived"
+  | undefined {
+  if (typeof status !== "string") return undefined;
+  if (
+    isOrchestrator === true &&
+    (status === "assigned" || status === "in_progress")
+  ) {
+    return "inbox";
+  }
+  return status as
+    | "inbox"
+    | "assigned"
+    | "in_progress"
+    | "review"
+    | "done"
+    | "blocked"
+    | "archived";
+}
+
+/**
+ * Remove explicit orchestrator self-assignment from delegated task creation requests.
+ */
+function removeOrchestratorSelfAssignee(params: {
+  assigneeIds: Id<"agents">[];
+  requesterAgentId: Id<"agents">;
+  isOrchestrator: boolean | undefined;
+}): Id<"agents">[] {
+  if (params.isOrchestrator !== true) return params.assigneeIds;
+  return params.assigneeIds.filter(
+    (assigneeId) => assigneeId !== params.requesterAgentId,
+  );
+}
+
+/**
  * Resolve agent slugs to ids for tool calls.
  */
 async function resolveAgentSlugs(params: {
@@ -674,7 +722,16 @@ export async function executeAgentTool(params: {
             error: `Unknown assignee slugs: ${missing.join(", ")}`,
           };
         }
+        assigneeIds = removeOrchestratorSelfAssignee({
+          assigneeIds,
+          requesterAgentId: agentId,
+          isOrchestrator,
+        });
       }
+      const createStatus = normalizeTaskCreateStatusForOrchestrator(
+        args.status,
+        isOrchestrator,
+      );
       const { taskId: newTaskId } = await client.action(
         api.service.actions.createTaskFromAgent,
         {
@@ -685,15 +742,7 @@ export async function executeAgentTool(params: {
           description: args.description?.trim(),
           priority: normalizedPriority,
           labels: args.labels,
-          status: args.status as
-            | "inbox"
-            | "assigned"
-            | "in_progress"
-            | "review"
-            | "done"
-            | "blocked"
-            | "archived"
-            | undefined,
+          status: createStatus,
           blockedReason: args.blockedReason?.trim(),
           dueDate: args.dueDate,
         },

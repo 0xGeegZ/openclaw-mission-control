@@ -16,6 +16,7 @@ import {
 } from "@packages/ui/components/alert-dialog";
 import { toast } from "sonner";
 import { Loader2, Archive } from "lucide-react";
+import { TASK_STATUS } from "@packages/shared";
 
 interface ArchiveTaskDialogProps {
   taskId: Id<"tasks">;
@@ -45,7 +46,7 @@ export function ArchiveTaskDialog({
     try {
       await updateStatus({
         taskId,
-        status: "archived",
+        status: TASK_STATUS.ARCHIVED,
       });
       toast.success("Task archived");
       onOpenChange(false);

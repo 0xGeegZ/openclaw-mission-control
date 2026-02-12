@@ -10,7 +10,8 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "turbo run test --filter=@packages/shared",
+    "test": "turbo run test",
+    "test:shared": "turbo run test --filter=@packages/shared",
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
@@ -32,5 +33,15 @@
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "npm@11.6.1"
+  "packageManager": "npm@11.6.1",
+  "dependencies": {
+    "@packages/backend": "^1.0.0",
+    "@packages/ui": "^0.1.0",
+    "convex": "^1.31.7",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "sonner": "^2.0.7",
+    "usehooks-ts": "^3.1.1"
+  }
 }

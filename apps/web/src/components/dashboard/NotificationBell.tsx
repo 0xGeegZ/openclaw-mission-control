@@ -414,7 +414,7 @@ export function NotificationBell({ accountSlug }: NotificationBellProps) {
               <div className="p-1.5">
                 {notifications.map((notification) => {
                   const isUnread = !notification.readAt;
-                  const type = notification.type as NotificationType;
+                  const type = notification.type;
                   const Icon = notificationIcons[type] ?? Bell;
                   const iconStyle = notificationIconStyles[type] ?? {
                     bg: "bg-muted",

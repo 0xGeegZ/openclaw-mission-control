@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, type ReactNode } from "react";
+import { use, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -13,8 +13,19 @@ import {
   CardTitle,
 } from "@packages/ui/components/card";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { TASK_STATUS_LABELS, TASK_STATUS_ORDER } from "@packages/shared";
-import type { TaskStatus } from "@packages/shared";
+import {
+  TASK_STATUS,
+  TASK_STATUS_LABELS,
+  TASK_STATUS_ORDER,
+  AGENT_STATUS_ORDER,
+  AGENT_STATUS_LABELS,
+  ANALYTICS_TIME_RANGE,
+  ANALYTICS_TIME_RANGE_ORDER,
+  ANALYTICS_TIME_RANGE_LABELS,
+  TASK_STATUS_CHART_COLORS,
+  AGENT_STATUS_CHART_COLORS,
+} from "@packages/shared";
+import type { TaskStatus, AnalyticsTimeRange } from "@packages/shared";
 import {
   ChartContainer,
   ChartTooltipContent,
@@ -30,6 +41,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
 import {
   BarChart3,
@@ -40,37 +53,7 @@ import {
   ArrowUpRight,
   PieChartIcon,
 } from "lucide-react";
-
-/** Task status display order: use canonical shared order. */
-const ANALYTICS_STATUS_ORDER: TaskStatus[] = TASK_STATUS_ORDER;
-
-/** Hex colors for task statuses in charts (not CSS vars). */
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  inbox: "#6b7280",
-  assigned: "#8b5cf6",
-  in_progress: "#3b82f6",
-  review: "#f59e0b",
-  done: "#22c55e",
-  blocked: "#ef4444",
-  archived: "#9ca3af",
-};
-
-/** Hex colors for agent statuses in charts. */
-const AGENT_STATUS_COLORS: Record<string, string> = {
-  online: "#22c55e",
-  busy: "#f59e0b",
-  idle: "#6b7280",
-  offline: "#9ca3af",
-  error: "#ef4444",
-};
-
-const AGENT_STATUS_ORDER = [
-  "online",
-  "busy",
-  "idle",
-  "offline",
-  "error",
-] as const;
+import { Tabs, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 
 interface AnalyticsEmptyStateProps {
   icon: ReactNode;
@@ -79,7 +62,10 @@ interface AnalyticsEmptyStateProps {
   actionLabel: string;
 }
 
-/** Empty state for chart cards when there is no data to display. */
+/**
+ * Empty state for chart cards when there is no data to display.
+ * Renders icon, message, and a link to the relevant section.
+ */
 function AnalyticsEmptyState({
   icon,
   message,
@@ -112,33 +98,47 @@ interface AnalyticsPageProps {
 export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { accountSlug } = use(params);
   const { accountId } = useAccount();
+  const [timeRange, setTimeRange] = useState<AnalyticsTimeRange>(
+    ANALYTICS_TIME_RANGE.WEEK,
+  );
 
+  // Fetch analytics data
   const summary = useQuery(
     api.analytics.getSummary,
     accountId ? { accountId } : "skip",
   );
 
+  const metrics = useQuery(
+    api.analytics.getMetrics,
+    accountId ? { accountId, timeRange } : "skip",
+  );
+
+  const agentStats = useQuery(
+    api.analytics.getAgentStats,
+    accountId ? { accountId, timeRange } : "skip",
+  );
+
   const taskChartData = !summary
     ? []
-    : ANALYTICS_STATUS_ORDER.map((status) => ({
+    : TASK_STATUS_ORDER.map((status) => ({
         status,
         label: TASK_STATUS_LABELS[status],
         count: summary.taskCountByStatus[status] ?? 0,
-        fill: STATUS_COLORS[status],
+        fill: TASK_STATUS_CHART_COLORS[status],
       }));
 
   const agentChartData = !summary
     ? []
     : AGENT_STATUS_ORDER.map((status) => ({
         status,
-        label: status.charAt(0).toUpperCase() + status.slice(1),
+        label: AGENT_STATUS_LABELS[status],
         count: summary.agentCountByStatus[status] ?? 0,
-        fill: AGENT_STATUS_COLORS[status],
+        fill: AGENT_STATUS_CHART_COLORS[status],
       })).filter((item) => item.count > 0);
 
   const completionRate = useMemo(() => {
     if (!summary || summary.totalTasks === 0) return 0;
-    const done = summary.taskCountByStatus["done"] ?? 0;
+    const done = summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0;
     return Math.round((done / summary.totalTasks) * 100);
   }, [summary]);
 
@@ -149,23 +149,39 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
   return (
     <div className="flex flex-col h-full">
       <header className="px-4 sm:px-6 py-4 border-b bg-card">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <BarChart3 className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-              Analytics
-            </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Task and agent overview for this workspace
-            </p>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <BarChart3 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                Analytics
+              </h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Task and agent overview for this workspace
+              </p>
+            </div>
           </div>
         </div>
+        {/* Date range selector */}
+        <Tabs
+          defaultValue={ANALYTICS_TIME_RANGE.WEEK}
+          value={timeRange}
+          onValueChange={(value) => setTimeRange(value as AnalyticsTimeRange)}
+        >
+          <TabsList className="grid w-fit grid-cols-3">
+            {ANALYTICS_TIME_RANGE_ORDER.map((range: AnalyticsTimeRange) => (
+              <TabsTrigger key={range} value={range}>
+                {ANALYTICS_TIME_RANGE_LABELS[range]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </header>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {summary === undefined ? (
+        {summary === undefined || metrics === undefined || agentStats === undefined ? (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats skeleton */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -263,7 +279,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                     {completionRate}%
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {summary.taskCountByStatus["done"] ?? 0} tasks done
+                    {summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0} tasks done
                   </p>
                 </CardContent>
               </Card>
@@ -292,6 +308,126 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
 
             {/* Charts */}
             <div className="grid gap-6 lg:grid-cols-2">
+              {/* Task completion trend line chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                    Task Completion Trend
+                  </CardTitle>
+                  <CardDescription>
+                    Tasks completed over time ({timeRange})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!metrics || metrics.completionTrend.length === 0 ? (
+                    <AnalyticsEmptyState
+                      icon={
+                        <TrendingUp className="h-6 w-6 text-muted-foreground/50" />
+                      }
+                      message="No completed tasks in this period"
+                      actionHref={`/${accountSlug}/tasks`}
+                      actionLabel="Complete a task"
+                    />
+                  ) : (
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={metrics.completionTrend}
+                          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                        >
+                          <XAxis
+                            dataKey="date"
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip
+                            content={<ChartTooltipContent />}
+                            cursor={{ stroke: "hsl(var(--primary))", opacity: 0.5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="completed"
+                            stroke="#22c55e"
+                            dot={{ fill: "#22c55e", r: 4 }}
+                            activeDot={{ r: 6 }}
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Agent workload bar chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-blue-500" />
+                    Agent Workload
+                  </CardTitle>
+                  <CardDescription>
+                    Tasks assigned per agent ({timeRange})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!agentStats || agentStats.length === 0 ? (
+                    <AnalyticsEmptyState
+                      icon={
+                        <Bot className="h-6 w-6 text-muted-foreground/50" />
+                      }
+                      message="No agent workload data"
+                      actionHref={`/${accountSlug}/agents`}
+                      actionLabel="View agents"
+                    />
+                  ) : (
+                    <ChartContainer
+                      config={chartConfig}
+                      className="h-[250px] w-full"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={agentStats}
+                          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                        >
+                          <XAxis
+                            dataKey="agentName"
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <Tooltip
+                            content={<ChartTooltipContent />}
+                            cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
+                          />
+                          <Bar
+                            dataKey="taskCount"
+                            fill="#3b82f6"
+                            radius={[4, 4, 0, 0]}
+                            maxBarSize={60}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Task distribution bar chart */}
               <Card>
                 <CardHeader>
@@ -438,7 +574,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {ANALYTICS_STATUS_ORDER.map((status: TaskStatus) => {
+                  {TASK_STATUS_ORDER.map((status: TaskStatus) => {
                     const count = summary.taskCountByStatus[status] ?? 0;
                     const percentage =
                       summary.totalTasks > 0
@@ -450,7 +586,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                           <span className="flex items-center gap-2">
                             <div
                               className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: STATUS_COLORS[status] }}
+                              style={{ backgroundColor: TASK_STATUS_CHART_COLORS[status] }}
                             />
                             {TASK_STATUS_LABELS[status]}
                           </span>
@@ -466,7 +602,7 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                             className="h-full rounded-full transition-all duration-500 ease-out"
                             style={{
                               width: `${percentage}%`,
-                              backgroundColor: STATUS_COLORS[status],
+                              backgroundColor: TASK_STATUS_CHART_COLORS[status],
                             }}
                           />
                         </div>
@@ -476,6 +612,71 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Metrics summary */}
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 pt-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Total Tasks ({timeRange})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics.totalTasks}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    in selected period
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Completed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.completedTasks}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    tasks done
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    In Progress
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.inProgressCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    active now
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Avg Time
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metrics.avgCompletionTime.toFixed(1)}h
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    to complete
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
       </div>

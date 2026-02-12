@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
-import { MessageCircle, Minimize2, X, Bot, Settings } from "lucide-react";
+import { useEffect, useCallback, useRef, useState } from "react";
+import { MessageCircle, Maximize2, Minimize2, X, Bot, Settings } from "lucide-react";
 import Link from "next/link";
 import { useBoolean } from "usehooks-ts";
 import { Button } from "@packages/ui/components/button";
@@ -27,12 +27,17 @@ export function OrchestratorChat() {
     ensureChatTask,
   } = useOrchestratorChat();
 
+  const [isExpanded, setIsExpanded] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const accountSlug = account?.slug ?? "";
 
   const toggle = useCallback(() => {
-    if (isOpen) close();
-    else open();
+    if (isOpen) {
+      close();
+      setIsExpanded(false);
+    } else {
+      open();
+    }
   }, [isOpen, open, close]);
 
   /** Create orchestrator chat task on first open. */
@@ -66,46 +71,57 @@ export function OrchestratorChat() {
         className={cn(
           "flex flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl transition-all duration-300 ease-out origin-bottom-right",
           isOpen
-            ? "pointer-events-auto w-[min(420px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-7rem))] scale-100 opacity-100 translate-y-0"
-            : "pointer-events-none w-[min(420px,calc(100vw-2.5rem))] h-0 scale-95 opacity-0 translate-y-2",
+            ? "pointer-events-auto scale-100 opacity-100 translate-y-0"
+            : "pointer-events-none h-0 scale-95 opacity-0 translate-y-2",
+          isOpen && isExpanded
+            ? "w-[min(680px,calc(100vw-2.5rem))] h-[min(85vh,calc(100vh-5rem))]"
+            : "w-[min(420px,calc(100vw-2.5rem))]",
+          isOpen && !isExpanded && "h-[min(600px,calc(100vh-7rem))]",
         )}
         role="dialog"
         aria-label="Orchestrator Chat"
         aria-hidden={!isOpen}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b bg-muted/40 px-4 py-3 shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Bot className="h-4 w-4 text-primary" />
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 shrink-0">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+            <Bot className="h-3.5 w-3.5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-foreground leading-none">
+            <h2 className="text-xs font-semibold text-foreground leading-none">
               Orchestrator
             </h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-none">
               {isOrchestratorConfigured
                 ? "AI assistant ready"
                 : "Not configured"}
             </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground"
-              onClick={close}
-              aria-label="Minimize chat"
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              aria-label={isExpanded ? "Reduce chat size" : "Expand chat size"}
             >
-              <Minimize2 className="h-3.5 w-3.5" />
+              {isExpanded ? (
+                <Minimize2 className="h-3 w-3" />
+              ) : (
+                <Maximize2 className="h-3 w-3" />
+              )}
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive"
-              onClick={close}
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-destructive"
+              onClick={() => {
+                close();
+                setIsExpanded(false);
+              }}
               aria-label="Close chat"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3 w-3" />
             </Button>
           </div>
         </div>
