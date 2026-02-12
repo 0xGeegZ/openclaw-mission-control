@@ -1,30 +1,46 @@
-import type { TaskStatus, LLMModel } from "../types";
+/**
+ * Shared constants for OpenClaw Mission Control.
+ *
+ * NOTE: These constants must stay in sync with @packages/backend/convex/lib/constants.ts.
+ * Use the same const object pattern for consistency.
+ */
+import {
+  TASK_STATUS,
+  SKILL_CATEGORY,
+  LLM_MODEL,
+  type TaskStatus,
+  type LLMModel,
+  type SkillCategory,
+} from "../types";
+
+// Re-export from types for convenience
+export { TASK_STATUS, SKILL_CATEGORY, LLM_MODEL };
 
 /**
  * Ordered list of task statuses for Kanban columns.
  * Archived tasks are typically hidden from main board but accessible in history/archive views.
  */
 export const TASK_STATUS_ORDER: TaskStatus[] = [
-  "inbox",
-  "assigned",
-  "in_progress",
-  "review",
-  "done",
-  "blocked",
-  "archived",
+  TASK_STATUS.INBOX,
+  TASK_STATUS.ASSIGNED,
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+  TASK_STATUS.ARCHIVED,
 ];
 
 /**
  * Human-readable labels for task statuses.
  */
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  inbox: "Inbox",
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  review: "Review",
-  done: "Done",
-  blocked: "Blocked",
-  archived: "Archived",
+  [TASK_STATUS.INBOX]: "Inbox",
+  [TASK_STATUS.ASSIGNED]: "Assigned",
+  [TASK_STATUS.IN_PROGRESS]: "In Progress",
+  [TASK_STATUS.REVIEW]: "Review",
+  [TASK_STATUS.DONE]: "Done",
+  [TASK_STATUS.BLOCKED]: "Blocked",
+  [TASK_STATUS.ARCHIVED]: "Archived",
 };
 
 /**
@@ -33,29 +49,47 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
  * Archived is a terminal state reachable from most statuses (soft-delete).
  */
 export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  inbox: ["assigned", "archived"],
-  assigned: ["in_progress", "blocked", "inbox", "archived"],
-  in_progress: ["review", "blocked", "archived"],
-  review: ["done", "in_progress", "blocked", "archived"],
-  done: ["archived"],
-  blocked: ["assigned", "in_progress", "archived"],
-  archived: [],
+  [TASK_STATUS.INBOX]: [TASK_STATUS.ASSIGNED, TASK_STATUS.ARCHIVED],
+  [TASK_STATUS.ASSIGNED]: [
+    TASK_STATUS.IN_PROGRESS,
+    TASK_STATUS.BLOCKED,
+    TASK_STATUS.INBOX,
+    TASK_STATUS.ARCHIVED,
+  ],
+  [TASK_STATUS.IN_PROGRESS]: [
+    TASK_STATUS.REVIEW,
+    TASK_STATUS.BLOCKED,
+    TASK_STATUS.ARCHIVED,
+  ],
+  [TASK_STATUS.REVIEW]: [
+    TASK_STATUS.DONE,
+    TASK_STATUS.IN_PROGRESS,
+    TASK_STATUS.BLOCKED,
+    TASK_STATUS.ARCHIVED,
+  ],
+  [TASK_STATUS.DONE]: [TASK_STATUS.ARCHIVED],
+  [TASK_STATUS.BLOCKED]: [
+    TASK_STATUS.ASSIGNED,
+    TASK_STATUS.IN_PROGRESS,
+    TASK_STATUS.ARCHIVED,
+  ],
+  [TASK_STATUS.ARCHIVED]: [],
 };
 
 /**
  * Available LLM models for agent configuration.
  */
 export const AVAILABLE_MODELS = [
-  { value: "claude-haiku-4.5", label: "Claude Haiku 4.5 (Recommended)" },
-  { value: "gpt-5-nano", label: "GPT-5 Nano" },
+  { value: LLM_MODEL.CLAUDE_HAIKU_4_5, label: "Claude Haiku 4.5 (Recommended)" },
+  { value: LLM_MODEL.GPT_5_NANO, label: "GPT-5 Nano" },
 ] as const;
 
 /**
  * OpenClaw provider/model mapping for supported LLM identifiers.
  */
 export const MODEL_TO_OPENCLAW: Record<LLMModel, string> = {
-  "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
-  "gpt-5-nano": "openai/gpt-5-nano",
+  [LLM_MODEL.CLAUDE_HAIKU_4_5]: "anthropic/claude-haiku-4.5",
+  [LLM_MODEL.GPT_5_NANO]: "openai/gpt-5-nano",
 };
 
 /**
@@ -66,12 +100,12 @@ export const OPENCLAW_FALLBACK_MODEL = "anthropic/claude-haiku-4.5";
 /**
  * Skill category labels for UI display.
  */
-export const SKILL_CATEGORY_LABELS = {
-  mcp_server: "MCP Server",
-  tool: "Tool",
-  integration: "Integration",
-  custom: "Custom",
-} as const;
+export const SKILL_CATEGORY_LABELS: Record<SkillCategory, string> = {
+  [SKILL_CATEGORY.MCP_SERVER]: "MCP Server",
+  [SKILL_CATEGORY.TOOL]: "Tool",
+  [SKILL_CATEGORY.INTEGRATION]: "Integration",
+  [SKILL_CATEGORY.CUSTOM]: "Custom",
+};
 
 /**
  * Typing indicator window in ms (2 minutes).
@@ -84,7 +118,7 @@ export const TYPING_WINDOW_MS = 2 * 60 * 1000;
  * Default OpenClaw configuration for new agents.
  */
 export const DEFAULT_OPENCLAW_CONFIG = {
-  model: "claude-haiku-4.5",
+  model: LLM_MODEL.CLAUDE_HAIKU_4_5,
   temperature: 0.7,
   maxTokens: 4096,
   skillIds: [],

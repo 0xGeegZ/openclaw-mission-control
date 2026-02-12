@@ -8,7 +8,7 @@ import {
   validateStatusRequirements,
   TaskStatus,
   TASK_STATUS_ORDER,
-  PAUSE_ALLOWED_STATUSES,
+  isPauseAllowedStatus,
 } from "./lib/task_workflow";
 import { logActivity } from "./lib/activity";
 import {
@@ -511,7 +511,7 @@ export const pauseAgentsOnTask = mutation({
       return { paused: true, alreadyBlocked: true };
     }
 
-    if (!PAUSE_ALLOWED_STATUSES.includes(currentStatus)) {
+    if (!isPauseAllowedStatus(currentStatus)) {
       throw new Error(
         "Task can only be paused when status is Assigned, In progress, or Review",
       );

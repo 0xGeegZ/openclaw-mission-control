@@ -12,6 +12,8 @@ import { Filter } from "lucide-react";
 
 const ACTIVITY_TYPE_LABELS: Record<ActivityType | "all", string> = {
   all: "All activity",
+  account_created: "Account created",
+  account_updated: "Account updated",
   task_created: "Task created",
   task_updated: "Task updated",
   task_status_changed: "Status changed",
@@ -22,7 +24,8 @@ const ACTIVITY_TYPE_LABELS: Record<ActivityType | "all", string> = {
   runtime_status_changed: "Runtime status",
   member_added: "Member added",
   member_removed: "Member removed",
-  member_updated: "Role changed",
+  member_updated: "Member updated",
+  role_changed: "Role changed",
 };
 
 export type ActivityFilterType = ActivityType | "all";

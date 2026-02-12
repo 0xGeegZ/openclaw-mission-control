@@ -33,7 +33,7 @@ const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
 );
 
 function isValidStatus(value: string): value is TaskStatus {
-  return (VALID_STATUSES as readonly string[]).includes(value);
+  return VALID_STATUSES.includes(value as TaskStatus);
 }
 
 /** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
