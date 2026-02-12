@@ -62,7 +62,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 
 ### Applying updates to agent prompts (AGENTS.md, HEARTBEAT.md)
 
-Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “use skills as much as possible”):
+Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
 
 1. **Restart the runtime** so profile sync runs again. Sync writes the current AGENTS.md and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
 

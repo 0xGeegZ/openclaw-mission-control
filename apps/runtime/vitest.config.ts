@@ -9,11 +9,6 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      all: true,
-      lines: 60,
-      functions: 60,
-      branches: 50,
-      statements: 60,
       exclude: [
         'node_modules/',
         'dist/',
@@ -21,7 +16,7 @@ export default defineConfig({
         '**/*.d.ts',
         '**/index.ts',
       ],
-      // Thresholds that fail the build if coverage is below target
+      // Runtime safety-critical paths should keep a solid baseline
       thresholds: {
         lines: 60,
         functions: 60,

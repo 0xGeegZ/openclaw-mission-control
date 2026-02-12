@@ -49,7 +49,11 @@ import {
 } from "@packages/ui/components/tabs";
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
-import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
+import {
+  AVAILABLE_MODELS,
+  DEFAULT_OPENCLAW_CONFIG,
+  RUNTIME_STATUS,
+} from "@packages/shared";
 
 /** Union of allowed model values for the default model selector. */
 type DefaultModelValue = (typeof AVAILABLE_MODELS)[number]["value"];
@@ -158,14 +162,14 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
 
   const getStatusIcon = (status: string | undefined) => {
     switch (status) {
-      case "online":
+      case RUNTIME_STATUS.ONLINE:
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case "degraded":
+      case RUNTIME_STATUS.DEGRADED:
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case "offline":
-      case "error":
+      case RUNTIME_STATUS.OFFLINE:
+      case RUNTIME_STATUS.ERROR:
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case "provisioning":
+      case RUNTIME_STATUS.PROVISIONING:
         return <Clock className="h-4 w-4 text-blue-500 animate-pulse" />;
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -177,11 +181,11 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
       string,
       "default" | "secondary" | "destructive" | "outline"
     > = {
-      online: "default",
-      degraded: "secondary",
-      offline: "destructive",
-      error: "destructive",
-      provisioning: "outline",
+      [RUNTIME_STATUS.ONLINE]: "default",
+      [RUNTIME_STATUS.DEGRADED]: "secondary",
+      [RUNTIME_STATUS.OFFLINE]: "destructive",
+      [RUNTIME_STATUS.ERROR]: "destructive",
+      [RUNTIME_STATUS.PROVISIONING]: "outline",
     };
     return variants[status || ""] || "outline";
   };

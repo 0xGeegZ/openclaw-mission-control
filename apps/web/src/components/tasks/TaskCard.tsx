@@ -10,6 +10,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronRight, Clock, AlertTriangle } from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import { TASK_STATUS } from "@packages/shared";
 
 interface TaskCardProps {
   task: Doc<"tasks">;
@@ -63,7 +64,7 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
   const PrimaryFallbackIcon = primaryAgent?.icon
     ? AGENT_ICON_MAP[primaryAgent.icon]
     : null;
-  const isBlocked = task.status === "blocked";
+  const isBlocked = task.status === TASK_STATUS.BLOCKED;
   const isHighPriority = task.priority <= 2;
 
   const handleClick = (e: React.MouseEvent) => {

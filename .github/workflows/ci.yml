@@ -69,9 +69,9 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "✓ Tests passed with coverage thresholds enforced:"
-          echo "  Backend: ≥70% lines, functions, statements; ≥60% branches"
-          echo "  Frontend: ≥50% lines, functions, statements; ≥40% branches"
-          echo "  Runtime: ≥60% lines, functions, statements; ≥50% branches"
+          echo "  Backend: ≥70% lines/functions/statements; ≥60% branches"
+          echo "  Frontend: ≥50% lines/functions/statements; ≥40% branches"
+          echo "  Runtime: ≥60% lines/functions/statements; ≥50% branches"
         if: success()
 
   build:
@@ -91,6 +91,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate seed skills content
+        run: npm run -w @packages/backend seed-skills:generate
 
       - name: Build all packages
         run: npm run build

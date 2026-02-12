@@ -5,12 +5,13 @@ import { logActivity } from "../lib/activity";
 
 /**
  * Service-only document functions.
- * Called by agents via the runtime service.
+ * Called by agents via the runtime service (no user auth; uses agent identity).
  */
 
 /**
  * Create or update a document from an agent.
- * If documentId is provided, updates existing. Otherwise creates new.
+ * If documentId is provided, updates existing; otherwise creates a new file.
+ * Validates agent exists and document (when updating) belongs to agent's account.
  */
 export const createOrUpdateFromAgent = internalMutation({
   args: {

@@ -13,7 +13,11 @@ import {
   resolveBehaviorFlags,
   type BehaviorFlags,
 } from "../lib/behavior_flags";
-import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
+import {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  type TaskStatus,
+} from "../lib/task_workflow";
 
 export type { BehaviorFlags };
 
@@ -445,10 +449,19 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
-    return await ctx.runQuery(internal.service.agents.listInternal, {
-      accountId: args.accountId,
-    });
+    const [agents, account] = await Promise.all([
+      ctx.runQuery(internal.service.agents.listInternal, {
+        accountId: args.accountId,
+      }),
+      ctx.runQuery(internal.accounts.getInternal, {
+        accountId: args.accountId,
+      }),
+    ]);
+
+    return agents.map((agent) => ({
+      ...agent,
+      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+    }));
   },
 });
 
@@ -668,11 +681,11 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
     if (!allowedStatuses.has(args.status)) {
       throw new Error(
@@ -699,10 +712,10 @@ export const updateTaskStatusFromAgent = action({
     }
 
     const allowedNextStatuses = new Set<TaskStatus>([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
 
     let changed = false;
@@ -712,7 +725,7 @@ export const updateTaskStatusFromAgent = action({
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
-    const targetStatus = args.status as TaskStatus;
+    const targetStatus = args.status;
     for (let i = 0; i < 10; i++) {
       const task = await ctx.runQuery(internal.service.tasks.getInternal, {
         taskId: args.taskId,
@@ -721,7 +734,7 @@ export const updateTaskStatusFromAgent = action({
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
 
-      const currentStatus = task.status as TaskStatus;
+      const currentStatus = task.status;
       if (
         i === 0 &&
         args.expectedStatus &&
@@ -734,9 +747,9 @@ export const updateTaskStatusFromAgent = action({
       }
       if (
         i === 0 &&
-        targetStatus === "done" &&
-        currentStatus !== "review" &&
-        currentStatus !== "done"
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
       ) {
         throw new Error(
           "Forbidden: Task must be in review before marking done",
@@ -766,7 +779,7 @@ export const updateTaskStatusFromAgent = action({
         agentId: args.agentId,
         status: nextStatus,
         blockedReason:
-          nextStatus === "blocked" ? args.blockedReason : undefined,
+          nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
@@ -780,7 +793,7 @@ export const updateTaskStatusFromAgent = action({
       if (!task) throw new Error("Not found: Task does not exist");
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
-      finalStatus = task.status as TaskStatus;
+      finalStatus = task.status;
       finalUpdatedAt = task.updatedAt;
     }
 
@@ -996,6 +1009,7 @@ export const getTaskForAgentTool = action({
 
 /**
  * List task thread messages for orchestrator tools (service-only).
+ * Optional limit (1–200) for history size; underlying query defaults to 50 when omitted.
  */
 export const listTaskThreadForAgentTool = action({
   args: {
