@@ -119,7 +119,8 @@ function mapTaskStatusError(message: string): {
   if (
     normalized.includes("invalid transition") ||
     normalized.includes("invalid status change") ||
-    normalized.includes("invalid status")
+    normalized.includes("invalid status") ||
+    normalized.includes("invalid priority")
   ) {
     return { status: 422, message };
   }
@@ -420,44 +421,9 @@ export function startHealthServer(config: RuntimeConfig): void {
 
     if (req.url === "/agent/task-update") {
       const requestStart = Date.now();
-      if (req.method !== "POST") {
-        res.writeHead(405, { Allow: "POST" });
-        res.end("Method Not Allowed");
-        return;
-      }
-
-      if (!isLocalAddress(req.socket.remoteAddress)) {
-        sendJson(res, 403, {
-          success: false,
-          error: "Forbidden: endpoint is local-only",
-        });
-        return;
-      }
-
-      const sessionHeader = req.headers["x-openclaw-session-key"];
-      const sessionKey = Array.isArray(sessionHeader)
-        ? sessionHeader[0]
-        : sessionHeader;
-      if (!sessionKey) {
-        log.warn("[task-update] Missing session key");
-        sendJson(res, 401, {
-          success: false,
-          error: "Missing x-openclaw-session-key header",
-        });
-        return;
-      }
-
-      const agentId = getAgentIdForSessionKey(sessionKey);
-      if (!agentId) {
-        log.warn("[task-update] Unknown session:", sessionKey);
-        sendJson(res, 401, { success: false, error: "Unknown session key" });
-        return;
-      }
-
-      if (!runtimeConfig) {
-        sendJson(res, 500, { success: false, error: "Runtime not configured" });
-        return;
-      }
+      const session = requireLocalAgentSession(req, res, "task-update");
+      if (!session) return;
+      const { agentId, config } = session;
 
       let body: {
         taskId?: string;
@@ -533,11 +499,11 @@ export function startHealthServer(config: RuntimeConfig): void {
         }
       }
 
-      if (body.priority !== undefined && (body.priority < 0 || body.priority > 4)) {
+      if (body.priority !== undefined && (body.priority < 1 || body.priority > 5)) {
         log.warn("[task-update] Invalid priority:", body.priority);
         sendJson(res, 422, {
           success: false,
-          error: "priority must be between 0 (highest) and 4 (lowest)",
+          error: "priority must be between 1 (highest) and 5 (lowest)",
         });
         return;
       }
@@ -564,25 +530,25 @@ export function startHealthServer(config: RuntimeConfig): void {
         const result = await client.action(
           api.service.actions.updateTaskFromAgent,
           {
-            accountId: runtimeConfig.accountId,
-            serviceToken: runtimeConfig.serviceToken,
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
             agentId,
-            taskId: body.taskId as Id<"tasks">,
-            title: body.title,
-            description: body.description,
+            taskId: body.taskId.trim() as Id<"tasks">,
+            title: body.title?.trim(),
+            description: body.description?.trim(),
             priority: body.priority,
             labels: body.labels,
             assignedAgentIds: body.assignedAgentIds as
               | Id<"agents">[]
               | undefined,
-            assignedUserIds: body.assignedUserIds as Id<"users">[] | undefined,
+            assignedUserIds: body.assignedUserIds,
             status: body.status as
               | "in_progress"
               | "review"
               | "done"
               | "blocked"
               | undefined,
-            blockedReason: body.blockedReason,
+            blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
           },
         );

@@ -703,6 +703,17 @@ export const updateFromAgent = internalMutation({
       }
     }
 
+    // assignedUserIds are Clerk user IDs (strings); ensure array of non-empty strings
+    if (safeUpdates.assignedUserIds !== undefined) {
+      if (!Array.isArray(safeUpdates.assignedUserIds)) {
+        throw new Error("assignedUserIds must be an array");
+      }
+      const valid = safeUpdates.assignedUserIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      );
+      safeUpdates.assignedUserIds = valid;
+    }
+
     await ctx.db.patch(args.taskId, safeUpdates);
 
     // Log activity

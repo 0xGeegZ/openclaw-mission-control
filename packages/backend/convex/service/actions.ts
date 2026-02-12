@@ -931,7 +931,7 @@ export const updateTaskFromAgent = action({
     priority: v.optional(v.number()),
     labels: v.optional(v.array(v.string())),
     assignedAgentIds: v.optional(v.array(v.id("agents"))),
-    assignedUserIds: v.optional(v.array(v.id("users"))),
+    assignedUserIds: v.optional(v.array(v.string())),
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
     dueDate: v.optional(v.number()),
@@ -993,9 +993,9 @@ export const updateTaskFromAgent = action({
       return { taskId: args.taskId, changedFields: [] };
     }
 
-    // Validate priority range
-    if (args.priority !== undefined && (args.priority < 0 || args.priority > 4)) {
-      throw new Error("Invalid priority: must be between 0 (highest) and 4 (lowest)");
+    // Validate priority range (schema: 1 = highest, 5 = lowest)
+    if (args.priority !== undefined && (args.priority < 1 || args.priority > 5)) {
+      throw new Error("Invalid priority: must be between 1 (highest) and 5 (lowest)");
     }
 
     // Validate status and blockedReason

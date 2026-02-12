@@ -52,7 +52,7 @@ function schemaNames(schemas: unknown[]): string[] {
 }
 
 describe("getToolCapabilitiesAndSchemas", () => {
-  it("returns task_status only when hasTaskContext and canModifyTaskStatus", () => {
+  it("returns task_status and task_update only when hasTaskContext and canModifyTaskStatus", () => {
     const withTask = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
       canModifyTaskStatus: true,
@@ -63,7 +63,11 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(withTask.capabilityLabels).toContain(
       "change task status (task_status tool)",
     );
+    expect(withTask.capabilityLabels).toContain(
+      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)",
+    );
     expect(schemaNames(withTask.schemas)).toContain("task_status");
+    expect(schemaNames(withTask.schemas)).toContain("task_update");
 
     const noTask = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -75,7 +79,11 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(noTask.capabilityLabels).not.toContain(
       "change task status (task_status tool)",
     );
+    expect(noTask.capabilityLabels).not.toContain(
+      "update task fields (task_update tool for title/description/priority/labels/assignees/status/dueDate)",
+    );
     expect(schemaNames(noTask.schemas)).not.toContain("task_status");
+    expect(schemaNames(noTask.schemas)).not.toContain("task_update");
 
     const noPermission = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -85,6 +93,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
     });
     expect(noPermission.hasTaskStatus).toBe(false);
     expect(schemaNames(noPermission.schemas)).not.toContain("task_status");
+    expect(schemaNames(noPermission.schemas)).not.toContain("task_update");
   });
 
   it("returns task_create when canCreateTasks is true", () => {

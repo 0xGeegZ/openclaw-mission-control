@@ -39,9 +39,9 @@ export const TASK_UPDATE_TOOL_SCHEMA = {
         },
         priority: {
           type: "number",
-          description: "Priority level (0=highest, 4=lowest)",
-          minimum: 0,
-          maximum: 4,
+          description: "Priority level (1=highest/critical, 5=lowest)",
+          minimum: 1,
+          maximum: 5,
         },
         labels: {
           type: "array",
@@ -159,11 +159,11 @@ export async function executeTaskUpdateTool(params: {
     };
   }
 
-  // Validate priority range
-  if (priority !== undefined && (priority < 0 || priority > 4)) {
+  // Validate priority range (schema: 1 = highest, 5 = lowest)
+  if (priority !== undefined && (priority < 1 || priority > 5)) {
     return {
       success: false,
-      error: "priority must be between 0 (highest) and 4 (lowest)",
+      error: "priority must be between 1 (highest) and 5 (lowest)",
     };
   }
 
@@ -179,7 +179,7 @@ export async function executeTaskUpdateTool(params: {
       priority,
       labels,
       assignedAgentIds: assignedAgentIds ? (assignedAgentIds as Id<"agents">[]) : undefined,
-      assignedUserIds: assignedUserIds ? (assignedUserIds as Id<"users">[]) : undefined,
+      assignedUserIds,
       status: (status as "in_progress" | "review" | "done" | "blocked" | undefined) || undefined,
       blockedReason: blockedReason?.trim(),
       dueDate,

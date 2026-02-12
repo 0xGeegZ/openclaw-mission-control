@@ -3,26 +3,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  executeTaskUpdateTool,
-  type TaskUpdateToolResult,
-} from "./taskUpdateTool";
+import { getConvexClient } from "../convex-client";
+import { executeTaskUpdateTool } from "./taskUpdateTool";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
-// Mock the Convex client
 vi.mock("../convex-client", () => ({
   getConvexClient: vi.fn(),
 }));
 
-describe("taskUpdateTool", () => {
-  let mockAction: ReturnType<typeof vi.fn>;
+const mockAction = vi.fn();
 
+describe("taskUpdateTool", () => {
   beforeEach(() => {
-    mockAction = vi.fn();
-    const { getConvexClient } = require("../convex-client");
-    getConvexClient.mockReturnValue({
+    mockAction.mockClear();
+    vi.mocked(getConvexClient).mockReturnValue({
       action: mockAction,
-    });
+    } as never);
   });
 
   describe("executeTaskUpdateTool", () => {
@@ -53,10 +49,10 @@ describe("taskUpdateTool", () => {
     it("returns error when priority is out of range", async () => {
       const result = await executeTaskUpdateTool({
         ...baseParams,
-        priority: 5,
+        priority: 6,
       });
       expect(result.success).toBe(false);
-      expect(result.error).toContain("priority must be between 0 and 4");
+      expect(result.error).toContain("priority must be between 1 and 5");
     });
 
     it("returns error when status is invalid", async () => {
