@@ -15,11 +15,23 @@ import {
 /**
  * Resolve display name for a document (name ?? title ?? fallback).
  */
-function getDocumentDisplayName(
+export function getDocumentDisplayName(
   doc: { name?: string | null; title?: string | null },
   fallback: string = "Document",
 ): string {
   return doc.name ?? doc.title ?? fallback;
+}
+
+/**
+ * Guard against writes on soft-deleted documents.
+ */
+export function ensureDocumentIsActive(
+  doc: { deletedAt?: number },
+  action: string,
+): void {
+  if (doc.deletedAt) {
+    throw new Error(`Cannot ${action}: Document has been deleted`);
+  }
 }
 
 /**
@@ -331,6 +343,7 @@ export const update = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "update");
 
     const { userId, userName } = await requireAccountMember(
       ctx,
@@ -415,6 +428,7 @@ export const linkToTask = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "link document to task");
 
     const { userId, userName } = await requireAccountMember(
       ctx,
@@ -585,6 +599,7 @@ export const duplicate = mutation({
     if (!document) {
       throw new Error("Not found: Document does not exist");
     }
+    ensureDocumentIsActive(document, "duplicate document");
     if (document.kind === "folder") {
       throw new Error("Cannot duplicate a folder");
     }

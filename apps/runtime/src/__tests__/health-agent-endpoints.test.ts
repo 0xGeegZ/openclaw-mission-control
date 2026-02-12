@@ -13,6 +13,22 @@ import { Id } from "@packages/backend/convex/_generated/dataModel";
 
 const TEST_PORT = 39493;
 const BASE = `http://127.0.0.1:${TEST_PORT}`;
+const AGENT_ENDPOINTS = [
+  "/agent/task-status",
+  "/agent/task-create",
+  "/agent/task-assign",
+  "/agent/response-request",
+  "/agent/document",
+  "/agent/task-message",
+  "/agent/task-list",
+  "/agent/task-get",
+  "/agent/task-thread",
+  "/agent/task-search",
+  "/agent/task-load",
+  "/agent/get-agent-skills",
+  "/agent/task-delete",
+  "/agent/task-link-pr",
+] as const;
 
 vi.mock("../gateway", () => ({
   getAgentIdForSessionKey: vi.fn().mockReturnValue(null),
@@ -152,23 +168,29 @@ describe("agent endpoints - session validation", () => {
     stopHealthServer();
   });
 
-  it("GET /agent/task-status returns 405 Method Not Allowed", async () => {
-    const res = await fetch(`${BASE}/agent/task-status`, { method: "GET" });
-    expect(res.status).toBe(405);
-    expect(res.headers.get("Allow")).toBe("POST");
-  });
+  it.each(AGENT_ENDPOINTS)(
+    "GET %s returns 405 Method Not Allowed",
+    async (endpoint) => {
+      const res = await fetch(`${BASE}${endpoint}`, { method: "GET" });
+      expect(res.status).toBe(405);
+      expect(res.headers.get("Allow")).toBe("POST");
+    },
+  );
 
-  it("POST /agent/task-status without x-openclaw-session-key returns 401", async () => {
-    const res = await fetch(`${BASE}/agent/task-status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId: "abc", status: "in_progress" }),
-    });
-    expect(res.status).toBe(401);
-    const data = (await res.json()) as { success?: boolean; error?: string };
-    expect(data.success).toBe(false);
-    expect(data.error).toContain("x-openclaw-session-key");
-  });
+  it.each(AGENT_ENDPOINTS)(
+    "POST %s without x-openclaw-session-key returns 401",
+    async (endpoint) => {
+      const res = await fetch(`${BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(401);
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("x-openclaw-session-key");
+    },
+  );
 
   it("POST /agent/task-status with unknown session key returns 401", async () => {
     const res = await fetch(`${BASE}/agent/task-status`, {
@@ -185,15 +207,18 @@ describe("agent endpoints - session validation", () => {
     expect(data.error).toContain("Unknown session key");
   });
 
-  it("POST /agent/task-create without session key returns 401", async () => {
+  it("POST /agent/task-create with unknown session key returns 401", async () => {
     const res = await fetch(`${BASE}/agent/task-create`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-openclaw-session-key": "agent:unknown:account",
+      },
       body: JSON.stringify({ title: "Test task" }),
     });
     expect(res.status).toBe(401);
     const data = (await res.json()) as { success?: boolean; error?: string };
     expect(data.success).toBe(false);
-    expect(data.error).toContain("x-openclaw-session-key");
+    expect(data.error).toContain("Unknown session key");
   });
 });
