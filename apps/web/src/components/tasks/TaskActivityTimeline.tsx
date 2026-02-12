@@ -8,7 +8,6 @@ import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Label } from "@packages/ui/components/label";
 import { ActivityItem } from "@/components/feed/ActivityItem";
-import type { ActivityType } from "@packages/backend/convex/lib/activity";
 
 interface TaskActivityTimelineProps {
   taskId: Id<"tasks">;
@@ -45,7 +44,7 @@ export function TaskActivityTimeline({
     ? activities.filter((activity) => {
         if (filter === "all") return true;
 
-        const actType = activity.type as ActivityType;
+        const actType = activity.type;
 
         switch (filter) {
           case "status_changes":

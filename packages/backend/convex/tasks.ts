@@ -131,11 +131,11 @@ export const listByStatus = query({
       if (isOrchestratorChatTask({ account, task })) {
         continue;
       }
-      grouped[task.status as TaskStatus].push(task);
+      grouped[task.status].push(task);
     }
 
     // Sort each group by priority then createdAt
-    for (const status of Object.keys(grouped) as TaskStatus[]) {
+    for (const status of TASK_STATUS_ORDER) {
       grouped[status].sort((a, b) => {
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
@@ -389,8 +389,8 @@ export const updateStatus = mutation({
       task.accountId,
     );
 
-    const currentStatus = task.status as TaskStatus;
-    const nextStatus = args.status as TaskStatus;
+    const currentStatus = task.status;
+    const nextStatus = args.status;
 
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
@@ -505,7 +505,7 @@ export const pauseAgentsOnTask = mutation({
       task.accountId,
     );
 
-    const currentStatus = task.status as TaskStatus;
+    const currentStatus = task.status;
 
     if (currentStatus === "blocked") {
       return { paused: true, alreadyBlocked: true };

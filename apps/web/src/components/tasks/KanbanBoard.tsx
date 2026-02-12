@@ -24,8 +24,8 @@ import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-/** All known task statuses for validation and DnD resolution. */
-const VALID_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER;
+/** Set of all known task statuses for O(1) validation in DnD resolution. */
+const VALID_STATUS_SET = new Set<TaskStatus>(TASK_STATUS_ORDER);
 
 /** Statuses shown on the main Kanban board (archive is hidden by default). */
 const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
@@ -33,7 +33,7 @@ const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
 );
 
 function isValidStatus(value: string): value is TaskStatus {
-  return VALID_STATUSES.includes(value as TaskStatus);
+  return VALID_STATUS_SET.has(value as TaskStatus);
 }
 
 /** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
@@ -45,7 +45,7 @@ function resolveDropTargetToStatus(
   if (!tasksByStatus) return null;
   for (const tasks of Object.values(tasksByStatus)) {
     const task = tasks.find((t) => String(t._id) === overId);
-    if (task && isValidStatus(task.status)) return task.status as TaskStatus;
+    if (task) return task.status;
   }
   return null;
 }

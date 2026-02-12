@@ -45,7 +45,7 @@ const STATUS_OPTIONS: { value: AgentStatus; label: string; description: string; 
  * Dialog for manually updating agent status.
  */
 export function AgentStatusDialog({ agent, open, onOpenChange }: AgentStatusDialogProps) {
-  const [status, setStatus] = useState<AgentStatus>(agent.status as AgentStatus);
+  const [status, setStatus] = useState<AgentStatus>(agent.status);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const updateStatus = useMutation(api.agents.updateStatus);

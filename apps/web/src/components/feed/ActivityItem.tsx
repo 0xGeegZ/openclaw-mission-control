@@ -1,10 +1,7 @@
 "use client";
 
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
-import {
-  getActivityDescription,
-  type ActivityType,
-} from "@packages/backend/convex/lib/activity";
+import { getActivityDescription } from "@packages/backend/convex/lib/activity";
 import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
 import {
@@ -133,10 +130,10 @@ export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
           </span>{" "}
           <span className="text-muted-foreground">
             {getActivityDescription(
-              activity.type as ActivityType,
+              activity.type,
               activity.actorName,
               activity.targetName,
-              activity.meta as Record<string, unknown> | undefined,
+              activity.meta,
             )}
           </span>
         </p>

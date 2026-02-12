@@ -264,7 +264,7 @@ export const createFromAgent = internalMutation({
 
     const assignedUserIds: string[] = [];
     let assignedAgentIds: Id<"agents">[] = [];
-    const requestedStatus = (args.status ?? "inbox") as TaskStatus;
+    const requestedStatus = args.status ?? "inbox";
     if (
       (requestedStatus === "assigned" || requestedStatus === "in_progress") &&
       assignedUserIds.length === 0
@@ -472,9 +472,9 @@ export const updateStatusFromAgent = internalMutation({
       throw new Error("Forbidden: Task belongs to different account");
     }
 
-    const currentStatus = task.status as TaskStatus;
-    const nextStatus = args.status as TaskStatus;
-    const expectedStatus = args.expectedStatus as TaskStatus | undefined;
+    const currentStatus = task.status;
+    const nextStatus = args.status;
+    const expectedStatus = args.expectedStatus;
 
     if (expectedStatus && currentStatus !== expectedStatus) {
       return args.taskId;
@@ -750,7 +750,7 @@ export const deleteTaskFromAgent = internalMutation({
 
     // Soft-delete: transition to "archived" status
     await ctx.db.patch(args.taskId, {
-      status: "archived" as TaskStatus,
+      status: "archived",
       archivedAt: now,
       updatedAt: now,
     });
