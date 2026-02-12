@@ -53,8 +53,9 @@ function sendJson(
 
 /**
  * Check whether a remote address is loopback or private network.
+ * Exported for unit tests.
  */
-function isLocalAddress(address: string | undefined): boolean {
+export function isLocalAddress(address: string | undefined): boolean {
   if (!address) return false;
   const normalized = address.toLowerCase();
   if (normalized === "::1") return true;
@@ -194,7 +195,8 @@ function requireLocalAgentSession(
     res.end("Method Not Allowed");
     return null;
   }
-  if (!isLocalAddress(req.socket.remoteAddress)) {
+  const remoteAddress = req.socket?.remoteAddress;
+  if (!remoteAddress || !isLocalAddress(remoteAddress)) {
     sendJson(res, 403, {
       success: false,
       error: "Forbidden: endpoint is local-only",
@@ -215,7 +217,11 @@ function requireLocalAgentSession(
   }
   const agentId = getAgentIdForSessionKey(sessionKey);
   if (!agentId) {
-    log.warn(`[${endpointLabel}] Unknown session:`, sessionKey);
+    const redacted =
+      typeof sessionKey === "string" && sessionKey.length > 4
+        ? `${sessionKey.slice(0, 4)}…`
+        : "(redacted)";
+    log.warn(`[${endpointLabel}] Unknown session: ${redacted}`);
     sendJson(res, 401, { success: false, error: "Unknown session key" });
     return null;
   }
