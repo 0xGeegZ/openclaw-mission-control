@@ -1,19 +1,20 @@
 /**
  * Factory functions for creating common Convex patterns.
  * Reduces boilerplate and ensures consistency across data handlers.
- * Uses pragmatic typing to avoid complex generic constraints.
+ * Provides type-safe helpers for queries and mutations using proper Convex types.
  */
 
 import { QueryCtx, MutationCtx } from "../_generated/server";
+import { Id, Doc } from "../_generated/dataModel";
 import { ConvexError, ErrorCode } from "./errors";
 
 /**
- * Common pattern: get document by ID with optional auth check.
+ * Common pattern: get document by ID.
  */
-export async function getDocById(
+export async function getDocById<T extends string>(
   ctx: QueryCtx,
-  docId: any,
-): Promise<any> {
+  docId: Id<T>,
+): Promise<Doc<T> | null> {
   return await ctx.db.get(docId);
 }
 
@@ -21,58 +22,70 @@ export async function getDocById(
  * Common pattern: list documents by account.
  * Assumes table has a by_account index.
  */
-export async function listByAccount(
+export async function listByAccount<T extends string>(
   ctx: QueryCtx,
   tableName: string,
-  accountId: any,
-): Promise<any[]> {
-  return ctx.db
-    .query(tableName as any)
-    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
-    .collect();
+  accountId: Id<"accounts">,
+): Promise<Doc<T>[]> {
+  return (await ctx.db
+    .query(tableName)
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect()) as Doc<T>[];
 }
 
 /**
- * Common pattern: get unique document by multiple fields.
- * Assumes index and query chain exist.
+ * Common pattern: get unique document by index filter.
+ * QueryFn should use index builder methods (eq, gt, gte, lt, lte).
  */
-export async function getByIndex(
+export async function getByIndex<T extends string>(
   ctx: QueryCtx,
   tableName: string,
   indexName: string,
-  queryFn: (q: any) => any,
-): Promise<any | null> {
-  return ctx.db
-    .query(tableName as any)
-    .withIndex(indexName as any, (q: any) => queryFn(q))
-    .unique();
+  queryFn: (q: {
+    eq: (field: string, value: unknown) => unknown;
+    gt: (field: string, value: unknown) => unknown;
+    gte: (field: string, value: unknown) => unknown;
+    lt: (field: string, value: unknown) => unknown;
+    lte: (field: string, value: unknown) => unknown;
+  }) => unknown,
+): Promise<Doc<T> | null> {
+  return (await ctx.db
+    .query(tableName)
+    .withIndex(indexName, (q) => queryFn(q as any))
+    .unique()) as Doc<T> | null;
 }
 
 /**
  * Common pattern: list documents by index filter.
  */
-export async function listByIndex(
+export async function listByIndex<T extends string>(
   ctx: QueryCtx,
   tableName: string,
   indexName: string,
-  queryFn: (q: any) => any,
-): Promise<any[]> {
-  return ctx.db
-    .query(tableName as any)
-    .withIndex(indexName as any, (q: any) => queryFn(q))
-    .collect();
+  queryFn: (q: {
+    eq: (field: string, value: unknown) => unknown;
+    gt: (field: string, value: unknown) => unknown;
+    gte: (field: string, value: unknown) => unknown;
+    lt: (field: string, value: unknown) => unknown;
+    lte: (field: string, value: unknown) => unknown;
+  }) => unknown,
+): Promise<Doc<T>[]> {
+  return (await ctx.db
+    .query(tableName)
+    .withIndex(indexName, (q) => queryFn(q as any))
+    .collect()) as Doc<T>[];
 }
 
 /**
  * Common mutation pattern: update with validation.
  * Handles "not found" errors.
  */
-export async function updateWithValidation(
+export async function updateWithValidation<T extends string>(
   ctx: MutationCtx,
   tableName: string,
-  docId: any,
-  updates: Record<string, any>,
-  validator?: (doc: any, updates: Record<string, any>) => Promise<void>,
+  docId: Id<T>,
+  updates: Partial<Doc<T>>,
+  validator?: (doc: Doc<T>, updates: Partial<Doc<T>>) => Promise<void>,
 ): Promise<void> {
   const doc = await ctx.db.get(docId);
   if (!doc) {
@@ -84,7 +97,7 @@ export async function updateWithValidation(
   }
 
   if (validator) {
-    await validator(doc, updates);
+    await validator(doc as Doc<T>, updates);
   }
 
   await ctx.db.patch(docId, updates);
@@ -93,11 +106,11 @@ export async function updateWithValidation(
 /**
  * Common mutation pattern: delete with validation.
  */
-export async function deleteWithValidation(
+export async function deleteWithValidation<T extends string>(
   ctx: MutationCtx,
   tableName: string,
-  docId: any,
-  validator?: (doc: any) => Promise<void>,
+  docId: Id<T>,
+  validator?: (doc: Doc<T>) => Promise<void>,
 ): Promise<void> {
   const doc = await ctx.db.get(docId);
   if (!doc) {
@@ -109,7 +122,7 @@ export async function deleteWithValidation(
   }
 
   if (validator) {
-    await validator(doc);
+    await validator(doc as Doc<T>);
   }
 
   await ctx.db.delete(docId);
@@ -118,11 +131,11 @@ export async function deleteWithValidation(
 /**
  * Common pattern: ensure document exists and belongs to account.
  */
-export async function assertDocBelongsToAccount(
-  doc: any,
-  expectedAccountId: any,
+export async function assertDocBelongsToAccount<T extends string>(
+  doc: Doc<T> | null,
+  expectedAccountId: Id<"accounts">,
   docType: string,
-): Promise<any> {
+): Promise<Doc<T>> {
   if (!doc) {
     throw new ConvexError(
       ErrorCode.NOT_FOUND,
@@ -130,11 +143,12 @@ export async function assertDocBelongsToAccount(
     );
   }
 
-  if (doc.accountId !== expectedAccountId) {
+  const docWithAccount = doc as Doc<T> & { accountId: Id<"accounts"> };
+  if (docWithAccount.accountId !== expectedAccountId) {
     throw new ConvexError(
       ErrorCode.FORBIDDEN,
       `${docType} belongs to different account`,
-      { expectedAccountId, actualAccountId: doc.accountId },
+      { expectedAccountId, actualAccountId: docWithAccount.accountId },
     );
   }
 
