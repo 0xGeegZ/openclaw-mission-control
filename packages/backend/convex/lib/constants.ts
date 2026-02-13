@@ -174,3 +174,44 @@ export const AUTH_TYPE = {
   API_KEY: "api_key",
   OAUTH: "oauth",
 } as const;
+
+// ============================================================================
+// PLAN QUOTAS
+// ============================================================================
+
+/**
+ * Subscription plan quotas for resource limits.
+ * Quotas per plan tier for messages, agents, API calls, and containers.
+ */
+export const PLAN_QUOTAS = {
+  [ACCOUNT_PLAN.FREE]: {
+    messagesPerMonth: 500,
+    agents: 1,
+    apiCallsPerDay: 50,
+    maxContainers: 1,
+  },
+  [ACCOUNT_PLAN.PRO]: {
+    messagesPerMonth: 10000,
+    agents: 10,
+    apiCallsPerDay: 1000,
+    maxContainers: 5,
+  },
+  [ACCOUNT_PLAN.ENTERPRISE]: {
+    messagesPerMonth: Number.MAX_SAFE_INTEGER, // unlimited
+    agents: Number.MAX_SAFE_INTEGER, // unlimited
+    apiCallsPerDay: Number.MAX_SAFE_INTEGER, // unlimited
+    maxContainers: 50,
+  },
+} as const;
+
+// ============================================================================
+// RESET CYCLES
+// ============================================================================
+
+/**
+ * Time intervals (ms) for quota reset cycles.
+ */
+export const RESET_CYCLES = {
+  MONTHLY: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
+  DAILY: 24 * 60 * 60 * 1000, // 24 hours in ms
+} as const;

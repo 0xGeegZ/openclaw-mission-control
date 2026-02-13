@@ -859,4 +859,33 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // ==========================================================================
+  // USAGE TRACKING
+  // Per-account quota tracking for subscription enforcement.
+  // Tracks messages, API calls, agents, and containers per plan tier.
+  // ==========================================================================
+  usage: defineTable({
+    accountId: v.id("accounts"),
+    planId: accountPlanValidator,
+
+    // Monthly message tracking
+    messagesThisMonth: v.number(),
+    messagesMonthStart: v.number(), // timestamp when current month started
+
+    // Daily API calls tracking
+    apiCallsToday: v.number(),
+    apiCallsDayStart: v.number(), // timestamp when current day started
+
+    // Real-time resource counts
+    agentCount: v.number(),
+    containerCount: v.number(),
+
+    // Reset configuration
+    resetCycle: v.union(v.literal("monthly"), v.literal("yearly")),
+    lastReset: v.number(), // timestamp of last reset
+
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
 });
