@@ -2,9 +2,10 @@
  * Quota helpers for subscription enforcement.
  * Provides checkQuota middleware and quota validation utilities.
  */
-import { Context, Id } from "../_generated/server";
+import { MutationCtx } from "../_generated/server";
+import { Id } from "../_generated/dataModel";
 import { PLAN_QUOTAS, RESET_CYCLES, ACCOUNT_PLAN } from "./constants";
-import { Doc } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 
 // ============================================================================
 // TYPES
@@ -46,14 +47,14 @@ export function getPlanQuota(planId: string) {
  * @returns QuotaCheckResult with allowed/remaining counts
  */
 export async function checkQuota(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
   quotaType: QuotaType,
 ): Promise<QuotaCheckResult> {
   // Fetch usage and account records
   const usage = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (!usage) {
@@ -145,13 +146,13 @@ export async function checkQuota(
  * @param quotaType Type of quota to increment
  */
 export async function incrementUsage(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
   quotaType: QuotaType,
 ): Promise<void> {
   const usage = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (!usage) {
@@ -198,13 +199,13 @@ export async function incrementUsage(
  * @param quotaType Type of quota to decrement
  */
 export async function decrementUsage(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
   quotaType: QuotaType,
 ): Promise<void> {
   const usage = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (!usage) {
@@ -232,14 +233,14 @@ export async function decrementUsage(
  * @param planId Plan ID (default: free)
  */
 export async function initializeAccountUsage(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
   planId: string = ACCOUNT_PLAN.FREE,
 ): Promise<Id<"usage">> {
   // Check if usage already exists
   const existing = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (existing) {
@@ -249,7 +250,7 @@ export async function initializeAccountUsage(
   const now = Date.now();
   return await ctx.db.insert("usage", {
     accountId,
-    planId,
+    planId: planId as keyof typeof PLAN_QUOTAS,
     messagesThisMonth: 0,
     messagesMonthStart: now,
     apiCallsToday: 0,
@@ -271,12 +272,12 @@ export async function initializeAccountUsage(
  * @param accountId Account ID to reset
  */
 export async function resetMonthlyQuota(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
 ): Promise<void> {
   const usage = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (!usage) {
@@ -305,12 +306,12 @@ export async function resetMonthlyQuota(
  * @param accountId Account ID to reset
  */
 export async function resetDailyQuota(
-  ctx: Context,
+  ctx: MutationCtx,
   accountId: Id<"accounts">,
 ): Promise<void> {
   const usage = await ctx.db
     .query("usage")
-    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
   if (!usage) {
