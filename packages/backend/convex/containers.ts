@@ -105,7 +105,6 @@ export const createContainer = internalMutation({
       updatedAt: Date.now(),
     });
 
-    // Log activity
     await logActivity({
       ctx,
       accountId: args.accountId,
@@ -156,13 +155,11 @@ export const deleteContainer = internalMutation({
       throw new Error(`Container not found: ${args.containerId}`);
     }
 
-    // Update container status to "deleted"
     const updated = await ctx.db.patch(args.containerId, {
       status: "deleted",
       updatedAt: Date.now(),
     });
 
-    // Log activity
     await logActivity({
       ctx,
       accountId: container.accountId,
@@ -209,13 +206,11 @@ export const restartContainer = internalMutation({
       );
     }
 
-    // Reset health checks
     const updated = await ctx.db.patch(args.containerId, {
       healthChecksPassed: 0,
       updatedAt: Date.now(),
     });
 
-    // Log activity
     await logActivity({
       ctx,
       accountId: container.accountId,
