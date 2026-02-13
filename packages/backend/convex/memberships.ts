@@ -99,7 +99,7 @@ export const invite = mutation({
       .unique();
     
     if (existing) {
-      throw new ConvexError(ErrorCode.CONFLICT, "User is already a member", { accountId: args.accountId, userId });
+      throw new ConvexError(ErrorCode.CONFLICT, "User is already a member", { accountId: args.accountId, userId: args.userId });
     }
     
     // Cannot invite as owner (only one owner per account)
@@ -314,7 +314,7 @@ export const transferOwnership = mutation({
 
     const newOwnerMembership = await ctx.db.get(args.newOwnerMembershipId);
     if (!newOwnerMembership) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Target membership does not exist", { targetMembershipId });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Target membership does not exist", { membershipId: args.newOwnerMembershipId });
     }
     
     if (newOwnerMembership.accountId !== args.accountId) {
