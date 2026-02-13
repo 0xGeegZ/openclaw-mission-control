@@ -15,6 +15,30 @@ interface NotificationsPageContentProps {
   accountId: Id<"accounts">;
 }
 
+/**
+ * Merge incoming notifications into the current list by id.
+ * Existing items are updated in place, and unseen items are appended.
+ */
+export function mergeNotificationsById(
+  current: Doc<"notifications">[],
+  incoming: Doc<"notifications">[],
+): Doc<"notifications">[] {
+  const next = [...current];
+  const indexById = new Map(next.map((notification, index) => [notification._id, index]));
+
+  for (const notification of incoming) {
+    const existingIndex = indexById.get(notification._id);
+    if (existingIndex === undefined) {
+      indexById.set(notification._id, next.length);
+      next.push(notification);
+      continue;
+    }
+    next[existingIndex] = notification;
+  }
+
+  return next;
+}
+
 export function NotificationsPageContent({
   accountSlug,
   accountId,
@@ -42,13 +66,13 @@ export function NotificationsPageContent({
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional sync from query to local state for pagination. */
   useEffect(() => {
     if (notificationsData) {
+      const incomingNotifications = notificationsData.notifications || [];
       if (cursor === undefined) {
-        setAllNotifications(notificationsData.notifications || []);
+        setAllNotifications(incomingNotifications);
       } else {
-        setAllNotifications((prev) => [
-          ...prev,
-          ...(notificationsData.notifications || []),
-        ]);
+        setAllNotifications((prev) =>
+          mergeNotificationsById(prev, incomingNotifications),
+        );
       }
     }
   }, [notificationsData, cursor]);
@@ -56,6 +80,7 @@ export function NotificationsPageContent({
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
+      setError(null);
       await markAsRead({
         notificationId: notificationId as Id<"notifications">,
       });
@@ -74,6 +99,7 @@ export function NotificationsPageContent({
 
   const handleMarkAllAsRead = async () => {
     try {
+      setError(null);
       await markAllAsRead({ accountId });
       // Update local state
       setAllNotifications((prev) =>
@@ -88,6 +114,7 @@ export function NotificationsPageContent({
 
   const handleDismiss = async (notificationId: string) => {
     try {
+      setError(null);
       await dismissNotification({
         notificationId: notificationId as Id<"notifications">,
       });
@@ -159,6 +186,7 @@ export function NotificationsPageContent({
           <Tabs
             value={filterBy}
             onValueChange={(value: string) => {
+              setError(null);
               setFilterBy(value as "all" | "unread");
               setCursor(undefined);
               setAllNotifications([]);

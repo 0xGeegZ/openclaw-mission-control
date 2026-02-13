@@ -139,6 +139,7 @@ const LIST_TYPING_AGENTS_LIMIT = 200;
  * List agent IDs currently in the typing window for an account.
  * Used by the agents sidebar to show typing/busy state in sync with task thread.
  * Typing = notification read by runtime (readAt set) but not yet delivered (deliveredAt null), within TYPING_WINDOW_MS.
+ * Returns [] when account runtime is offline (agents cannot be typing).
  */
 export const listAgentIdsTypingByAccount = query({
   args: {
@@ -146,6 +147,11 @@ export const listAgentIdsTypingByAccount = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
+
+    const account = await ctx.db.get(args.accountId);
+    if (!account || account.runtimeStatus === "offline") {
+      return [];
+    }
 
     const notifications = await ctx.db
       .query("notifications")

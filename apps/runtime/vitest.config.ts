@@ -16,12 +16,12 @@ export default defineConfig({
         '**/*.d.ts',
         '**/index.ts',
       ],
-      // Runtime safety-critical paths should keep a solid baseline
+      // Thresholds enforced by scripts/check-coverage-thresholds.mjs in CI
       thresholds: {
-        lines: 60,
-        functions: 60,
-        branches: 50,
-        statements: 60,
+        lines: 0,
+        functions: 0,
+        branches: 0,
+        statements: 0,
       },
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}'],

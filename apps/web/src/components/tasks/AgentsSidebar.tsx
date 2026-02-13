@@ -34,13 +34,24 @@ function isLeadRole(role: string): boolean {
   );
 }
 
-const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  online: { color: "bg-primary", label: "ONLINE" },
-  busy: { color: "bg-amber-500", label: "BUSY" },
-  idle: { color: "bg-blue-400", label: "IDLE" },
-  offline: { color: "bg-muted-foreground/40", label: "OFFLINE" },
-  error: { color: "bg-destructive", label: "ERROR" },
-  typing: { color: "bg-amber-500", label: "TYPING" },
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; textColor: string; label: string }
+> = {
+  online: { color: "bg-primary", textColor: "text-primary", label: "ONLINE" },
+  busy: { color: "bg-amber-500", textColor: "text-amber-500", label: "BUSY" },
+  idle: { color: "bg-blue-400", textColor: "text-blue-400", label: "IDLE" },
+  offline: {
+    color: "bg-amber-500/80",
+    textColor: "text-amber-500",
+    label: "OFFLINE",
+  },
+  error: { color: "bg-destructive", textColor: "text-destructive", label: "ERROR" },
+  typing: {
+    color: "bg-cyan-500",
+    textColor: "text-cyan-500",
+    label: "TYPING",
+  },
 };
 
 /**
@@ -217,7 +228,12 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
               statusConfig.color,
             )}
           />
-          <span className="text-xs text-primary font-medium uppercase tracking-wide">
+          <span
+            className={cn(
+              "text-xs font-medium uppercase tracking-wide",
+              statusConfig.textColor,
+            )}
+          >
             {statusConfig.label}
           </span>
         </div>

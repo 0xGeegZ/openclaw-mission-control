@@ -211,11 +211,26 @@ export async function listCandidates(
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
 
-  const agentList = agents.map((a) => ({
-    id: a._id,
-    name: a.name,
-    slug: a.slug,
-  }));
+  const account = await ctx.db.get(accountId);
+  const orchestratorAgentId = (
+    account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+  )?.orchestratorAgentId;
+
+  const agentList = agents
+    .map((a) => ({
+      id: a._id,
+      name: a.name,
+      slug: a.slug,
+    }))
+    .sort((a, b) => {
+      const aIsOrchestrator =
+        orchestratorAgentId != null && a.id === orchestratorAgentId;
+      const bIsOrchestrator =
+        orchestratorAgentId != null && b.id === orchestratorAgentId;
+      if (aIsOrchestrator && !bIsOrchestrator) return -1;
+      if (!aIsOrchestrator && bIsOrchestrator) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
 
   return {
     users,
