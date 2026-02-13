@@ -123,17 +123,15 @@ export const createContainer = internalMutation({
       },
     });
 
-    // Phase 1B: Spawn async orchestration script to provision container
-    // orchestrator-containers.sh create {accountId} {assignedPort} {plan}
-    // On completion, update status to "running" or "failed"
-    // Note: ctx.scheduler not yet implemented; placeholder for integration
-    // TODO: Uncomment when ctx.scheduler support is added
-    // await ctx.scheduler.runAfter(0, internal.orchestration.executeCreate, {
-    //   accountId: args.accountId,
-    //   containerId,
-    //   assignedPort,
-    //   plan: args.plan || account.plan,
-    // });
+    // Phase 1B: Spawn async orchestration action to provision container
+    // Schedules the executeCreate action to run immediately
+    // This updates container status from "creating" to "running" or "failed"
+    await ctx.scheduler.runAfter(0, internal.orchestration.executeCreate, {
+      accountId: args.accountId,
+      containerId,
+      assignedPort,
+      plan: args.plan || account.plan,
+    });
 
     return {
       containerId,
@@ -181,9 +179,12 @@ export const deleteContainer = internalMutation({
       meta: { port: container.assignedPort },
     });
 
-    // Phase 1B: Spawn async orchestration script to delete container
-    // orchestrator-containers.sh delete {accountId} {containerId}
-    // Removes docker container, network, volumes, and compose file
+    // Phase 1B: Spawn async orchestration action to delete container
+    // Schedules the executeDelete action to clean up resources
+    await ctx.scheduler.runAfter(0, internal.orchestration.executeDelete, {
+      accountId: container.accountId,
+      containerId: args.containerId,
+    });
 
     return updated;
   },
@@ -232,9 +233,12 @@ export const restartContainer = internalMutation({
       meta: { port: container.assignedPort },
     });
 
-    // Phase 1B: Spawn async orchestration script to restart container
-    // orchestrator-containers.sh restart {accountId} {containerId}
-    // Runs docker-compose restart and waits for healthcheck
+    // Phase 1B: Spawn async orchestration action to restart container
+    // Schedules the executeRestart action to trigger docker restart
+    await ctx.scheduler.runAfter(0, internal.orchestration.executeRestart, {
+      accountId: container.accountId,
+      containerId: args.containerId,
+    });
 
     return updated;
   },
