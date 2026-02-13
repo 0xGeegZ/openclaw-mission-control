@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+# Husky pre-commit hook for OpenClaw Mission Control
+# Runs lint-staged to check and auto-fix staged files
+
+if ! command -v npx &> /dev/null; then
+  echo "❌ npx not found. Please ensure Node.js is installed."
+  exit 1
+fi
+
+echo "🔍 Running lint-staged on staged changes..."
+npx lint-staged
+
+echo "✅ Pre-commit checks passed"
