@@ -15,7 +15,9 @@
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "turbo run test"
+    "test:all": "turbo run test",
+    "version": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
     "prettier": "3.7.4",
@@ -35,6 +37,8 @@
   ],
   "packageManager": "npm@11.6.1",
   "dependencies": {
+    "@changesets/changelog-git": "^0.2.1",
+    "@changesets/cli": "^2.29.8",
     "@packages/backend": "^1.0.0",
     "@packages/ui": "^0.1.0",
     "convex": "^1.31.7",
