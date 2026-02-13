@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenClaw Container Health Check Timer
+Requires=openclaw-health-check.service
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
