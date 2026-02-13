@@ -3,6 +3,7 @@ import { mutation, query, internalQuery } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { taskStatusValidator } from "./lib/validators";
+import { ConvexError, ErrorCode } from "./lib/errors";
 import {
   isValidTransition,
   validateStatusRequirements,
@@ -188,7 +189,7 @@ export const getOrCreateOrchestratorChat = mutation({
     const { userId } = await requireAccountMember(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
-      throw new Error("Not found: Account does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Account does not exist", { accountId: args.accountId });
     }
 
     const existingTaskId = (
@@ -334,7 +335,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -343,7 +344,7 @@ export const update = mutation({
     );
     const account = await ctx.db.get(task.accountId);
     if (isOrchestratorChatTask({ account, task })) {
-      throw new Error("Orchestrator chat cannot be paused");
+      throw new ConvexError(ErrorCode.INVALID_STATE, "Orchestrator chat cannot be paused", { taskId: args.taskId });
     }
 
     const updates: Record<string, unknown> = {
@@ -388,7 +389,7 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -401,8 +402,10 @@ export const updateStatus = mutation({
 
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
-      throw new Error(
+      throw new ConvexError(
+        ErrorCode.INVALID_TRANSITION,
         `Invalid transition: Cannot move from '${currentStatus}' to '${nextStatus}'`,
+        { taskId: args.taskId, currentStatus, nextStatus },
       );
     }
 
@@ -416,7 +419,11 @@ export const updateStatus = mutation({
     );
 
     if (requirementError) {
-      throw new Error(`Invalid status change: ${requirementError}`);
+      throw new ConvexError(
+        ErrorCode.INVALID_STATE,
+        `Invalid status change: ${requirementError}`,
+        { taskId: args.taskId, nextStatus, requirementError },
+      );
     }
 
     // Build updates
@@ -504,7 +511,7 @@ export const pauseAgentsOnTask = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -519,8 +526,10 @@ export const pauseAgentsOnTask = mutation({
     }
 
     if (!isPauseAllowedStatus(currentStatus)) {
-      throw new Error(
+      throw new ConvexError(
+        ErrorCode.INVALID_STATE,
         "Task can only be paused when status is Assigned, In progress, or Review",
+        { taskId: args.taskId, currentStatus },
       );
     }
 
@@ -532,7 +541,11 @@ export const pauseAgentsOnTask = mutation({
       PAUSED_BLOCKED_REASON,
     );
     if (requirementError) {
-      throw new Error(`Invalid status change: ${requirementError}`);
+      throw new ConvexError(
+        ErrorCode.INVALID_STATE,
+        `Invalid status change: ${requirementError}`,
+        { taskId: args.taskId, status: TASK_STATUS.BLOCKED, requirementError },
+      );
     }
 
     await ctx.db.patch(args.taskId, {
@@ -630,7 +643,7 @@ export const assign = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -814,7 +827,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -843,11 +856,15 @@ export const reopen = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
     }
 
     if (task.status !== TASK_STATUS.DONE) {
-      throw new Error("Invalid operation: Can only reopen done tasks");
+      throw new ConvexError(
+        ErrorCode.INVALID_STATE,
+        "Invalid operation: Can only reopen done tasks",
+        { taskId: args.taskId, currentStatus: task.status },
+      );
     }
 
     const { userId, userName } = await requireAccountMember(
