@@ -82,7 +82,7 @@ export const createContainer = internalMutation({
     // Validate account exists
     const account = await ctx.db.get(args.accountId);
     if (!account) {
-      throw new Error("Account not found");
+      throw new Error(`Account not found: ${args.accountId}`);
     }
 
     // Get next available port
@@ -124,7 +124,7 @@ export const createContainer = internalMutation({
       },
     });
 
-    // TODO: Spawn async orchestration script
+    // Phase 1B: Spawn async orchestration script to provision container
     // orchestrator-containers.sh create {accountId} {assignedPort} {plan}
     // On completion, update status to "running" or "failed"
 
@@ -153,7 +153,7 @@ export const deleteContainer = internalMutation({
   handler: async (ctx, args) => {
     const container = await ctx.db.get(args.containerId);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error(`Container not found: ${args.containerId}`);
     }
 
     // Update container status to "deleted"
@@ -176,7 +176,7 @@ export const deleteContainer = internalMutation({
       meta: { port: container.assignedPort },
     });
 
-    // TODO: Spawn async orchestration script
+    // Phase 1B: Spawn async orchestration script to delete container
     // orchestrator-containers.sh delete {accountId} {containerId}
     // Removes docker container, network, volumes, and compose file
 
@@ -200,12 +200,12 @@ export const restartContainer = internalMutation({
   handler: async (ctx, args) => {
     const container = await ctx.db.get(args.containerId);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error(`Container not found: ${args.containerId}`);
     }
 
     if (container.status !== "running") {
       throw new Error(
-        `Cannot restart container in ${container.status} state`,
+        `Cannot restart container ${args.containerId} in ${container.status} state`,
       );
     }
 
@@ -229,7 +229,7 @@ export const restartContainer = internalMutation({
       meta: { port: container.assignedPort },
     });
 
-    // TODO: Spawn async orchestration script
+    // Phase 1B: Spawn async orchestration script to restart container
     // orchestrator-containers.sh restart {accountId} {containerId}
     // Runs docker-compose restart and waits for healthcheck
 
@@ -252,7 +252,7 @@ export const logContainerError = internalMutation({
   handler: async (ctx, args) => {
     const container = await ctx.db.get(args.containerId);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error(`Container not found: ${args.containerId}`);
     }
 
     // Append to error log
@@ -286,7 +286,7 @@ export const updateContainerHealthStatus = internalMutation({
   handler: async (ctx, args) => {
     const container = await ctx.db.get(args.containerId);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error(`Container not found: ${args.containerId}`);
     }
 
     let newHealthChecksPassed = args.passed
@@ -294,7 +294,7 @@ export const updateContainerHealthStatus = internalMutation({
       : 0;
     let newStatus = container.status;
 
-    // Auto-restart on 5 consecutive failures (while running)
+    // Mark as failed after 3 consecutive health check failures (while running)
     if (
       !args.passed &&
       container.healthChecksPassed >= 3 &&
@@ -320,7 +320,7 @@ export const updateContainerHealthStatus = internalMutation({
         },
       });
 
-      // TODO: Trigger automatic restart via orchestration script
+      // Phase 1B: Trigger automatic restart via orchestration script
     }
 
     const updated = await ctx.db.patch(args.containerId, {
@@ -416,16 +416,20 @@ export const getFailedContainers = internalQuery({
     accountId: v.optional(v.id("accounts")),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db
-      .query("containers")
-      .withIndex("by_status", (q) => q.eq("status", "failed"));
-
     if (args.accountId) {
-      // Filter by account if provided
-      const allFailed = await query.collect();
-      return allFailed.filter((c) => c.accountId === args.accountId);
+      // Use by_account_status index for efficient filtering
+      return await ctx.db
+        .query("containers")
+        .withIndex("by_account_status", (q) =>
+          q.eq("accountId", args.accountId).eq("status", "failed"),
+        )
+        .collect();
     }
 
-    return await query.collect();
+    // Query all failed containers when no account filter
+    return await ctx.db
+      .query("containers")
+      .withIndex("by_status", (q) => q.eq("status", "failed"))
+      .collect();
   },
 });
