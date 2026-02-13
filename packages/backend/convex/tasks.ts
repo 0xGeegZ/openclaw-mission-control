@@ -330,7 +330,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -384,7 +384,7 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -506,7 +506,7 @@ export const pauseAgentsOnTask = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -638,7 +638,7 @@ export const assign = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -822,7 +822,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -851,7 +851,7 @@ export const reopen = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId || task?._id });
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
 
     if (task.status !== TASK_STATUS.DONE) {
