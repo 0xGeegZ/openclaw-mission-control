@@ -183,19 +183,17 @@ describe("container mutations", () => {
     });
 
     test("marks container failed after 3 consecutive check failures", () => {
-      let container = {
+      const container = {
         status: "running" as const,
         healthChecksPassed: 3,
       };
 
       // Simulate 3rd failure trigger
-      if (!true && container.healthChecksPassed >= 3) { // simulating the failed condition
-        container = { ...container, status: "failed" as const };
-      }
-
-      // For this test, manually trigger the condition
       if (container.healthChecksPassed >= 3) {
-        const failedContainer = { ...container, status: "failed" as const };
+        const failedContainer: { status: "failed"; healthChecksPassed: number } = {
+          ...container,
+          status: "failed",
+        };
         expect(failedContainer.status).toBe("failed");
       }
     });

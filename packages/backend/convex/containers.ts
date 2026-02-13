@@ -413,10 +413,11 @@ export const getFailedContainers = internalQuery({
   handler: async (ctx, args) => {
     if (args.accountId) {
       // Use by_account_status index for efficient filtering
+      const accountId = args.accountId;
       return await ctx.db
         .query("containers")
         .withIndex("by_account_status", (q) =>
-          q.eq("accountId", args.accountId).eq("status", "failed"),
+          q.eq("accountId", accountId).eq("status", "failed"),
         )
         .collect();
     }
