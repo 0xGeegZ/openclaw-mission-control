@@ -861,6 +861,25 @@ export default defineSchema({
   }).index("by_key", ["key"]),
 
   // ==========================================================================
+  // CONTAINERS
+  // Docker containers provisioned for accounts. Subject to quota limits.
+  // ==========================================================================
+  containers: defineTable({
+    accountId: v.id("accounts"),
+    name: v.string(),
+    imageTag: v.string(),
+    config: v.object({
+      cpuLimit: v.optional(v.number()),
+      memoryLimit: v.optional(v.number()),
+      envVars: v.optional(v.object({})),
+    }),
+    status: v.string(), // provisioning, running, stopped, error
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
+
+  // ==========================================================================
   // USAGE TRACKING
   // Per-account quota tracking for subscription enforcement.
   // Tracks messages, API calls, agents, and containers per plan tier.
