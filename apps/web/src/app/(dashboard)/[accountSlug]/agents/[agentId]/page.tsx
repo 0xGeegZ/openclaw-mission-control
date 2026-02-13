@@ -18,7 +18,11 @@ import {
 import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +51,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 import { ActivityItem } from "@/components/feed/ActivityItem";
 import { AgentEditDialog } from "@/components/agents/AgentEditDialog";
 import { AgentDeleteDialog } from "@/components/agents/AgentDeleteDialog";
@@ -152,6 +157,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const status = agent
     ? (statusConfig[agent.status] ?? statusConfig.offline)
     : statusConfig.offline;
+  const AgentFallbackIcon = agent?.icon ? AGENT_ICON_MAP[agent.icon] : null;
 
   const handleDeleted = () => {
     router.push(`/${accountSlug}/agents`);
@@ -283,8 +289,21 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12">
+                      {agent.avatarUrl ? (
+                        <AvatarImage
+                          src={agent.avatarUrl}
+                          alt={agent.name}
+                        />
+                      ) : null}
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                        {agent.name[0].toUpperCase()}
+                        {AgentFallbackIcon ? (
+                          <AgentFallbackIcon
+                            className="h-6 w-6 text-primary"
+                            aria-hidden
+                          />
+                        ) : (
+                          agent.name[0].toUpperCase()
+                        )}
                       </AvatarFallback>
                     </Avatar>
                     <div>

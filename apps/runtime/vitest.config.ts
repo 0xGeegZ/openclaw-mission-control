@@ -9,10 +9,6 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      lines: 5,
-      functions: 5,
-      branches: 5,
-      statements: 5,
       exclude: [
         'node_modules/',
         'dist/',
@@ -20,6 +16,13 @@ export default defineConfig({
         '**/*.d.ts',
         '**/index.ts',
       ],
+      // Runtime safety-critical paths should keep a solid baseline
+      thresholds: {
+        lines: 60,
+        functions: 60,
+        branches: 50,
+        statements: 60,
+      },
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', '.idea', '.git', '.cache'],

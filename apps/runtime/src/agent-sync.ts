@@ -137,9 +137,18 @@ async function runSync(config: RuntimeConfig): Promise<void> {
 /**
  * Run profile sync once (fetch listAgentsForRuntime, write workspaces and openclaw.json).
  * Used at startup before heartbeats so OpenClaw config exists when gateway runs.
+ * When profile sync is disabled and the gateway URL is set, logs a one-time warning
+ * so operators know why SOUL.md/AGENTS.md/TOOLS.md are missing.
  */
 export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
-  if (!config.openclawProfileSyncEnabled) return;
+  if (!config.openclawProfileSyncEnabled) {
+    if (config.openclawGatewayUrl?.trim()) {
+      log.warn(
+        "Profile sync is disabled (OPENCLAW_PROFILE_SYNC). Agent workspaces (SOUL.md, AGENTS.md, TOOLS.md) will not be written; set OPENCLAW_PROFILE_SYNC=true to populate them.",
+      );
+    }
+    return;
+  }
   try {
     const client = getConvexClient();
     const profileAgents = (await client.action(
@@ -156,7 +165,9 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
       heartbeatMdPath: config.openclawHeartbeatMdPath,
     });
   } catch (error) {
-    log.warn("Initial profile sync failed:", getErrorMessage(error));
+    log.warn("Initial profile sync failed", {
+      error: getErrorMessage(error),
+    });
   }
 }
 

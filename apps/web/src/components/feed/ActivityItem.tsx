@@ -1,11 +1,9 @@
 "use client";
 
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
-import { formatDistanceToNow } from "date-fns";
-import {
-  getActivityDescription,
-  type ActivityType,
-} from "@packages/backend/convex/lib/activity";
+import { getActivityDescription } from "@packages/backend/convex/lib/activity";
+import { ACTIVITY_TYPE, type ActivityType } from "@packages/shared";
+import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { Avatar, AvatarFallback } from "@packages/ui/components/avatar";
 import {
   User,
@@ -17,6 +15,10 @@ import {
   FileText,
   AlertCircle,
   Pencil,
+  UserMinus,
+  Shield,
+  Trash2,
+  Box,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import Link from "next/link";
@@ -44,18 +46,39 @@ const actorConfig: Record<
   },
 };
 
-// Activity type specific icons and colors
+/** Icons and colors per activity type; keys match ACTIVITY_TYPE for consistency. */
 const activityTypeConfig: Record<
-  string,
+  ActivityType,
   { icon: typeof CheckCircle2; color: string }
 > = {
-  task_created: { icon: FileText, color: "text-emerald-500" },
-  task_completed: { icon: CheckCircle2, color: "text-emerald-500" },
-  task_updated: { icon: Pencil, color: "text-blue-500" },
-  task_assigned: { icon: UserPlus, color: "text-violet-500" },
-  message_sent: { icon: MessageSquare, color: "text-primary" },
-  agent_joined: { icon: Bot, color: "text-amber-500" },
-  agent_error: { icon: AlertCircle, color: "text-destructive" },
+  [ACTIVITY_TYPE.ACCOUNT_CREATED]: { icon: Settings, color: "text-blue-500" },
+  [ACTIVITY_TYPE.ACCOUNT_UPDATED]: { icon: Pencil, color: "text-blue-500" },
+  [ACTIVITY_TYPE.TASK_CREATED]: { icon: FileText, color: "text-emerald-500" },
+  [ACTIVITY_TYPE.TASK_UPDATED]: { icon: Pencil, color: "text-blue-500" },
+  [ACTIVITY_TYPE.TASK_STATUS_CHANGED]: {
+    icon: CheckCircle2,
+    color: "text-emerald-500",
+  },
+  [ACTIVITY_TYPE.MESSAGE_CREATED]: {
+    icon: MessageSquare,
+    color: "text-primary",
+  },
+  [ACTIVITY_TYPE.DOCUMENT_CREATED]: { icon: FileText, color: "text-emerald-500" },
+  [ACTIVITY_TYPE.DOCUMENT_UPDATED]: { icon: Pencil, color: "text-blue-500" },
+  [ACTIVITY_TYPE.DOCUMENT_DELETED]: { icon: Trash2, color: "text-destructive" },
+  [ACTIVITY_TYPE.AGENT_STATUS_CHANGED]: { icon: Bot, color: "text-amber-500" },
+  [ACTIVITY_TYPE.RUNTIME_STATUS_CHANGED]: {
+    icon: AlertCircle,
+    color: "text-destructive",
+  },
+  [ACTIVITY_TYPE.MEMBER_ADDED]: { icon: UserPlus, color: "text-violet-500" },
+  [ACTIVITY_TYPE.MEMBER_REMOVED]: { icon: UserMinus, color: "text-violet-500" },
+  [ACTIVITY_TYPE.MEMBER_UPDATED]: { icon: UserPlus, color: "text-violet-500" },
+  [ACTIVITY_TYPE.ROLE_CHANGED]: { icon: Shield, color: "text-muted-foreground" },
+  [ACTIVITY_TYPE.CONTAINER_CREATED]: { icon: Box, color: "text-emerald-500" },
+  [ACTIVITY_TYPE.CONTAINER_DELETED]: { icon: Trash2, color: "text-destructive" },
+  [ACTIVITY_TYPE.CONTAINER_RESTARTED]: { icon: AlertCircle, color: "text-amber-500" },
+  [ACTIVITY_TYPE.CONTAINER_FAILED]: { icon: AlertCircle, color: "text-destructive" },
 };
 
 /**
@@ -83,12 +106,13 @@ function getActivityTaskHref(
 }
 
 /**
- * Single activity item in feed.
+ * Single activity item in feed. Relative time updates on a 60s tick so "1 min ago" advances without refresh.
  */
 export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
+  const relativeTime = useRelativeTime(activity.createdAt, { addSuffix: true });
   const config = actorConfig[activity.actorType] || actorConfig.system;
   const Icon = config.icon;
-  const typeConfig = activityTypeConfig[activity.type as string];
+  const typeConfig = activityTypeConfig[activity.type];
   const TypeIcon = typeConfig?.icon;
   const taskHref = getActivityTaskHref(activity, accountSlug);
   const containerClassName = cn(
@@ -132,16 +156,17 @@ export function ActivityItem({ activity, accountSlug }: ActivityItemProps) {
           </span>{" "}
           <span className="text-muted-foreground">
             {getActivityDescription(
-              activity.type as ActivityType,
+              activity.type,
               activity.actorName,
               activity.targetName,
+              activity.meta,
             )}
           </span>
         </p>
 
         <div className="flex items-center gap-2 mt-1.5">
           <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-            {formatDistanceToNow(activity.createdAt, { addSuffix: true })}
+            {relativeTime}
           </span>
         </div>
       </div>

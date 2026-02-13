@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, MutationCtx } from "./_generated/ser
 import { requireAccountMember } from "./lib/auth";
 import { recipientTypeValidator } from "./lib/validators";
 import { Id } from "./_generated/dataModel";
+import type { RecipientType } from "@packages/shared";
 
 /**
  * Get subscriptions for a task.
@@ -171,7 +172,7 @@ export async function ensureSubscribed(
   ctx: MutationCtx,
   accountId: Id<"accounts">,
   taskId: Id<"tasks">,
-  subscriberType: "user" | "agent",
+  subscriberType: RecipientType,
   subscriberId: string
 ): Promise<void> {
   const existing = await ctx.db

@@ -5,6 +5,7 @@ import {
   type DatabaseReader,
 } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import type { RecipientType, TaskStatus } from "@packages/shared";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -20,7 +21,7 @@ export interface GetForDeliveryResult {
   message: Doc<"messages"> | null;
   thread: Array<{
     messageId: Id<"messages">;
-    authorType: "user" | "agent";
+    authorType: RecipientType;
     authorId: string;
     authorName: string | null;
     content: string;
@@ -60,16 +61,17 @@ export interface GetForDeliveryResult {
   } | null;
 }
 
-const TASK_OVERVIEW_STATUSES = [
+const TASK_OVERVIEW_STATUSES: TaskStatus[] = [
   "inbox",
   "assigned",
   "in_progress",
   "review",
   "blocked",
-] as const;
+];
 const TASK_OVERVIEW_LIMIT = 3;
 const TASK_OVERVIEW_SCAN_LIMIT = 100;
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+const RESPONSE_REQUEST_RETRY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Build a compact task overview for orchestrator prompts.
@@ -246,7 +248,7 @@ export const getForDelivery = internalQuery({
 
     let thread: {
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -470,6 +472,43 @@ export const batchMarkDelivered = internalMutation({
 });
 
 /**
+ * Decide whether a fresh response_request should be created for a recipient.
+ * Retries are allowed when:
+ * - the recipient already replied after the latest request, or
+ * - the latest request was delivered and has exceeded the retry cooldown.
+ *
+ * Retries are blocked while the latest request is still undelivered.
+ */
+export function shouldCreateResponseRequestRetry(options: {
+  latestRequestCreatedAt: number;
+  latestRequestDeliveredAt: number | undefined;
+  latestReplyCreatedAt: number | undefined;
+  nowMs: number;
+  retryCooldownMs?: number;
+}): boolean {
+  const {
+    latestRequestCreatedAt,
+    latestRequestDeliveredAt,
+    latestReplyCreatedAt,
+    nowMs,
+    retryCooldownMs = RESPONSE_REQUEST_RETRY_COOLDOWN_MS,
+  } = options;
+
+  if (
+    latestReplyCreatedAt != null &&
+    latestReplyCreatedAt > latestRequestCreatedAt
+  ) {
+    return true;
+  }
+
+  if (latestRequestDeliveredAt == null) {
+    return false;
+  }
+
+  return nowMs - latestRequestCreatedAt >= retryCooldownMs;
+}
+
+/**
  * Create response_request notifications with per-recipient dedupe.
  * Dedupe rule: if the latest response_request for (taskId, recipientId) exists
  * and the recipient has not posted a newer agent message on the task, skip creating.
@@ -484,6 +523,7 @@ export const createResponseRequestNotificationsInternal = internalMutation({
   },
   handler: async (ctx, args): Promise<Id<"notifications">[]> => {
     const notificationIds: Id<"notifications">[] = [];
+    const now = Date.now();
     const requester = await ctx.db.get(args.requesterAgentId);
     const task = await ctx.db.get(args.taskId);
     if (!requester || !task) return notificationIds;
@@ -521,9 +561,13 @@ export const createResponseRequestNotificationsInternal = internalMutation({
           .order("desc")
           .first();
 
-        if (latestReply && latestReply.createdAt > latestRequest.createdAt) {
-          // Newer reply exists; allow a fresh request.
-        } else {
+        const allowRetry = shouldCreateResponseRequestRetry({
+          latestRequestCreatedAt: latestRequest.createdAt,
+          latestRequestDeliveredAt: latestRequest.deliveredAt,
+          latestReplyCreatedAt: latestReply?.createdAt,
+          nowMs: now,
+        });
+        if (!allowRetry) {
           continue;
         }
       }
@@ -536,7 +580,7 @@ export const createResponseRequestNotificationsInternal = internalMutation({
         taskId: args.taskId,
         title: `${requester.name} requested a response`,
         body: args.message,
-        createdAt: Date.now(),
+        createdAt: now,
       });
       notificationIds.push(notificationId);
     }

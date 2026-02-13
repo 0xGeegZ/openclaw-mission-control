@@ -1,5 +1,8 @@
 FROM node:24-alpine
 
+# Ensure HTTPS to Convex (and other services) works; Alpine can miss CA certs.
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /app
 
 # Copy workspace files
@@ -15,6 +18,9 @@ RUN npm ci
 COPY apps/runtime ./apps/runtime
 COPY packages/shared ./packages/shared
 COPY packages/backend ./packages/backend
+
+# Build shared package so runtime can import compiled JS.
+RUN cd /app/packages/shared && npm run build
 
 # Generate backend seed_skills_content.generated.ts so backend/convex/seed.ts type-checks when building runtime
 RUN cd /app/packages/backend && npm run seed-skills:generate

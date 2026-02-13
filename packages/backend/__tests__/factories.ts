@@ -11,6 +11,7 @@
  */
 
 import type { DataModel } from "../convex/_generated/dataModel";
+import type { RecipientType, TaskStatus } from "@packages/shared";
 
 type Account = DataModel["accounts"]["document"];
 type Membership = DataModel["memberships"]["document"];
@@ -162,7 +163,7 @@ export class TaskFactory {
   }
 
   static createWithStatus(
-    status: "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked",
+    status: TaskStatus,
     overrides?: Partial<Task>
   ): Task {
     return TaskFactory.create({
@@ -173,7 +174,7 @@ export class TaskFactory {
 
   static createWithAssignee(
     assigneeId: string,
-    type: "user" | "agent" = "agent",
+    type: RecipientType = "agent",
     overrides?: Partial<Task>
   ): Task {
     const assignedAgentIds = type === "agent" ? [assigneeId as Task["assignedAgentIds"][number]] : [];

@@ -3,11 +3,22 @@ import {
   TASK_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_TRANSITIONS,
+  AGENT_STATUS_ORDER,
   AVAILABLE_MODELS,
   SKILL_CATEGORY_LABELS,
   DEFAULT_OPENCLAW_CONFIG,
+  ANALYTICS_TIME_RANGE,
+  ANALYTICS_TIME_RANGE_ORDER,
+  ANALYTICS_TIME_RANGE_LABELS,
+  TASK_STATUS_CHART_COLORS,
+  AGENT_STATUS_CHART_COLORS,
 } from "../index";
-import type { TaskStatus, LLMModel, SkillCategory } from "../../types";
+import type {
+  TaskStatus,
+  AnalyticsTimeRange,
+  LLMModel,
+  SkillCategory,
+} from "../../types";
 
 // ============================================================================
 // Task Status Constants Tests
@@ -21,6 +32,7 @@ describe("TASK_STATUS_ORDER", () => {
     "review",
     "done",
     "blocked",
+    "archived",
   ];
 
   it("contains only valid statuses", () => {
@@ -33,16 +45,20 @@ describe("TASK_STATUS_ORDER", () => {
     expect(TASK_STATUS_ORDER[0]).toBe("inbox");
   });
 
-  it("has done as the final status in order", () => {
-    expect(TASK_STATUS_ORDER[TASK_STATUS_ORDER.length - 1]).toBe("done");
+  it("has archived as the final status in order", () => {
+    expect(TASK_STATUS_ORDER[TASK_STATUS_ORDER.length - 1]).toBe("archived");
   });
 
-  it("does not include blocked in the order (special state)", () => {
-    expect(TASK_STATUS_ORDER).not.toContain("blocked");
-  });
-
-  it("has a logical progression (inbox → assigned → in_progress → review → done)", () => {
-    const expectedOrder = ["inbox", "assigned", "in_progress", "review", "done"];
+  it("has a logical progression (inbox → assigned → in_progress → review → done → blocked → archived)", () => {
+    const expectedOrder = [
+      "inbox",
+      "assigned",
+      "in_progress",
+      "review",
+      "done",
+      "blocked",
+      "archived",
+    ];
     expect(TASK_STATUS_ORDER).toEqual(expectedOrder);
   });
 
@@ -59,6 +75,7 @@ describe("TASK_STATUS_LABELS", () => {
     "review",
     "done",
     "blocked",
+    "archived",
   ];
 
   it("has an entry for every TaskStatus", () => {
@@ -81,6 +98,7 @@ describe("TASK_STATUS_LABELS", () => {
     expect(TASK_STATUS_LABELS.review).toBe("Review");
     expect(TASK_STATUS_LABELS.done).toBe("Done");
     expect(TASK_STATUS_LABELS.blocked).toBe("Blocked");
+    expect(TASK_STATUS_LABELS.archived).toBe("Archived");
   });
 
   it("does not have empty or whitespace-only labels", () => {
@@ -89,8 +107,8 @@ describe("TASK_STATUS_LABELS", () => {
     }
   });
 
-  it("has exactly 6 labels (one for each status)", () => {
-    expect(Object.keys(TASK_STATUS_LABELS).length).toBe(6);
+  it("has exactly 7 labels (one for each status)", () => {
+    expect(Object.keys(TASK_STATUS_LABELS).length).toBe(7);
   });
 });
 
@@ -102,6 +120,7 @@ describe("TASK_STATUS_TRANSITIONS", () => {
     "review",
     "done",
     "blocked",
+    "archived",
   ];
 
   it("has an entry for every TaskStatus", () => {
@@ -120,36 +139,46 @@ describe("TASK_STATUS_TRANSITIONS", () => {
     }
   });
 
-  it("inbox can transition only to assigned", () => {
-    expect(TASK_STATUS_TRANSITIONS.inbox).toEqual(["assigned"]);
+  it("inbox can transition to assigned or archived", () => {
+    expect(TASK_STATUS_TRANSITIONS.inbox).toEqual(["assigned", "archived"]);
   });
 
-  it("assigned can transition to in_progress or blocked", () => {
+  it("assigned can transition to in_progress, blocked, inbox, or archived", () => {
     expect(TASK_STATUS_TRANSITIONS.assigned).toContain("in_progress");
     expect(TASK_STATUS_TRANSITIONS.assigned).toContain("blocked");
-    expect(TASK_STATUS_TRANSITIONS.assigned.length).toBe(2);
+    expect(TASK_STATUS_TRANSITIONS.assigned).toContain("inbox");
+    expect(TASK_STATUS_TRANSITIONS.assigned).toContain("archived");
+    expect(TASK_STATUS_TRANSITIONS.assigned.length).toBe(4);
   });
 
-  it("in_progress can transition to review or blocked", () => {
+  it("in_progress can transition to review, blocked, or archived", () => {
     expect(TASK_STATUS_TRANSITIONS.in_progress).toContain("review");
     expect(TASK_STATUS_TRANSITIONS.in_progress).toContain("blocked");
-    expect(TASK_STATUS_TRANSITIONS.in_progress.length).toBe(2);
+    expect(TASK_STATUS_TRANSITIONS.in_progress).toContain("archived");
+    expect(TASK_STATUS_TRANSITIONS.in_progress.length).toBe(3);
   });
 
-  it("review can transition back to in_progress or forward to done", () => {
+  it("review can transition to done, in_progress, blocked, or archived", () => {
     expect(TASK_STATUS_TRANSITIONS.review).toContain("in_progress");
     expect(TASK_STATUS_TRANSITIONS.review).toContain("done");
-    expect(TASK_STATUS_TRANSITIONS.review.length).toBe(2);
+    expect(TASK_STATUS_TRANSITIONS.review).toContain("blocked");
+    expect(TASK_STATUS_TRANSITIONS.review).toContain("archived");
+    expect(TASK_STATUS_TRANSITIONS.review.length).toBe(4);
   });
 
-  it("done is a terminal state (no transitions)", () => {
-    expect(TASK_STATUS_TRANSITIONS.done).toEqual([]);
+  it("done can transition to archived", () => {
+    expect(TASK_STATUS_TRANSITIONS.done).toEqual(["archived"]);
   });
 
-  it("blocked can transition back to assigned or in_progress", () => {
+  it("blocked can transition to assigned, in_progress, or archived", () => {
     expect(TASK_STATUS_TRANSITIONS.blocked).toContain("assigned");
     expect(TASK_STATUS_TRANSITIONS.blocked).toContain("in_progress");
-    expect(TASK_STATUS_TRANSITIONS.blocked.length).toBe(2);
+    expect(TASK_STATUS_TRANSITIONS.blocked).toContain("archived");
+    expect(TASK_STATUS_TRANSITIONS.blocked.length).toBe(3);
+  });
+
+  it("archived is a terminal state (no transitions)", () => {
+    expect(TASK_STATUS_TRANSITIONS.archived).toEqual([]);
   });
 
   it("no status can transition to itself", () => {
@@ -365,5 +394,67 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("canCreateTasks is disabled by default for security", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(false);
+  });
+});
+
+// ============================================================================
+// Analytics Time Range Constants
+// ============================================================================
+
+describe("ANALYTICS_TIME_RANGE_ORDER", () => {
+  it("contains only day, week, month (no custom in tab order)", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER).toEqual([
+      ANALYTICS_TIME_RANGE.DAY,
+      ANALYTICS_TIME_RANGE.WEEK,
+      ANALYTICS_TIME_RANGE.MONTH,
+    ]);
+  });
+
+  it("has exactly 3 entries for dashboard tabs", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER.length).toBe(3);
+  });
+});
+
+describe("ANALYTICS_TIME_RANGE_LABELS", () => {
+  const allRanges: AnalyticsTimeRange[] = [
+    ANALYTICS_TIME_RANGE.DAY,
+    ANALYTICS_TIME_RANGE.WEEK,
+    ANALYTICS_TIME_RANGE.MONTH,
+    ANALYTICS_TIME_RANGE.CUSTOM,
+  ];
+
+  it("has an entry for every AnalyticsTimeRange", () => {
+    for (const range of allRanges) {
+      expect(ANALYTICS_TIME_RANGE_LABELS[range]).toBeDefined();
+    }
+  });
+
+  it("all labels are non-empty strings", () => {
+    for (const range of allRanges) {
+      expect(typeof ANALYTICS_TIME_RANGE_LABELS[range]).toBe("string");
+      expect(ANALYTICS_TIME_RANGE_LABELS[range].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
+// Chart Color Constants
+// ============================================================================
+
+describe("TASK_STATUS_CHART_COLORS", () => {
+  it("has an entry for every TaskStatus", () => {
+    for (const status of TASK_STATUS_ORDER) {
+      expect(TASK_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(TASK_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+});
+
+describe("AGENT_STATUS_CHART_COLORS", () => {
+  it("has an entry for every AgentStatus", () => {
+    for (const status of AGENT_STATUS_ORDER) {
+      expect(AGENT_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(AGENT_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
   });
 });

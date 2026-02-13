@@ -13,7 +13,12 @@ import {
   resolveBehaviorFlags,
   type BehaviorFlags,
 } from "../lib/behavior_flags";
-import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
+import {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  type TaskStatus,
+} from "../lib/task_workflow";
+import type { RecipientType } from "@packages/shared";
 
 export type { BehaviorFlags };
 
@@ -445,10 +450,19 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
-    return await ctx.runQuery(internal.service.agents.listInternal, {
-      accountId: args.accountId,
-    });
+    const [agents, account] = await Promise.all([
+      ctx.runQuery(internal.service.agents.listInternal, {
+        accountId: args.accountId,
+      }),
+      ctx.runQuery(internal.accounts.getInternal, {
+        accountId: args.accountId,
+      }),
+    ]);
+
+    return agents.map((agent) => ({
+      ...agent,
+      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+    }));
   },
 });
 
@@ -651,18 +665,28 @@ export const updateTaskStatusFromAgent = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<{ success: true }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: true;
+    taskId: Id<"tasks">;
+    requestedStatus: TaskStatus;
+    status: TaskStatus;
+    updatedAt: number;
+    changed: boolean;
+  }> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
     if (serviceContext.accountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
     if (!allowedStatuses.has(args.status)) {
       throw new Error(
@@ -689,16 +713,20 @@ export const updateTaskStatusFromAgent = action({
     }
 
     const allowedNextStatuses = new Set<TaskStatus>([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
+
+    let changed = false;
+    let finalStatus: TaskStatus | null = null;
+    let finalUpdatedAt: number | null = null;
 
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
-    const targetStatus = args.status as TaskStatus;
+    const targetStatus = args.status;
     for (let i = 0; i < 10; i++) {
       const task = await ctx.runQuery(internal.service.tasks.getInternal, {
         taskId: args.taskId,
@@ -707,24 +735,32 @@ export const updateTaskStatusFromAgent = action({
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
 
-      const currentStatus = task.status as TaskStatus;
+      const currentStatus = task.status;
       if (
         i === 0 &&
         args.expectedStatus &&
         currentStatus !== args.expectedStatus
       )
-        return { success: true };
+      {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
       if (
         i === 0 &&
-        targetStatus === "done" &&
-        currentStatus !== "review" &&
-        currentStatus !== "done"
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
       ) {
         throw new Error(
           "Forbidden: Task must be in review before marking done",
         );
       }
-      if (currentStatus === targetStatus) break;
+      if (currentStatus === targetStatus) {
+        finalStatus = currentStatus;
+        finalUpdatedAt = task.updatedAt;
+        break;
+      }
 
       const path = findStatusPath({
         from: currentStatus,
@@ -744,13 +780,32 @@ export const updateTaskStatusFromAgent = action({
         agentId: args.agentId,
         status: nextStatus,
         blockedReason:
-          nextStatus === "blocked" ? args.blockedReason : undefined,
+          nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
+      changed = true;
     }
 
-    return { success: true };
+    if (!finalStatus || finalUpdatedAt == null) {
+      const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+        taskId: args.taskId,
+      });
+      if (!task) throw new Error("Not found: Task does not exist");
+      if (task.accountId !== args.accountId)
+        throw new Error("Forbidden: Task belongs to different account");
+      finalStatus = task.status;
+      finalUpdatedAt = task.updatedAt;
+    }
+
+    return {
+      success: true,
+      taskId: args.taskId,
+      requestedStatus: targetStatus,
+      status: finalStatus,
+      updatedAt: finalUpdatedAt,
+      changed,
+    };
   },
 });
 
@@ -864,6 +919,227 @@ export const assignTaskFromAgent = action({
 });
 
 /**
+ * Update task fields on behalf of an agent (service-only).
+ * Unified tool for updating title, description, priority, labels, assignees, status, dueDate.
+ * Gated by canModifyTaskStatus behavior flag.
+ */
+export const updateTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
+    assignedUserIds: v.optional(v.array(v.string())),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    taskId: Id<"tasks">;
+    changedFields: string[];
+  }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canModifyTaskStatus) {
+      throw new Error("Forbidden: Agent is not allowed to modify tasks");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Validate at least one field is being updated
+    const hasUpdates =
+      args.title !== undefined ||
+      args.description !== undefined ||
+      args.priority !== undefined ||
+      args.labels !== undefined ||
+      args.assignedAgentIds !== undefined ||
+      args.assignedUserIds !== undefined ||
+      args.status !== undefined ||
+      args.dueDate !== undefined;
+
+    if (!hasUpdates) {
+      return { taskId: args.taskId, changedFields: [] };
+    }
+
+    // Validate priority range (schema: 1 = highest, 5 = lowest)
+    if (args.priority !== undefined && (args.priority < 1 || args.priority > 5)) {
+      throw new Error("Invalid priority: must be between 1 (highest) and 5 (lowest)");
+    }
+
+    // Validate status and blockedReason
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
+    ]);
+    if (args.status && !allowedStatuses.has(args.status)) {
+      throw new Error(
+        "Invalid status: must be in_progress, review, done, or blocked",
+      );
+    }
+    if (args.status === TASK_STATUS.BLOCKED && !args.blockedReason?.trim()) {
+      throw new Error("blockedReason is required when status is 'blocked'");
+    }
+
+    const changedFields: string[] = [];
+    const updates: Record<string, unknown> = {};
+
+    if (args.title !== undefined) {
+      updates.title = args.title.trim();
+      changedFields.push("title");
+    }
+
+    if (args.description !== undefined) {
+      updates.description = args.description.trim();
+      changedFields.push("description");
+    }
+
+    if (args.priority !== undefined) {
+      updates.priority = args.priority;
+      changedFields.push("priority");
+    }
+
+    if (args.labels !== undefined) {
+      updates.labels = args.labels;
+      changedFields.push("labels");
+    }
+
+    if (args.assignedAgentIds !== undefined) {
+      updates.assignedAgentIds = args.assignedAgentIds;
+      changedFields.push("assignedAgentIds");
+    }
+
+    if (args.assignedUserIds !== undefined) {
+      updates.assignedUserIds = args.assignedUserIds;
+      changedFields.push("assignedUserIds");
+    }
+
+    if (args.dueDate !== undefined) {
+      updates.dueDate = args.dueDate;
+      changedFields.push("dueDate");
+    }
+
+    const hasNonStatusUpdates = Object.keys(updates).length > 0;
+    const hasAssigneeUpdates =
+      args.assignedAgentIds !== undefined || args.assignedUserIds !== undefined;
+    const applyUpdatesBeforeStatus =
+      hasNonStatusUpdates &&
+      hasAssigneeUpdates &&
+      args.status === TASK_STATUS.IN_PROGRESS &&
+      task.status !== TASK_STATUS.IN_PROGRESS;
+
+    if (applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    // If status is being changed, handle status transitions
+    if (args.status && args.status !== task.status) {
+      const allowedNextStatuses = new Set<TaskStatus>([
+        TASK_STATUS.IN_PROGRESS,
+        TASK_STATUS.REVIEW,
+        TASK_STATUS.DONE,
+        TASK_STATUS.BLOCKED,
+      ]);
+
+      const targetStatus = args.status;
+      const currentStatus = task.status;
+
+      // Validate task must be in review before marking done
+      if (
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
+      ) {
+        throw new Error(
+          "Forbidden: Task must be in review before marking done",
+        );
+      }
+
+      // Apply status change through transitions
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      for (let i = 0; i < path.length; i++) {
+        const nextStatus = path[i];
+        const isFinalStep = i === path.length - 1;
+        await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+          taskId: args.taskId,
+          agentId: args.agentId,
+          status: nextStatus,
+          blockedReason:
+            nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
+          suppressNotifications: !isFinalStep,
+          suppressActivity: !isFinalStep,
+        });
+      }
+      changedFields.push("status");
+    }
+
+    // Only patch if there are non-status updates
+    if (hasNonStatusUpdates && !applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    return {
+      taskId: args.taskId,
+      changedFields,
+    };
+  },
+});
+
+/**
  * List tasks for orchestrator tools (service-only).
  */
 export const listTasksForAgentTool = action({
@@ -955,6 +1231,7 @@ export const getTaskForAgentTool = action({
 
 /**
  * List task thread messages for orchestrator tools (service-only).
+ * Optional limit (1–200) for history size; underlying query defaults to 50 when omitted.
  */
 export const listTaskThreadForAgentTool = action({
   args: {
@@ -970,7 +1247,7 @@ export const listTaskThreadForAgentTool = action({
   ): Promise<
     Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -1073,6 +1350,69 @@ export const createTaskMessageForAgentTool = action({
     );
 
     return { messageId };
+  },
+});
+
+/**
+ * Search tasks for orchestrator tools (service-only).
+ * Returns matching tasks with relevance scores.
+ */
+export const searchTasksForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      _id: Id<"tasks">;
+      title: string;
+      status: string;
+      priority: number;
+      blockedReason?: string;
+      assignedAgentIds: Id<"agents">[];
+      assignedUserIds: string[];
+      createdAt: number;
+      updatedAt: number;
+      relevanceScore: number;
+    }>
+  > => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can search tasks");
+    }
+
+    return await ctx.runQuery(internal.service.tasks.searchTasksForAgentTool, {
+      accountId: args.accountId,
+      agentId: args.agentId,
+      query: args.query,
+      limit: args.limit,
+    });
   },
 });
 
@@ -1469,6 +1809,130 @@ export const recordUpgradeResult = action({
 });
 
 /**
+ * Load full task details with thread summary for agents (service-only).
+ * Returns task metadata plus recent thread messages in one call.
+ */
+export const loadTaskDetailsForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    messageLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    task: Doc<"tasks">;
+    thread: Array<{
+      messageId: Id<"messages">;
+      authorType: RecipientType;
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>;
+  }> => {
+    // Validate service token
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Verify agent belongs to this account
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify task belongs to this account
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Fetch thread messages with validated limit (1-200, default 10)
+    const messageLimit =
+      args.messageLimit != null
+        ? Math.min(Math.max(1, args.messageLimit), 200)
+        : 10;
+    const thread = await ctx.runQuery(
+      internal.service.messages.listThreadForTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: messageLimit,
+      },
+    );
+
+    return { task, thread };
+  },
+});
+
+/**
+ * Delete/archive a task on behalf of an agent (service action).
+ * Soft-delete: transitions task to "archived" status with archivedAt timestamp.
+ * Orchestrator-only; enforces that agent is the account orchestrator.
+ * Messages and documents are preserved for audit trail.
+ * Called by the task_delete runtime tool.
+ */
+export const deleteTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    reason: v.string(),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: true }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    // Verify orchestrator status
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error(
+        "Forbidden: Only the orchestrator can archive/delete tasks",
+      );
+    }
+
+    // Perform soft-delete via internal mutation
+    await ctx.runMutation(internal.service.tasks.deleteTaskFromAgent, {
+      taskId: args.taskId,
+      agentId: args.agentId,
+      reason: args.reason,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
  * Link a task to a GitHub PR bidirectionally.
  * Updates task metadata with prNumber and attempts to add task reference to PR description.
  * Orchestrator-only access.
@@ -1497,9 +1961,14 @@ export const linkTaskToPrForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    // Only orchestrator agents can link tasks to PRs
-    if (agent.slug !== "orchestrator") {
-      throw new Error("Forbidden: Only orchestrator can link tasks to PRs");
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
+    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
+      throw new Error("Forbidden: Only the orchestrator can link tasks to PRs");
     }
 
     const task = await ctx.runQuery(internal.service.tasks.getInternal, {
@@ -1519,13 +1988,27 @@ export const linkTaskToPrForAgentTool = action({
     });
 
     // Attempt to update PR description with task reference via GitHub API
-    // Note: This requires GITHUB_TOKEN in environment; graceful degradation if missing
+    // Note: This requires GITHUB_TOKEN and GITHUB_REPO in environment; graceful degradation if missing
     const ghToken = process.env.GITHUB_TOKEN;
+    const repo = process.env.GITHUB_REPO;
+    if (!ghToken) {
+      console.warn("GitHub API call skipped: GITHUB_TOKEN not set");
+      return { success: true };
+    }
+    if (!repo) {
+      console.warn("GitHub API call skipped: GITHUB_REPO not set");
+      return { success: true };
+    }
+    const [owner, repoName] = repo.split("/");
+    if (!owner || !repoName) {
+      console.warn(
+        "GitHub API call skipped: GITHUB_REPO must be in 'owner/repo' format",
+      );
+      return { success: true };
+    }
     if (ghToken) {
       try {
         const taskMarker = `<!-- task: ${task._id} -->`;
-        const repo = process.env.GITHUB_REPO || "0xGeegZ/openclaw-mission-control";
-        const [owner, repoName] = repo.split("/");
 
         // Fetch current PR details
         const prResponse = await fetch(
@@ -1535,11 +2018,13 @@ export const linkTaskToPrForAgentTool = action({
               Authorization: `Bearer ${ghToken}`,
               Accept: "application/vnd.github.v3+json",
             },
-          }
+          },
         );
 
         if (!prResponse.ok) {
-          console.warn(`Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`);
+          console.warn(
+            `Failed to fetch PR #${args.prNumber}: ${prResponse.statusText}`,
+          );
           return { success: true };
         }
 
@@ -1562,12 +2047,12 @@ export const linkTaskToPrForAgentTool = action({
               Accept: "application/vnd.github.v3+json",
             },
             body: JSON.stringify({ body: newBody }),
-          }
+          },
         );
 
         if (!updateResponse.ok) {
           console.warn(
-            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`
+            `Failed to update PR #${args.prNumber} description: ${updateResponse.statusText}`,
           );
         }
       } catch (err) {
@@ -1582,8 +2067,7 @@ export const linkTaskToPrForAgentTool = action({
 
 /**
  * Get agent skills for query tool.
- * All agents can query own or all agents' skills.
- * Orchestrator has enhanced visibility for detailed skill audits.
+ * All agents can query any agent's skills or all agents (not orchestrator-only).
  */
 export const getAgentSkillsForTool = action({
   args: {
@@ -1592,8 +2076,16 @@ export const getAgentSkillsForTool = action({
     serviceToken: v.string(),
     queryAgentId: v.optional(v.id("agents")), // Which agent to query; undefined = all agents
   },
-  handler: async (ctx, args): Promise<
-    Array<{ agentId: string; skillIds: string[]; skillCount: number; lastUpdated: number }>
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      agentId: string;
+      skillIds: string[];
+      skillCount: number;
+      lastUpdated: string;
+    }>
   > => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
     if (serviceContext.accountId !== args.accountId) {
@@ -1611,9 +2103,9 @@ export const getAgentSkillsForTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const isOrchestrator = requestingAgent.slug === "orchestrator";
+    const toIso = (ts: number) => new Date(ts).toISOString();
 
-    // If queryAgentId specified, verify access
+    // If queryAgentId specified, return that agent's skills (any agent may query any other)
     if (args.queryAgentId) {
       const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
         agentId: args.queryAgentId,
@@ -1625,25 +2117,19 @@ export const getAgentSkillsForTool = action({
         throw new Error("Forbidden: Target agent belongs to different account");
       }
 
-      // Non-orchestrator agents can only query their own skills
-      if (!isOrchestrator && args.queryAgentId !== args.agentId) {
-        throw new Error(
-          "Forbidden: Only orchestrator can query other agents' skills"
-        );
-      }
-
-      // Return single agent's skills
       return [
         {
           agentId: targetAgent.slug || String(targetAgent._id),
           skillIds: targetAgent.openclawConfig?.skillIds || [],
           skillCount: targetAgent.openclawConfig?.skillIds?.length || 0,
-          lastUpdated: targetAgent.lastHeartbeat || targetAgent._creationTime,
+          lastUpdated: toIso(
+            targetAgent.lastHeartbeat || targetAgent._creationTime,
+          ),
         },
       ];
     }
 
-    // No queryAgentId: return all agents' skills (all agents can access this)
+    // No queryAgentId: return all agents' skills
     const allAgents = await ctx.runQuery(internal.service.agents.listInternal, {
       accountId: args.accountId,
     });
@@ -1652,7 +2138,7 @@ export const getAgentSkillsForTool = action({
       agentId: agent.slug || String(agent._id),
       skillIds: agent.openclawConfig?.skillIds || [],
       skillCount: agent.openclawConfig?.skillIds?.length || 0,
-      lastUpdated: agent.lastHeartbeat || agent._creationTime,
+      lastUpdated: toIso(agent.lastHeartbeat || agent._creationTime),
     }));
   },
 });

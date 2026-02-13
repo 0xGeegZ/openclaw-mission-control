@@ -78,23 +78,6 @@ export const markAllOffline = internalMutation({
           status: "offline",
           currentTaskId: undefined,
         });
-
-        await logActivity({
-          ctx,
-          accountId: args.accountId,
-          type: "agent_status_changed",
-          actorType: "system",
-          actorId: "system",
-          actorName: "System",
-          targetType: "agent",
-          targetId: agent._id,
-          targetName: agent.name,
-          meta: {
-            oldStatus: agent.status,
-            newStatus: "offline",
-            reason: "runtime_shutdown",
-          },
-        });
       }
     }
 
