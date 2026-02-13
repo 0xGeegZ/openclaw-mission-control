@@ -13,6 +13,7 @@ import {
   createMemberRemovedNotification,
   createRoleChangeNotification,
 } from "./lib/notifications";
+import { notFoundError, forbiddenError } from "./lib/errors";
 import { Id } from "./_generated/dataModel";
 import {
   assertMatches,
@@ -235,16 +236,22 @@ export const remove = mutation({
 
     const membership = await ctx.db.get(args.membershipId);
     if (!membership) {
-      throw new Error("Not found: Membership does not exist");
+      throw notFoundError("Membership does not exist", { membershipId: args.membershipId });
     }
 
     if (membership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Membership belongs to different account");
+      throw forbiddenError("Membership belongs to different account", {
+        membershipId: args.membershipId,
+        accountId: args.accountId,
+      });
     }
 
     // Cannot remove owner
     if (membership.role === "owner") {
-      throw new Error("Forbidden: Cannot remove owner");
+      throw forbiddenError("Cannot remove account owner", {
+        membershipId: args.membershipId,
+        role: membership.role,
+      });
     }
 
     const removedUserId = membership.userId;
@@ -291,7 +298,10 @@ export const leave = mutation({
     
     // Owner cannot leave
     if (membership.role === "owner") {
-      throw new Error("Forbidden: Owner cannot leave account. Transfer ownership first.");
+      throw forbiddenError(
+        "Account owner cannot leave. Transfer ownership first.",
+        { accountId: args.accountId, userId: membership.userId },
+      );
     }
 
     await logActivity({
@@ -327,11 +337,16 @@ export const transferOwnership = mutation({
 
     const newOwnerMembership = await ctx.db.get(args.newOwnerMembershipId);
     if (!newOwnerMembership) {
-      throw new Error("Not found: Target membership does not exist");
+      throw notFoundError("Target membership does not exist", {
+        membershipId: args.newOwnerMembershipId,
+      });
     }
     
     if (newOwnerMembership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Target membership belongs to different account");
+      throw forbiddenError("Target membership belongs to different account", {
+        membershipId: args.newOwnerMembershipId,
+        accountId: args.accountId,
+      });
     }
     
     const newOwnerUserId = newOwnerMembership.userId;

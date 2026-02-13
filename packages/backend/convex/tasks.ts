@@ -18,6 +18,7 @@ import {
   createStatusChangeNotification,
 } from "./lib/notifications";
 import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
+import { notFoundError, forbiddenError, validationError } from "./lib/errors";
 import {
   cascadeDeleteTask,
   validateTaskReferences,
@@ -183,7 +184,7 @@ export const getOrCreateOrchestratorChat = mutation({
     const { userId } = await requireAccountMember(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
-      throw new Error("Not found: Account does not exist");
+      throw notFoundError("Account does not exist", { accountId: args.accountId });
     }
 
     const existingTaskId = (
@@ -329,7 +330,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -338,7 +339,7 @@ export const update = mutation({
     );
     const account = await ctx.db.get(task.accountId);
     if (isOrchestratorChatTask({ account, task })) {
-      throw new Error("Orchestrator chat cannot be paused");
+      throw forbiddenError("Orchestrator chat cannot be paused", { taskId: args.taskId });
     }
 
     const updates: Record<string, unknown> = {
@@ -383,7 +384,7 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -396,8 +397,9 @@ export const updateStatus = mutation({
 
     // Validate transition
     if (!isValidTransition(currentStatus, nextStatus)) {
-      throw new Error(
-        `Invalid transition: Cannot move from '${currentStatus}' to '${nextStatus}'`,
+      throw validationError(
+        `Cannot move task from '${currentStatus}' to '${nextStatus}'`,
+        { currentStatus, nextStatus, taskId: args.taskId },
       );
     }
 
@@ -411,7 +413,11 @@ export const updateStatus = mutation({
     );
 
     if (requirementError) {
-      throw new Error(`Invalid status change: ${requirementError}`);
+      throw validationError(requirementError, {
+        taskId: args.taskId,
+        requestedStatus: nextStatus,
+        details: requirementError,
+      });
     }
 
     // Build updates
@@ -499,7 +505,7 @@ export const pauseAgentsOnTask = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -514,8 +520,9 @@ export const pauseAgentsOnTask = mutation({
     }
 
     if (!isPauseAllowedStatus(currentStatus)) {
-      throw new Error(
+      throw validationError(
         "Task can only be paused when status is Assigned, In progress, or Review",
+        { taskId: args.taskId, currentStatus },
       );
     }
 
@@ -527,7 +534,11 @@ export const pauseAgentsOnTask = mutation({
       PAUSED_BLOCKED_REASON,
     );
     if (requirementError) {
-      throw new Error(`Invalid status change: ${requirementError}`);
+      throw validationError(requirementError, {
+        taskId: args.taskId,
+        operation: "pause",
+        details: requirementError,
+      });
     }
 
     await ctx.db.patch(args.taskId, {
@@ -625,7 +636,7 @@ export const assign = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -809,7 +820,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     const { userId, userName } = await requireAccountMember(
@@ -838,11 +849,14 @@ export const reopen = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw notFoundError("Task does not exist", { taskId: args.taskId });
     }
 
     if (task.status !== TASK_STATUS.DONE) {
-      throw new Error("Invalid operation: Can only reopen done tasks");
+      throw validationError(
+        "Can only reopen tasks with done status",
+        { taskId: args.taskId, currentStatus: task.status },
+      );
     }
 
     const { userId, userName } = await requireAccountMember(

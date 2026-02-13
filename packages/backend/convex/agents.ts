@@ -4,6 +4,7 @@ import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
 import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
+import { conflictError, notFoundError, forbiddenError, validationError } from "./lib/errors";
 import { Id } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
@@ -221,7 +222,10 @@ export const create = mutation({
       .unique();
 
     if (existing) {
-      throw new Error("Conflict: Agent slug already exists in this account");
+      throw conflictError("Agent slug already exists in this account", {
+        slug: args.slug,
+        accountId: args.accountId,
+      });
     }
 
     const account = await ctx.db.get(args.accountId);
@@ -292,7 +296,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
-      throw new Error("Not found: Agent does not exist");
+      throw notFoundError("Agent does not exist", { agentId: args.agentId });
     }
 
     const { userId, userName } = await requireAccountAdmin(
@@ -346,7 +350,7 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
-      throw new Error("Not found: Agent does not exist");
+      throw notFoundError("Agent does not exist", { agentId: args.agentId });
     }
 
     // For now, allow status updates from authenticated users
@@ -393,7 +397,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
-      throw new Error("Not found: Agent does not exist");
+      throw notFoundError("Agent does not exist", { agentId: args.agentId });
     }
 
     await requireAccountAdmin(ctx, agent.accountId);
@@ -525,7 +529,7 @@ export const updateOpenclawConfig = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
-      throw new Error("Not found: Agent does not exist");
+      throw notFoundError("Agent does not exist", { agentId: args.agentId });
     }
 
     const { userId, userName } = await requireAccountAdmin(
@@ -538,8 +542,9 @@ export const updateOpenclawConfig = mutation({
       (model) => model.value,
     );
     if (!validModelValues.includes(normalizedModel)) {
-      throw new Error(
+      throw validationError(
         `Invalid model: "${normalizedModel}". Must be one of: ${validModelValues.join(", ")}`,
+        { model: normalizedModel, availableModels: validModelValues },
       );
     }
 
@@ -547,10 +552,13 @@ export const updateOpenclawConfig = mutation({
     for (const skillId of args.config.skillIds) {
       const skill = await ctx.db.get(skillId);
       if (!skill || skill.accountId !== agent.accountId) {
-        throw new Error(`Invalid skill: ${skillId}`);
+        throw notFoundError(`Skill does not exist: ${skillId}`, { skillId });
       }
       if (!skill.isEnabled) {
-        throw new Error(`Skill is disabled: ${skill.name}`);
+        throw forbiddenError(
+          `Skill is disabled: ${skill.name}`,
+          { skillId, skillName: skill.name },
+        );
       }
     }
 
@@ -621,7 +629,7 @@ export const updateSkills = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
-      throw new Error("Not found: Agent does not exist");
+      throw notFoundError("Agent does not exist", { agentId: args.agentId });
     }
 
     await requireAccountAdmin(ctx, agent.accountId);
@@ -630,7 +638,7 @@ export const updateSkills = mutation({
     for (const skillId of args.skillIds) {
       const skill = await ctx.db.get(skillId);
       if (!skill || skill.accountId !== agent.accountId) {
-        throw new Error(`Invalid skill: ${skillId}`);
+        throw notFoundError(`Skill does not exist: ${skillId}`, { skillId });
       }
     }
 
