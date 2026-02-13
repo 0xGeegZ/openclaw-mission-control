@@ -126,6 +126,14 @@ export const createContainer = internalMutation({
     // Phase 1B: Spawn async orchestration script to provision container
     // orchestrator-containers.sh create {accountId} {assignedPort} {plan}
     // On completion, update status to "running" or "failed"
+    // Note: ctx.scheduler not yet implemented; placeholder for integration
+    // TODO: Uncomment when ctx.scheduler support is added
+    // await ctx.scheduler.runAfter(0, internal.orchestration.executeCreate, {
+    //   accountId: args.accountId,
+    //   containerId,
+    //   assignedPort,
+    //   plan: args.plan || account.plan,
+    // });
 
     return {
       containerId,

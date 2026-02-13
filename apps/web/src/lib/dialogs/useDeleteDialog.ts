@@ -73,7 +73,7 @@ export interface UseDeleteDialogReturn {
  *
  * @template T - Entity type (task, agent, etc.)
  * @param config - Entity configuration (title, description, success message, etc.)
- * @param mutation - Async function that performs the deletion (should throw on error)
+ * @param mutation - Async function that performs the deletion (should throw on error); return value is ignored
  * @param onSuccess - Optional callback after successful deletion (receives the entity name)
  * @returns Object containing handleDelete function and dialog config
  *
@@ -103,7 +103,7 @@ export interface UseDeleteDialogReturn {
  */
 export function useDeleteDialog(
   config: DeleteEntityConfig<DeleteEntityType>,
-  mutation: () => Promise<void>,
+  mutation: () => Promise<unknown>,
   onSuccess?: () => void
 ): UseDeleteDialogReturn {
   const handleDelete = useCallback(async () => {

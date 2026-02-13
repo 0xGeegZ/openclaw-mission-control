@@ -14,6 +14,15 @@ import {
   createRoleChangeNotification,
 } from "./lib/notifications";
 import { Id } from "./_generated/dataModel";
+import {
+  assertMatches,
+  assertAuthorized,
+  assertDefined,
+  assertEqual,
+  conflictError,
+  forbiddenError,
+} from "./lib/validation";
+import { ErrorCode } from "./lib/errors";
 
 /**
  * Get membership by account and user (internal query).
@@ -97,14 +106,17 @@ export const invite = mutation({
       )
       .unique();
     
-    if (existing) {
-      throw new Error("Conflict: User is already a member");
-    }
+    assertMatches(
+      !existing,
+      "User is already a member of this account",
+      ErrorCode.CONFLICT
+    );
     
     // Cannot invite as owner (only one owner per account)
-    if (args.role === "owner") {
-      throw new Error("Forbidden: Cannot invite as owner");
-    }
+    assertAuthorized(
+      args.role !== "owner",
+      "Cannot invite user as owner (only one owner per account)"
+    );
     
     const membershipId = await ctx.db.insert("memberships", {
       accountId: args.accountId,
@@ -159,23 +171,25 @@ export const updateRole = mutation({
     const { userId: updaterId, userName: updaterName, account } = await requireAccountAdmin(ctx, args.accountId);
 
     const membership = await ctx.db.get(args.membershipId);
-    if (!membership) {
-      throw new Error("Not found: Membership does not exist");
-    }
+    assertDefined(membership, "Membership does not exist");
     
-    if (membership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Membership belongs to different account");
-    }
+    assertEqual(
+      membership.accountId,
+      args.accountId,
+      "Membership belongs to a different account"
+    );
     
     // Cannot change owner's role
-    if (membership.role === "owner") {
-      throw new Error("Forbidden: Cannot change owner's role");
-    }
+    assertAuthorized(
+      membership.role !== "owner",
+      "Cannot change the owner's role"
+    );
     
     // Cannot promote to owner
-    if (args.role === "owner") {
-      throw new Error("Forbidden: Cannot promote to owner");
-    }
+    assertAuthorized(
+      args.role !== "owner",
+      "Cannot promote user to owner role"
+    );
     
     await ctx.db.patch(args.membershipId, { role: args.role });
 

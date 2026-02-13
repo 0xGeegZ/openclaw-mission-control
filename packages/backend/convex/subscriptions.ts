@@ -177,7 +177,7 @@ export async function ensureSubscribed(
 ): Promise<void> {
   const existing = await ctx.db
     .query("subscriptions")
-    .withIndex("by_task_subscriber", (q: any) => 
+    .withIndex("by_task_subscriber", (q) => 
       q.eq("taskId", taskId)
        .eq("subscriberType", subscriberType)
        .eq("subscriberId", subscriberId)
