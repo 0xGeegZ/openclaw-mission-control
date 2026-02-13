@@ -1,7 +1,11 @@
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
-import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
+import {
+  isNoResponseFallbackMessage,
+  sendOpenClawToolResults,
+  sendToOpenClaw,
+} from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
 import {
@@ -39,10 +43,13 @@ const HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = ["in_progress", "assigned"]
 /** Single source of truth for orchestrator tracked statuses and ordering. */
 const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
   "in_progress",
+  "review",
   "assigned",
   "blocked",
 ];
 const ORCHESTRATOR_ASSIGNEE_STALE_MS = 3 * 60 * 60 * 1000;
+const ORCHESTRATOR_ASSIGNEE_BLOCKED_STALE_MS = 24 * 60 * 60 * 1000;
+const ORCHESTRATOR_ASSIGNEE_STARTUP_STALE_MS = 15 * 60 * 1000;
 const ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT = 3;
 const TASK_ID_PATTERN = /Task ID:\s*([A-Za-z0-9_-]+)/i;
 
@@ -202,7 +209,7 @@ export function buildHeartbeatMessage(options: {
     ? `- Take one concrete action if appropriate (or up to ${ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT} orchestrator follow-ups across distinct tracked tasks).`
     : "- Take one concrete action if appropriate.";
   const orchestratorLine = isOrchestrator
-    ? "- As the orchestrator, follow up on in_progress/assigned/blocked tasks (even if assigned to other agents)."
+    ? "- As the orchestrator, follow up on in_progress/review/assigned/blocked tasks (even if assigned to other agents)."
     : null;
   const orchestratorFollowUpBlock = buildOrchestratorFollowUpBlock(
     isOrchestrator,
@@ -285,7 +292,7 @@ function buildOrchestratorFollowUpBlock(
   return [
     "- Across tracked tasks, keep follow-ups moving and avoid starvation:",
     `  ${toolLine}${httpLine}`,
-    "  Prioritize the stalest in_progress task first.",
+    "  Prioritize stale in_progress/review tasks first, then assigned. Only nudge blocked tasks when no active follow-up was queued in this cycle.",
     `  ${oneAction}`,
   ].join("\n");
 }
@@ -319,9 +326,25 @@ interface HeartbeatBehaviorFlags {
   canMentionAgents: boolean;
 }
 
+/**
+ * Derive stale threshold per task status.
+ * Blocked tasks use a much longer cooldown to avoid repetitive nudges.
+ */
+function getAssigneeFollowUpStaleMsForTask(options: {
+  task: HeartbeatTask;
+  staleMs: number;
+}): number {
+  const { task, staleMs } = options;
+  if (task.status === "blocked") {
+    return Math.max(staleMs, ORCHESTRATOR_ASSIGNEE_BLOCKED_STALE_MS);
+  }
+  return staleMs;
+}
+
 interface ThreadMessageForHeartbeatFollowUp {
   authorType: RecipientType;
   authorId: string;
+  content?: string;
   createdAt: number;
 }
 
@@ -356,9 +379,22 @@ function resolveHeartbeatBehaviorFlags(
 }
 
 /**
- * Resolve the latest assignee-authored message timestamp from a task thread.
+ * Return true when an assignee message should not reset stale follow-up timers.
  */
-function getLastAssigneeReplyTimestamp(
+function shouldIgnoreAssigneeReplyForFollowUp(content: string | undefined): boolean {
+  if (!content) return false;
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  return (
+    isHeartbeatOkResponse(trimmed) || isNoResponseFallbackMessage(trimmed)
+  );
+}
+
+/**
+ * Resolve the latest meaningful assignee-authored message timestamp from a task thread.
+ * Placeholder/no-response fallbacks are ignored so they do not block orchestrator nudges.
+ */
+export function getLastAssigneeReplyTimestamp(
   task: HeartbeatTask,
   thread: ThreadMessageForHeartbeatFollowUp[],
 ): number | null {
@@ -366,6 +402,7 @@ function getLastAssigneeReplyTimestamp(
   for (let index = thread.length - 1; index >= 0; index -= 1) {
     const message = thread[index];
     if (message.authorType !== "agent") continue;
+    if (shouldIgnoreAssigneeReplyForFollowUp(message.content)) continue;
     if (assigneeIds.has(message.authorId as Id<"agents">)) {
       return message.createdAt;
     }
@@ -382,14 +419,81 @@ export function shouldRequestAssigneeResponse(options: {
   nowMs: number;
   staleMs?: number;
 }): boolean {
+  return getAssigneeFollowUpDecision(options).shouldRequest;
+}
+
+type AssigneeFollowUpDecisionReason =
+  | "missing_task"
+  | "unsupported_status"
+  | "no_assignees"
+  | "not_stale"
+  | "stale";
+
+interface AssigneeFollowUpDecision {
+  shouldRequest: boolean;
+  reason: AssigneeFollowUpDecisionReason;
+  referenceTimestamp: number;
+  elapsedMs: number;
+  staleMs: number;
+}
+
+/**
+ * Evaluate orchestrator follow-up eligibility and provide a loggable reason.
+ */
+export function getAssigneeFollowUpDecision(options: {
+  task: HeartbeatTask | null;
+  lastAssigneeReplyAt: number | null;
+  nowMs: number;
+  staleMs?: number;
+}): AssigneeFollowUpDecision {
   const { task, lastAssigneeReplyAt, nowMs } = options;
   const staleMs = options.staleMs ?? ORCHESTRATOR_ASSIGNEE_STALE_MS;
-  if (!task) return false;
-  if (!ORCHESTRATOR_HEARTBEAT_STATUSES.includes(task.status)) return false;
-  if (!task.assignedAgentIds || task.assignedAgentIds.length === 0) return false;
+  if (!task) {
+    return {
+      shouldRequest: false,
+      reason: "missing_task",
+      referenceTimestamp: 0,
+      elapsedMs: 0,
+      staleMs,
+    };
+  }
+  if (!ORCHESTRATOR_HEARTBEAT_STATUSES.includes(task.status)) {
+    return {
+      shouldRequest: false,
+      reason: "unsupported_status",
+      referenceTimestamp: 0,
+      elapsedMs: 0,
+      staleMs,
+    };
+  }
+  if (!task.assignedAgentIds || task.assignedAgentIds.length === 0) {
+    return {
+      shouldRequest: false,
+      reason: "no_assignees",
+      referenceTimestamp: 0,
+      elapsedMs: 0,
+      staleMs,
+    };
+  }
   const referenceTimestamp =
     lastAssigneeReplyAt ?? task.updatedAt ?? task.createdAt ?? 0;
-  return nowMs - referenceTimestamp >= staleMs;
+  const elapsedMs = Math.max(0, nowMs - referenceTimestamp);
+  if (elapsedMs >= staleMs) {
+    return {
+      shouldRequest: true,
+      reason: "stale",
+      referenceTimestamp,
+      elapsedMs,
+      staleMs,
+    };
+  }
+  return {
+    shouldRequest: false,
+    reason: "not_stale",
+    referenceTimestamp,
+    elapsedMs,
+    staleMs,
+  };
 }
 
 /**
@@ -439,6 +543,8 @@ async function maybeAutoRequestAssigneeFollowUp(options: {
   trackedTasks: HeartbeatTask[];
   canMentionAgents: boolean;
   maxAutoFollowUps: number;
+  staleMs?: number;
+  followUpMode?: "startup" | "steady";
 }): Promise<void> {
   const {
     client,
@@ -447,6 +553,8 @@ async function maybeAutoRequestAssigneeFollowUp(options: {
     trackedTasks,
     canMentionAgents,
     maxAutoFollowUps,
+    staleMs = ORCHESTRATOR_ASSIGNEE_STALE_MS,
+    followUpMode = "steady",
   } = options;
   if (!canMentionAgents || maxAutoFollowUps <= 0 || trackedTasks.length === 0) {
     return;
@@ -459,102 +567,132 @@ async function maybeAutoRequestAssigneeFollowUp(options: {
   if (followUpCandidates.length === 0) {
     return;
   }
+  const activeFollowUpCandidates = followUpCandidates.filter(
+    (candidate) => candidate.status !== "blocked",
+  );
+  const blockedFollowUpCandidates = followUpCandidates.filter(
+    (candidate) => candidate.status === "blocked",
+  );
+  const candidateBatches: HeartbeatTask[][] = [activeFollowUpCandidates];
+  const allowBlockedFallback = followUpMode !== "startup";
+  if (allowBlockedFallback && blockedFollowUpCandidates.length > 0) {
+    candidateBatches.push(blockedFollowUpCandidates);
+  }
 
   const nowMs = Date.now();
   let queuedFollowUps = 0;
   let agents: AgentForHeartbeat[] | null = null;
 
-  for (const task of followUpCandidates) {
-    if (queuedFollowUps >= maxAutoFollowUps) {
+  for (let batchIndex = 0; batchIndex < candidateBatches.length; batchIndex += 1) {
+    const tasks = candidateBatches[batchIndex];
+    if (tasks.length === 0) continue;
+    const isBlockedFallbackBatch = batchIndex > 0;
+    if (isBlockedFallbackBatch && queuedFollowUps > 0) {
       break;
     }
-
-    try {
-      const thread = (await client.action(
-        api.service.actions.listTaskThreadForAgentTool,
-        {
-          accountId: config.accountId,
-          serviceToken: config.serviceToken,
-          agentId: agent._id,
-          taskId: task._id,
-          limit: 50,
-        },
-      )) as ThreadMessageForHeartbeatFollowUp[];
-      const lastAssigneeReplyAt = getLastAssigneeReplyTimestamp(task, thread);
-      if (
-        !shouldRequestAssigneeResponse({
-          task,
-          lastAssigneeReplyAt,
-          nowMs,
-        })
-      ) {
-        continue;
+    for (const task of tasks) {
+      if (queuedFollowUps >= maxAutoFollowUps) {
+        break;
       }
 
-      if (!agents) {
-        agents = (await client.action(api.service.actions.listAgents, {
-          accountId: config.accountId,
-          serviceToken: config.serviceToken,
-        })) as AgentForHeartbeat[];
-      }
-      const recipientSlugs = getAssigneeRecipientSlugs({
-        task,
-        agents,
-        requesterAgentId: agent._id,
-      });
-      if (recipientSlugs.length === 0) {
-        continue;
-      }
-
-      const referenceTimestamp =
-        lastAssigneeReplyAt ?? task.updatedAt ?? task.createdAt ?? nowMs;
-      const staleMinutes = Math.max(
-        1,
-        Math.floor((nowMs - referenceTimestamp) / (60 * 1000)),
-      );
-      const responseRequestMessage = `Heartbeat follow-up: no assignee update for about ${staleMinutes} minutes on "${task.title}". Please post a progress or blocker update in this task thread.`;
-      const result = (await client.action(
-        api.service.actions.createResponseRequestNotifications,
-        {
-          accountId: config.accountId,
-          serviceToken: config.serviceToken,
-          requesterAgentId: agent._id,
-          taskId: task._id,
-          recipientSlugs,
-          message: responseRequestMessage,
-        },
-      )) as { notificationIds: Id<"notifications">[] };
-      if ((result.notificationIds?.length ?? 0) > 0) {
-        queuedFollowUps += 1;
-        const followUpComment = buildAssigneeFollowUpComment({
-          recipientSlugs,
-          staleMinutes,
-        });
-        try {
-          await client.action(api.service.actions.createTaskMessageForAgentTool, {
+      try {
+        const thread = (await client.action(
+          api.service.actions.listTaskThreadForAgentTool,
+          {
             accountId: config.accountId,
             serviceToken: config.serviceToken,
             agentId: agent._id,
             taskId: task._id,
-            content: followUpComment,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          log.warn(
-            "Queued assignee response request but failed to post follow-up comment:",
+            limit: 50,
+          },
+        )) as ThreadMessageForHeartbeatFollowUp[];
+        const lastAssigneeReplyAt = getLastAssigneeReplyTimestamp(task, thread);
+        const taskStaleMs = getAssigneeFollowUpStaleMsForTask({
+          task,
+          staleMs,
+        });
+        const decision = getAssigneeFollowUpDecision({
+          task,
+          lastAssigneeReplyAt,
+          nowMs,
+          staleMs: taskStaleMs,
+        });
+        if (!decision.shouldRequest) {
+          log.debug(
+            "Skipped auto assignee follow-up",
             task._id,
-            message,
+            `mode=${followUpMode}`,
+            `reason=${decision.reason}`,
+            `elapsedMs=${decision.elapsedMs}`,
+            `staleMs=${decision.staleMs}`,
+          );
+          continue;
+        }
+
+        if (!agents) {
+          agents = (await client.action(api.service.actions.listAgents, {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+          })) as AgentForHeartbeat[];
+        }
+        const recipientSlugs = getAssigneeRecipientSlugs({
+          task,
+          agents,
+          requesterAgentId: agent._id,
+        });
+        if (recipientSlugs.length === 0) {
+          continue;
+        }
+
+        const staleMinutes = Math.max(
+          1,
+          Math.floor(decision.elapsedMs / (60 * 1000)),
+        );
+        const responseRequestMessage = `Heartbeat follow-up: no assignee update for about ${staleMinutes} minutes on "${task.title}". Please post a progress or blocker update in this task thread.`;
+        const result = (await client.action(
+          api.service.actions.createResponseRequestNotifications,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            requesterAgentId: agent._id,
+            taskId: task._id,
+            recipientSlugs,
+            message: responseRequestMessage,
+          },
+        )) as { notificationIds: Id<"notifications">[] };
+        if ((result.notificationIds?.length ?? 0) > 0) {
+          queuedFollowUps += 1;
+          const followUpComment = buildAssigneeFollowUpComment({
+            recipientSlugs,
+            staleMinutes,
+          });
+          try {
+            await client.action(api.service.actions.createTaskMessageForAgentTool, {
+              accountId: config.accountId,
+              serviceToken: config.serviceToken,
+              agentId: agent._id,
+              taskId: task._id,
+              content: followUpComment,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log.warn(
+              "Queued assignee response request but failed to post follow-up comment:",
+              task._id,
+              message,
+            );
+          }
+          log.info(
+            "Queued auto assignee follow-up request + thread comment",
+            task._id,
+            `mode=${followUpMode}`,
+            `recipients=${recipientSlugs.join(",")}`,
           );
         }
-        log.info(
-          "Queued auto assignee follow-up request + thread comment",
-          task._id,
-          `recipients=${recipientSlugs.join(",")}`,
-        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn("Failed to queue auto assignee follow-up:", task._id, message);
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log.warn("Failed to queue auto assignee follow-up:", task._id, message);
     }
   }
 }
@@ -623,7 +761,7 @@ function scheduleHeartbeat(
       ? 0
       : (index / totalAgents) * staggerWindow + Math.random() * 2000; // Small jitter per agent
 
-  const execute = () => runHeartbeatCycle(agent, config, intervalMs);
+  const execute = () => runHeartbeatCycle(agent, config, intervalMs, true);
   const timeout = setTimeout(execute, initialDelay);
   state.schedules.set(agent._id, timeout);
   state.intervals.set(agent._id, intervalMinutes);
@@ -636,6 +774,7 @@ function runHeartbeatCycle(
   agent: AgentForHeartbeat,
   config: RuntimeConfig,
   intervalMs: number,
+  isInitialRun = false,
 ): void {
   const execute = async () => {
     const heartbeatStart = Date.now();
@@ -848,6 +987,18 @@ function runHeartbeatCycle(
       }
 
       if (isOrchestrator) {
+        const cycleStaleMs = isInitialRun
+          ? Math.min(
+              ORCHESTRATOR_ASSIGNEE_STALE_MS,
+              ORCHESTRATOR_ASSIGNEE_STARTUP_STALE_MS,
+            )
+          : ORCHESTRATOR_ASSIGNEE_STALE_MS;
+        if (isInitialRun) {
+          log.info(
+            "Orchestrator startup follow-up window active",
+            `staleMs=${cycleStaleMs}`,
+          );
+        }
         await maybeAutoRequestAssigneeFollowUp({
           client,
           config,
@@ -859,6 +1010,8 @@ function runHeartbeatCycle(
             ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT -
               successfulResponseRequestToolCallCount,
           ),
+          staleMs: cycleStaleMs,
+          followUpMode: isInitialRun ? "startup" : "steady",
         });
       }
 
@@ -882,7 +1035,7 @@ function runHeartbeatCycle(
     if (state.isRunning && state.schedules.has(agent._id)) {
       const nextDelay = intervalMs + Math.random() * 30 * 1000; // Up to 30s jitter
       const timeout = setTimeout(
-        () => runHeartbeatCycle(agent, config, intervalMs),
+        () => runHeartbeatCycle(agent, config, intervalMs, false),
         nextDelay,
       );
       state.schedules.set(agent._id, timeout);
@@ -915,7 +1068,7 @@ export function ensureHeartbeatScheduled(
   const intervalMs = intervalMinutes * 60 * 1000;
   const initialDelay = Math.random() * 2000; // Small jitter for sync-added agents
   const timeout = setTimeout(
-    () => runHeartbeatCycle(agent, config, intervalMs),
+    () => runHeartbeatCycle(agent, config, intervalMs, true),
     initialDelay,
   );
   state.schedules.set(agent._id, timeout);

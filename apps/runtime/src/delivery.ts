@@ -15,7 +15,6 @@ import {
 } from "./tooling/agentTools";
 import { recordSuccess, recordFailure } from "./metrics";
 import {
-  HEARTBEAT_OK_RESPONSE,
   isHeartbeatOkResponse,
 } from "./heartbeat-constants";
 import type { RecipientType } from "@packages/shared";
@@ -132,16 +131,81 @@ const NO_REPLY_SIGNAL_VALUES = new Set([
   "NO_REPLY",
   "NO",
   "NO_",
-  HEARTBEAT_OK_RESPONSE,
 ]);
+const NO_RESPONSE_FALLBACK_NOTIFICATION_TYPES = new Set<string>();
+const ORCHESTRATOR_ACK_TASK_STATUSES = new Set(["in_progress", "review"]);
 
 /**
  * Detect explicit "no reply" signals from OpenClaw output.
  */
 function isNoReplySignal(value: string): boolean {
-  return (
-    NO_REPLY_SIGNAL_VALUES.has(value.trim()) || isHeartbeatOkResponse(value)
-  );
+  return NO_REPLY_SIGNAL_VALUES.has(value.trim());
+}
+
+/**
+ * @internal Exposed for unit tests to keep no-reply signal handling deterministic.
+ */
+export function _isNoReplySignal(value: string): boolean {
+  return isNoReplySignal(value);
+}
+
+/**
+ * No-response fallback comments are disabled to avoid noisy thread spam.
+ * Keep this helper for explicit policy checks and test visibility.
+ */
+function shouldPersistNoResponseFallback(options: {
+  notificationType: string;
+}): boolean {
+  const { notificationType } = options;
+  return NO_RESPONSE_FALLBACK_NOTIFICATION_TYPES.has(notificationType);
+}
+
+/**
+ * @internal Exposed for unit tests for fallback persistence policy.
+ */
+export function _shouldPersistNoResponseFallback(options: {
+  notificationType: string;
+}): boolean {
+  return shouldPersistNoResponseFallback(options);
+}
+
+/**
+ * Build a concise orchestrator acknowledgment for assignee updates.
+ */
+function buildOrchestratorThreadAckMessage(options: {
+  taskStatus?: string;
+}): string {
+  if (options.taskStatus === "review") {
+    return "Acknowledged. Review update received; I am coordinating the next validation steps.";
+  }
+  return "Acknowledged. Progress update received; I am coordinating the next step.";
+}
+
+/**
+ * Return true when we should persist a short orchestrator ack instead of
+ * dropping a no-reply signal for active task updates.
+ */
+function shouldPersistOrchestratorThreadAck(context: DeliveryContext): boolean {
+  if (context.notification.type !== "thread_update") return false;
+  if (context.notification.recipientType !== "agent") return false;
+  if (!context.task || !ORCHESTRATOR_ACK_TASK_STATUSES.has(context.task.status))
+    return false;
+  if (!context.orchestratorAgentId) return false;
+  if (context.notification.recipientId !== context.orchestratorAgentId)
+    return false;
+  if (context.agent?._id !== context.orchestratorAgentId) return false;
+  if (context.message?.authorType !== "agent") return false;
+  if (context.message.authorId === context.orchestratorAgentId) return false;
+  return true;
+}
+
+/**
+ * @internal Exposed for unit tests for orchestrator no-reply acknowledgment policy.
+ */
+export function _shouldPersistOrchestratorThreadAck(
+  context: DeliveryContext,
+): boolean {
+  return shouldPersistOrchestratorThreadAck(context);
 }
 
 interface DeliveryState {
@@ -364,18 +428,19 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 
             let textToPost: string | null = result.text?.trim() ?? null;
             let suppressAgentNotifications = false;
-            let shouldPostMessage = true;
+            let skipMessageReason: string | null = null;
             const taskId = context.notification?.taskId;
+            const shouldPersistOrchestratorAck = shouldPersistOrchestratorThreadAck(
+              context as DeliveryContext,
+            );
             const noResponsePlaceholder = textToPost
               ? parseNoResponsePlaceholder(textToPost)
               : null;
             const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
             const isHeartbeatOk = isHeartbeatOkResponse(textToPost);
-            if ((isNoReply || isHeartbeatOk) && result.toolCalls.length === 0) {
+            if (isHeartbeatOk && result.toolCalls.length === 0) {
               log.info(
-                isHeartbeatOk
-                  ? "OpenClaw returned HEARTBEAT_OK; skipping notification"
-                  : "OpenClaw returned NO_REPLY; skipping notification",
+                "OpenClaw returned HEARTBEAT_OK; skipping notification",
                 notification._id,
                 context.agent.name,
               );
@@ -394,37 +459,72 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             const needsRetry =
               result.toolCalls.length === 0 &&
-              (!textToPost || noResponsePlaceholder?.isPlaceholder);
+              (isNoReply || !textToPost || noResponsePlaceholder?.isPlaceholder);
             if (needsRetry) {
-              const reason = !textToPost
-                ? "empty response"
-                : "placeholder response";
-              const decision = _getNoResponseRetryDecision(notification._id);
-              if (decision.shouldRetry) {
+              if (isNoReply && taskId && shouldPersistOrchestratorAck) {
+                textToPost = buildOrchestratorThreadAckMessage({
+                  taskStatus: context.task?.status,
+                });
+                suppressAgentNotifications = true;
+                skipMessageReason = "orchestrator no-reply ack";
+                log.info(
+                  "Posting orchestrator acknowledgment for no-reply signal",
+                  notification._id,
+                  taskId,
+                );
+                clearNoResponseRetry(notification._id);
+              } else {
+                const reason = isNoReply
+                  ? `no-reply signal (${textToPost})`
+                  : !textToPost
+                    ? "empty response"
+                    : "placeholder response";
+                const shouldPersistFallback = shouldPersistNoResponseFallback({
+                  notificationType: context.notification.type,
+                });
+                const decision = _getNoResponseRetryDecision(notification._id);
+                if (decision.shouldRetry) {
+                  log.warn(
+                    "OpenClaw returned no response; will retry notification",
+                    notification._id,
+                    context.agent.name,
+                    `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+                  );
+                  throw new Error(`OpenClaw returned ${reason}`);
+                }
                 log.warn(
-                  "OpenClaw returned no response; will retry notification",
+                  "OpenClaw returned no response; giving up",
                   notification._id,
                   context.agent.name,
                   `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
                 );
-                throw new Error(`OpenClaw returned ${reason}`);
+                if (taskId) {
+                  if (shouldPersistFallback) {
+                    textToPost = buildNoResponseFallbackMessage(
+                      noResponsePlaceholder?.mentionPrefix,
+                    );
+                    suppressAgentNotifications = true;
+                    skipMessageReason = reason;
+                  } else if (shouldPersistOrchestratorAck) {
+                    textToPost = buildOrchestratorThreadAckMessage({
+                      taskStatus: context.task?.status,
+                    });
+                    suppressAgentNotifications = true;
+                    skipMessageReason = "orchestrator no-response ack";
+                    log.info(
+                      "Posting orchestrator acknowledgment after no-response retries",
+                      notification._id,
+                      taskId,
+                    );
+                  } else {
+                    textToPost = null;
+                    skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                  }
+                } else {
+                  textToPost = null;
+                }
+                clearNoResponseRetry(notification._id);
               }
-              log.warn(
-                "OpenClaw returned no response; giving up",
-                notification._id,
-                context.agent.name,
-                `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-              );
-              if (taskId) {
-                textToPost = buildNoResponseFallbackMessage(
-                  noResponsePlaceholder?.mentionPrefix,
-                );
-                suppressAgentNotifications = true;
-                shouldPostMessage = false;
-              } else {
-                textToPost = null;
-              }
-              clearNoResponseRetry(notification._id);
             } else {
               clearNoResponseRetry(notification._id);
             }
@@ -472,28 +572,65 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             if (textToPost) {
               const placeholder = parseNoResponsePlaceholder(textToPost);
               if (placeholder.isPlaceholder) {
-                log.warn(
-                  "OpenClaw placeholder response received; suppressing fallback",
-                  notification._id,
-                  context.agent.name,
-                );
-                textToPost = buildNoResponseFallbackMessage(
-                  placeholder.mentionPrefix,
-                );
-                suppressAgentNotifications = true;
-                shouldPostMessage = false;
+                const shouldPersistFallback = shouldPersistNoResponseFallback({
+                  notificationType: context.notification.type,
+                });
+                if (shouldPersistFallback) {
+                  log.warn(
+                    "OpenClaw placeholder response received; posting fallback message",
+                    notification._id,
+                    context.agent.name,
+                  );
+                  textToPost = buildNoResponseFallbackMessage(
+                    placeholder.mentionPrefix,
+                  );
+                  suppressAgentNotifications = true;
+                  skipMessageReason = "placeholder fallback";
+                } else if (taskId && shouldPersistOrchestratorAck) {
+                  textToPost = buildOrchestratorThreadAckMessage({
+                    taskStatus: context.task?.status,
+                  });
+                  suppressAgentNotifications = true;
+                  skipMessageReason = "orchestrator placeholder ack";
+                  log.info(
+                    "Posting orchestrator acknowledgment for placeholder response",
+                    notification._id,
+                    taskId,
+                  );
+                } else {
+                  textToPost = null;
+                  skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                }
               }
             }
             if (taskId && !textToPost && result.toolCalls.length > 0) {
-              textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
-              suppressAgentNotifications = true;
-              shouldPostMessage = false;
-              log.warn(
-                "No reply after tool execution; suppressing fallback message",
-                notification._id,
-              );
+              const shouldPersistFallback = shouldPersistNoResponseFallback({
+                notificationType: context.notification.type,
+              });
+              if (shouldPersistFallback) {
+                textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
+                suppressAgentNotifications = true;
+                skipMessageReason = "no final reply after tool execution";
+                log.warn(
+                  "No reply after tool execution; posting fallback message",
+                  notification._id,
+                );
+              } else if (shouldPersistOrchestratorAck) {
+                textToPost = buildOrchestratorThreadAckMessage({
+                  taskStatus: context.task?.status,
+                });
+                suppressAgentNotifications = true;
+                skipMessageReason = "orchestrator no-final-reply ack";
+                log.info(
+                  "Posting orchestrator acknowledgment after tool execution with no final reply",
+                  notification._id,
+                  taskId,
+                );
+              } else {
+                skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+              }
             }
-            if (taskId && textToPost && shouldPostMessage) {
+            if (taskId && textToPost) {
               await client.action(api.service.actions.createMessageFromAgent, {
                 agentId: context.agent._id,
                 taskId,
@@ -503,6 +640,12 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 sourceNotificationId: notification._id,
                 suppressAgentNotifications,
               });
+              log.info(
+                "Persisted agent message to Convex",
+                notification._id,
+                taskId,
+                context.agent.name,
+              );
               if (
                 canModifyTaskStatus &&
                 context.task?.status === "assigned" &&
@@ -526,6 +669,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   log.warn("Failed to auto-advance task status:", message);
                 }
               }
+            } else if (taskId) {
+              log.info(
+                "Skipped persisting agent message",
+                notification._id,
+                context.agent.name,
+                skipMessageReason ?? "empty or intentionally suppressed",
+              );
             }
             await client.action(api.service.actions.markNotificationDelivered, {
               notificationId: notification._id,
@@ -1211,6 +1361,7 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 
 Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.
 If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
+${isOrchestrator ? "When coordinating an active task (in_progress/review), acknowledge assignee progress updates in one short sentence instead of using NO_REPLY." : ""}
 
 Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 

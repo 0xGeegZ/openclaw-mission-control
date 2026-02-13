@@ -369,7 +369,7 @@ const seedAgents = [
     ] as const,
     heartbeatInterval: 15,
     canCreateTasks: false,
-    icon: "Code2",
+    icon: "Wrench",
   },
   {
     name: "QA",
@@ -532,6 +532,13 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **response_request** — Request responses from specific agents on a task. Use this to notify agents for follow-ups.
 - **task_message** — Post a comment to another task's thread. Use it to reference related tasks, hand off work from a DONE task into another active task, or ping agents in that other thread; pair with \`response_request\` when you need guaranteed agent notification.
 
+Tool-only sharing rule (critical):
+
+- Never claim a document or file is shared unless it was created/uploaded through the proper runtime tool.
+- For docs, always use \`document_upsert\` and include the returned \`documentId\` and link in your thread reply.
+- For file attachments, always use the runtime upload tool path (upload URL + register/attach step when available). Do not share local file paths or "available in workspace" claims.
+- If the required tool is missing or fails, report **BLOCKED**. Do not pretend the user can access the file.
+
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
 ### Agent follow-ups (tool-only)
@@ -634,6 +641,8 @@ When creating a doc, always include:
 - Open questions (if any)
 - "How to verify" (when relevant)
 - Last updated timestamp
+- Create/share docs only via \`document_upsert\`; then include \`documentId\` and \`[Document](/document/<documentId>)\` in your reply.
+- If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths as if they were shared deliverables.
 
 ## Safety / secrets
 

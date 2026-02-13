@@ -225,6 +225,58 @@ describe("resolveMentions", () => {
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Alice");
   });
+
+  it("should resolve @qa by slug when agent has slug qa", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_qa" as Id<"agents">,
+          name: "QA",
+          slug: "qa",
+          role: "QA / Reviewer",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ]
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      ["qa"]
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].name).toBe("QA");
+    expect(result[0].slug).toBe("qa");
+  });
+
+  it("should resolve @qa by role when no agent has slug/name qa but one has QA role", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_qa" as Id<"agents">,
+          name: "QA Reviewer",
+          slug: "qa-reviewer",
+          role: "QA / Reviewer",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ]
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      ["qa"]
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].name).toBe("QA Reviewer");
+    expect(result[0].slug).toBe("qa");
+  });
 });
 
 // ============================================================================

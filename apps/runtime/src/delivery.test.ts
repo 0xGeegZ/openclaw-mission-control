@@ -5,7 +5,10 @@
 import { describe, it, expect } from "vitest";
 import {
   _getNoResponseRetryDecision,
+  _isNoReplySignal,
   _resetNoResponseRetryState,
+  _shouldPersistOrchestratorThreadAck,
+  _shouldPersistNoResponseFallback,
   canAgentMarkDone,
   shouldDeliverToAgent,
   formatNotificationMessage,
@@ -478,6 +481,132 @@ describe("no response retry decision", () => {
     expect(first.shouldRetry).toBe(true);
     expect(second.shouldRetry).toBe(true);
     expect(third.shouldRetry).toBe(false);
+  });
+});
+
+describe("no reply signal detection", () => {
+  it("detects legacy no-reply sentinel values", () => {
+    expect(_isNoReplySignal("NO_REPLY")).toBe(true);
+    expect(_isNoReplySignal("NO")).toBe(true);
+    expect(_isNoReplySignal("NO_")).toBe(true);
+  });
+
+  it("does not treat HEARTBEAT_OK as a no-reply signal", () => {
+    expect(_isNoReplySignal("HEARTBEAT_OK")).toBe(false);
+  });
+});
+
+describe("no response fallback persistence policy", () => {
+  it("disables fallback persistence for actionable notifications", () => {
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "mention" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({
+        notificationType: "response_request",
+      }),
+    ).toBe(false);
+  });
+
+  it("skips fallback for routine thread updates", () => {
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "status_change" }),
+    ).toBe(false);
+  });
+});
+
+describe("orchestrator no-reply acknowledgment policy", () => {
+  it("persists a short ack for orchestrator thread updates on in_progress tasks", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "engineer",
+        content: "Progress update",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(true);
+  });
+
+  it("does not persist orchestrator ack for blocked tasks", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      task: {
+        _id: "t1",
+        status: "blocked",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "engineer",
+        content: "Still blocked",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+  });
+
+  it("does not persist orchestrator ack when recipient is not orchestrator", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "engineer",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "engineer", role: "Engineer", name: "Engineer" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "qa",
+        content: "QA update",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
 });
 

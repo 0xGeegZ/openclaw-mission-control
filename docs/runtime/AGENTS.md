@@ -129,6 +129,13 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 
 If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fallback endpoints below for manual/CLI use. Prefer the tools when they are offered.
 
+### Tool-only document/file sharing (critical)
+
+- Never claim a document or file is shared unless it was created/uploaded through the proper runtime tool.
+- For docs, always use `document_upsert` and include the returned `documentId` and link in your thread reply.
+- For file attachments, always use the runtime upload tool flow (upload URL + register/attach step when available). Do not share local file paths or "available in workspace" claims.
+- If the required tool is missing or fails, report **BLOCKED**. Do not pretend the user can access the file.
+
 ### Agent follow-ups (tool-only)
 
 Agent @mentions do **not** notify other agents. To request a follow-up, you must use the **response_request** tool (or the HTTP fallback below). If the tool is unavailable and HTTP is unreachable, report **BLOCKED** and state that you cannot request agent responses.
@@ -215,6 +222,7 @@ When creating a doc, always include:
 - "How to verify" (when relevant)
 - Last updated timestamp
 - After creating/updating the doc, always share it in your thread update: include the documentId, a one-line summary, and a Markdown link `[Document](/document/<documentId>)`. If you only paste content in the thread, the primary user may not see the document.
+- If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths as if they were shared deliverables.
 
 ## Safety / secrets
 

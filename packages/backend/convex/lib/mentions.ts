@@ -1,6 +1,18 @@
 import { QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 import type { RecipientType } from "@packages/shared";
+
+/** Role/slug pattern for QA agents; aligned with service/tasks isQaAgent. */
+const QA_AGENT_PATTERN = /\bqa\b|quality assurance|quality\b/i;
+
+function isQaAgentProfile(
+  agent: Pick<Doc<"agents">, "role" | "slug">,
+): boolean {
+  const slug = (agent.slug ?? "").toLowerCase();
+  if (slug === "qa") return true;
+  return QA_AGENT_PATTERN.test(agent.role ?? "");
+}
 
 /**
  * Parsed mention with resolved entity.
@@ -109,18 +121,31 @@ export async function resolveMentions(
     }
 
     // Try to match agent by slug or name (case-insensitive)
-    const matchedAgent = agents.find(
+    let matchedAgent = agents.find(
       (a) =>
         a.slug.toLowerCase() === normalized ||
         a.name.toLowerCase() === normalized,
     );
 
+    // Fallback: @qa resolves to the account's QA agent by role (e.g. "QA / Reviewer")
+    // when no agent has slug/name "qa", so @qa is always mentionable when a QA agent exists.
+    if (!matchedAgent && normalized === "qa") {
+      const qaAgents = agents.filter((a) => isQaAgentProfile(a));
+      matchedAgent =
+        qaAgents.find((a) => a.slug.toLowerCase() === "qa") ?? qaAgents[0];
+    }
+
     if (matchedAgent) {
+      // When @qa was resolved via role fallback, expose slug "qa" so UI mentionMap matches the token "@qa".
+      const slugForMention =
+        normalized === "qa" && matchedAgent.slug.toLowerCase() !== "qa"
+          ? "qa"
+          : matchedAgent.slug;
       mentions.push({
         type: "agent",
         id: matchedAgent._id,
         name: matchedAgent.name,
-        slug: matchedAgent.slug,
+        slug: slugForMention,
       });
       resolved.add(normalized);
     }
