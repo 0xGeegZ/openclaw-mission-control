@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
-  "changelog": ["@changesets/changelog-git"],
+  "changelog": ["@changesets/changelog-git", {}],
   "commit": true,
   "commitMessage": "chore(release): update changelog [skip ci]",
   "fixed": [],
@@ -8,9 +8,8 @@
   "access": "public",
   "baseBranch": "dev",
   "updateInternalDependencies": "patch",
-  "ignore": ["@openclaw/docs"],
   "privatePackages": {
-    "version": false,
+    "version": true,
     "tag": false
   }
 }
