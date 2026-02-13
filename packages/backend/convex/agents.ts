@@ -37,7 +37,7 @@ export const list = query({
   args: {
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Doc<"agents">[]> => {
     await requireAccountMember(ctx, args.accountId);
 
     const agents = await ctx.db
