@@ -7,6 +7,7 @@ import {
   requireAccountOwner,
 } from "./lib/auth";
 import { memberRoleValidator } from "./lib/validators";
+import { ConvexError, ErrorCode } from "./lib/errors";
 import { logActivity } from "./lib/activity";
 import {
   createMemberAddedNotification,
@@ -98,12 +99,12 @@ export const invite = mutation({
       .unique();
     
     if (existing) {
-      throw new Error("Conflict: User is already a member");
+      throw new ConvexError(ErrorCode.CONFLICT, "User is already a member", { accountId: args.accountId, userId });
     }
     
     // Cannot invite as owner (only one owner per account)
     if (args.role === "owner") {
-      throw new Error("Forbidden: Cannot invite as owner");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Cannot invite as owner", { accountId: args.accountId });
     }
     
     const membershipId = await ctx.db.insert("memberships", {
@@ -160,21 +161,21 @@ export const updateRole = mutation({
 
     const membership = await ctx.db.get(args.membershipId);
     if (!membership) {
-      throw new Error("Not found: Membership does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Membership does not exist", { membershipId: args.membershipId });
     }
     
     if (membership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Membership belongs to different account");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Membership belongs to different account");
     }
     
     // Cannot change owner's role
     if (membership.role === "owner") {
-      throw new Error("Forbidden: Cannot change owner's role");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Cannot change owner's role", { membershipId: args.membershipId });
     }
     
     // Cannot promote to owner
     if (args.role === "owner") {
-      throw new Error("Forbidden: Cannot promote to owner");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Cannot promote to owner", { role: args.role });
     }
     
     await ctx.db.patch(args.membershipId, { role: args.role });
@@ -221,16 +222,16 @@ export const remove = mutation({
 
     const membership = await ctx.db.get(args.membershipId);
     if (!membership) {
-      throw new Error("Not found: Membership does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Membership does not exist", { membershipId: args.membershipId });
     }
 
     if (membership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Membership belongs to different account");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Membership belongs to different account");
     }
 
     // Cannot remove owner
     if (membership.role === "owner") {
-      throw new Error("Forbidden: Cannot remove owner");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Cannot remove owner", { membershipId: args.membershipId });
     }
 
     const removedUserId = membership.userId;
@@ -277,7 +278,7 @@ export const leave = mutation({
     
     // Owner cannot leave
     if (membership.role === "owner") {
-      throw new Error("Forbidden: Owner cannot leave account. Transfer ownership first.");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Owner cannot leave account. Transfer ownership first.", { accountId: args.accountId });
     }
 
     await logActivity({
@@ -313,11 +314,11 @@ export const transferOwnership = mutation({
 
     const newOwnerMembership = await ctx.db.get(args.newOwnerMembershipId);
     if (!newOwnerMembership) {
-      throw new Error("Not found: Target membership does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Target membership does not exist", { targetMembershipId });
     }
     
     if (newOwnerMembership.accountId !== args.accountId) {
-      throw new Error("Forbidden: Target membership belongs to different account");
+      throw new ConvexError(ErrorCode.FORBIDDEN, "Target membership belongs to different account");
     }
     
     const newOwnerUserId = newOwnerMembership.userId;

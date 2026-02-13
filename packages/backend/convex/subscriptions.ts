@@ -4,6 +4,7 @@ import { requireAccountMember } from "./lib/auth";
 import { recipientTypeValidator } from "./lib/validators";
 import { Id } from "./_generated/dataModel";
 import type { RecipientType } from "@packages/shared";
+import { ConvexError, ErrorCode } from "./lib/errors";
 
 /**
  * Get subscriptions for a task.
@@ -68,7 +69,7 @@ export const subscribe = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
     
     const { userId } = await requireAccountMember(ctx, task.accountId);
@@ -107,7 +108,7 @@ export const unsubscribe = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
-      throw new Error("Not found: Task does not exist");
+      throw new ConvexError(ErrorCode.NOT_FOUND, "Task does not exist", { taskId: args.taskId });
     }
     
     const { userId } = await requireAccountMember(ctx, task.accountId);
@@ -177,7 +178,7 @@ export async function ensureSubscribed(
 ): Promise<void> {
   const existing = await ctx.db
     .query("subscriptions")
-    .withIndex("by_task_subscriber", (q: any) => 
+    .withIndex("by_task_subscriber", (q) => 
       q.eq("taskId", taskId)
        .eq("subscriberType", subscriberType)
        .eq("subscriberId", subscriberId)
