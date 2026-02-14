@@ -48,7 +48,7 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/consistent-type-imports": [
         "warn",
         {
-          prefer: "type-only",
+          prefer: "type-imports",
           fixStyle: "inline-type-imports",
         },
       ],
