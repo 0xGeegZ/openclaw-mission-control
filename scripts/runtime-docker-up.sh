@@ -27,6 +27,16 @@ if [ -n "$PROFILE" ]; then
   compose_args+=( --profile "$PROFILE" )
 fi
 
+# Ensure volume dirs exist. Runtime container runs as UID 10001 (see apps/runtime/Dockerfile);
+# the workspace mount must be writable by that user so profile sync can create agents/ and openclaw.json.
+RUNTIME_UID=10001
+RUNTIME_GID=10001
+mkdir -p .runtime/openclaw-workspace .runtime/openclaw-data
+if ! chown -R "${RUNTIME_UID}:${RUNTIME_GID}" .runtime/openclaw-workspace 2>/dev/null; then
+  echo "Note: Could not chown .runtime/openclaw-workspace to ${RUNTIME_UID}:${RUNTIME_GID} (may need sudo). If the runtime fails with EACCES, run:" >&2
+  echo "  sudo chown -R ${RUNTIME_UID}:${RUNTIME_GID} .runtime/openclaw-workspace" >&2
+fi
+
 # Clean up any leftover containers/networks from a previous failed run to avoid
 # "network ... not found" when Docker has stale references (common on macOS).
 docker compose "${compose_args[@]}" down --remove-orphans 2>/dev/null || true
