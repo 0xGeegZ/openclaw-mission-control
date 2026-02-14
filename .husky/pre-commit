@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+
+# Husky pre-commit hook for OpenClaw Mission Control
+# Runs lint, typecheck, and tests on staged changes
+# Blocks commit if any check fails
+
+if ! command -v npx &> /dev/null; then
+  echo "❌ npx not found. Please ensure Node.js is installed."
+  exit 1
+fi
+
+echo "🔍 Step 1: Running lint-staged on staged changes..."
+npx lint-staged
+if [ $? -ne 0 ]; then
+  echo "❌ Linting failed. Please fix errors and try again."
+  exit 1
+fi
+
+echo "✅ Linting passed"
+
+echo ""
+echo "🔍 Step 2: Running TypeScript compiler check..."
+npm run typecheck
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript compilation failed. Please fix type errors and try again."
+  exit 1
+fi
+
+echo "✅ TypeScript check passed"
+
+echo ""
+echo "🔍 Step 3: Running unit tests..."
+npm run test
+if [ $? -ne 0 ]; then
+  echo "❌ Tests failed. Please fix failing tests and try again."
+  exit 1
+fi
+
+echo "✅ All tests passed"
+echo ""
+echo "✅ All pre-commit checks passed! Commit allowed."
