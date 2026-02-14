@@ -172,7 +172,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
       message.toLowerCase().includes("permission denied")
     ) {
       log.warn(
-        "Workspace mount must be writable by runtime user (UID 10001). From repo root run: sudo chown -R 10001:10001 .runtime/openclaw-workspace",
+        "Workspace mount must be writable by runtime. From repo root run: sudo chown -R $(id -u):$(id -g) .runtime/openclaw-workspace && sudo chmod -R a+rwX .runtime/openclaw-workspace (or re-run npm run dev:openclaw which does this automatically).",
       );
     }
   }
