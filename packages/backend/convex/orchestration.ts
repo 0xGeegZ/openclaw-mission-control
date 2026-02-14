@@ -4,11 +4,11 @@ import { v } from "convex/values";
 /**
  * Execute container creation via orchestration script.
  * Called asynchronously from createContainer mutation.
- * 
+ *
  * Spawns: orchestrator-containers.sh create {accountId} {port} {plan}
  * On success: Updates Convex container record to status="running"
  * On failure: Updates container record to status="failed" with error log
- * 
+ *
  * Phase 1.2: Host-side integration pending (shell script execution requires
  * either process execution on host or HTTP endpoint for triggering provisioning)
  */
@@ -23,12 +23,12 @@ export const executeCreate = internalMutation({
     try {
       // Phase 1B: Record orchestration intent in database
       // Container status is "creating" from mutation; this action validates and progresses it
-      
+
       const container = await ctx.db.get(args.containerId);
       if (!container) {
         throw new Error(`Container not found: ${args.containerId}`);
       }
-      
+
       if (container.status !== "creating") {
         throw new Error(
           `Cannot provision container with status=${container.status}; expected status=creating`
@@ -45,7 +45,7 @@ export const executeCreate = internalMutation({
       // Real implementation: await executeShell(
       //   `/opt/openclaw/orchestrator-containers.sh create ${args.accountId} ${args.assignedPort} ${args.plan}`
       // );
-      
+
       // For MVP, update status to "running" to demonstrate Convex state transitions
       // Host provisioning will be added in Phase 1.2
       await ctx.db.patch(args.containerId, {
@@ -60,23 +60,35 @@ export const executeCreate = internalMutation({
           accountId: args.accountId,
           port: args.assignedPort,
           plan: args.plan,
-          status: "running (status updated; awaiting Phase 1.2 host provisioning)",
+          status:
+            "running (status updated; awaiting Phase 1.2 host provisioning)",
         }
       );
     } catch (error) {
-      // Update status to "failed" and log the error
+      // Update status to "failed" and append error to log (preserving history)
       const errorMsg =
         error instanceof Error ? error.message : String(error);
-      
+
+      const container = await ctx.db.get(args.containerId);
+      const updatedErrorLog = container?.errorLog
+        ? [
+            ...container.errorLog,
+            {
+              timestamp: Date.now(),
+              message: `[executeCreate] ${errorMsg}`,
+            },
+          ]
+        : [
+            {
+              timestamp: Date.now(),
+              message: `[executeCreate] ${errorMsg}`,
+            },
+          ];
+
       await ctx.db.patch(args.containerId, {
         status: "failed",
         updatedAt: Date.now(),
-        errorLog: [
-          {
-            timestamp: Date.now(),
-            message: `[executeCreate] ${errorMsg}`,
-          },
-        ],
+        errorLog: updatedErrorLog,
       });
 
       console.error(
@@ -91,10 +103,10 @@ export const executeCreate = internalMutation({
 /**
  * Execute container deletion via orchestration script.
  * Called asynchronously from deleteContainer mutation.
- * 
+ *
  * Spawns: orchestrator-containers.sh delete {accountId}
  * Cleans up Docker container, network, volumes, compose file
- * 
+ *
  * Phase 1.2: Host-side integration pending (see executeCreate for details)
  */
 export const executeDelete = internalMutation({
@@ -112,7 +124,7 @@ export const executeDelete = internalMutation({
       // Phase 1B: Update status to "deleted" after cleanup intent
       // Phase 1.2 TODO: Execute: orchestrator-containers.sh delete {accountId}
       // (see executeCreate for host integration details)
-      
+
       await ctx.db.patch(args.containerId, {
         status: "deleted",
         updatedAt: Date.now(),
@@ -129,16 +141,27 @@ export const executeDelete = internalMutation({
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : String(error);
-      
+
+      const container = await ctx.db.get(args.containerId);
+      const updatedErrorLog = container?.errorLog
+        ? [
+            ...container.errorLog,
+            {
+              timestamp: Date.now(),
+              message: `[executeDelete] ${errorMsg}`,
+            },
+          ]
+        : [
+            {
+              timestamp: Date.now(),
+              message: `[executeDelete] ${errorMsg}`,
+            },
+          ];
+
       await ctx.db.patch(args.containerId, {
         status: "failed",
         updatedAt: Date.now(),
-        errorLog: [
-          {
-            timestamp: Date.now(),
-            message: `[executeDelete] ${errorMsg}`,
-          },
-        ],
+        errorLog: updatedErrorLog,
       });
 
       console.error(
@@ -153,10 +176,10 @@ export const executeDelete = internalMutation({
 /**
  * Execute container restart via orchestration script.
  * Called asynchronously from restartContainer mutation.
- * 
+ *
  * Spawns: orchestrator-containers.sh restart {accountId}
  * Restarts docker-compose service and waits for health check
- * 
+ *
  * Phase 1.2: Host-side integration pending (see executeCreate for details)
  */
 export const executeRestart = internalMutation({
@@ -181,7 +204,7 @@ export const executeRestart = internalMutation({
       // Reset health check counter to validate restart succeeded
       // Phase 1.2 TODO: Execute: orchestrator-containers.sh restart {accountId}
       // (see executeCreate for host integration details)
-      
+
       await ctx.db.patch(args.containerId, {
         status: "running",
         healthChecksPassed: 0,
@@ -193,22 +216,34 @@ export const executeRestart = internalMutation({
         {
           containerId: args.containerId,
           accountId: args.accountId,
-          status: "running (health checks reset; awaiting Phase 1.2 host restart)",
+          status:
+            "running (health checks reset; awaiting Phase 1.2 host restart)",
         }
       );
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : String(error);
-      
+
+      const container = await ctx.db.get(args.containerId);
+      const updatedErrorLog = container?.errorLog
+        ? [
+            ...container.errorLog,
+            {
+              timestamp: Date.now(),
+              message: `[executeRestart] ${errorMsg}`,
+            },
+          ]
+        : [
+            {
+              timestamp: Date.now(),
+              message: `[executeRestart] ${errorMsg}`,
+            },
+          ];
+
       await ctx.db.patch(args.containerId, {
         status: "failed",
         updatedAt: Date.now(),
-        errorLog: [
-          {
-            timestamp: Date.now(),
-            message: `[executeRestart] ${errorMsg}`,
-          },
-        ],
+        errorLog: updatedErrorLog,
       });
 
       console.error(
@@ -223,10 +258,10 @@ export const executeRestart = internalMutation({
 /**
  * Poll and execute pending health checks.
  * Called by health check daemon every 30 seconds (via systemd timer).
- * 
+ *
  * Phase 1B: Queries all running containers and polls their health status.
  * Phase 1.2 TODO: Spawns: orchestrator-containers.sh health-check
- * 
+ *
  * Results update Convex container records with:
  * - healthChecksPassed (increment on pass)
  * - lastHealthCheck (timestamp)
@@ -235,15 +270,13 @@ export const executeRestart = internalMutation({
  */
 export const executeHealthCheckAll = internalMutation({
   args: {},
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     try {
       // Phase 1B: Query all containers with status="running"
-      const runningContainers = await ctx.db
-        .query("containers")
-        .collect()
-        .then((containers) =>
-          containers.filter((c) => c.status === "running")
-        );
+      const allContainers = await ctx.db.query("containers").collect();
+      const runningContainers = allContainers.filter(
+        (c) => c.status === "running"
+      );
 
       if (runningContainers.length === 0) {
         console.log("[Phase 1B] No running containers to health-check");
@@ -280,6 +313,8 @@ export const executeHealthCheckAll = internalMutation({
 /**
  * Health check for a single container.
  * Called from executeHealthCheckAll to update individual results.
+ *
+ * Updates container status to "failed" if 3 or more error logs accumulated.
  */
 export const logHealthCheckResult = internalMutation({
   args: {
@@ -302,16 +337,23 @@ export const logHealthCheckResult = internalMutation({
       });
     } else {
       // Log error and potentially mark as failed if threshold exceeded
-      const updatedErrorLog = [
-        ...(container.errorLog || []),
-        {
-          timestamp: Date.now(),
-          message: args.errorMessage || "Health check failed",
-        },
-      ];
+      const updatedErrorLog = container?.errorLog
+        ? [
+            ...container.errorLog,
+            {
+              timestamp: Date.now(),
+              message: args.errorMessage || "Health check failed",
+            },
+          ]
+        : [
+            {
+              timestamp: Date.now(),
+              message: args.errorMessage || "Health check failed",
+            },
+          ];
 
-      // Mark as failed after 3 consecutive health check failures
-      // For simplicity, we count the total failures (in Phase 1.2, this could be more nuanced)
+      // Mark as failed after 3 accumulated errors
+      // Phase 1.2 TODO: Track consecutive failures instead of total errors for better recovery
       const shouldMarkFailed = updatedErrorLog.length >= 3;
 
       await ctx.db.patch(args.containerId, {
@@ -320,7 +362,7 @@ export const logHealthCheckResult = internalMutation({
         errorLog: updatedErrorLog,
       });
     }
-    
+
     console.log(`[Phase 1B] Health check result logged for container`, {
       containerId: args.containerId,
       passed: args.passed,
