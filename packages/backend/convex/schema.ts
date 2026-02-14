@@ -121,7 +121,7 @@ export default defineSchema({
         ),
         /** Agent ID designated as squad lead/orchestrator (PM). Receives thread updates for all tasks. */
         orchestratorAgentId: v.optional(v.id("agents")),
-        /** Task ID used for the orchestrator chat thread (PM task). */
+        /** Task ID used for orchestrator chat (PM conversation thread). */
         orchestratorChatTaskId: v.optional(v.id("tasks")),
       }),
     ),
@@ -861,4 +861,251 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // ==========================================================================
+  // BILLING SUBSCRIPTIONS
+  // Stripe subscription management for plan upgrades and billing.
+  // ==========================================================================
+  billingSubscriptions: defineTable({
+    /** Account this subscription belongs to */
+    accountId: v.id("accounts"),
+
+    /** Stripe customer ID */
+    stripeCustomerId: v.string(),
+
+    /** Stripe subscription ID */
+    stripeSubscriptionId: v.string(),
+
+    /** Stripe price ID (identifies the plan tier) */
+    stripePriceId: v.string(),
+
+    /** Current subscription plan */
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+
+    /** Subscription status from Stripe */
+    status: v.union(
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("incomplete"),
+      v.literal("trialing"),
+      v.literal("unpaid"),
+    ),
+
+    /** Current billing period start (Unix timestamp) */
+    currentPeriodStart: v.number(),
+
+    /** Current billing period end (Unix timestamp) */
+    currentPeriodEnd: v.number(),
+
+    /** Whether subscription will cancel at period end */
+    cancelAtPeriodEnd: v.boolean(),
+
+    /** Trial end date (optional, Unix timestamp) */
+    trialEnd: v.optional(v.number()),
+
+    /** Timestamp of creation */
+    createdAt: v.number(),
+
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"]),
+
+  // ==========================================================================
+  // INVOICES
+  // Track Stripe invoices for billing history and downloads.
+  // ==========================================================================
+  invoices: defineTable({
+    /** Account this invoice belongs to */
+    accountId: v.id("accounts"),
+
+    /** Stripe invoice ID */
+    stripeInvoiceId: v.string(),
+
+    /** Stripe customer ID */
+    stripeCustomerId: v.string(),
+
+    /** Amount due in cents */
+    amountDue: v.number(),
+
+    /** Amount paid in cents */
+    amountPaid: v.number(),
+
+    /** Currency code (e.g., "usd") */
+    currency: v.string(),
+
+    /** Invoice status from Stripe */
+    status: v.union(
+      v.literal("draft"),
+      v.literal("open"),
+      v.literal("paid"),
+      v.literal("void"),
+      v.literal("uncollectible"),
+    ),
+
+    /** Hosted invoice URL (Stripe-hosted page) */
+    hostedInvoiceUrl: v.optional(v.string()),
+
+    /** Invoice PDF URL */
+    invoicePdf: v.optional(v.string()),
+
+    /** Billing period start (Unix timestamp) */
+    periodStart: v.number(),
+
+    /** Billing period end (Unix timestamp) */
+    periodEnd: v.number(),
+
+    /** Timestamp of invoice creation */
+    createdAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_created", ["accountId", "createdAt"])
+    .index("by_stripe_invoice", ["stripeInvoiceId"]),
+
+  // ==========================================================================
+  // USAGE RECORDS
+  // Track monthly usage for plan limits and metering.
+  // ==========================================================================
+  usageRecords: defineTable({
+    /** Account this usage record belongs to */
+    accountId: v.id("accounts"),
+
+    /** Period in YYYY-MM format */
+    period: v.string(),
+
+    /** Number of agents created this period */
+    agents: v.number(),
+
+    /** Number of tasks created this period */
+    tasks: v.number(),
+
+    /** Number of messages sent this period */
+    messages: v.number(),
+
+    /** Number of documents created this period */
+    documents: v.number(),
+
+    /** Storage used in bytes */
+    storageBytes: v.number(),
+
+    /** Timestamp of creation */
+    createdAt: v.number(),
+
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account_period", ["accountId", "period"])
+    .index("by_period", ["period"]),
+
+  // ==========================================================================
+  // BILLING ACTIONS / AUDIT TRAIL
+  // Track user actions related to billing (upgrades, downgrades, cancellations).
+  // ==========================================================================
+  billingActions: defineTable({
+    /** Account this action belongs to */
+    accountId: v.id("accounts"),
+
+    /** User ID who performed the action (or "system" for webhook events) */
+    userId: v.string(),
+
+    /** Type of billing action (spec: plan_upgraded, plan_downgraded, plan_renewed, plan_cancelled, payment_failed, invoice_paid, usage_limit_exceeded, customer_portal_accessed) */
+    actionType: v.union(
+      v.literal("plan_upgraded"),
+      v.literal("plan_downgraded"),
+      v.literal("plan_renewed"),
+      v.literal("plan_cancelled"),
+      v.literal("payment_failed"),
+      v.literal("invoice_paid"),
+      v.literal("usage_limit_exceeded"),
+      v.literal("customer_portal_accessed"),
+    ),
+
+    /** Human-readable description of the action */
+    description: v.optional(v.string()),
+
+    /** Detailed context about the action */
+    details: v.optional(
+      v.object({
+        old_plan: v.optional(v.string()), // e.g., "free", "pro", "enterprise"
+        new_plan: v.optional(v.string()), // e.g., "free", "pro", "enterprise"
+        amount: v.optional(v.number()), // Amount in cents
+        amount_currency: v.optional(v.string()), // e.g., "usd"
+        invoice_id: v.optional(v.string()), // Stripe invoice ID
+        stripe_subscription_id: v.optional(v.string()), // Stripe subscription ID
+        stripe_customer_id: v.optional(v.string()), // Stripe customer ID
+        stripe_price_id: v.optional(v.string()), // Stripe price ID
+        stripe_event_id: v.optional(v.string()), // Stripe event ID for webhook tracking
+      }),
+    ),
+
+    /** Additional metadata and context */
+    metadata: v.optional(
+      v.object({
+        reason: v.optional(v.string()), // User-provided reason (e.g., cancellation feedback)
+        reason_code: v.optional(v.string()), // e.g., "too_expensive", "unused", "switching"
+        feedback_text: v.optional(v.string()), // Extended user feedback
+        ip_address: v.optional(v.string()),
+        user_agent: v.optional(v.string()),
+      }),
+    ),
+
+    /** Timestamp of the action (Unix milliseconds) */
+    timestamp: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_timestamp", ["accountId", "timestamp"])
+    .index("by_user", ["userId"])
+    .index("by_action_type", ["actionType"])
+    .index("by_account_action", ["accountId", "actionType"]),
+
+  // ==========================================================================
+  // CONTAINERS
+  // Docker containers provisioned for accounts. Subject to quota limits.
+  // ==========================================================================
+  containers: defineTable({
+    accountId: v.id("accounts"),
+    name: v.string(),
+    imageTag: v.string(),
+    config: v.object({
+      cpuLimit: v.optional(v.number()),
+      memoryLimit: v.optional(v.number()),
+      envVars: v.optional(v.object({})),
+    }),
+    status: v.string(), // provisioning, running, stopped, error
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
+
+  // ==========================================================================
+  // USAGE TRACKING
+  // Per-account quota tracking for subscription enforcement.
+  // Tracks messages, API calls, agents, and containers per plan tier.
+  // ==========================================================================
+  usage: defineTable({
+    accountId: v.id("accounts"),
+    planId: accountPlanValidator,
+
+    // Monthly message tracking
+    messagesThisMonth: v.number(),
+    messagesMonthStart: v.number(), // timestamp when current month started
+
+    // Daily API calls tracking
+    apiCallsToday: v.number(),
+    apiCallsDayStart: v.number(), // timestamp when current day started
+
+    // Real-time resource counts
+    agentCount: v.number(),
+    containerCount: v.number(),
+
+    // Reset configuration
+    resetCycle: v.union(v.literal("monthly"), v.literal("yearly")),
+    lastReset: v.number(), // timestamp of last reset
+
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
 });
