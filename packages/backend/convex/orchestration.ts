@@ -35,19 +35,15 @@ export const executeCreate = internalMutation({
         );
       }
 
-      // Phase 1.2 TODO: Execute host-side provisioning
-      // This requires either:
-      // 1. Process execution via child_process (if action runs on host)
-      // 2. HTTP POST to /api/orchestrate/container/create endpoint on host
+      // Phase 1.2 TODO: Execute host-side provisioning via:
+      // 1. child_process (if action runs on host)
+      // 2. HTTP POST to /api/orchestrate/container/create endpoint
       // 3. Message queue (Bull, RabbitMQ) for deferred execution
-      //
-      // Placeholder: Simulate successful orchestration
       // Real implementation: await executeShell(
       //   `/opt/openclaw/orchestrator-containers.sh create ${args.accountId} ${args.assignedPort} ${args.plan}`
       // );
 
-      // For MVP, update status to "running" to demonstrate Convex state transitions
-      // Host provisioning will be added in Phase 1.2
+      // For MVP, mark container as running; actual provisioning deferred to Phase 1.2
       await ctx.db.patch(args.containerId, {
         status: "running",
         updatedAt: Date.now(),
@@ -121,9 +117,8 @@ export const executeDelete = internalMutation({
         throw new Error(`Container not found: ${args.containerId}`);
       }
 
-      // Phase 1B: Update status to "deleted" after cleanup intent
       // Phase 1.2 TODO: Execute: orchestrator-containers.sh delete {accountId}
-      // (see executeCreate for host integration details)
+      // (see executeCreate for host integration pattern)
 
       await ctx.db.patch(args.containerId, {
         status: "deleted",
@@ -200,11 +195,8 @@ export const executeRestart = internalMutation({
         );
       }
 
-      // Phase 1B: Update status to "running" after restart intent
-      // Reset health check counter to validate restart succeeded
       // Phase 1.2 TODO: Execute: orchestrator-containers.sh restart {accountId}
-      // (see executeCreate for host integration details)
-
+      // Reset health checks to validate restart succeeded
       await ctx.db.patch(args.containerId, {
         status: "running",
         healthChecksPassed: 0,
@@ -272,7 +264,6 @@ export const executeHealthCheckAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     try {
-      // Phase 1B: Query all containers with status="running"
       const allContainers = await ctx.db.query("containers").collect();
       const runningContainers = allContainers.filter(
         (c) => c.status === "running"
@@ -283,14 +274,13 @@ export const executeHealthCheckAll = internalMutation({
         return;
       }
 
-      // Phase 1.2 TODO: Execute health-check script:
+      // Phase 1.2 TODO: Execute health-check script and parse results:
       // const result = await executeShell(
       //   `/opt/openclaw/orchestrator-containers.sh health-check`
       // );
-      // Parse results and call logHealthCheckResult for each container
+      // Parse and call logHealthCheckResult for each container
 
-      // For MVP Phase 1B: Simulate successful health checks
-      // This demonstrates the Convex state transition patterns
+      // MVP: Simulate successful health checks for all running containers
       for (const container of runningContainers) {
         await ctx.db.patch(container._id, {
           healthChecksPassed: (container.healthChecksPassed || 0) + 1,
@@ -323,20 +313,18 @@ export const logHealthCheckResult = internalMutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Phase 1B: Update container health status based on health check result
     const container = await ctx.db.get(args.containerId);
     if (!container) {
       throw new Error(`Container not found: ${args.containerId}`);
     }
 
     if (args.passed) {
-      // Increment health checks passed
       await ctx.db.patch(args.containerId, {
         healthChecksPassed: (container.healthChecksPassed || 0) + 1,
         lastHealthCheck: Date.now(),
       });
     } else {
-      // Log error and potentially mark as failed if threshold exceeded
+      // Append error and potentially mark container as failed
       const updatedErrorLog = container?.errorLog
         ? [
             ...container.errorLog,
