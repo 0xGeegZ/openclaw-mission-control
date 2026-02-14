@@ -27,6 +27,16 @@ if [ -n "$PROFILE" ]; then
   compose_args+=( --profile "$PROFILE" )
 fi
 
+# Ensure volume dirs exist. Runtime container runs as UID 10001 (see apps/runtime/Dockerfile);
+# the workspace mount must be writable by that user so profile sync can create agents/ and openclaw.json.
+RUNTIME_UID=10001
+RUNTIME_GID=10001
+mkdir -p .runtime/openclaw-workspace .runtime/openclaw-data
+if ! chown -R "${RUNTIME_UID}:${RUNTIME_GID}" .runtime/openclaw-workspace 2>/dev/null; then
+  echo "Note: Could not chown .runtime/openclaw-workspace to ${RUNTIME_UID}:${RUNTIME_GID} (may need sudo). If the runtime fails with EACCES, run:" >&2
+  echo "  sudo chown -R ${RUNTIME_UID}:${RUNTIME_GID} .runtime/openclaw-workspace" >&2
+fi
+
 # Clean up any leftover containers/networks from a previous failed run to avoid
 # "network ... not found" when Docker has stale references (common on macOS).
 docker compose "${compose_args[@]}" down --remove-orphans 2>/dev/null || true
@@ -57,12 +67,12 @@ fi
 
 cat <<'EOF' >&2
 Docker compose failed.
-- If you see "failed to set up container networking: network ... not found": run
-  "npm run docker:down" (or "docker compose -f apps/runtime/docker-compose.runtime.yml down --remove-orphans"),
+- If you see "failed to set up container networking: network ... not found": from repo root run
+  "docker compose -f apps/runtime/docker-compose.runtime.yml down --remove-orphans" (or from apps/runtime: "npm run docker:down"),
   then restart Docker Desktop and retry.
 - If you see containerd-stargz snapshotter errors on macOS: restart Docker Desktop, or disable
   "Use containerd for pulling and storing images" in Docker Desktop > Settings > Features in development.
 
-Then rerun: npm run docker:up:openclaw
+Then rerun from apps/runtime: npm run docker:up (runtime only) or npm run docker:up:openclaw (with gateway).
 EOF
 exit 1

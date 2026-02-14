@@ -12,7 +12,6 @@ import type * as accounts from "../accounts.js";
 import type * as activities from "../activities.js";
 import type * as agents from "../agents.js";
 import type * as analytics from "../analytics.js";
-import type * as containers from "../containers.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as fleet from "../fleet.js";
@@ -60,7 +59,6 @@ declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   agents: typeof agents;
   analytics: typeof analytics;
-  containers: typeof containers;
   crons: typeof crons;
   documents: typeof documents;
   fleet: typeof fleet;
