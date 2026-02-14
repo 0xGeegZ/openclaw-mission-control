@@ -1,4 +1,4 @@
-import { internalAction } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -12,7 +12,7 @@ import { v } from "convex/values";
  * Phase 1.2: Host-side integration pending (shell script execution requires
  * either process execution on host or HTTP endpoint for triggering provisioning)
  */
-export const executeCreate = internalAction({
+export const executeCreate = internalMutation({
   args: {
     accountId: v.id("accounts"),
     containerId: v.id("containers"),
@@ -74,8 +74,7 @@ export const executeCreate = internalAction({
         errorLog: [
           {
             timestamp: Date.now(),
-            error: errorMsg,
-            action: "executeCreate",
+            message: `[executeCreate] ${errorMsg}`,
           },
         ],
       });
@@ -98,7 +97,7 @@ export const executeCreate = internalAction({
  * 
  * Phase 1.2: Host-side integration pending (see executeCreate for details)
  */
-export const executeDelete = internalAction({
+export const executeDelete = internalMutation({
   args: {
     accountId: v.id("accounts"),
     containerId: v.id("containers"),
@@ -137,8 +136,7 @@ export const executeDelete = internalAction({
         errorLog: [
           {
             timestamp: Date.now(),
-            error: errorMsg,
-            action: "executeDelete",
+            message: `[executeDelete] ${errorMsg}`,
           },
         ],
       });
@@ -161,7 +159,7 @@ export const executeDelete = internalAction({
  * 
  * Phase 1.2: Host-side integration pending (see executeCreate for details)
  */
-export const executeRestart = internalAction({
+export const executeRestart = internalMutation({
   args: {
     accountId: v.id("accounts"),
     containerId: v.id("containers"),
@@ -208,8 +206,7 @@ export const executeRestart = internalAction({
         errorLog: [
           {
             timestamp: Date.now(),
-            error: errorMsg,
-            action: "executeRestart",
+            message: `[executeRestart] ${errorMsg}`,
           },
         ],
       });
@@ -236,7 +233,7 @@ export const executeRestart = internalAction({
  * - status (mark as "failed" if threshold exceeded)
  * - errorLog (append failure reasons)
  */
-export const executeHealthCheckAll = internalAction({
+export const executeHealthCheckAll = internalMutation({
   args: {},
   handler: async (ctx, args) => {
     try {
@@ -284,7 +281,7 @@ export const executeHealthCheckAll = internalAction({
  * Health check for a single container.
  * Called from executeHealthCheckAll to update individual results.
  */
-export const logHealthCheckResult = internalAction({
+export const logHealthCheckResult = internalMutation({
   args: {
     containerId: v.id("containers"),
     passed: v.boolean(),
@@ -292,16 +289,35 @@ export const logHealthCheckResult = internalAction({
   },
   handler: async (ctx, args) => {
     // Phase 1B: Update container health status based on health check result
-    await ctx.runMutation(internal.containers.updateContainerHealthStatus, {
-      containerId: args.containerId,
-      passed: args.passed,
-    });
+    const container = await ctx.db.get(args.containerId);
+    if (!container) {
+      throw new Error(`Container not found: ${args.containerId}`);
+    }
 
-    // If failed and error message provided, log the error
-    if (!args.passed && args.errorMessage) {
-      await ctx.runMutation(internal.containers.logContainerError, {
-        containerId: args.containerId,
-        message: args.errorMessage,
+    if (args.passed) {
+      // Increment health checks passed
+      await ctx.db.patch(args.containerId, {
+        healthChecksPassed: (container.healthChecksPassed || 0) + 1,
+        lastHealthCheck: Date.now(),
+      });
+    } else {
+      // Log error and potentially mark as failed if threshold exceeded
+      const updatedErrorLog = [
+        ...(container.errorLog || []),
+        {
+          timestamp: Date.now(),
+          message: args.errorMessage || "Health check failed",
+        },
+      ];
+
+      // Mark as failed after 3 consecutive health check failures
+      // For simplicity, we count the total failures (in Phase 1.2, this could be more nuanced)
+      const shouldMarkFailed = updatedErrorLog.length >= 3;
+
+      await ctx.db.patch(args.containerId, {
+        status: shouldMarkFailed ? "failed" : container.status,
+        lastHealthCheck: Date.now(),
+        errorLog: updatedErrorLog,
       });
     }
     
