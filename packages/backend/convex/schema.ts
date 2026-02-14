@@ -1070,12 +1070,77 @@ export default defineSchema({
     name: v.string(),
     imageTag: v.string(),
     config: v.object({
-      cpuLimit: v.optional(v.number()),
-      memoryLimit: v.optional(v.number()),
+      cpuLimit: v.optional(v.number()), // CPU limit in millicores (1000 = 1 core)
+      memoryLimit: v.optional(v.number()), // Memory limit in MB
+      diskLimit: v.optional(v.number()), // Disk limit in MB
       envVars: v.optional(v.object({})),
     }),
     status: v.string(), // provisioning, running, stopped, error
     createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
+
+  // ==========================================================================
+  // RESOURCE METRICS
+  // Real-time resource usage tracking per container.
+  // Updated by monitoring system at regular intervals.
+  // ==========================================================================
+  resourceMetrics: defineTable({
+    accountId: v.id("accounts"),
+    containerId: v.id("containers"),
+    
+    // CPU usage
+    cpuUsageMilicores: v.number(), // Current CPU usage in millicores
+    cpuUsagePercent: v.number(), // Percentage of limit being used (0-100)
+    
+    // Memory usage
+    memoryUsageBytes: v.number(), // Current memory usage in bytes
+    memoryUsagePercent: v.number(), // Percentage of limit being used (0-100)
+    
+    // Disk usage
+    diskUsageBytes: v.number(), // Current disk usage in bytes
+    diskUsagePercent: v.number(), // Percentage of limit being used (0-100)
+    
+    // Alerts and thresholds
+    cpuThresholdExceeded: v.boolean(), // True if CPU usage > 80% of limit
+    memoryThresholdExceeded: v.boolean(), // True if memory usage > 80% of limit
+    diskThresholdExceeded: v.boolean(), // True if disk usage > 80% of limit
+    
+    // Timestamp of this metric sample
+    recordedAt: v.number(),
+    
+    // Last check timestamp
+    lastUpdateAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_container", ["containerId"])
+    .index("by_account_container", ["accountId", "containerId"])
+    .index("by_recorded_at", ["recordedAt"]),
+
+  // ==========================================================================
+  // RESOURCE QUOTAS
+  // Account-level resource quotas per subscription plan.
+  // ==========================================================================
+  resourceQuotas: defineTable({
+    accountId: v.id("accounts"),
+    planId: accountPlanValidator,
+    
+    // Per-container limits
+    maxCpuPerContainer: v.number(), // Max CPU in millicores per container
+    maxMemoryPerContainer: v.number(), // Max memory in MB per container
+    maxDiskPerContainer: v.number(), // Max disk in MB per container
+    
+    // Aggregate account limits
+    maxTotalCpu: v.number(), // Max total CPU across all containers
+    maxTotalMemory: v.number(), // Max total memory across all containers
+    maxTotalDisk: v.number(), // Max total disk across all containers
+    
+    // Current usage (cached for fast lookups)
+    currentTotalCpuInUse: v.number(),
+    currentTotalMemoryInUse: v.number(),
+    currentTotalDiskInUse: v.number(),
+    
     updatedAt: v.number(),
   })
     .index("by_account", ["accountId"]),
