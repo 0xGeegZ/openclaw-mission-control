@@ -9,12 +9,15 @@ import { Id } from "./_generated/dataModel";
 import { checkQuota, incrementUsage, decrementUsage } from "./lib/quotaHelpers";
 import { requireAccountAdmin, requireAccountMember } from "./lib/auth";
 import { logActivity } from "./lib/activity";
+import {
+  checkResourceQuota,
+  incrementResourceUsage,
+  decrementResourceUsage,
+} from "./lib/resourceHelpers";
 
 /**
  * Create a new container for an account.
- * Enforces quota limits before creation.
- *
- * Blocker 1 Implementation: Add containers.create enforcement
+ * Enforces subscription and resource quotas before creation.
  */
 export const create = mutation({
   args: {
@@ -25,6 +28,7 @@ export const create = mutation({
       v.object({
         cpuLimit: v.optional(v.number()),
         memoryLimit: v.optional(v.number()),
+        diskLimit: v.optional(v.number()),
         envVars: v.optional(v.object({})),
       }),
     ),
@@ -32,7 +36,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountAdmin(ctx, args.accountId);
 
-    // Check container quota before proceeding
+    // Check container count quota before proceeding
     const quotaCheck = await checkQuota(ctx, args.accountId, "containers");
     if (!quotaCheck.allowed) {
       throw new Error(
@@ -46,19 +50,44 @@ export const create = mutation({
       throw new Error(`Account not found: ${args.accountId}`);
     }
 
+    // Set default resource limits
+    const cpuLimit = args.config?.cpuLimit ?? 500; // 0.5 cores
+    const memoryLimit = args.config?.memoryLimit ?? 512; // 512 MB
+    const diskLimit = args.config?.diskLimit ?? 5120; // 5 GB
+
+    // Check resource quotas
+    const resourceQuotaCheck = await checkResourceQuota(
+      ctx,
+      args.accountId,
+      cpuLimit,
+      memoryLimit,
+      diskLimit,
+    );
+    if (!resourceQuotaCheck.allowed) {
+      throw new Error(
+        `Resource quota exceeded: ${resourceQuotaCheck.message}`,
+      );
+    }
+
     // Create container
     const containerId = await ctx.db.insert("containers", {
       accountId: args.accountId,
       name: args.name,
       imageTag: args.imageTag,
-      config: args.config || {},
+      config: {
+        cpuLimit,
+        memoryLimit,
+        diskLimit,
+        envVars: args.config?.envVars || {},
+      },
       status: "provisioning",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
 
-    // Increment usage quota
+    // Increment usage quotas
     await incrementUsage(ctx, args.accountId, "containers");
+    await incrementResourceUsage(ctx, args.accountId, cpuLimit, memoryLimit, diskLimit);
 
     // Log activity for audit trail
     try {
@@ -74,6 +103,9 @@ export const create = mutation({
         targetName: args.name,
         meta: {
           imageTag: args.imageTag,
+          cpuLimit,
+          memoryLimit,
+          diskLimit,
         },
       });
     } catch {
@@ -84,6 +116,11 @@ export const create = mutation({
       success: true,
       containerId,
       message: `Container '${args.name}' created successfully`,
+      resourceLimits: {
+        cpu: cpuLimit,
+        memory: memoryLimit,
+        disk: diskLimit,
+      },
     };
   },
 });
@@ -114,8 +151,12 @@ export const remove = mutation({
     // Delete container
     await ctx.db.delete(args.containerId);
 
-    // Decrement usage quota
+    // Decrement usage quotas
     await decrementUsage(ctx, args.accountId, "containers");
+    const cpuLimit = container.config.cpuLimit ?? 500;
+    const memoryLimit = container.config.memoryLimit ?? 512;
+    const diskLimit = container.config.diskLimit ?? 5120;
+    await decrementResourceUsage(ctx, args.accountId, cpuLimit, memoryLimit, diskLimit);
 
     // Get account for audit
     const account = await ctx.db.get(args.accountId);
@@ -132,7 +173,11 @@ export const remove = mutation({
         targetType: "container",
         targetId: args.containerId,
         targetName: container.name,
-        meta: {},
+        meta: {
+          cpuLimit,
+          memoryLimit,
+          diskLimit,
+        },
       });
     } catch {
       // Activity logging is optional; continue if it fails
