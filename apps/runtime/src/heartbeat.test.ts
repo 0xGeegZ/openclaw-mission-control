@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   buildHeartbeatMessage,
+  getAssigneeFollowUpDecision,
+  getLastAssigneeReplyTimestamp,
   mergeHeartbeatTasks,
   normalizeHeartbeatResponse,
   shouldRequestAssigneeResponse,
   sortHeartbeatTasks,
 } from "./heartbeat";
+import { buildNoResponseFallbackMessage } from "./gateway";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 type TaskDoc = Doc<"tasks">;
@@ -136,6 +139,37 @@ describe("sortHeartbeatTasks", () => {
       "task-blocked-very-stale",
     ]);
   });
+
+  it("keeps review ahead of assigned and blocked for orchestrator ordering", () => {
+    const reviewStale = buildTask({
+      _id: "task-review-stale" as TaskDoc["_id"],
+      status: "review",
+      updatedAt: 900,
+    });
+    const blockedVeryStale = buildTask({
+      _id: "task-blocked-very-stale-2" as TaskDoc["_id"],
+      status: "blocked",
+      updatedAt: 100,
+    });
+    const assignedStale = buildTask({
+      _id: "task-assigned-stale-2" as TaskDoc["_id"],
+      status: "assigned",
+      updatedAt: 500,
+    });
+
+    const sorted = sortHeartbeatTasks(
+      [blockedVeryStale, assignedStale, reviewStale],
+      {
+        statusPriority: ["in_progress", "review", "assigned", "blocked"],
+        preferStale: true,
+      },
+    );
+    expect(sorted.map((task) => task._id)).toEqual([
+      "task-review-stale",
+      "task-assigned-stale-2",
+      "task-blocked-very-stale-2",
+    ]);
+  });
 });
 
 describe("shouldRequestAssigneeResponse", () => {
@@ -187,20 +221,99 @@ describe("shouldRequestAssigneeResponse", () => {
     expect(shouldRequest).toBe(false);
   });
 
-  it("does not request follow-up for blocked tasks", () => {
+  it("supports a tighter stale window override (startup mode)", () => {
     const task = buildTask({
-      _id: "task-blocked" as TaskDoc["_id"],
-      status: "blocked",
+      _id: "task-startup-window" as TaskDoc["_id"],
+      status: "in_progress",
       assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
-      updatedAt: 1000,
-      createdAt: 1000,
+      updatedAt: 1_000,
+      createdAt: 1_000,
+    });
+    const shouldRequest = shouldRequestAssigneeResponse({
+      task,
+      lastAssigneeReplyAt: 10_000,
+      nowMs: 10_000 + 16 * 60 * 1000,
+      staleMs: 15 * 60 * 1000,
+    });
+    expect(shouldRequest).toBe(true);
+  });
+
+  it("requests follow-up for stale review tasks", () => {
+    const task = buildTask({
+      _id: "task-review-stale" as TaskDoc["_id"],
+      status: "review",
+      assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
+      updatedAt: 1_000,
+      createdAt: 1_000,
     });
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: null,
-      nowMs: 1000 + 48 * 60 * 60 * 1000,
+      nowMs: 1_000 + 3 * 60 * 60 * 1000 + 1,
     });
-    expect(shouldRequest).toBe(false);
+    expect(shouldRequest).toBe(true);
+  });
+});
+
+describe("getAssigneeFollowUpDecision", () => {
+  it("returns not_stale with elapsed metadata when below threshold", () => {
+    const task = buildTask({
+      _id: "task-not-stale" as TaskDoc["_id"],
+      status: "assigned",
+      assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
+      updatedAt: 2_000,
+      createdAt: 2_000,
+    });
+    const decision = getAssigneeFollowUpDecision({
+      task,
+      lastAssigneeReplyAt: null,
+      nowMs: 2_000 + 5 * 60 * 1000,
+      staleMs: 15 * 60 * 1000,
+    });
+    expect(decision.shouldRequest).toBe(false);
+    expect(decision.reason).toBe("not_stale");
+    expect(decision.elapsedMs).toBe(5 * 60 * 1000);
+    expect(decision.referenceTimestamp).toBe(2_000);
+  });
+});
+
+describe("getLastAssigneeReplyTimestamp", () => {
+  it("ignores no-response fallback assignee messages", () => {
+    const task = buildTask({
+      _id: "task-fallback-ignore" as TaskDoc["_id"],
+      assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
+    });
+    const timestamp = getLastAssigneeReplyTimestamp(task, [
+      {
+        authorType: "agent",
+        authorId: "agent-1",
+        content: buildNoResponseFallbackMessage("@squad-lead"),
+        createdAt: 5_000,
+      },
+      {
+        authorType: "agent",
+        authorId: "agent-1",
+        content: "I fixed the failing tests and pushed the branch.",
+        createdAt: 4_000,
+      },
+    ]);
+    expect(timestamp).toBe(4_000);
+  });
+
+  it("returns null when assignee replies are only fallback content", () => {
+    const task = buildTask({
+      _id: "task-only-fallback" as TaskDoc["_id"],
+      assignedAgentIds: ["agent-1" as TaskDoc["assignedAgentIds"][number]],
+    });
+    const timestamp = getLastAssigneeReplyTimestamp(task, [
+      {
+        authorType: "agent",
+        authorId: "agent-1",
+        content: buildNoResponseFallbackMessage(),
+        createdAt: 7_000,
+      },
+    ]);
+    expect(timestamp).toBeNull();
   });
 });
 
@@ -218,7 +331,7 @@ describe("buildHeartbeatMessage", () => {
     });
     expect(message).toContain("Tracked tasks:");
     expect(message).toContain(
-      "As the orchestrator, follow up on in_progress/assigned tasks",
+      "As the orchestrator, follow up on in_progress/review/assigned/blocked tasks",
     );
     expect(message).toContain("Task ID: task-orch");
   });
@@ -249,27 +362,21 @@ describe("buildHeartbeatMessage", () => {
     expect(message).toContain(
       "Across tracked tasks, keep follow-ups moving and avoid starvation",
     );
-    expect(message).toContain("Prioritize the stalest in_progress task first");
-    expect(message).toContain("task_load (or task_get/task_thread/task_search)");
-    expect(message).toContain("task_message thread comment");
+    expect(message).toContain(
+      "Prioritize stale in_progress/review tasks first",
+    );
+    expect(message).toContain(
+      "task_load (or task_get/task_thread/task_search)",
+    );
+    expect(message).toContain("response_request only");
+    expect(message).toContain("do not also post task_message");
     expect(message).toContain("response_request");
-    expect(message).toContain("If either step fails, report BLOCKED");
+    expect(message).toContain("report BLOCKED");
     expect(message).toContain("http://runtime:3000/agent/task-search");
-    expect(message).toContain("http://runtime:3000/agent/task-message");
+    expect(message).not.toContain("http://runtime:3000/agent/task-message");
+    expect(message).not.toContain("task_message thread comment");
     expect(message).toContain("http://runtime:3000/agent/response-request");
-    expect(message).toContain("x-openclaw-session-key");
     expect(message).toContain("Take up to 3 atomic follow-ups per heartbeat");
-  });
-
-  it("includes strict memory/read contract guidance", () => {
-    const message = buildHeartbeatMessage({
-      focusTask: null,
-      tasks: [],
-      isOrchestrator: false,
-    });
-    expect(message).toContain("Prefer memory_get/memory_set for memory files");
-    expect(message).toContain('{"path":"memory/WORKING.md"}');
-    expect(message).toContain("never target a directory");
   });
 
   it("includes recent focus task thread updates when provided", () => {
