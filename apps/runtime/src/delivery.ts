@@ -676,6 +676,8 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 context.agent.name,
                 skipMessageReason ?? "empty or intentionally suppressed",
               );
+              // Keep task notification retriable; do not mark delivered so next poll can retry.
+              continue;
             }
             await client.action(api.service.actions.markNotificationDelivered, {
               notificationId: notification._id,
