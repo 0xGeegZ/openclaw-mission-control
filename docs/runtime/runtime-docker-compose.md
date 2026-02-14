@@ -120,13 +120,14 @@ When using profile `openclaw`, Compose mounts:
 
 These directories are created on first run and are gitignored (`.runtime/`). To reset OpenClaw state, remove `.runtime/openclaw-data` and `.runtime/openclaw-workspace` and restart.
 
-**Volume permissions:** The runtime container runs as a non-root user (UID/GID `10001`). The bind mount for `openclaw-workspace` must be writable by that user so the runtime can create `agents/`, write `openclaw.json`, and sync profile data. The script `scripts/runtime-docker-up.sh` creates the directories and attempts `chown -R 10001:10001 .runtime/openclaw-workspace`; on most hosts this requires elevated privileges. If you see `EACCES: permission denied, mkdir '/root/clawd/agents'` in the runtime logs, run from the repo root:
+**Volume permissions:** The runtime container runs as UID `10001`; the OpenClaw gateway also writes to the same mount (e.g. `MEMORY.md`, `memory/WORKING.md`). The script `scripts/runtime-docker-up.sh` creates the directories, runs `chown -R 10001:10001 .runtime/openclaw-workspace`, then `chmod -R a+rwX` so both containers can write. If you see `EACCES: permission denied, mkdir '/root/clawd/agents'` in the runtime logs, run from the repo root:
 
 ```bash
 sudo chown -R 10001:10001 .runtime/openclaw-workspace
+chmod -R a+rwX .runtime/openclaw-workspace
 ```
 
-Then restart the stack. The gateway container runs as root and can write to the same mount regardless of ownership.
+If the gateway logs `touch: cannot touch '/root/clawd/MEMORY.md': Permission denied`, run the same `chmod` (and ensure `chown` was applied), then restart the stack.
 
 **Stale workspaces:** When an agent is removed from the account, the runtime stops syncing it and the generated `openclaw.json` no longer lists that agent. The agent's workspace directory under `.runtime/openclaw-workspace/agents/<slug>` is not deleted automatically. For a full cleanup, remove the `agents` directory (or specific `<slug>` subdirs) and restart, or leave it; new syncs will not use removed agents.
 
@@ -138,7 +139,10 @@ If you only need to trim the session list shown at `/sessions`, set `OPENCLAW_SE
   Ensure `ACCOUNT_ID`, `CONVEX_URL`, and `SERVICE_TOKEN` are set in `apps/runtime/.env`. The process exits with an error if any are missing.
 
 - **`EACCES: permission denied, mkdir '/root/clawd/agents'` (AgentSync)**  
-  The runtime runs as UID `10001`. The host directory `.runtime/openclaw-workspace` must be writable by that user. From repo root run: `sudo chown -R 10001:10001 .runtime/openclaw-workspace`, then restart. See **Volume permissions** under Volumes (OpenClaw).
+  From repo root run: `sudo chown -R 10001:10001 .runtime/openclaw-workspace` and `chmod -R a+rwX .runtime/openclaw-workspace`, then restart. See **Volume permissions** under Volumes (OpenClaw).
+
+- **`touch: cannot touch '/root/clawd/MEMORY.md': Permission denied` (gateway)**  
+  The shared workspace must be writable by both runtime (UID 10001) and gateway. From repo root run: `chmod -R a+rwX .runtime/openclaw-workspace` (and ensure `chown -R 10001:10001` was applied), then restart.
 
 - **Healthcheck fails in Docker**  
   Set `HEALTH_HOST=0.0.0.0` in `apps/runtime/.env` so the health server listens on all interfaces inside the container. The Compose file already passes `HEALTH_HOST=0.0.0.0` for the runtime service.

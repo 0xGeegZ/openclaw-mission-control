@@ -91,6 +91,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Prefer memory tools first: use memory_get / memory_set when available.
 - Use read only for explicit file paths, never for directories.
 - Read arguments must include a JSON object with path, for example: {"path":"memory/WORKING.md"}.
+- Only use read with paths under /root/clawd; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
 - If memory/YYYY-MM-DD.md is missing, create it before reading it.
 
 ## Document sharing (critical)

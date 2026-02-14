@@ -76,6 +76,7 @@ Use exactly one branch per task so each PR contains only that task's commits. Br
 - Prefer `memory_get` / `memory_set` when those tools are available.
 - Use `read` only for explicit file paths, never for directories.
 - When calling `read`, pass JSON args with `path`, for example: `{ "path": "memory/WORKING.md" }`.
+- Only use `read` with paths under `/root/clawd`; do not read `/usr`, `/usr/local`, or `node_modules` — they are not in your workspace.
 - If `memory/YYYY-MM-DD.md` does not exist, create it before trying to read it.
 
 ## Required output format for task thread updates

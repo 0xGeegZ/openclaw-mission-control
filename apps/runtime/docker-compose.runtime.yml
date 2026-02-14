@@ -30,6 +30,8 @@ services:
       dockerfile: apps/runtime/Dockerfile
     container_name: openclaw-runtime
     restart: unless-stopped
+    # Run as host user when DOCKER_UID/DOCKER_GID set (e.g. by runtime-docker-up.sh) so bind mount is writable without sudo.
+    user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
     env_file:
       - ./.env
     environment:

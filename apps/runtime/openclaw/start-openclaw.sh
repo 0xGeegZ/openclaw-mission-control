@@ -483,9 +483,10 @@ mkdir -p \
   "$WORKSPACE_DIR/deliverables" \
   "$WORKSPACE_DIR/repos" \
   "$OPENCLAW_WORKSPACE_ROOT"
-touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md"
+# Touch may fail if the shared mount is owned by runtime (UID 10001); non-fatal so gateway can still start.
+touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md" 2>/dev/null || true
 DAILY_MEMORY_FILE="$WORKSPACE_DIR/memory/$(date +%F).md"
-touch "$DAILY_MEMORY_FILE"
+touch "$DAILY_MEMORY_FILE" 2>/dev/null || true
 
 # Clone writable repo from GitHub only (no host mount)
 if [ ! -d "$WRITABLE_REPO_DIR/.git" ]; then

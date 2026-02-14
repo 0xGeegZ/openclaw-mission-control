@@ -27,14 +27,17 @@ if [ -n "$PROFILE" ]; then
   compose_args+=( --profile "$PROFILE" )
 fi
 
-# Ensure volume dirs exist. Runtime container runs as UID 10001 (see apps/runtime/Dockerfile);
-# the workspace mount must be writable by that user so profile sync can create agents/ and openclaw.json.
-RUNTIME_UID=10001
-RUNTIME_GID=10001
+# Run runtime as host user so the bind mount is writable without sudo.
+export DOCKER_UID="${DOCKER_UID:-$(id -u)}"
+export DOCKER_GID="${DOCKER_GID:-$(id -g)}"
 mkdir -p .runtime/openclaw-workspace .runtime/openclaw-data
-if ! chown -R "${RUNTIME_UID}:${RUNTIME_GID}" .runtime/openclaw-workspace 2>/dev/null; then
-  echo "Note: Could not chown .runtime/openclaw-workspace to ${RUNTIME_UID}:${RUNTIME_GID} (may need sudo). If the runtime fails with EACCES, run:" >&2
-  echo "  sudo chown -R ${RUNTIME_UID}:${RUNTIME_GID} .runtime/openclaw-workspace" >&2
+# Ensure workspace is owned by host user (runtime container runs as DOCKER_UID:DOCKER_GID).
+if ! chown -R "${DOCKER_UID}:${DOCKER_GID}" .runtime/openclaw-workspace 2>/dev/null; then
+  sudo chown -R "${DOCKER_UID}:${DOCKER_GID}" .runtime/openclaw-workspace 2>/dev/null || true
+fi
+# Writable by gateway (root) when it touches MEMORY.md etc.
+if ! chmod -R a+rwX .runtime/openclaw-workspace 2>/dev/null; then
+  sudo chmod -R a+rwX .runtime/openclaw-workspace 2>/dev/null || true
 fi
 
 # Clean up any leftover containers/networks from a previous failed run to avoid
