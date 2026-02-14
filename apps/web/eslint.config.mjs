@@ -73,8 +73,8 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/prefer-promise-reject-errors": "warn",
       "@typescript-eslint/no-floating-promises": "warn",
 
-      // Code quality (keep as errors: good practices)
-      "@typescript-eslint/prefer-const": "error",
+      // Code quality (keep as errors: good practices; prefer-const is core ESLint)
+      "prefer-const": "error",
       "@typescript-eslint/no-var-requires": "warn",
       "no-console": [
         "warn",
