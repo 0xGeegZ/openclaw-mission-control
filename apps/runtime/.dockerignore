@@ -1,3 +1,4 @@
+# Used when build context is apps/runtime. For the default Compose build (context repo root), the root .dockerignore applies.
 node_modules
 npm-debug.log
 dist

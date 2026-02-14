@@ -67,12 +67,12 @@ fi
 
 cat <<'EOF' >&2
 Docker compose failed.
-- If you see "failed to set up container networking: network ... not found": run
-  "npm run docker:down" (or "docker compose -f apps/runtime/docker-compose.runtime.yml down --remove-orphans"),
+- If you see "failed to set up container networking: network ... not found": from repo root run
+  "docker compose -f apps/runtime/docker-compose.runtime.yml down --remove-orphans" (or from apps/runtime: "npm run docker:down"),
   then restart Docker Desktop and retry.
 - If you see containerd-stargz snapshotter errors on macOS: restart Docker Desktop, or disable
   "Use containerd for pulling and storing images" in Docker Desktop > Settings > Features in development.
 
-Then rerun: npm run docker:up:openclaw
+Then rerun from apps/runtime: npm run docker:up (runtime only) or npm run docker:up:openclaw (with gateway).
 EOF
 exit 1

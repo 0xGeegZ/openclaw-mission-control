@@ -64,6 +64,7 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    # HEALTH_PORT can be set in .env (default 3000) if the health server uses a different port.
     healthcheck:
       test: ["CMD-SHELL", "curl -f \"http://127.0.0.1:${HEALTH_PORT:-3000}/health\" || exit 1"]
       interval: 30s

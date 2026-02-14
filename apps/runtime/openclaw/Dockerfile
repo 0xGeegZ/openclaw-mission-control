@@ -60,5 +60,6 @@ EXPOSE 18789
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
   CMD curl -f http://127.0.0.1:18789/health || exit 1
 
+# ENTRYPOINT + exec in CMD so the main process receives SIGTERM/SIGINT (graceful shutdown).
 ENTRYPOINT ["/bin/bash", "-c"]
 CMD ["exec /usr/local/bin/start-openclaw.sh"]

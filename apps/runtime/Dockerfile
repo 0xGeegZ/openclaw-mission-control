@@ -30,7 +30,8 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+# curl for healthcheck; ca-certificates so Node TLS (e.g. Convex) works reliably.
+RUN apk add --no-cache ca-certificates curl
 
 COPY package.json package-lock.json ./
 COPY apps/runtime/package.json ./apps/runtime/
