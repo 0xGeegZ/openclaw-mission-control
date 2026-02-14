@@ -33,6 +33,8 @@ import {
   Flag,
   Tag,
   History,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -139,6 +141,7 @@ export function TaskDetailSheet({
 }: TaskDetailSheetProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
   const updateStatus = useMutation(api.tasks.updateStatus);
 
@@ -259,8 +262,39 @@ export function TaskDetailSheet({
 
                 {/* Description */}
                 {task.description && (
-                  <div className="max-h-20 overflow-y-auto pr-3 text-sm leading-relaxed">
-                    <MarkdownRenderer content={task.description} compact />
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Description
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => setDescriptionExpanded((prev) => !prev)}
+                        aria-label={
+                          descriptionExpanded
+                            ? "Collapse description"
+                            : "Expand description"
+                        }
+                      >
+                        {descriptionExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <ScrollArea
+                      className={cn(
+                        "text-sm leading-relaxed pr-3 rounded-md border border-transparent shrink-0",
+                        descriptionExpanded ? "h-[40vh]" : "h-20",
+                      )}
+                    >
+                      <div className="pr-2">
+                        <MarkdownRenderer content={task.description} compact />
+                      </div>
+                    </ScrollArea>
                   </div>
                 )}
 

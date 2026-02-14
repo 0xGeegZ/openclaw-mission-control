@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
@@ -10,6 +11,8 @@ import {
   CardTitle,
 } from "@packages/ui/components/card";
 import { Badge } from "@packages/ui/components/badge";
+import { Button } from "@packages/ui/components/button";
+import { ScrollArea } from "@packages/ui/components/scroll-area";
 import {
   Avatar,
   AvatarFallback,
@@ -17,7 +20,13 @@ import {
 } from "@packages/ui/components/avatar";
 import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronRight, Clock, AlertTriangle } from "lucide-react";
+import {
+  ChevronRight,
+  Clock,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 import { TASK_STATUS } from "@packages/shared";
 
@@ -60,6 +69,7 @@ export function TaskCard({
   onClick,
   assignedAgents,
 }: TaskCardProps) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: task._id });
 
@@ -138,9 +148,42 @@ export function TaskCard({
       <CardContent className="p-3 pt-0 space-y-2.5">
         {/* Description preview */}
         {task.description && (
-          <p className="text-xs text-muted-foreground/80 line-clamp-2 leading-relaxed pl-7">
-            {task.description}
-          </p>
+          <div className="space-y-0.5 pl-7">
+            <div className="flex items-center justify-between gap-1 -mt-0.5">
+              <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                Description
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDescriptionExpanded((prev) => !prev);
+                }}
+                aria-label={
+                  descriptionExpanded
+                    ? "Collapse description"
+                    : "Expand description"
+                }
+              >
+                {descriptionExpanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+            {descriptionExpanded ? (
+              <ScrollArea className="h-32 text-xs text-muted-foreground/80 leading-relaxed pr-2 rounded-md border border-transparent">
+                <p>{task.description}</p>
+              </ScrollArea>
+            ) : (
+              <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
+                {task.description}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Agent and timestamp row */}

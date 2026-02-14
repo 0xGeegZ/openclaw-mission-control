@@ -29,6 +29,8 @@ import {
   Calendar,
   Flag,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,6 +42,8 @@ import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { TaskSubscription } from "./TaskSubscription";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { ScrollArea } from "@packages/ui/components/scroll-area";
+import { cn } from "@packages/ui/lib/utils";
 import { getTaskDetailSheetHref } from "@/lib/utils";
 import { TASK_STATUS } from "@packages/shared";
 
@@ -67,6 +71,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
@@ -228,8 +233,39 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         </div>
 
         {task.description && (
-          <div className="max-h-16 overflow-y-auto pr-3 text-sm leading-relaxed text-muted-foreground">
-            <MarkdownRenderer content={task.description} compact />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Description
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => setDescriptionExpanded((prev) => !prev)}
+                aria-label={
+                  descriptionExpanded
+                    ? "Collapse description"
+                    : "Expand description"
+                }
+              >
+                {descriptionExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <ScrollArea
+              className={cn(
+                "text-sm leading-relaxed text-muted-foreground pr-3 rounded-md border border-transparent shrink-0",
+                descriptionExpanded ? "h-[40vh]" : "h-16",
+              )}
+            >
+              <div className="pr-2">
+                <MarkdownRenderer content={task.description} compact />
+              </div>
+            </ScrollArea>
           </div>
         )}
 
