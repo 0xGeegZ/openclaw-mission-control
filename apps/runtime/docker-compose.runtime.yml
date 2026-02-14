@@ -123,6 +123,7 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      # SYS_ADMIN: Required for Chromium sandbox and namespace operations (user namespaces, mount operations)
       - SYS_ADMIN
     # FIX 3.5: Add health check to gateway container
     healthcheck:
