@@ -15,7 +15,7 @@
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others. When requesting status from assignees, use **response_request** only; put your follow-up summary in your reply (do not also post task_message).
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -29,7 +29,7 @@ Pick one action that can be completed quickly:
 - post a clarifying question (only if truly blocked)
 - write a doc section
 - test a repro step and attach logs
-- update a task status with explanation
+- update a task status with explanation (follow AGENTS.md task state rules: valid transitions, human dependency -> blocked, unblock -> in_progress)
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
  

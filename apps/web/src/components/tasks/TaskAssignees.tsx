@@ -17,6 +17,7 @@ import {
 } from "@packages/ui/components/popover";
 import { Checkbox } from "@packages/ui/components/checkbox";
 import { useAccount } from "@/lib/hooks/useAccount";
+import { usePopoverInPlace } from "@/lib/PopoverInPlaceContext";
 import { toast } from "sonner";
 import { UserPlus, Bot, Loader2 } from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
@@ -35,6 +36,7 @@ interface TaskAssigneesProps {
  */
 export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
   const { accountId } = useAccount();
+  const inPlace = usePopoverInPlace();
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -128,6 +130,7 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
         <PopoverContent
           className="w-72 p-0 flex flex-col overflow-hidden max-h-[min(20rem,70vh)]"
           align="start"
+          disablePortal={inPlace}
         >
           <div className="p-3 border-b shrink-0">
             <h4 className="font-medium text-sm">Assign Agents</h4>

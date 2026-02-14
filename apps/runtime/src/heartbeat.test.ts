@@ -366,11 +366,13 @@ describe("buildHeartbeatMessage", () => {
       "Prioritize stale in_progress/review tasks first",
     );
     expect(message).toContain("task_load (or task_get/task_thread/task_search)");
-    expect(message).toContain("task_message thread comment");
+    expect(message).toContain("response_request only");
+    expect(message).toContain("do not also post task_message");
     expect(message).toContain("response_request");
-    expect(message).toContain("If either step fails, report BLOCKED");
+    expect(message).toContain("report BLOCKED");
     expect(message).toContain("http://runtime:3000/agent/task-search");
-    expect(message).toContain("http://runtime:3000/agent/task-message");
+    expect(message).not.toContain("http://runtime:3000/agent/task-message");
+    expect(message).not.toContain("task_message thread comment");
     expect(message).toContain("http://runtime:3000/agent/response-request");
     expect(message).toContain("Take up to 3 atomic follow-ups per heartbeat");
   });

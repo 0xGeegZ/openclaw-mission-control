@@ -1144,6 +1144,16 @@ const REPOSITORY_CONTEXT_MAX_CHARS = 12000;
 /** Max characters for global context section. */
 const GLOBAL_CONTEXT_MAX_CHARS = 4000;
 
+/** Branch name prefix for one-branch-per-task; full name is feat/task-<taskId>. */
+const TASK_BRANCH_PREFIX = "feat/task-";
+
+/**
+ * Prefix for task status instructions: valid transitions and human-dependency rule.
+ * REVIEW is for QA only; human input -> blocked; when resolved, move back to in_progress.
+ */
+const STATUS_INSTRUCTION_VALID_TRANSITIONS =
+  "Valid next statuses from current: assigned -> in_progress, in_progress -> review, in_progress -> blocked, review -> done or back to in_progress, review -> blocked, blocked -> in_progress. Do not move directly to done unless the current status is review.";
+
 /**
  * Truncate text to maxChars, appending "…" when trimmed. Returns unchanged if within limit.
  */
@@ -1154,7 +1164,9 @@ function truncateForContext(value: string, maxChars: number): string {
 
 /**
  * Format notification message for OpenClaw (identity line, capabilities, task context, status instructions).
- * Exported for unit tests.
+ * When context.task is set, injects a one-branch-per-task rule so the agent uses branch feat/task-<taskId> only.
+ * Status workflow: human dependency -> blocked (with blockedReason); REVIEW for QA only; when unblocked, move back to in_progress.
+ * Orchestrator must move task to review before requesting QA via response_request. Exported for unit tests.
  *
  * @param context - Delivery context (notification, task, message, thread, repositoryDoc, agents, behavior flags).
  * @param taskStatusBaseUrl - Base URL the agent can use for task-status HTTP fallback (e.g. http://runtime:3000 in Docker).
@@ -1214,6 +1226,10 @@ export function formatNotificationMessage(
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
     "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
+  const taskBranchName = task ? `${TASK_BRANCH_PREFIX}${task._id}` : null;
+  const taskBranchRule = taskBranchName
+    ? `For this task use only branch \`${taskBranchName}\`. Before code edits: git fetch origin, git checkout dev, git pull, then git checkout -b ${taskBranchName} or git checkout ${taskBranchName} if it exists. Push and open PR from that branch only.`
+    : null;
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
@@ -1226,16 +1242,18 @@ export function formatNotificationMessage(
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
-        "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
         "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
+        ...(taskBranchRule ? ["", taskBranchRule] : []),
       ].join("\n")
     : [
         "Repository context: not found.",
         localRepoHint,
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
         "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
-        "Write artifacts to `/root/clawd/deliverables` and reference them in the thread.",
+        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
         "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
+        ...(taskBranchRule ? ["", taskBranchRule] : []),
       ].join("\n");
   const globalContextSection = globalBriefingDoc?.content?.trim()
     ? [
@@ -1264,11 +1282,13 @@ export function formatNotificationMessage(
     : hasQaAgent
       ? " You are not allowed to mark tasks as done; QA must approve and close the task."
       : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed.";
+  const humanBlockedNote =
+    " When you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials), move to blocked and set blockedReason to describe what you need and from whom; do not stay in_progress while waiting for humans. When an authorized actor (orchestrator or assignee with status permission) acknowledges the blocked request or provides the needed input, move the task back to in_progress before continuing work.";
   const statusInstructions = task
     ? canModifyTaskStatus
       ? hasRuntimeTools && toolCapabilities.hasTaskStatus
-        ? `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review.${qaReviewNote} You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. You also have **task_update** to change title, description, priority, labels, assignees, or dueDate — call it before posting when you modify the task. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status or task_update, you can call them. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. assigned -> in_progress -> review) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other fields. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${doneRestrictionNote}`
-        : `If you need to change task status, do it BEFORE posting a thread update. Only move to a valid next status from the current one (assigned -> in_progress, in_progress -> review, review -> done or back to in_progress; use blocked only when blocked). Do not move directly to done unless the current status is review.${qaReviewNote} Use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other task fields. Note: inbox/assigned are handled by assignment changes, not this endpoint. If the HTTP call fails, report BLOCKED and include the error message.${doneRestrictionNote}`
+        ? `If you need to change task status, do it BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS}.${humanBlockedNote}${qaReviewNote} You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. You also have **task_update** to change title, description, priority, labels, assignees, or dueDate — call it before posting when you modify the task. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status or task_update, you can call them. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. assigned -> in_progress -> review) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other fields. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${doneRestrictionNote}`
+        : `If you need to change task status, do it BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS}.${humanBlockedNote}${qaReviewNote} Use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other task fields. Note: inbox/assigned are handled by assignment changes, not this endpoint. If the HTTP call fails, report BLOCKED and include the error message.${doneRestrictionNote}`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
   const taskCreateInstructions = canCreateTasks
@@ -1278,8 +1298,8 @@ export function formatNotificationMessage(
     : "";
   const documentInstructions = canCreateDocuments
     ? hasRuntimeTools
-      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
-      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`.`
+      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. Do not post local paths (e.g. /deliverables/PLAN_*.md or /root/clawd/deliverables/...) in the thread — the user cannot open them. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
+      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. Do not post local paths like /deliverables/... in the thread — the user cannot open them.`
     : "";
   const responseRequestInstructions = canMentionAgents
     ? hasRuntimeTools
@@ -1299,6 +1319,13 @@ export function formatNotificationMessage(
     isOrchestrator && task
       ? `\nOrchestrator note: If this task needs follow-up work, create those follow-up tasks before moving this task to done. If any PRs were reopened, merge them before moving this task to done.${canCreateTasks ? (hasRuntimeTools ? " Use the task_create tool." : ` Use the HTTP fallback (${runtimeBaseUrl}/agent/task-create).`) : " If task creation is not permitted, state the follow-ups needed and ask the primary user to create them."}`
       : "";
+
+  /** Orchestrator must move to review first then use response_request when asking QA to act — not just say "requesting X" in thread. */
+  const orchestratorResponseRequestInstruction =
+    isOrchestrator && canMentionAgents
+      ? "\n**Orchestrator (required):** Before requesting QA (or any reviewer) to act, the task MUST be in REVIEW. Move the task to review first (task_status or task_update), then call the **response_request** tool in this reply with recipientSlugs and a clear message. Do not request QA approval while the task is still in_progress. When you need another agent to take an action (e.g. QA to trigger CI, confirm review, or move task to DONE), you MUST call the **response_request** tool — posting only a thread message that says you are \"requesting\" or \"asking\" them does not notify them; use the tool so the notification is delivered."
+      : "";
+
   const largeResultInstruction = canCreateDocuments
     ? hasRuntimeTools
       ? "If the result is large, create a document with document_upsert (document sharing tool), include the returned documentId and a Markdown link ([Document](/document/<documentId>)) in your reply, and summarize it here."
@@ -1363,7 +1390,7 @@ Use only the thread history shown above for this task; do not refer to or reply 
 If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
 ${isOrchestrator ? "When coordinating an active task (in_progress/review), acknowledge assignee progress updates in one short sentence instead of using NO_REPLY." : ""}
 
-Important: This system captures only one reply per notification. Do not send progress updates. If you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
+Important: This system captures only one reply per notification. Do not send progress updates. When work can be parallelized, spawn subagents and reply once with combined results; if you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 
 ${statusInstructions}
 ${taskCreateInstructions}
@@ -1373,8 +1400,9 @@ ${orchestratorToolInstructions}
 ${orchestratorChatInstruction}
 ${followupTaskInstruction}
 ${task?.status === "review" && toolCapabilities.canMarkDone ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
+${orchestratorResponseRequestInstruction}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
-${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated." : ""}
+${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated. When an authorized actor (orchestrator or assignee) provides the needed input, move the task back to in_progress before resuming work." : ""}
 ${assignmentAckBlock}
 
 Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.

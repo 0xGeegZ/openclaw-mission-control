@@ -20,6 +20,8 @@ import { AGENT_STATUS } from "@packages/shared";
 
 interface AgentsSidebarProps {
   accountId: Id<"accounts"> | null;
+  /** When set, typing status is task-scoped (agents typing on this task). Otherwise account-scoped. */
+  activeTaskId?: Id<"tasks"> | null;
   selectedAgentId: Id<"agents"> | null;
   onSelectAgent: (agentId: Id<"agents"> | null) => void;
   className?: string;
@@ -57,9 +59,11 @@ const STATUS_CONFIG: Record<
 /**
  * Agents sidebar component for task view.
  * Shows all agents with their status and allows filtering tasks by agent.
+ * When activeTaskId is set, TYPING badge is task-scoped; otherwise account-scoped.
  */
 export function AgentsSidebar({
   accountId,
+  activeTaskId = null,
   selectedAgentId,
   onSelectAgent,
   className,
@@ -68,14 +72,18 @@ export function AgentsSidebar({
     api.agents.getRoster,
     accountId ? { accountId } : "skip",
   );
-  const typingAgentIdsRaw = useQuery(
+  const taskTypingIdsRaw = useQuery(
+    api.notifications.listAgentIdsTypingByTask,
+    activeTaskId ? { taskId: activeTaskId } : "skip",
+  );
+  const accountTypingIdsRaw = useQuery(
     api.notifications.listAgentIdsTypingByAccount,
-    accountId ? { accountId } : "skip",
+    accountId && !activeTaskId ? { accountId } : "skip",
   );
-  const typingAgentIds = useMemo(
-    () => new Set(typingAgentIdsRaw ?? []),
-    [typingAgentIdsRaw],
-  );
+  const typingAgentIds = useMemo(() => {
+    const raw = activeTaskId ? taskTypingIdsRaw : accountTypingIdsRaw;
+    return new Set(raw ?? []);
+  }, [activeTaskId, taskTypingIdsRaw, accountTypingIdsRaw]);
 
   const isLoading = accountId && agents === undefined;
   const activeAgents =

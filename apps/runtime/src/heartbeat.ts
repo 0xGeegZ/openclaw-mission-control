@@ -273,7 +273,10 @@ Current time: ${new Date().toISOString()}
 }
 
 /**
- * Build orchestrator-only instructions: do a follow-up per tracked task using task tools or API.
+ * Build orchestrator-only instructions for heartbeat follow-ups.
+ * Assignee follow-up uses response_request only (no task_message) so the thread
+ * gets at most one message (the agent's summary). HTTP fallback list omits
+ * task-message for this flow.
  */
 function buildOrchestratorFollowUpBlock(
   isOrchestrator: boolean,
@@ -283,10 +286,10 @@ function buildOrchestratorFollowUpBlock(
   if (!isOrchestrator) return "";
   const base = taskStatusBaseUrl?.trim() ?? "";
   const toolLine =
-    "For each selected tracked task, use task_load (or task_get/task_thread/task_search) to load context. When you need assignee follow-up, do both on the same task: (1) post a task_message thread comment requesting the update, and (2) send response_request to notify assignees. If either step fails, report BLOCKED with the failed task IDs/agent slugs.";
+    "For each selected tracked task, use task_load (or task_get/task_thread/task_search) to load context. When you need assignee follow-up, use response_request only (do not also post task_message). Put a short summary of what you did in your final reply so the thread gets one update. If response_request fails, report BLOCKED with the failed task IDs/agent slugs.";
   const httpLine = base
-    ? ` If tools are unavailable, use HTTP: POST ${base}/agent/task-load (body: { "taskId": "..." }), POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), POST ${base}/agent/task-message (body: { "taskId": "...", "content": "..." }), and POST ${base}/agent/response-request (body: { "taskId": "...", "recipientSlugs": ["..."], "message": "..." }).`
-    : " If tools are unavailable, use the HTTP fallback endpoints (task-load, task-search, task-get, task-message, response-request) with the base URL from your notification prompt.";
+    ? ` If tools are unavailable, use HTTP: POST ${base}/agent/task-load (body: { "taskId": "..." }), POST ${base}/agent/task-search (body: { "query": "..." }), POST ${base}/agent/task-get (body: { "taskId": "..." }), and POST ${base}/agent/response-request (body: { "taskId": "...", "recipientSlugs": ["..."], "message": "..." }).`
+    : " If tools are unavailable, use the HTTP fallback endpoints (task-load, task-search, task-get, response-request) with the base URL from your notification prompt.";
   const oneAction = `Take up to ${ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT} atomic follow-ups per heartbeat across distinct tracked tasks.`;
   if (!hasTrackedTasks) return "";
   return [
@@ -520,20 +523,9 @@ function getAssigneeRecipientSlugs(options: {
 }
 
 /**
- * Build a cross-task follow-up comment for orchestrator stale-task pings.
- */
-function buildAssigneeFollowUpComment(options: {
-  recipientSlugs: string[];
-  staleMinutes: number;
-}): string {
-  const { recipientSlugs, staleMinutes } = options;
-  const recipientList = recipientSlugs.join(", ");
-  return `Heartbeat follow-up: requesting assignee update from [${recipientList}]. No assignee update for about ${staleMinutes} minutes. Please post a progress or blocker update in this task thread.`;
-}
-
-/**
- * Fallback follow-up: enqueue response requests and mirror each one with
- * a task-thread comment on the same task. Notification dedupe/cooldown is
+ * Fallback follow-up: enqueue response_request notifications for stale
+ * assignees. We do not post a thread comment here so the thread gets at
+ * most the agent's heartbeat summary. Notification dedupe/cooldown is
  * handled by the notifications service.
  */
 async function maybeAutoRequestAssigneeFollowUp(options: {
@@ -662,36 +654,18 @@ async function maybeAutoRequestAssigneeFollowUp(options: {
         )) as { notificationIds: Id<"notifications">[] };
         if ((result.notificationIds?.length ?? 0) > 0) {
           queuedFollowUps += 1;
-          const followUpComment = buildAssigneeFollowUpComment({
-            recipientSlugs,
-            staleMinutes,
-          });
-          try {
-            await client.action(api.service.actions.createTaskMessageForAgentTool, {
-              accountId: config.accountId,
-              serviceToken: config.serviceToken,
-              agentId: agent._id,
-              taskId: task._id,
-              content: followUpComment,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            log.warn(
-              "Queued assignee response request but failed to post follow-up comment:",
-              task._id,
-              message,
-            );
-          }
           log.info(
-            "Queued auto assignee follow-up request + thread comment",
+            "Queued auto assignee follow-up request",
             task._id,
             `mode=${followUpMode}`,
             `recipients=${recipientSlugs.join(",")}`,
           );
         }
+        // Intentional: we do not post a thread comment here; assignees are
+        // notified via response_request only so the thread keeps one message (agent summary).
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log.warn("Failed to queue auto assignee follow-up:", task._id, message);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        log.warn("Failed to queue auto assignee follow-up:", task._id, errMsg);
       }
     }
   }

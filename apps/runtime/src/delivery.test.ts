@@ -470,6 +470,138 @@ describe("formatNotificationMessage", () => {
     expect(message).not.toContain("msg-0");
     expect(message).toContain(expectedTruncated);
   });
+
+  it("includes one-branch-per-task rule with task ID when task is present", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "k97abc",
+        status: "in_progress",
+        title: "Sample",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("feat/task-k97abc");
+    expect(message).toContain("only branch");
+  });
+
+  it("omits task-branch rule when task is not present", () => {
+    const ctx = buildContext({ task: null });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).not.toContain("feat/task-");
+  });
+
+  it("includes workflow rules: human dependency -> blocked and move back to in_progress when resolved", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+      effectiveBehaviorFlags: { canModifyTaskStatus: true },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("human input");
+    expect(message).toContain("blocked");
+    expect(message).toContain("blockedReason");
+    expect(message).toContain("move the task back to in_progress");
+    expect(message).toContain("blocked -> in_progress");
+  });
+
+  it("includes orchestrator rule: move to review before requesting QA and use response_request", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      mentionableAgents: [
+        { id: "orch", slug: "squad-lead", name: "Orchestrator", role: "Squad Lead" },
+      ],
+      effectiveBehaviorFlags: { canModifyTaskStatus: true, canMentionAgents: true },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("task MUST be in REVIEW");
+    expect(message).toContain("Move the task to review first");
+    expect(message).toContain("response_request");
+    expect(message).toContain("Do not request QA approval while the task is still in_progress");
+  });
+
+  it("includes blocked-task reminder to move back to in_progress when resolved", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "blocked",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("BLOCKED");
+    expect(message).toContain("move the task back to in_progress");
+  });
 });
 
 describe("no response retry decision", () => {

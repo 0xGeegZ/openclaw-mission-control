@@ -24,6 +24,12 @@ import {
 import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -744,23 +750,36 @@ export function MessageInput({
                           </>
                         ) : (
                           <>
-                            <div
-                              className={cn(
-                                "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
-                                index === selectedMentionIndex
-                                  ? "bg-primary-foreground/20"
-                                  : "bg-secondary",
-                              )}
-                            >
-                              <Bot
+                            <Avatar className="h-9 w-9 shrink-0">
+                              {option.agent.avatarUrl ? (
+                                <AvatarImage
+                                  src={option.agent.avatarUrl}
+                                  alt={option.agent.name}
+                                />
+                              ) : null}
+                              <AvatarFallback
                                 className={cn(
-                                  "h-4 w-4",
+                                  "text-xs",
                                   index === selectedMentionIndex
-                                    ? "text-primary-foreground"
-                                    : "text-secondary-foreground",
+                                    ? "bg-primary-foreground/20 text-primary-foreground"
+                                    : "bg-secondary text-secondary-foreground",
                                 )}
-                              />
-                            </div>
+                              >
+                                {((): React.ReactNode => {
+                                  const Icon =
+                                    option.agent.icon &&
+                                    AGENT_ICON_MAP[option.agent.icon]
+                                      ? AGENT_ICON_MAP[option.agent.icon]
+                                      : Bot;
+                                  return (
+                                    <Icon
+                                      className="h-4 w-4"
+                                      aria-hidden
+                                    />
+                                  );
+                                })()}
+                              </AvatarFallback>
+                            </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold">
                                 @{option.agent.slug}

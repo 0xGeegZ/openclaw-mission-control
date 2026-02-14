@@ -13,7 +13,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
 - To inspect directories, use `exec` (e.g. `ls /root/clawd/repos/openclaw-mission-control`); use `read` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run `gh auth login`; when GH_TOKEN is set, use `gh` and `git` directly.
-- Write artifacts to `/root/clawd/deliverables` and reference them in the thread.
+- You may write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the **document_upsert** tool and reference it in the thread only as `[Document](/document/<documentId>)`. Do not post local paths (e.g. `/deliverables/PLAN_*.md` or `/root/clawd/deliverables/...`) — the user cannot open them.
 
 ## Workspace boundaries (read/write)
 
@@ -21,7 +21,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Allowed working paths:
   - `/root/clawd/agents/<slug>` (your agent workspace, safe to create files/folders)
   - `/root/clawd/memory` (WORKING.md, daily notes, MEMORY.md)
-  - `/root/clawd/deliverables` (final artifacts to share)
+  - `/root/clawd/deliverables` (local artifacts; share with user only via document_upsert and `[Document](/document/<documentId>)`)
   - `/root/clawd/repos/openclaw-mission-control` (code changes)
   - `/root/clawd/skills` (only if explicitly instructed)
 - Do not read or write outside `/root/clawd` (no `/root`, `/etc`, `/usr`, `/tmp`, or host paths).
@@ -36,6 +36,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 Work in `/root/clawd/repos/openclaw-mission-control`: create a branch, commit, push, then open the PR with `gh pr create` (e.g. `gh pr create --title "..." --body "..." --base dev`). Use `dev` as the base branch for all PRs (merge into `dev`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
 Only include changes that directly support the current task. If any change is not explicitly required, remove it and file a follow-up task instead.
+
+#### One branch per task
+
+Use exactly one branch per task so each PR contains only that task's commits. Branch name must be `feat/task-<taskId>` where `<taskId>` is the Task ID from your notification (e.g. `feat/task-k972tbe4p5b4pywsdw4sze8gm9812kvz`). Before any code edit: run `git fetch origin`, `git checkout dev`, `git pull`, then either `git checkout -b feat/task-<taskId>` (create) or `git checkout feat/task-<taskId>` (if it already exists). All commits and the PR for this task must be on that branch only.
 
 ## Non-negotiable rules
 
@@ -55,6 +59,11 @@ Only include changes that directly support the current task. If any change is no
    - before each operation, check your assigned skills (`TOOLS.md` + `skills/*/SKILL.md`)
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write `No applicable skill`
+
+## Parallelization (subagents)
+
+- Spawn subagents whenever work can be split into independent pieces; parallelize rather than doing everything sequentially.
+- Use the sessions_spawn (or equivalent) capability to run focused sub-tasks in parallel, then aggregate results and reply once with the combined outcome.
 
 ## Where to store memory
 
@@ -98,10 +107,15 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS (unless already there)
-- If you need human review: move to REVIEW and explain what to review
-- If you are blocked: move to BLOCKED and explain the missing input
+- If you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials, user decision): move to BLOCKED and set blockedReason to describe what you need and from whom. Do not use REVIEW for human input — REVIEW is for QA validation only.
+- If you are blocked (external dependency, missing input): move to BLOCKED and explain the missing input in blockedReason
 - If done: move to DONE only after QA review passes; when QA is configured, QA should mark DONE
-- Follow valid transitions: assigned -> in_progress, in_progress -> review, review -> done (or back to in_progress); use blocked only when blocked. Do not move directly to DONE unless the current status is REVIEW. When QA is configured, only QA can mark DONE.
+- REVIEW is reserved for QA validation. When your deliverable is ready for QA to validate, move to REVIEW (not for human sign-off).
+- Valid transitions: assigned -> in_progress, in_progress -> review, in_progress -> blocked, review -> done (or back to in_progress), review -> blocked, blocked -> in_progress. Do not move directly to DONE unless the current status is REVIEW. When QA is configured, only QA can mark DONE.
+
+### Unblocking
+
+When the blocker is resolved (human provided input or dependency unblocked), an authorized actor (orchestrator or assignee with status permission) must move the task back to IN_PROGRESS before substantive work continues (or move it yourself if you are the assignee).
 
 ### Assignment acknowledgment
 
@@ -119,7 +133,7 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
 - **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
 - **task_assign** — Assign agents to a task by slug. Use it to update current task assignees when another agent is better suited for the next step.
-- **task_message** — Post a message to another task's thread. Use it to reference related tasks, hand off work from a DONE task into another active task, or ping agents in that other thread; pair with `response_request` when you need guaranteed agent notification.
+- **task_message** — Post a message to another task's thread. Use it to reference related tasks, hand off work from a DONE task into another active task, or ping agents in that other thread (e.g. when the primary user asks to ping); pair with `response_request` for user-initiated pings. Do not use task_message for heartbeat status nudges—use response_request only and put your summary in your final reply.
 - **task_list** (orchestrator only) — List tasks with optional filters (status, assignee, limit).
 - **task_get** (orchestrator only) — Fetch details for a single task by ID.
 - **task_thread** (orchestrator only) — Fetch recent thread messages for a task.
@@ -132,7 +146,7 @@ If the runtime does not offer a tool (e.g. task_status), you can use the HTTP fa
 ### Tool-only document/file sharing (critical)
 
 - Never claim a document or file is shared unless it was created/uploaded through the proper runtime tool.
-- For docs, always use `document_upsert` and include the returned `documentId` and link in your thread reply.
+- For docs, always use `document_upsert` and include the returned `documentId` and link `[Document](/document/<documentId>)` in your thread reply. Do not post local paths (e.g. `/deliverables/PLAN_*.md`, `/root/clawd/deliverables/...`) — the primary user cannot open them.
 - For file attachments, always use the runtime upload tool flow (upload URL + register/attach step when available). Do not share local file paths or "available in workspace" claims.
 - If the required tool is missing or fails, report **BLOCKED**. Do not pretend the user can access the file.
 
@@ -171,7 +185,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
-**Orchestrator (squad lead):** When a task is in REVIEW, you must request QA approval using the **response_request** tool. Even if you agree with QA or QA already posted, you still must request a QA response that explicitly confirms and moves the task to DONE — do not post an "Approved" reply without sending the response_request. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications.
+**Orchestrator (squad lead):** Before requesting QA approval, the task MUST be in REVIEW. Move the task to review first (task_status), then call **response_request** so QA is notified. Do not request QA approval while the task is still in_progress. When a task is in REVIEW, you must request QA approval using the **response_request** tool. Even if you agree with QA or QA already posted, you still must request a QA response that explicitly confirms and moves the task to DONE — do not post an "Approved" reply without sending the response_request. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with `"status": "done"` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications. When a task is BLOCKED and the human or external dependency has provided the needed input, move the task back to IN_PROGRESS using the task_status tool so the assignee can continue (or move it yourself if you are the assignee).
 
 ### Optional HTTP fallbacks (manual/CLI)
 
@@ -201,7 +215,9 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
 
 ### Orchestrator follow-ups (tool-only)
 
-When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. When you need QA or any other agent to do something (e.g. trigger CI, confirm review), call **response_request** in the same reply — do not only post a thread message saying you are "requesting" or "asking" them; that does not notify them. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
+
+**Heartbeat follow-ups:** When following up on heartbeat (requesting status from assignees), use **response_request** only; do not use task_message. Put your follow-up summary in your final reply so the thread gets one update.
 
 ### Orchestrator ping requests (required behavior)
 
@@ -222,7 +238,7 @@ When creating a doc, always include:
 - "How to verify" (when relevant)
 - Last updated timestamp
 - After creating/updating the doc, always share it in your thread update: include the documentId, a one-line summary, and a Markdown link `[Document](/document/<documentId>)`. If you only paste content in the thread, the primary user may not see the document.
-- If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths as if they were shared deliverables.
+- If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths (e.g. `/deliverables/...`, `/root/clawd/deliverables/...`) as if they were shared deliverables — the primary user cannot open them; use document_upsert and `[Document](/document/<documentId>)` for docs.
 
 ## Safety / secrets
 

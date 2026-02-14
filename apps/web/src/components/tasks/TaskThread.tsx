@@ -8,6 +8,10 @@ import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { TYPING_WINDOW_MS } from "@packages/shared";
 import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
+import {
+  getEffectiveReadByAgents,
+  getShouldShowTypingIndicator,
+} from "./taskThreadIndicators";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { MessageSquare, Sparkles } from "lucide-react";
 
@@ -72,6 +76,8 @@ interface TaskThreadProps {
 
 /**
  * Task thread component with messages and input.
+ * Typing is task-scoped (receipts for this task, read/undelivered in window).
+ * Seen by uses hybrid: strict (read latest user message) first, then reply-based fallback, then typing agents for this task.
  */
 export function TaskThread({
   taskId,
@@ -144,8 +150,8 @@ export function TaskThread({
   const latestUserMessage = latestUserMessageInfo?.message ?? null;
   const latestUserMessageIndex = latestUserMessageInfo?.index ?? -1;
 
-  /** Agents that have "read" the latest user message (readAt set for that messageId). */
-  const readByAgentsForLatestUser = useMemo((): ReadByAgent[] => {
+  /** Strict "Seen by": agents that have read the latest user message (receipt with that messageId and readAt set). */
+  const strictSeenByAgents = useMemo((): ReadByAgent[] => {
     if (!latestUserMessage || !receipts) return [];
     const agentsMap = new Map<string, ReadByAgent>();
     for (const r of receipts) {
@@ -192,10 +198,16 @@ export function TaskThread({
     [agentsAfterLatestUser, useReadByFallback],
   );
 
-  const effectiveReadByAgents =
-    readByAgentsForLatestUser.length > 0
-      ? readByAgentsForLatestUser
-      : fallbackReadByAgents;
+  /** Hybrid Seen by: strict first, then reply-based fallback, then agents currently typing on this task. */
+  const effectiveReadByAgents = useMemo(
+    () =>
+      getEffectiveReadByAgents(
+        strictSeenByAgents,
+        fallbackReadByAgents,
+        typingAgents,
+      ),
+    [strictSeenByAgents, fallbackReadByAgents, typingAgents],
+  );
 
   const mentionedAgentsForLatestUser = useMemo(
     () => getMentionedAgentsForMessage(latestUserMessage, agentsByAuthorId),
@@ -223,9 +235,10 @@ export function TaskThread({
   const hasTypingIndicatorsActive =
     hasReceiptsInTypingWindow || fallbackTypingAgents.length > 0;
 
-  /** Ensure typing indicator never renders before "Seen by". */
-  const shouldShowTypingIndicator =
-    effectiveTypingAgents.length > 0 && effectiveReadByAgents.length > 0;
+  /** Typing indicator shows whenever there are task-scoped typing agents; no longer gated by Seen by. */
+  const shouldShowTypingIndicator = getShouldShowTypingIndicator(
+    effectiveTypingAgents,
+  );
 
   useEffect(() => {
     if (!hasTypingIndicatorsActive) return;
