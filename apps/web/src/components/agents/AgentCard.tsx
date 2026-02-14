@@ -23,6 +23,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { Clock, Crown, ChevronRight, Zap } from "lucide-react";
 import { useRelativeTime } from "@/lib/hooks/useRelativeTime";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import { AGENT_STATUS } from "@packages/shared";
 
 const ORCHESTRATOR_TOOLTIP =
   "Orchestrator: auto-subscribed to all task threads; receives agent thread updates for review.";
@@ -84,7 +85,8 @@ export function AgentCard({
   isOrchestrator,
 }: AgentCardProps) {
   const status = statusConfig[agent.status] || statusConfig.offline;
-  const isActive = agent.status === "online" || agent.status === "busy";
+  const isActive =
+    agent.status === AGENT_STATUS.ONLINE || agent.status === AGENT_STATUS.BUSY;
   const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
   const relativeTime = useRelativeTime(agent.lastHeartbeat, {
     addSuffix: true,

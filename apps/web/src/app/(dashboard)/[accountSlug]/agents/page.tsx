@@ -10,6 +10,7 @@ import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import { Button } from "@packages/ui/components/button";
 import { Card } from "@packages/ui/components/card";
 import { Bot, Sparkles } from "lucide-react";
+import { AGENT_STATUS } from "@packages/shared";
 
 interface AgentsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -35,8 +36,9 @@ export default function AgentsPage({ params }: AgentsPageProps) {
   // Show loading state when account or roster is loading
   const isLoading = isAccountLoading || (accountId && roster === undefined);
   const onlineCount =
-    roster?.filter((a) => a.status === "online" || a.status === "busy")
-      .length ?? 0;
+    roster?.filter(
+      (a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY,
+    ).length ?? 0;
 
   return (
     <div className="flex flex-col h-full">

@@ -274,7 +274,7 @@ export const create = mutation({
       mentions = await resolveMentions(ctx, accountId, mentionStrings);
     }
 
-    // Create message
+    const now = Date.now();
     const messageId = await ctx.db.insert("messages", {
       accountId,
       taskId: args.taskId,
@@ -283,7 +283,12 @@ export const create = mutation({
       content: args.content,
       mentions,
       attachments: resolvedAttachments,
-      createdAt: Date.now(),
+      createdAt: now,
+    });
+
+    await ctx.db.patch(args.taskId, {
+      updatedAt: now,
+      lastMessageAt: now,
     });
 
     // Auto-subscribe author to thread

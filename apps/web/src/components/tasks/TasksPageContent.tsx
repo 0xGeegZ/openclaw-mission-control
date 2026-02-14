@@ -8,11 +8,12 @@ import { KanbanBoard } from "./KanbanBoard";
 import { TasksPageHeader } from "./TasksPageHeader";
 import { AgentsSidebar } from "./AgentsSidebar";
 import { useAccount } from "@/lib/hooks/useAccount";
+import { useTaskIdFromSearchParams } from "@/lib/hooks/useTaskIdFromSearchParams";
 import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
 import { PanelLeftClose, PanelLeft } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
-import { TaskStatus } from "@packages/shared";
+import { TaskStatus, TASK_STATUS } from "@packages/shared";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 interface TasksPageContentProps {
@@ -23,12 +24,12 @@ type StatusFilter = "all" | TaskStatus;
 
 const STATUS_FILTER_CONFIG: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "inbox", label: "Inbox" },
-  { value: "assigned", label: "Assigned" },
-  { value: "in_progress", label: "Active" },
-  { value: "review", label: "Review" },
-  { value: "done", label: "Done" },
-  { value: "blocked", label: "Waiting" },
+  { value: TASK_STATUS.INBOX, label: "Inbox" },
+  { value: TASK_STATUS.ASSIGNED, label: "Assigned" },
+  { value: TASK_STATUS.IN_PROGRESS, label: "Active" },
+  { value: TASK_STATUS.REVIEW, label: "Review" },
+  { value: TASK_STATUS.DONE, label: "Done" },
+  { value: TASK_STATUS.BLOCKED, label: "Waiting" },
 ];
 
 const AGENTS_SIDEBAR_STORAGE_KEY = "agents-sidebar-collapsed";
@@ -39,6 +40,7 @@ const AGENTS_SIDEBAR_STORAGE_KEY = "agents-sidebar-collapsed";
  */
 export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
   const { accountId } = useAccount();
+  const activeTaskId = useTaskIdFromSearchParams();
   const [selectedAgentId, setSelectedAgentId] = useState<Id<"agents"> | null>(
     null,
   );
@@ -157,6 +159,7 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
           >
             <AgentsSidebar
               accountId={accountId}
+              activeTaskId={activeTaskId}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
               className="w-64"

@@ -8,6 +8,10 @@ import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { TYPING_WINDOW_MS } from "@packages/shared";
 import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
+import {
+  getEffectiveReadByAgents,
+  getShouldShowTypingIndicator,
+} from "./taskThreadIndicators";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Bot, MessageSquare, Sparkles } from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
@@ -73,6 +77,8 @@ interface TaskThreadProps {
 
 /**
  * Task thread component with messages and input.
+ * Typing indicator uses the same source as the agents sidebar (listAgentIdsTypingByTask) so they stay in sync.
+ * Seen by uses hybrid: strict (read latest user message) first, then reply-based fallback, then typing agents for this task.
  */
 export function TaskThread({
   taskId,
@@ -87,6 +93,11 @@ export function TaskThread({
   const receipts = useQuery(api.notifications.listAgentReceiptsByTask, {
     taskId,
   });
+  /** Same typing source as agents sidebar so thread and sidebar stay in sync. */
+  const typingAgentIdsFromQuery = useQuery(
+    api.notifications.listAgentIdsTypingByTask,
+    { taskId },
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const hasReceiptsInTypingWindow =
@@ -110,7 +121,27 @@ export function TaskThread({
     return map;
   }, [agents]);
 
-  /** Agents currently "typing" (readAt set, deliveredAt empty, within window). */
+  /**
+   * Typing agents from the same query as the sidebar (listAgentIdsTypingByTask).
+   * Keeps thread typing indicator in sync with sidebar and avoids race when thread mounts after read but before delivery.
+   */
+  const typingAgentsFromQuery = useMemo((): ReadByAgent[] => {
+    const ids = typingAgentIdsFromQuery ?? [];
+    if (ids.length === 0) return [];
+    const list: ReadByAgent[] = [];
+    for (const id of ids) {
+      const agent = agentsByAuthorId?.[id];
+      list.push({
+        id,
+        name: agent?.name ?? "Agent",
+        avatarUrl: agent?.avatarUrl,
+        icon: agent?.icon,
+      });
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [typingAgentIdsFromQuery, agentsByAuthorId]);
+
+  /** Agents currently "typing" from receipts (used for Seen-by hybrid only). */
   const typingAgents = useMemo(() => {
     if (!receipts) return [];
     const agentsMap = new Map<
@@ -145,8 +176,8 @@ export function TaskThread({
   const latestUserMessage = latestUserMessageInfo?.message ?? null;
   const latestUserMessageIndex = latestUserMessageInfo?.index ?? -1;
 
-  /** Agents that have "read" the latest user message (readAt set for that messageId). */
-  const readByAgentsForLatestUser = useMemo((): ReadByAgent[] => {
+  /** Strict "Seen by": agents that have read the latest user message (receipt with that messageId and readAt set). */
+  const strictSeenByAgents = useMemo((): ReadByAgent[] => {
     if (!latestUserMessage || !receipts) return [];
     const agentsMap = new Map<string, ReadByAgent>();
     for (const r of receipts) {
@@ -193,10 +224,16 @@ export function TaskThread({
     [agentsAfterLatestUser, useReadByFallback],
   );
 
-  const effectiveReadByAgents =
-    readByAgentsForLatestUser.length > 0
-      ? readByAgentsForLatestUser
-      : fallbackReadByAgents;
+  /** Hybrid Seen by: strict first, then reply-based fallback, then agents currently typing on this task. */
+  const effectiveReadByAgents = useMemo(
+    () =>
+      getEffectiveReadByAgents(
+        strictSeenByAgents,
+        fallbackReadByAgents,
+        typingAgents,
+      ),
+    [strictSeenByAgents, fallbackReadByAgents, typingAgents],
+  );
 
   const mentionedAgentsForLatestUser = useMemo(
     () => getMentionedAgentsForMessage(latestUserMessage, agentsByAuthorId),
@@ -218,15 +255,21 @@ export function TaskThread({
     useReadByFallback,
   ]);
 
+  /** Use same source as sidebar first, then fallback so thread and sidebar stay in sync. */
   const effectiveTypingAgents =
-    typingAgents.length > 0 ? typingAgents : fallbackTypingAgents;
+    typingAgentsFromQuery.length > 0
+      ? typingAgentsFromQuery
+      : fallbackTypingAgents;
 
   const hasTypingIndicatorsActive =
-    hasReceiptsInTypingWindow || fallbackTypingAgents.length > 0;
+    typingAgentsFromQuery.length > 0 ||
+    hasReceiptsInTypingWindow ||
+    fallbackTypingAgents.length > 0;
 
-  /** Ensure typing indicator never renders before "Seen by". */
-  const shouldShowTypingIndicator =
-    effectiveTypingAgents.length > 0 && effectiveReadByAgents.length > 0;
+  /** Typing indicator shows whenever there are task-scoped typing agents; no longer gated by Seen by. */
+  const shouldShowTypingIndicator = getShouldShowTypingIndicator(
+    effectiveTypingAgents,
+  );
 
   useEffect(() => {
     if (!hasTypingIndicatorsActive) return;

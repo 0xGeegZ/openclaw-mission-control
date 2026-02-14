@@ -10,15 +10,22 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "turbo run test --filter=@packages/shared",
+    "test": "turbo run test",
+    "test:shared": "turbo run test --filter=@packages/shared",
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "turbo run test"
+    "test:all": "turbo run test",
+    "prepare": "husky install"
   },
   "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "eslint": "^9.39.1",
+    "husky": "^9.1.7",
+    "typescript-eslint": "^8.30.0",
+    "lint-staged": "^16.2.7",
     "prettier": "3.7.4",
-    "turbo": "2.8.2"
+    "turbo": "2.8.3"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.57.1",

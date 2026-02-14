@@ -1,6 +1,6 @@
 import net from "node:net";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api } from "./convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -269,9 +269,7 @@ export function parseNoResponsePlaceholder(response: string): {
   if (!matchedSuffix) {
     return { isPlaceholder: false, mentionPrefix: null };
   }
-  const prefix = trimmed
-    .slice(0, trimmed.length - matchedSuffix.length)
-    .trim();
+  const prefix = trimmed.slice(0, trimmed.length - matchedSuffix.length).trim();
   if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
   if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {
     return { isPlaceholder: true, mentionPrefix: prefix };
@@ -290,6 +288,21 @@ export function buildNoResponseFallbackMessage(
 }
 
 /**
+ * Detect fallback messages generated for no-response OpenClaw runs.
+ * Accepts plain fallback and mention-prefixed variants.
+ */
+export function isNoResponseFallbackMessage(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  if (trimmed === NO_RESPONSE_FALLBACK_MESSAGE) return true;
+  if (!trimmed.endsWith(NO_RESPONSE_FALLBACK_MESSAGE)) return false;
+  const prefix = trimmed
+    .slice(0, trimmed.length - NO_RESPONSE_FALLBACK_MESSAGE.length)
+    .trim();
+  return !prefix || NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix);
+}
+
+/**
  * Initialize the OpenClaw gateway.
  * Fetches agents and registers their sessions; stores gateway URL/token for send.
  */
@@ -301,10 +314,10 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   state.openclawRequestTimeoutMs = config.openclawRequestTimeoutMs;
 
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  });
+  })) as ListAgentsItem[];
 
   for (const agent of agents) {
     state.sessions.set(agent.sessionKey, {
@@ -432,7 +445,7 @@ export interface SendToOpenClawOptions {
  *
  * Session key and tools: The gateway must run this request in the session identified by
  * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
- * task_create, document_upsert) are applied to that run. If the gateway runs the request under a
+ * task_update, task_create, document_upsert) are applied to that run. If the gateway runs the request under a
  * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
  * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
  *

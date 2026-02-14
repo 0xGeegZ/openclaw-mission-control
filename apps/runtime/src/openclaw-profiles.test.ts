@@ -253,27 +253,34 @@ describe("syncOpenClawProfiles", () => {
   });
 
   it("includes per-agent model when mapped", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
-    const configPath = path.join(tmp, "openclaw.json");
-    const agents: AgentForProfile[] = [
-      {
-        _id: "a1",
-        name: "GPT-5 Nano",
-        slug: "gpt-5-nano",
-        role: "R",
-        sessionKey: "agent:gpt-5-nano:acc1",
-        openclawConfig: { model: "gpt-5-nano" },
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [],
+    withTempEnv(
+      { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
+      () => {
+        const tmp = fs.mkdtempSync(
+          path.join(os.tmpdir(), "openclaw-profiles-"),
+        );
+        const configPath = path.join(tmp, "openclaw.json");
+        const agents: AgentForProfile[] = [
+          {
+            _id: "a1",
+            name: "GPT-5 Nano",
+            slug: "gpt-5-nano",
+            role: "R",
+            sessionKey: "agent:gpt-5-nano:acc1",
+            openclawConfig: { model: "gpt-5-nano" },
+            effectiveSoulContent: "# SOUL",
+            resolvedSkills: [],
+          },
+        ];
+        syncOpenClawProfiles(agents, {
+          workspaceRoot: path.join(tmp, "agents"),
+          configPath,
+        });
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        expect(config.agents.list[0].model).toBe("openai/gpt-5-nano");
+        fs.rmSync(tmp, { recursive: true, force: true });
       },
-    ];
-    syncOpenClawProfiles(agents, {
-      workspaceRoot: path.join(tmp, "agents"),
-      configPath,
-    });
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    expect(config.agents.list[0].model).toBe("openai/gpt-5-nano");
-    fs.rmSync(tmp, { recursive: true, force: true });
+    );
   });
 
   it("writes SKILL.md for resolved skills with contentMarkdown (OpenClaw frontmatter ensured)", () => {
@@ -462,6 +469,39 @@ description: Custom name in frontmatter
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("writes default AGENTS.md with workflow rules: human dependency -> BLOCKED, unblock -> IN_PROGRESS, QA request after REVIEW", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    try {
+      const configPath = path.join(tmp, "openclaw.json");
+      const workspaceRoot = path.join(tmp, "agents");
+      const agents: AgentForProfile[] = [
+        {
+          _id: "a1",
+          name: "Engineer",
+          slug: "engineer",
+          role: "Engineer",
+          sessionKey: "agent:engineer:acc1",
+          effectiveSoulContent: "# SOUL\n",
+          resolvedSkills: [],
+        },
+      ];
+      syncOpenClawProfiles(agents, { workspaceRoot, configPath });
+      const agentsMdPath = path.join(workspaceRoot, "engineer", "AGENTS.md");
+      expect(fs.existsSync(agentsMdPath)).toBe(true);
+      const content = fs.readFileSync(agentsMdPath, "utf-8");
+      expect(content).toContain("human input");
+      expect(content).toContain("BLOCKED");
+      expect(content).toContain("blockedReason");
+      expect(content).toContain("move the task back to IN_PROGRESS");
+      expect(content).toContain("REVIEW is for QA validation only");
+      expect(content).toContain("Before requesting QA");
+      expect(content).toContain("move the task to REVIEW first");
+      expect(content).not.toContain("If you need human review: move to REVIEW");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("does not write SKILL.md or add to skills.entries for skills without contentMarkdown", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
@@ -546,15 +586,15 @@ description: Custom name in frontmatter
     expect(fs.existsSync(path.join(memoryRoot, "MEMORY.md"))).toBe(true);
     expect(fs.existsSync(path.join(memoryDir, "WORKING.md"))).toBe(true);
     expect(fs.existsSync(deliverablesDir)).toBe(true);
-    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, -1)}.md`))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, 0)}.md`))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.join(memoryDir, `${utcDayString(now, 1)}.md`))).toBe(
-      true,
-    );
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, -1)}.md`)),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, 0)}.md`)),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, 1)}.md`)),
+    ).toBe(true);
 
     fs.rmSync(tmp, { recursive: true, force: true });
   });

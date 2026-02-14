@@ -8,7 +8,32 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    environment: "node",
+    environment: "jsdom",
+    globals: true,
+    
+    // Coverage configuration for frontend critical paths
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html", "lcov"],
+      all: true,
+      include: [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+      ],
+      exclude: [
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "src/lib/test-utils/**",
+        "src/**/*.d.ts",
+      ],
+      // Thresholds enforced by scripts/check-coverage-thresholds.mjs in CI
+      thresholds: {
+        lines: 0,
+        functions: 0,
+        branches: 0,
+        statements: 0,
+      },
+    },
   },
   resolve: {
     alias: {

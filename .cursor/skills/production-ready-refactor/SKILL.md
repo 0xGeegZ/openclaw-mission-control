@@ -41,6 +41,7 @@ Follow this workflow:
 
 - Add or update tests for critical logic and regressions.
 - Run `npm tsc --noEmit` and `npm lint`.
+- Run `npm run test` to run the tests (or any other test command).
 - Run `npm build` if the change impacts build-time behavior.
 
 ## 6) Final response

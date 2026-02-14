@@ -843,7 +843,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
   const isOrchestratorChat = isOrchestratorChatTask(context.task);
   const orchestratorAgentId = context.orchestratorAgentId;
   const messageAuthorId = context.message?.authorId;
-  const isOrchestratorAuthor =
+  const _isOrchestratorAuthor =
     orchestratorAgentId != null && messageAuthorId === orchestratorAgentId;
   const isBlockedTask = taskStatus === "blocked";
 
@@ -1253,7 +1253,6 @@ export function formatNotificationMessage(
     taskOverview,
     mentionableAgents = [],
     primaryUserMention = null,
-    effectiveBehaviorFlags = {},
     orchestratorAgentId = null,
   } = context;
   const flags = context.effectiveBehaviorFlags ?? {};

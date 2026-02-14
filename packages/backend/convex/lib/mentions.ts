@@ -1,12 +1,25 @@
 import { QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
+import type { RecipientType } from "@packages/shared";
+
+/** Role/slug pattern for QA agents; aligned with service/tasks isQaAgent. */
+const QA_AGENT_PATTERN = /\bqa\b|quality assurance|quality\b/i;
+
+function isQaAgentProfile(
+  agent: Pick<Doc<"agents">, "role" | "slug">,
+): boolean {
+  const slug = (agent.slug ?? "").toLowerCase();
+  if (slug === "qa") return true;
+  return QA_AGENT_PATTERN.test(agent.role ?? "");
+}
 
 /**
  * Parsed mention with resolved entity.
  * slug is set for agents so the UI can match @slug in content (e.g. @squad-lead).
  */
 export interface ParsedMention {
-  type: "user" | "agent";
+  type: RecipientType;
   id: string;
   name: string;
   slug?: string;
@@ -87,14 +100,14 @@ export async function resolveMentions(
     .collect();
 
   for (const mentionStr of mentionStrings) {
-    // Skip if already resolved
-    if (resolved.has(mentionStr)) continue;
+    const normalized = mentionStr.toLowerCase();
+    if (resolved.has(normalized)) continue;
 
     // Try to match user by name (case-insensitive)
     const matchedMember = memberships.find(
       (m) =>
-        m.userName.toLowerCase() === mentionStr ||
-        m.userEmail.toLowerCase().split("@")[0] === mentionStr,
+        m.userName.toLowerCase() === normalized ||
+        m.userEmail.toLowerCase().split("@")[0] === normalized,
     );
 
     if (matchedMember) {
@@ -103,25 +116,38 @@ export async function resolveMentions(
         id: matchedMember.userId,
         name: matchedMember.userName,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
       continue;
     }
 
-    // Try to match agent by slug or name
-    const matchedAgent = agents.find(
+    // Try to match agent by slug or name (case-insensitive)
+    let matchedAgent = agents.find(
       (a) =>
-        a.slug.toLowerCase() === mentionStr ||
-        a.name.toLowerCase() === mentionStr,
+        a.slug.toLowerCase() === normalized ||
+        a.name.toLowerCase() === normalized,
     );
 
+    // Fallback: @qa resolves to the account's QA agent by role (e.g. "QA / Reviewer")
+    // when no agent has slug/name "qa", so @qa is always mentionable when a QA agent exists.
+    if (!matchedAgent && normalized === "qa") {
+      const qaAgents = agents.filter((a) => isQaAgentProfile(a));
+      matchedAgent =
+        qaAgents.find((a) => a.slug.toLowerCase() === "qa") ?? qaAgents[0];
+    }
+
     if (matchedAgent) {
+      // When @qa was resolved via role fallback, expose slug "qa" so UI mentionMap matches the token "@qa".
+      const slugForMention =
+        normalized === "qa" && matchedAgent.slug.toLowerCase() !== "qa"
+          ? "qa"
+          : matchedAgent.slug;
       mentions.push({
         type: "agent",
         id: matchedAgent._id,
         name: matchedAgent.name,
-        slug: matchedAgent.slug,
+        slug: slugForMention,
       });
-      resolved.add(mentionStr);
+      resolved.add(normalized);
     }
 
     // If no match, skip (don't include unresolved mentions)
@@ -174,4 +200,65 @@ export async function getAllMentions(
   }
 
   return mentions;
+}
+
+/**
+ * List all mentionable candidates for @mention autocomplete.
+ * Returns workspace members and agents, grouped by type for UI.
+ *
+ * @param ctx - Convex context
+ * @param accountId - Account to search within
+ * @returns Object with users and agents arrays
+ */
+export async function listCandidates(
+  ctx: QueryCtx,
+  accountId: Id<"accounts">,
+): Promise<{
+  users: Array<{ id: string; name: string; email: string; avatarUrl?: string }>;
+  agents: Array<{ id: string; name: string; slug: string }>;
+}> {
+  // Fetch all members
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const users = memberships.map((m) => ({
+    id: m.userId,
+    name: m.userName,
+    email: m.userEmail,
+    avatarUrl: m.userAvatarUrl,
+  }));
+
+  // Fetch all agents
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const account = await ctx.db.get(accountId);
+  const orchestratorAgentId = (
+    account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+  )?.orchestratorAgentId;
+
+  const agentList = agents
+    .map((a) => ({
+      id: a._id,
+      name: a.name,
+      slug: a.slug,
+    }))
+    .sort((a, b) => {
+      const aIsOrchestrator =
+        orchestratorAgentId != null && a.id === orchestratorAgentId;
+      const bIsOrchestrator =
+        orchestratorAgentId != null && b.id === orchestratorAgentId;
+      if (aIsOrchestrator && !bIsOrchestrator) return -1;
+      if (!aIsOrchestrator && bIsOrchestrator) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+  return {
+    users,
+    agents: agentList,
+  };
 }

@@ -8,8 +8,7 @@ import {
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { TaskCard } from "./TaskCard";
 import { cn } from "@packages/ui/lib/utils";
-import { TaskStatus } from "@packages/shared";
-import { TASK_STATUS_LABELS } from "@packages/shared";
+import { TaskStatus, TASK_STATUS, TASK_STATUS_LABELS } from "@packages/shared";
 import {
   Plus,
   Inbox,
@@ -160,7 +159,7 @@ export function KanbanColumn({
             {tasks.length}
           </span>
         </div>
-        {status === "inbox" && onAddTask && (
+        {status === TASK_STATUS.INBOX && onAddTask && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

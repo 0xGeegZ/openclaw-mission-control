@@ -58,7 +58,19 @@ export const create = mutation({
       joinedAt: Date.now(),
     });
 
-    // TODO: Log activity (implemented in Module 08)
+    // Log account creation activity
+    await logActivity({
+      ctx,
+      accountId,
+      type: "account_created",
+      actorType: "user",
+      actorId: authContext.userId,
+      actorName: authContext.userName,
+      targetType: "account",
+      targetId: accountId,
+      targetName: args.name,
+      meta: { slug: args.slug, plan: "free" },
+    });
 
     return accountId;
   },
@@ -201,7 +213,7 @@ export const update = mutation({
     settings: v.optional(accountSettingsValidator),
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
+    const { userId } = await requireAccountAdmin(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
       throw new Error("Not found: Account does not exist");
@@ -303,6 +315,19 @@ export const update = mutation({
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.accountId, updates);
+
+      // Log account update activity
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "account_updated",
+        actorType: "user",
+        actorId: userId,
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: updates,
+      });
     }
 
     return args.accountId;
@@ -410,11 +435,15 @@ export const updateRuntimeStatusInternal = internalMutation({
       });
     }
 
-    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
     if (args.status === "offline") {
       await ctx.runMutation(internal.service.agents.markAllOffline, {
         accountId: args.accountId,
       });
+      await ctx.runMutation(
+        internal.service.notifications.clearTypingStateForAccount,
+        { accountId: args.accountId },
+      );
     }
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
@@ -524,7 +553,10 @@ export const markStaleRuntimesOffline = internalMutation({
     const accounts = await ctx.db.query("accounts").collect();
     let marked = 0;
     for (const account of accounts) {
-      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+      if (
+        account.runtimeStatus !== "online" &&
+        account.runtimeStatus !== "degraded"
+      ) {
         continue;
       }
       const lastCheck = account.runtimeConfig?.lastHealthCheck;

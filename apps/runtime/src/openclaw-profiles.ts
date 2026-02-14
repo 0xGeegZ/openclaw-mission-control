@@ -64,7 +64,8 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 ## Primary repository
 
 - Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- Use the writable clone for all git operations. Write artifacts to /root/clawd/deliverables.
+- Use the writable clone for all git operations. Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
+- One branch per task: use branch feat/task-<taskId> (from your notification); create it from dev before editing, and push/PR only from that branch.
 
 ## Non-negotiable rules
 
@@ -78,7 +79,12 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
    - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
-8. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
+8. Replies are single-shot: do not post progress updates. If you spawn sub-agents (via **sessions_spawn**), wait for their results and reply once with the combined outcome.
+
+## Parallelization (sub-agents)
+
+- Prefer parallel work over sequential: when a task can be split into independent pieces, spawn sub-agents so they run in parallel, then aggregate results and reply once with the combined outcome.
+- Use the **sessions_spawn** tool to start each sub-agent with a clear \`task\` description; the sub-agent runs in an isolated session and announces its result back.
 
 ## Memory and read tool contract
 
@@ -90,11 +96,12 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 ## Document sharing (critical)
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
-- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>).
+- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md, /root/clawd/deliverables/...) — the primary user cannot open them.
 
 ## Capabilities and tools
 
 - **task_status** — Update the current task's status before posting a reply.
+- **task_update** — Update task fields (title, description, priority, labels, assignees, status, dueDate); call before posting when you modify the task.
 - **task_create** — Create a new task when you need to spawn follow-up work.
 - **document_upsert** — Create or update a document (deliverable, note, template, reference).
 - **response_request** — Request a response from other agents; use instead of @mentions.
@@ -112,9 +119,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS.
-- If you need human review: move to REVIEW.
-- If blocked: move to BLOCKED and explain.
+- If you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials): move to BLOCKED and set blockedReason to describe what you need and from whom. Do not use REVIEW for human input — REVIEW is for QA validation only.
+- If blocked: move to BLOCKED and explain in blockedReason.
 - If done: move to DONE only after QA review passes (QA marks done when configured).
+- When the blocker is resolved, an authorized actor (orchestrator or assignee with status permission) must move the task back to IN_PROGRESS before continuing work.
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
 
 ## Orchestrator ping requests (required)
@@ -125,6 +133,10 @@ When the primary user asks the orchestrator to "ping" one or more agents or task
 - Send response_request for the same task and recipients so notifications are delivered.
 - For multiple tasks, repeat both actions per task.
 - If either step fails for any task, report BLOCKED with the failed task IDs/agent slugs.
+
+Before requesting QA or any reviewer to act, move the task to REVIEW first. Do not request QA approval while the task is still in_progress. When you need QA or any other agent to act (e.g. trigger CI, confirm review): call response_request with their slug in this reply — do not only post a thread message saying you are "requesting" or "asking" them; that does not notify them.
+
+When following up on **heartbeat** (requesting status from assignees), use response_request only and put your summary in your final reply; do not use task_message.
 `;
 
 /** Default HEARTBEAT.md content when file path is not available (e.g. in Docker runtime container). */
@@ -149,7 +161,7 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others. When requesting status from assignees, use response_request only; put your follow-up summary in your reply (do not also post task_message).
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -422,7 +434,10 @@ function formatMemoryDate(date: Date, offsetDays: number): string {
 /**
  * Ensure per-agent memory scaffold is present and idempotent.
  */
-function ensureAgentMemoryScaffold(agentDir: string, now: Date = new Date()): void {
+function ensureAgentMemoryScaffold(
+  agentDir: string,
+  now: Date = new Date(),
+): void {
   const memoryDir = path.join(agentDir, "memory");
   const deliverablesDir = path.join(agentDir, "deliverables");
   ensureDir(memoryDir);
@@ -490,7 +505,7 @@ function safeSlugForPath(slug: string): string | null {
   if (typeof slug !== "string" || !slug.trim()) return null;
   const trimmed = slug.trim();
   const sanitized = trimmed.replace(/^\/+|\/+$/g, "");
-  if (!sanitized || sanitized.includes("..") || /[\/\\]/.test(sanitized)) {
+  if (!sanitized || sanitized.includes("..") || /[/\\]/.test(sanitized)) {
     return null;
   }
   if (/[^a-zA-Z0-9_-]/.test(sanitized)) return null;

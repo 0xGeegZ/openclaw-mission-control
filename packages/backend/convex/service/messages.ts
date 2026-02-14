@@ -63,8 +63,8 @@ export const registerUploadFromAgent = internalMutation({
       throw new Error("Forbidden: Task belongs to different account");
     }
     const account = await ctx.db.get(agent.accountId);
-    const isOrchestratorChat = isOrchestratorChatTask({ account, task });
-    const orchestratorAgentId =
+    const _isOrchestratorChat = isOrchestratorChatTask({ account, task });
+    const _orchestratorAgentId =
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
 
@@ -294,7 +294,7 @@ export const createFromAgent = internalMutation({
         ? mentions
         : mentions.filter((m) => m.type === "user");
 
-    // Create message (store full mentions so UI can render @squad-lead etc. as badges)
+    const now = Date.now();
     const messageId = await ctx.db.insert("messages", {
       accountId: agent.accountId,
       taskId: args.taskId,
@@ -303,8 +303,13 @@ export const createFromAgent = internalMutation({
       content: args.content,
       mentions,
       attachments: resolvedAttachments,
-      createdAt: Date.now(),
+      createdAt: now,
       sourceNotificationId: args.sourceNotificationId,
+    });
+
+    await ctx.db.patch(args.taskId, {
+      updatedAt: now,
+      lastMessageAt: now,
     });
 
     // Auto-subscribe agent to thread

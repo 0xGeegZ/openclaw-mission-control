@@ -1,6 +1,7 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ParsedMention } from "./mentions";
+import type { RecipientType } from "@packages/shared";
 
 /** Notification preference category. When false, user notifications in that category are skipped (unless forceCreate). */
 export type NotificationPreferenceCategory =
@@ -83,7 +84,7 @@ export async function createThreadNotifications(
   accountId: Id<"accounts">,
   taskId: Id<"tasks">,
   messageId: Id<"messages">,
-  authorType: "user" | "agent",
+  authorType: RecipientType,
   authorId: string,
   authorName: string,
   taskTitle: string,
@@ -159,7 +160,7 @@ export async function createAssignmentNotification(
   ctx: MutationCtx,
   accountId: Id<"accounts">,
   taskId: Id<"tasks">,
-  recipientType: "user" | "agent",
+  recipientType: RecipientType,
   recipientId: string,
   assignerName: string,
   taskTitle: string,
@@ -190,7 +191,7 @@ export async function createStatusChangeNotification(
   ctx: MutationCtx,
   accountId: Id<"accounts">,
   taskId: Id<"tasks">,
-  recipientType: "user" | "agent",
+  recipientType: RecipientType,
   recipientId: string,
   changerName: string,
   taskTitle: string,

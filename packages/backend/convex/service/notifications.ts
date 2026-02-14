@@ -5,6 +5,7 @@ import {
   type DatabaseReader,
 } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import type { RecipientType, TaskStatus } from "@packages/shared";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -20,7 +21,7 @@ export interface GetForDeliveryResult {
   message: Doc<"messages"> | null;
   thread: Array<{
     messageId: Id<"messages">;
-    authorType: "user" | "agent";
+    authorType: RecipientType;
     authorId: string;
     authorName: string | null;
     content: string;
@@ -60,13 +61,13 @@ export interface GetForDeliveryResult {
   } | null;
 }
 
-const TASK_OVERVIEW_STATUSES = [
+const TASK_OVERVIEW_STATUSES: TaskStatus[] = [
   "inbox",
   "assigned",
   "in_progress",
   "review",
   "blocked",
-] as const;
+];
 const TASK_OVERVIEW_LIMIT = 3;
 const TASK_OVERVIEW_SCAN_LIMIT = 100;
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
@@ -204,6 +205,38 @@ export const markDelivered = internalMutation({
 });
 
 /**
+ * Clear typing state for an account when runtime goes offline.
+ * Resets readAt on all agent notifications that are read but not yet delivered,
+ * so they no longer count as "typing" and avoid false positives when runtime comes back.
+ * Called from accounts.setRuntimeStatus when status is set to "offline".
+ */
+export const clearTypingStateForAccount = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_account_undelivered", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "agent")
+          .eq("deliveredAt", undefined),
+      )
+      .collect();
+
+    let cleared = 0;
+    for (const n of notifications) {
+      if (n.readAt != null) {
+        await ctx.db.patch(n._id, { readAt: undefined });
+        cleared++;
+      }
+    }
+    return { cleared };
+  },
+});
+
+/**
  * Get notification details for delivery (service-only).
  * Returns full context needed to deliver to agent.
  * Must be called from service action with validated service token.
@@ -247,7 +280,7 @@ export const getForDelivery = internalQuery({
 
     let thread: {
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;

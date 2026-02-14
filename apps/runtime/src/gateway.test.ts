@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
 } from "./gateway";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -29,9 +30,9 @@ describe("parseNoResponsePlaceholder", () => {
   });
 
   it("detects alternate no-reply placeholders", () => {
-    expect(parseNoResponsePlaceholder("No reply from agent.").isPlaceholder).toBe(
-      true,
-    );
+    expect(
+      parseNoResponsePlaceholder("No reply from agent.").isPlaceholder,
+    ).toBe(true);
     expect(
       parseNoResponsePlaceholder("No response from agent.").isPlaceholder,
     ).toBe(true);
@@ -53,6 +54,24 @@ describe("buildNoResponseFallbackMessage", () => {
   });
 });
 
+describe("isNoResponseFallbackMessage", () => {
+  it("detects plain fallback text", () => {
+    const message = buildNoResponseFallbackMessage();
+    expect(isNoResponseFallbackMessage(message)).toBe(true);
+  });
+
+  it("detects mention-prefixed fallback text", () => {
+    const message = buildNoResponseFallbackMessage("@squad-lead @engineer");
+    expect(isNoResponseFallbackMessage(message)).toBe(true);
+  });
+
+  it("ignores regular messages", () => {
+    expect(isNoResponseFallbackMessage("Working on it, update soon.")).toBe(
+      false,
+    );
+  });
+});
+
 describe("isHeartbeatOkResponse", () => {
   it("detects exact HEARTBEAT_OK", () => {
     expect(isHeartbeatOkResponse("HEARTBEAT_OK")).toBe(true);
@@ -66,7 +85,9 @@ describe("isHeartbeatOkResponse", () => {
 
   it("does not suppress non-heartbeat responses", () => {
     expect(
-      isHeartbeatOkResponse("Loading context for notification...\nHEARTBEAT_OK"),
+      isHeartbeatOkResponse(
+        "Loading context for notification...\nHEARTBEAT_OK",
+      ),
     ).toBe(false);
   });
 });
