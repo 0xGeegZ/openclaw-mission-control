@@ -64,6 +64,7 @@ import {
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
 import { isValidSlug, validateAccountName } from "@/lib/settings-validation";
+import { BillingTab } from "@/components/billing/BillingTab";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -814,28 +815,9 @@ export default function SettingsPage({ params }: SettingsPageProps) {
             </TabsContent>
 
             <TabsContent value="billing" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Billing & Subscription
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your subscription and payment methods
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                      <CreditCard className="h-7 w-7 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-lg font-semibold">Billing coming soon</h3>
-                    <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                      View and manage your subscription, invoices, and payment methods.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              {accountId && (
+                <BillingTab accountId={accountId} accountSlug={accountSlug} />
+              )}
           </TabsContent>
         </Tabs>
       </div>
