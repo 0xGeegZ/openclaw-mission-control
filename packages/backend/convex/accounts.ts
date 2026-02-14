@@ -435,11 +435,15 @@ export const updateRuntimeStatusInternal = internalMutation({
       });
     }
 
-    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
     if (args.status === "offline") {
       await ctx.runMutation(internal.service.agents.markAllOffline, {
         accountId: args.accountId,
       });
+      await ctx.runMutation(
+        internal.service.notifications.clearTypingStateForAccount,
+        { accountId: args.accountId },
+      );
     }
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).

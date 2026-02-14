@@ -100,7 +100,10 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
  * Available LLM models for agent configuration.
  */
 export const AVAILABLE_MODELS = [
-  { value: LLM_MODEL.CLAUDE_HAIKU_4_5, label: "Claude Haiku 4.5 (Recommended)" },
+  {
+    value: LLM_MODEL.CLAUDE_HAIKU_4_5,
+    label: "Claude Haiku 4.5 (Recommended)",
+  },
   { value: LLM_MODEL.GPT_5_NANO, label: "GPT-5 Nano" },
 ] as const;
 
@@ -224,10 +227,6 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   [ACTIVITY_TYPE.MEMBER_REMOVED]: "Member removed",
   [ACTIVITY_TYPE.MEMBER_UPDATED]: "Member updated",
   [ACTIVITY_TYPE.ROLE_CHANGED]: "Role changed",
-  [ACTIVITY_TYPE.CONTAINER_CREATED]: "Container created",
-  [ACTIVITY_TYPE.CONTAINER_DELETED]: "Container deleted",
-  [ACTIVITY_TYPE.CONTAINER_RESTARTED]: "Container restarted",
-  [ACTIVITY_TYPE.CONTAINER_FAILED]: "Container failed",
 };
 
 // ============================================================================

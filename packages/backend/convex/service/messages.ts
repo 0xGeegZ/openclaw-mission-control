@@ -294,7 +294,7 @@ export const createFromAgent = internalMutation({
         ? mentions
         : mentions.filter((m) => m.type === "user");
 
-    // Create message (store full mentions so UI can render @squad-lead etc. as badges)
+    const now = Date.now();
     const messageId = await ctx.db.insert("messages", {
       accountId: agent.accountId,
       taskId: args.taskId,
@@ -303,8 +303,13 @@ export const createFromAgent = internalMutation({
       content: args.content,
       mentions,
       attachments: resolvedAttachments,
-      createdAt: Date.now(),
+      createdAt: now,
       sourceNotificationId: args.sourceNotificationId,
+    });
+
+    await ctx.db.patch(args.taskId, {
+      updatedAt: now,
+      lastMessageAt: now,
     });
 
     // Auto-subscribe agent to thread

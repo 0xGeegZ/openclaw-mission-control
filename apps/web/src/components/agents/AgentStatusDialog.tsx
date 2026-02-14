@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
@@ -48,6 +48,12 @@ export function AgentStatusDialog({ agent, open, onOpenChange }: AgentStatusDial
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const updateStatus = useMutation(api.agents.updateStatus);
+
+  useEffect(() => {
+    if (open) {
+      setStatus(agent.status);
+    }
+  }, [agent.status, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

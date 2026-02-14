@@ -160,7 +160,6 @@ export const TARGET_TYPE = {
   AGENT: "agent",
   ACCOUNT: "account",
   MEMBERSHIP: "membership",
-  CONTAINER: "container",
 } as const;
 
 // ============================================================================

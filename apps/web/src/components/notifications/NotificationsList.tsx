@@ -134,6 +134,15 @@ export function NotificationsList({
     onDismiss?.(id);
   };
 
+  const handleNotificationOpen = (notification: NotificationItem, isUnread: boolean) => {
+    if (isUnread) {
+      onMarkAsRead?.(notification._id);
+    }
+    if (notification.taskId) {
+      onNavigate?.(notification.taskId);
+    }
+  };
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -210,9 +219,15 @@ export function NotificationsList({
               {/* Content */}
               <div
                 className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => {
-                  if (isUnread) onMarkAsRead?.(notification._id);
-                  if (notification.taskId) onNavigate?.(notification.taskId);
+                role="button"
+                tabIndex={0}
+                aria-label={`Open notification: ${notification.title}`}
+                onClick={() => handleNotificationOpen(notification, isUnread)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNotificationOpen(notification, isUnread);
+                  }
                 }}
               >
                 <div className="flex items-start gap-2">
@@ -252,6 +267,7 @@ export function NotificationsList({
                       onMarkAsRead?.(notification._id);
                     }}
                     title="Mark as read"
+                    aria-label={`Mark notification "${notification.title}" as read`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
                   </Button>
@@ -259,11 +275,12 @@ export function NotificationsList({
                 <Button
                   variant="ghost"
                   size="sm"
-onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                       e.stopPropagation();
                       handleDismiss(notification._id);
                     }}
                   title="Dismiss"
+                  aria-label={`Dismiss notification "${notification.title}"`}
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />
                 </Button>

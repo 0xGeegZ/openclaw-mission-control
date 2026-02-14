@@ -17,6 +17,7 @@ import {
 } from "@packages/ui/components/popover";
 import { Checkbox } from "@packages/ui/components/checkbox";
 import { useAccount } from "@/lib/hooks/useAccount";
+import { usePopoverInPlace } from "@/lib/PopoverInPlaceContext";
 import { toast } from "sonner";
 import { UserPlus, Bot, Loader2 } from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
@@ -35,6 +36,7 @@ interface TaskAssigneesProps {
  */
 export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
   const { accountId } = useAccount();
+  const inPlace = usePopoverInPlace();
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -125,15 +127,19 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
             <span className="sr-only">Assign agents</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-72 p-0" align="start">
-          <div className="p-3 border-b">
+        <PopoverContent
+          className="w-72 p-0 flex flex-col overflow-hidden max-h-[min(20rem,70vh)]"
+          align="start"
+          disablePortal={inPlace}
+        >
+          <div className="p-3 border-b shrink-0">
             <h4 className="font-medium text-sm">Assign Agents</h4>
             <p className="text-xs text-muted-foreground mt-1">
               Select agents to work on this task
             </p>
           </div>
 
-          <div className="max-h-64 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             {agents === undefined ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

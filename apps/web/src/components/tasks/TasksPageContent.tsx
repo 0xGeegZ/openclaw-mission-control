@@ -8,6 +8,7 @@ import { KanbanBoard } from "./KanbanBoard";
 import { TasksPageHeader } from "./TasksPageHeader";
 import { AgentsSidebar } from "./AgentsSidebar";
 import { useAccount } from "@/lib/hooks/useAccount";
+import { useTaskIdFromSearchParams } from "@/lib/hooks/useTaskIdFromSearchParams";
 import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
 import { PanelLeftClose, PanelLeft } from "lucide-react";
@@ -39,6 +40,7 @@ const AGENTS_SIDEBAR_STORAGE_KEY = "agents-sidebar-collapsed";
  */
 export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
   const { accountId } = useAccount();
+  const activeTaskId = useTaskIdFromSearchParams();
   const [selectedAgentId, setSelectedAgentId] = useState<Id<"agents"> | null>(
     null,
   );
@@ -157,6 +159,7 @@ export function TasksPageContent({ accountSlug }: TasksPageContentProps) {
           >
             <AgentsSidebar
               accountId={accountId}
+              activeTaskId={activeTaskId}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
               className="w-64"

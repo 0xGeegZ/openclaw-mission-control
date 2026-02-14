@@ -365,6 +365,32 @@ try {
 }
 EOFNODE
 
+# Ensure config exists after merge (e.g. volume was empty or write failed); avoids health snapshot ENOENT.
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Config missing after merge, writing minimal openclaw.json..."
+  if [ -f "$TEMPLATE_FILE" ]; then
+    cp "$TEMPLATE_FILE" "$CONFIG_FILE"
+  else
+    cat > "$CONFIG_FILE" << 'EOFCONFIG'
+{
+  "agents": { "defaults": { "workspace": "/root/clawd" } },
+  "gateway": { "port": 18789, "mode": "local" }
+}
+EOFCONFIG
+  fi
+fi
+
+# Create workspace-<agentId> under .openclaw so OpenClaw gateway can use them without ENOENT on mkdir.
+# Use merged config and, when present, runtime-generated config (in case merge ran before runtime wrote).
+for id in $(jq -r '.agents.list[]?.id // empty' "$CONFIG_FILE" 2>/dev/null); do
+  [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+done
+if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+  for id in $(jq -r '.agents.list[]?.id // empty' "$OPENCLAW_CONFIG_PATH" 2>/dev/null); do
+    [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+  done
+fi
+
 rm -f /tmp/clawdbot-gateway.lock "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
 find "$CONFIG_DIR" -name "*.lock" -delete 2>/dev/null || true
 find "$CONFIG_DIR" -name "SingletonLock" -delete 2>/dev/null || true

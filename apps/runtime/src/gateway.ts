@@ -283,6 +283,21 @@ export function buildNoResponseFallbackMessage(
 }
 
 /**
+ * Detect fallback messages generated for no-response OpenClaw runs.
+ * Accepts plain fallback and mention-prefixed variants.
+ */
+export function isNoResponseFallbackMessage(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  if (trimmed === NO_RESPONSE_FALLBACK_MESSAGE) return true;
+  if (!trimmed.endsWith(NO_RESPONSE_FALLBACK_MESSAGE)) return false;
+  const prefix = trimmed
+    .slice(0, trimmed.length - NO_RESPONSE_FALLBACK_MESSAGE.length)
+    .trim();
+  return !prefix || NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix);
+}
+
+/**
  * Initialize the OpenClaw gateway.
  * Fetches agents and registers their sessions; stores gateway URL/token for send.
  */

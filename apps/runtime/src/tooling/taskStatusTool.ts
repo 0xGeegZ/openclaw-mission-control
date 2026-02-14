@@ -6,21 +6,20 @@
 import { getConvexClient, api } from "../convex-client";
 import { createLogger } from "../logger";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import type { TaskStatus } from "@packages/shared";
+import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 
 const log = createLogger("[TaskStatusTool]");
 
-type RuntimeTaskStatus = Extract<
-  TaskStatus,
-  "in_progress" | "review" | "done" | "blocked"
->;
+const RUNTIME_TASK_STATUSES = [
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+] as const satisfies readonly TaskStatus[];
 
-const ALLOWED_STATUSES = new Set<RuntimeTaskStatus>([
-  "in_progress",
-  "review",
-  "done",
-  "blocked",
-]);
+type RuntimeTaskStatus = (typeof RUNTIME_TASK_STATUSES)[number];
+
+const ALLOWED_STATUSES = new Set<RuntimeTaskStatus>(RUNTIME_TASK_STATUSES);
 
 function isRuntimeTaskStatus(value: string): value is RuntimeTaskStatus {
   return ALLOWED_STATUSES.has(value as RuntimeTaskStatus);
@@ -35,8 +34,8 @@ export function createTaskStatusToolSchema(options?: {
 }): typeof TASK_STATUS_TOOL_SCHEMA {
   const allowDone = options?.allowDone !== false;
   const statusEnum = allowDone
-    ? ["in_progress", "review", "done", "blocked"]
-    : ["in_progress", "review", "blocked"];
+    ? [...RUNTIME_TASK_STATUSES]
+    : [TASK_STATUS.IN_PROGRESS, TASK_STATUS.REVIEW, TASK_STATUS.BLOCKED];
   return {
     type: "function" as const,
     function: {
@@ -83,7 +82,7 @@ export const TASK_STATUS_TOOL_SCHEMA = {
         },
         status: {
           type: "string",
-          enum: ["in_progress", "review", "done", "blocked"],
+          enum: [...RUNTIME_TASK_STATUSES],
           description: "New status for the task",
         },
         blockedReason: {
@@ -116,16 +115,17 @@ export async function executeTaskStatusTool(params: {
   const { agentId, taskId, status, blockedReason, serviceToken, accountId } =
     params;
 
-  if (!taskId.trim()) {
+  if (taskId == null || !String(taskId).trim()) {
     return { success: false, error: "taskId is required" };
   }
+  const trimmedTaskId = String(taskId).trim();
   if (!isRuntimeTaskStatus(status)) {
     return {
       success: false,
       error: `Invalid status: must be one of in_progress, review, done, blocked`,
     };
   }
-  if (status === "blocked" && !blockedReason?.trim()) {
+  if (status === TASK_STATUS.BLOCKED && !blockedReason?.trim()) {
     return {
       success: false,
       error: "blockedReason is required when status is blocked",
@@ -138,7 +138,7 @@ export async function executeTaskStatusTool(params: {
       accountId,
       serviceToken,
       agentId,
-      taskId: taskId as Id<"tasks">,
+      taskId: trimmedTaskId as Id<"tasks">,
       status: status as RuntimeTaskStatus,
       blockedReason: blockedReason?.trim() || undefined,
     });
@@ -147,7 +147,7 @@ export async function executeTaskStatusTool(params: {
     const message = err instanceof Error ? err.message : String(err);
     log.warn(
       "Task status update failed (task will not move to done); check Convex connectivity",
-      { taskId, status, error: message },
+      { taskId: trimmedTaskId, status, error: message },
     );
     return { success: false, error: message };
   }

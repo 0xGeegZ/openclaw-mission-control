@@ -455,6 +455,39 @@ description: Custom name in frontmatter
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("writes default AGENTS.md with workflow rules: human dependency -> BLOCKED, unblock -> IN_PROGRESS, QA request after REVIEW", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    try {
+      const configPath = path.join(tmp, "openclaw.json");
+      const workspaceRoot = path.join(tmp, "agents");
+      const agents: AgentForProfile[] = [
+        {
+          _id: "a1",
+          name: "Engineer",
+          slug: "engineer",
+          role: "Engineer",
+          sessionKey: "agent:engineer:acc1",
+          effectiveSoulContent: "# SOUL\n",
+          resolvedSkills: [],
+        },
+      ];
+      syncOpenClawProfiles(agents, { workspaceRoot, configPath });
+      const agentsMdPath = path.join(workspaceRoot, "engineer", "AGENTS.md");
+      expect(fs.existsSync(agentsMdPath)).toBe(true);
+      const content = fs.readFileSync(agentsMdPath, "utf-8");
+      expect(content).toContain("human input");
+      expect(content).toContain("BLOCKED");
+      expect(content).toContain("blockedReason");
+      expect(content).toContain("move the task back to IN_PROGRESS");
+      expect(content).toContain("REVIEW is for QA validation only");
+      expect(content).toContain("Before requesting QA");
+      expect(content).toContain("move the task to REVIEW first");
+      expect(content).not.toContain("If you need human review: move to REVIEW");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("does not write SKILL.md or add to skills.entries for skills without contentMarkdown", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");

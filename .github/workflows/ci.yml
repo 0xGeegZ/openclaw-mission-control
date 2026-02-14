@@ -67,11 +67,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Check coverage thresholds
-        run: |
-          echo "✓ Tests passed with coverage thresholds enforced:"
-          echo "  Backend: ≥70% lines/functions/statements; ≥60% branches"
-          echo "  Frontend: ≥50% lines/functions/statements; ≥40% branches"
-          echo "  Runtime: ≥60% lines/functions/statements; ≥50% branches"
+        run: node scripts/check-coverage-thresholds.mjs
         if: success()
 
   build:

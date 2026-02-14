@@ -206,10 +206,6 @@ export const activityTypeValidator = v.union(
   v.literal(ACTIVITY_TYPE.MEMBER_REMOVED),
   v.literal(ACTIVITY_TYPE.MEMBER_UPDATED),
   v.literal(ACTIVITY_TYPE.ROLE_CHANGED),
-  v.literal(ACTIVITY_TYPE.CONTAINER_CREATED),
-  v.literal(ACTIVITY_TYPE.CONTAINER_DELETED),
-  v.literal(ACTIVITY_TYPE.CONTAINER_RESTARTED),
-  v.literal(ACTIVITY_TYPE.CONTAINER_FAILED),
 );
 
 /**
@@ -396,7 +392,6 @@ export const targetTypeValidator = v.union(
   v.literal(TARGET_TYPE.AGENT),
   v.literal(TARGET_TYPE.ACCOUNT),
   v.literal(TARGET_TYPE.MEMBERSHIP),
-  v.literal(TARGET_TYPE.CONTAINER),
 );
 
 /**
