@@ -41,6 +41,7 @@ import { TaskDocuments } from "./TaskDocuments";
 import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
+import { PopoverInPlaceProvider } from "@/lib/PopoverInPlaceContext";
 import { cn } from "@packages/ui/lib/utils";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
@@ -206,6 +207,7 @@ export function TaskDetailSheet({
             <p className="text-muted-foreground">Task not found</p>
           </div>
         ) : (
+          <PopoverInPlaceProvider>
           <>
             <SheetHeader className="px-4 pt-3 pb-2 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
               <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
@@ -402,6 +404,7 @@ export function TaskDetailSheet({
               </TabsContent>
             </Tabs>
           </>
+          </PopoverInPlaceProvider>
         )}
       </SheetContent>
       {task && (

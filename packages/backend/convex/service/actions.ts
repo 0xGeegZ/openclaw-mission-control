@@ -1935,6 +1935,7 @@ export const deleteTaskFromAgent = action({
 /**
  * Link a task to a GitHub PR bidirectionally.
  * Updates task metadata with prNumber and attempts to add task reference to PR description.
+ * Logs a warning (does not fail) if the PR head branch name does not contain the task ID (one-branch-per-task convention).
  * Orchestrator-only access.
  */
 export const linkTaskToPrForAgentTool = action({
@@ -2028,7 +2029,16 @@ export const linkTaskToPrForAgentTool = action({
           return { success: true };
         }
 
-        const pr = (await prResponse.json()) as { body?: string };
+        const pr = (await prResponse.json()) as {
+          body?: string;
+          head?: { ref?: string };
+        };
+        const prBranch = pr.head?.ref ?? "";
+        if (prBranch && !prBranch.includes(args.taskId)) {
+          console.warn(
+            `PR #${args.prNumber} branch "${prBranch}" does not match task ${args.taskId}; consider using branch feat/task-${args.taskId}`,
+          );
+        }
         let currentBody = pr.body || "";
 
         // Remove old task marker if present

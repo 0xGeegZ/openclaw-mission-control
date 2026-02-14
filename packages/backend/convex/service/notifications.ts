@@ -205,6 +205,38 @@ export const markDelivered = internalMutation({
 });
 
 /**
+ * Clear typing state for an account when runtime goes offline.
+ * Resets readAt on all agent notifications that are read but not yet delivered,
+ * so they no longer count as "typing" and avoid false positives when runtime comes back.
+ * Called from accounts.setRuntimeStatus when status is set to "offline".
+ */
+export const clearTypingStateForAccount = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_account_undelivered", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "agent")
+          .eq("deliveredAt", undefined),
+      )
+      .collect();
+
+    let cleared = 0;
+    for (const n of notifications) {
+      if (n.readAt != null) {
+        await ctx.db.patch(n._id, { readAt: undefined });
+        cleared++;
+      }
+    }
+    return { cleared };
+  },
+});
+
+/**
  * Get notification details for delivery (service-only).
  * Returns full context needed to deliver to agent.
  * Must be called from service action with validated service token.

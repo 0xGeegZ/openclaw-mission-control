@@ -136,9 +136,14 @@ export const listByStatus = query({
       grouped[task.status].push(task);
     }
 
-    // Sort each group by priority then createdAt
+    // Sort each group by last message time (most recent first), then priority, then createdAt
     for (const status of TASK_STATUS_ORDER) {
       grouped[status].sort((a, b) => {
+        const aTime = a.lastMessageAt ?? a.createdAt;
+        const bTime = b.lastMessageAt ?? b.createdAt;
+        if (bTime !== aTime) {
+          return bTime - aTime;
+        }
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
         }

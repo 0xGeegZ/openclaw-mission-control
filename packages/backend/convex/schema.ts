@@ -416,6 +416,12 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /**
+     * Timestamp of the most recent message in the task thread.
+     * Used to order tasks in the Kanban by last activity.
+     */
+    lastMessageAt: v.optional(v.number()),
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
@@ -710,11 +716,7 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
-    .index("by_recipient_unread", [
-      "recipientType",
-      "recipientId",
-      "readAt",
-    ])
+    .index("by_recipient_unread", ["recipientType", "recipientId", "readAt"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
@@ -859,4 +861,59 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // ==========================================================================
+  // CONTAINERS
+  // Per-customer Docker container orchestration for multi-tenant deployments.
+  // Each container runs an isolated instance on shared VPS.
+  // ==========================================================================
+  containers: defineTable({
+    /** Account this container belongs to */
+    accountId: v.id("accounts"),
+
+    /** Container display name (e.g., "customer-{accountId}") */
+    containerName: v.string(),
+
+    /** Lifecycle status of the container */
+    status: v.union(
+      v.literal("creating"),
+      v.literal("running"),
+      v.literal("stopped"),
+      v.literal("failed"),
+      v.literal("deleted"),
+    ),
+
+    /** Host port assigned to this container (5000-15000 range) */
+    assignedPort: v.number(),
+
+    /** Resource limits (CPU and memory allocations) */
+    resourceLimits: v.object({
+      cpus: v.string(), // e.g., "0.5", "1.0", "2.0"
+      memory: v.string(), // e.g., "512M", "1024M", "2048M"
+    }),
+
+    /** Number of consecutive passed health checks */
+    healthChecksPassed: v.number(),
+
+    /** Timestamp of last health check */
+    lastHealthCheck: v.optional(v.number()),
+
+    /** Error log: history of failures and recovery attempts */
+    errorLog: v.array(
+      v.object({
+        timestamp: v.number(),
+        message: v.string(),
+      }),
+    ),
+
+    /** Timestamp of container creation */
+    createdAt: v.number(),
+
+    /** Timestamp of last update */
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"])
+    .index("by_status", ["status"])
+    .index("by_account_status", ["accountId", "status"])
+    .index("by_account_created", ["accountId", "createdAt"]),
 });

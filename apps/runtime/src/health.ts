@@ -22,6 +22,7 @@ import type { TaskStatus } from "@packages/shared";
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
 let runtimeConfig: RuntimeConfig | null = null;
+let healthCheckTimer: NodeJS.Timeout | null = null;
 
 type RuntimeTaskStatus = Extract<
   TaskStatus,
@@ -254,8 +255,10 @@ export function startHealthServer(config: RuntimeConfig): void {
   runtimeConfig = config;
 
   server = http.createServer(async (req, res) => {
+    const requestPath = new URL(req.url ?? "/", "http://localhost").pathname;
+
     // Version endpoint - lightweight, just returns versions
-    if (req.url === "/version") {
+    if (requestPath === "/version") {
       const versionInfo = {
         runtimeServiceVersion: config.runtimeServiceVersion,
         openclawVersion: config.openclawVersion,
@@ -269,7 +272,7 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     // Health endpoint - full status (used by fleet monitoring UI)
-    if (req.url === "/health") {
+    if (requestPath === "/health") {
       const delivery = getDeliveryState();
       const gateway = getGatewayState();
       const heartbeat = getHeartbeatState();
@@ -327,7 +330,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-status") {
+    if (requestPath === "/agent/task-status") {
       const requestStart = Date.now();
       const session = requireLocalAgentSession(req, res, "task-status");
       if (!session) return;
@@ -429,7 +432,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-update") {
+    if (requestPath === "/agent/task-update") {
       const requestStart = Date.now();
       const session = requireLocalAgentSession(req, res, "task-update");
       if (!session) return;
@@ -582,7 +585,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-create") {
+    if (requestPath === "/agent/task-create") {
       const requestStart = Date.now();
       const session = requireLocalAgentSession(req, res, "task-create");
       if (!session) return;
@@ -695,7 +698,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-assign") {
+    if (requestPath === "/agent/task-assign") {
       const session = requireLocalAgentSession(req, res, "task-assign");
       if (!session) return;
       const { agentId, config } = session;
@@ -766,7 +769,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/response-request") {
+    if (requestPath === "/agent/response-request") {
       const session = requireLocalAgentSession(req, res, "response-request");
       if (!session) return;
       const { agentId, config } = session;
@@ -841,7 +844,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/document") {
+    if (requestPath === "/agent/document") {
       const requestStart = Date.now();
       const session = requireLocalAgentSession(req, res, "document");
       if (!session) return;
@@ -928,7 +931,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-message") {
+    if (requestPath === "/agent/task-message") {
       const session = requireLocalAgentSession(req, res, "task-message");
       if (!session) return;
       const { agentId, config } = session;
@@ -975,7 +978,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-list") {
+    if (requestPath === "/agent/task-list") {
       const session = requireLocalAgentSession(req, res, "task-list");
       if (!session) return;
       const { agentId, config } = session;
@@ -1052,7 +1055,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-get") {
+    if (requestPath === "/agent/task-get") {
       const session = requireLocalAgentSession(req, res, "task-get");
       if (!session) return;
       const { agentId, config } = session;
@@ -1095,7 +1098,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-thread") {
+    if (requestPath === "/agent/task-thread") {
       const session = requireLocalAgentSession(req, res, "task-thread");
       if (!session) return;
       const { agentId, config } = session;
@@ -1139,7 +1142,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-search") {
+    if (requestPath === "/agent/task-search") {
       const session = requireLocalAgentSession(req, res, "task-search");
       if (!session) return;
       const { agentId, config } = session;
@@ -1183,7 +1186,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-load") {
+    if (requestPath === "/agent/task-load") {
       const session = requireLocalAgentSession(req, res, "task-load");
       if (!session) return;
       const { agentId, config } = session;
@@ -1219,7 +1222,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/get-agent-skills") {
+    if (requestPath === "/agent/get-agent-skills") {
       const session = requireLocalAgentSession(req, res, "get-agent-skills");
       if (!session) return;
       const { agentId, config } = session;
@@ -1250,7 +1253,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-delete") {
+    if (requestPath === "/agent/task-delete") {
       const session = requireLocalAgentSession(req, res, "task-delete");
       if (!session) return;
       const { agentId, config } = session;
@@ -1294,7 +1297,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
-    if (req.url === "/agent/task-link-pr") {
+    if (requestPath === "/agent/task-link-pr") {
       const session = requireLocalAgentSession(req, res, "task-link-pr");
       if (!session) return;
       const { agentId, config } = session;
@@ -1346,7 +1349,7 @@ export function startHealthServer(config: RuntimeConfig): void {
     }
 
     // Metrics endpoint - Prometheus-style metrics + JSON format
-    if (req.url === "/metrics") {
+    if (requestPath === "/metrics") {
       const format = req.headers["accept"]?.includes("application/json")
         ? "json"
         : "prometheus";
@@ -1406,7 +1409,10 @@ export function startHealthServer(config: RuntimeConfig): void {
   });
 
   // Periodic health check to Convex (includes version info) and restart check
-  setInterval(async () => {
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+  }
+  healthCheckTimer = setInterval(async () => {
     try {
       if (!runtimeConfig) return;
 
@@ -1439,4 +1445,8 @@ export function startHealthServer(config: RuntimeConfig): void {
 export function stopHealthServer(): void {
   server?.close();
   server = null;
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+    healthCheckTimer = null;
+  }
 }
