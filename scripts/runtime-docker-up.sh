@@ -38,7 +38,7 @@ export DOCKER_UID DOCKER_GID
 COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
 DOCKER_UID_ENV="$COMPOSE_DIR/.env.docker-uid"
 printf "DOCKER_UID=%s\nDOCKER_GID=%s\n" "$DOCKER_UID" "$DOCKER_GID" > "$DOCKER_UID_ENV"
-# Create workspace and agents dir so runtime does not need to mkdir /root/clawd/agents in-container (avoids EACCES on mount).
+# Create workspace and agents dir ahead of boot so profile sync does not need first-run mkdir in-container.
 mkdir -p .runtime/openclaw-workspace/agents .runtime/openclaw-data
 if ! chown -R "${DOCKER_UID}:${DOCKER_GID}" .runtime/openclaw-workspace 2>/dev/null; then
   echo "Note: chown without sudo failed, trying with sudo..." >&2

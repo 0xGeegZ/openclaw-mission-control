@@ -63,8 +63,8 @@ export const registerUploadFromAgent = internalMutation({
       throw new Error("Forbidden: Task belongs to different account");
     }
     const account = await ctx.db.get(agent.accountId);
-    const _isOrchestratorChat = isOrchestratorChatTask({ account, task });
-    const _orchestratorAgentId =
+    const isOrchestratorChat = isOrchestratorChatTask({ account, task });
+    const orchestratorAgentId =
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
 

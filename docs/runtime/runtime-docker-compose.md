@@ -116,7 +116,7 @@ When using profile `openclaw`, Compose mounts:
 - `.runtime/openclaw-data` → OpenClaw config and state (mounted at `/root/.openclaw`, persists across restarts).
 - `.runtime/openclaw-workspace` → Agent workspace (persists across restarts).
 
-**Both** the `runtime` and `openclaw-gateway` services mount `.runtime/openclaw-workspace` at `/root/clawd`. The runtime writes per-agent workspaces (SOUL.md, TOOLS.md, AGENTS.md, HEARTBEAT.md, memory/) and a generated `openclaw.json` there; the gateway reads that config and uses the agent list. This **profile sync** keeps OpenClaw sessions aligned with Convex agent profiles (role, skills, soul content) without manual steps. Skills can optionally store a SKILL.md body (`contentMarkdown`) in Convex; the runtime materializes them under each agent's `skills/<slug>/` and adds those paths to the generated config so OpenClaw can load them.
+The `runtime` service mounts `.runtime/openclaw-workspace` at `/clawd` (non-root-safe path), while `openclaw-gateway` mounts the same host directory at `/root/clawd`. The runtime writes per-agent workspaces (SOUL.md, TOOLS.md, AGENTS.md, HEARTBEAT.md, memory/) and a generated `openclaw.json` into this shared host volume; the gateway reads that config and uses the agent list. This **profile sync** keeps OpenClaw sessions aligned with Convex agent profiles (role, skills, soul content) without manual steps. Skills can optionally store a SKILL.md body (`contentMarkdown`) in Convex; the runtime materializes them under each agent's `skills/<slug>/` and adds those paths to the generated config so OpenClaw can load them.
 
 These directories are created on first run and are gitignored (`.runtime/`). To reset OpenClaw state, remove `.runtime/openclaw-data` and `.runtime/openclaw-workspace` and restart.
 
@@ -147,7 +147,7 @@ The runtime delivery loop polls Convex for undelivered agent notifications and s
   Ensure `ACCOUNT_ID`, `CONVEX_URL`, and `SERVICE_TOKEN` are set in `apps/runtime/.env`. The process exits with an error if any are missing.
 
 - **`EACCES: permission denied, mkdir '/root/clawd/agents'` (AgentSync)**  
-  Re-run `npm run dev:openclaw` so the script re-applies chown and chmod. Or from repo root run: `sudo chown -R $(id -u):$(id -g) .runtime/openclaw-workspace` and `sudo chmod -R a+rwX .runtime/openclaw-workspace`, then restart. See **Volume permissions** under Volumes (OpenClaw).
+  This usually indicates a legacy runtime mount/path (runtime writing under `/root/*` as non-root). Ensure you are using the current Compose config where runtime uses `/clawd` (`OPENCLAW_WORKSPACE_ROOT=/clawd/agents`, `OPENCLAW_CONFIG_PATH=/clawd/openclaw.json`). Then re-run `npm run dev:openclaw` so the script re-applies chown and chmod. If needed, from repo root run: `sudo chown -R $(id -u):$(id -g) .runtime/openclaw-workspace` and `sudo chmod -R a+rwX .runtime/openclaw-workspace`, then restart. See **Volume permissions** under Volumes (OpenClaw).
 
 - **`touch: cannot touch '/root/clawd/MEMORY.md': Permission denied` (gateway)**  
   The shared workspace must be writable by both runtime and gateway. From repo root run: `sudo chmod -R a+rwX .runtime/openclaw-workspace` (and `sudo chown -R $(id -u):$(id -g) .runtime/openclaw-workspace` if needed), then restart.

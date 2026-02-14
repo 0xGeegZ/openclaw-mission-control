@@ -5,7 +5,7 @@
  * Coverage: lib/mentions.ts (mention parsing and resolution logic)
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   extractMentionStrings,
   hasAllMention,
@@ -14,15 +14,14 @@ import {
   listCandidates,
 } from "./mentions";
 import { Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
 
 // ============================================================================
 // Mock Context Helpers
 // ============================================================================
 
 function createMockQueryContext(
-  memberships: unknown[] = [],
-  agents: unknown[] = [],
+  memberships: any[] = [],
+  agents: any[] = [],
   accountDoc: {
     _id: Id<"accounts">;
     settings?: { orchestratorAgentId?: Id<"agents"> };
@@ -42,7 +41,7 @@ function createMockQueryContext(
       get: async (id: Id<"accounts">) =>
         accountDoc && id === accountDoc._id ? accountDoc : null,
     },
-  } as unknown as QueryCtx;
+  } as any;
 }
 
 // ============================================================================

@@ -42,7 +42,7 @@ describe("getShouldShowTypingIndicator", () => {
     expect(getShouldShowTypingIndicator([a, b])).toBe(true);
   });
 
-  it("returns false when there are no typing agents (e.g. all outside TYPING_WINDOW_MS)", () => {
+  it("returns false when there are no typing agents", () => {
     expect(getShouldShowTypingIndicator([])).toBe(false);
   });
 });

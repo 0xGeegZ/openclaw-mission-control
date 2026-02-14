@@ -434,6 +434,40 @@ export const markNotificationRead = action({
 });
 
 /**
+ * Mark delivery as ended for a notification (typing stops; notification stays undelivered for retry).
+ * Called by runtime when delivery fails so the typing indicator stops immediately.
+ * On next attempt, markNotificationRead clears deliveryEndedAt so typing can show again.
+ */
+export const markNotificationDeliveryEnded = action({
+  args: {
+    notificationId: v.id("notifications"),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const notificationResult = await ctx.runQuery(
+      internal.service.notifications.getForDelivery,
+      { notificationId: args.notificationId },
+    );
+    const notification = notificationResult?.notification;
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.accountId !== args.accountId) {
+      throw new Error("Forbidden: Notification belongs to different account");
+    }
+    await ctx.runMutation(internal.service.notifications.markDeliveryEnded, {
+      notificationId: args.notificationId,
+    });
+    return { success: true };
+  },
+});
+
+/**
  * List agents for an account.
  * Called by runtime to get all agents for the account.
  */

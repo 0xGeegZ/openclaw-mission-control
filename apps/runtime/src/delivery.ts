@@ -520,6 +520,24 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             notification._id,
             state.lastErrorMessage,
           );
+          try {
+            await client.action(
+              api.service.actions.markNotificationDeliveryEnded,
+              {
+                notificationId: notification._id,
+                serviceToken: config.serviceToken,
+                accountId: config.accountId,
+              },
+            );
+          } catch (markErr) {
+            const msg =
+              markErr instanceof Error ? markErr.message : String(markErr);
+            log.warn(
+              "Failed to mark notification delivery ended; typing may persist until Convex syncs",
+              notification._id,
+              msg,
+            );
+          }
         }
       }
 

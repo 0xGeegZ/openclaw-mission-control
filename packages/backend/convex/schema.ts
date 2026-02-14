@@ -703,6 +703,12 @@ export default defineSchema({
      */
     readAt: v.optional(v.number()),
 
+    /**
+     * Delivery loop ended for this attempt (success or failure); typing stops.
+     * Cleared on markRead so retries can show typing again.
+     */
+    deliveryEndedAt: v.optional(v.number()),
+
     /** Timestamp of creation */
     createdAt: v.number(),
   })

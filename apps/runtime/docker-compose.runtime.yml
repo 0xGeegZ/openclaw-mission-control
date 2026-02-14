@@ -36,6 +36,9 @@ services:
       - ./.env
     environment:
       - HEALTH_HOST=0.0.0.0
+      # Runtime container runs as non-root; use /clawd (not /root/*) to avoid EACCES traversing /root.
+      - OPENCLAW_WORKSPACE_ROOT=/clawd/agents
+      - OPENCLAW_CONFIG_PATH=/clawd/openclaw.json
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
       - OPENCLAW_REQUEST_TIMEOUT_MS=300000
@@ -45,8 +48,8 @@ services:
       - OPENCLAW_AGENTS_MD_PATH=/app/docs/runtime/AGENTS.md
       - OPENCLAW_HEARTBEAT_MD_PATH=/app/docs/runtime/HEARTBEAT.md
     volumes:
-      # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
-      - ../../.runtime/openclaw-workspace:/root/clawd:delegated
+      # Shared with openclaw-gateway: runtime writes agent workspaces/openclaw.json to this host mount.
+      - ../../.runtime/openclaw-workspace:/clawd:delegated
     ports:
       - "127.0.0.1:3000:3000"
     deploy:
