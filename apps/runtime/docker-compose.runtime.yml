@@ -1,15 +1,26 @@
 # OpenClaw Mission Control runtime + optional OpenClaw gateway (local dev).
+#
 # Usage (from repo root):
 #   docker compose -f apps/runtime/docker-compose.runtime.yml up --build
 #   With OpenClaw gateway:
 #   docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build
-# See docs/runtime/runtime-docker-compose.md
+#
+# Documentation: See docs/runtime/runtime-docker-compose.md
+#
+# Network Architecture:
+#   - Custom network: runtime_default (isolated from host)
+#   - runtime service: Listens on localhost:3000 (health checks, task-status HTTP fallback)
+#   - openclaw-gateway service: Listens on localhost:18789, accesses runtime via http://runtime:3000
+#   - Both services share /root/clawd volume for workspace and configuration
+#   - Firewall rules: All ports bound to 127.0.0.1 (localhost-only); not exposed to external networks in dev
 
 name: runtime
 
 networks:
   default:
     name: runtime_default
+    driver: bridge
+    # Network is internal to the compose setup; external access via port binding on 127.0.0.1 only
 
 services:
   runtime:
@@ -17,6 +28,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/runtime/Dockerfile
+    container_name: openclaw-runtime
     restart: unless-stopped
     env_file:
       - ./.env
@@ -32,6 +44,29 @@ services:
       - ../../.runtime/openclaw-workspace:/root/clawd:delegated
     ports:
       - "127.0.0.1:3000:3000"
+    # FIX 2.1: Resource limits prevent unbounded consumption and host system DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    # FIX 2.2: Logging configuration prevents unbounded log file growth and enables log rotation
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        labels: "service=runtime,environment=development"
+    # FIX 2.4: Security options reduce container attack surface
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     healthcheck:
       test:
         [
@@ -50,6 +85,7 @@ services:
     build:
       context: ./openclaw
       dockerfile: Dockerfile
+    container_name: openclaw-gateway
     restart: unless-stopped
     ulimits:
       nofile:
@@ -61,6 +97,10 @@ services:
       - ./.env
     environment:
       - OPENCLAW_CONFIG_RELOAD=1
+    # FIX 2.3: Explicit dependency with healthcheck condition ensures runtime is ready before gateway starts
+    depends_on:
+      runtime:
+        condition: service_healthy
     # Same network as runtime so agent can reach http://runtime:3000 for task-status HTTP fallback
     networks:
       - default
@@ -69,3 +109,31 @@ services:
       - ../../.runtime/openclaw-workspace:/root/clawd:delegated
     ports:
       - "127.0.0.1:18789:18789"
+    # FIX 2.2: Logging configuration for gateway (consistent with runtime service)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        labels: "service=openclaw-gateway,environment=development"
+    # FIX 2.4: Security options for gateway (consistent with runtime)
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SYS_ADMIN
+    # FIX 3.5: Add health check to gateway container
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://127.0.0.1:18789/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
