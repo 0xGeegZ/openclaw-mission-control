@@ -43,7 +43,7 @@ const eslintConfig = defineConfig([
           allowHigherOrderFunctions: true,
         },
       ],
-      
+
       // Import consistency (gradual enforcement: warn on type imports, defer to Phase 2)
       "@typescript-eslint/consistent-type-imports": [
         "warn",
@@ -53,7 +53,7 @@ const eslintConfig = defineConfig([
         },
       ],
       "@typescript-eslint/consistent-type-definitions": ["warn", "type"],
-      
+
       // Unused code cleanup (error: enforce removing truly unused code)
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -63,16 +63,16 @@ const eslintConfig = defineConfig([
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      
+
       // Null safety (warnings for now, errors in Phase 2 once team aligns)
       "@typescript-eslint/strict-boolean-expressions": "off",
       "@typescript-eslint/prefer-nullish-coalescing": "warn",
       "@typescript-eslint/prefer-optional-chain": "warn",
-      
+
       // Error handling (keep as errors: critical for reliability)
       "@typescript-eslint/prefer-promise-reject-errors": "warn",
       "@typescript-eslint/no-floating-promises": "warn",
-      
+
       // Code quality (keep as errors: good practices)
       "@typescript-eslint/prefer-const": "error",
       "@typescript-eslint/no-var-requires": "warn",

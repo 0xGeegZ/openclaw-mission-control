@@ -23,6 +23,10 @@ import { useAccount } from "@/lib/hooks/useAccount";
 import { TaskStatus, TASK_STATUS, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  useTaskIdFromSearchParams,
+  TASK_ID_SEARCH_PARAM,
+} from "@/lib/hooks/useTaskIdFromSearchParams";
 
 /** Set of all known task statuses for O(1) validation in DnD resolution. */
 const VALID_STATUS_SET = new Set<TaskStatus>(TASK_STATUS_ORDER);
@@ -69,16 +73,12 @@ export function KanbanBoard({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { accountId, isLoading: isAccountLoading } = useAccount();
+  const selectedTaskId = useTaskIdFromSearchParams();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
   const [pendingBlockedTask, setPendingBlockedTask] =
     useState<Doc<"tasks"> | null>(null);
-
-  const selectedTaskId = useMemo(() => {
-    const taskId = searchParams.get("taskId");
-    return taskId ? (taskId as Id<"tasks">) : null;
-  }, [searchParams]);
 
   /**
    * Updates the taskId query param to control the task detail sheet.
@@ -87,9 +87,9 @@ export function KanbanBoard({
     (taskId: Id<"tasks"> | null) => {
       const nextParams = new URLSearchParams(searchParams.toString());
       if (taskId) {
-        nextParams.set("taskId", String(taskId));
+        nextParams.set(TASK_ID_SEARCH_PARAM, String(taskId));
       } else {
-        nextParams.delete("taskId");
+        nextParams.delete(TASK_ID_SEARCH_PARAM);
       }
       const queryString = nextParams.toString();
       const nextUrl = queryString ? `${pathname}?${queryString}` : pathname;

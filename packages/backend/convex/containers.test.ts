@@ -148,9 +148,7 @@ describe("container mutations", () => {
       statuses.forEach((status) => {
         expect(() => {
           if (status !== "running") {
-            throw new Error(
-              `Cannot restart container in ${status} state`,
-            );
+            throw new Error(`Cannot restart container in ${status} state`);
           }
         }).toThrow(`Cannot restart container in ${status} state`);
       });
@@ -190,7 +188,10 @@ describe("container mutations", () => {
 
       // Simulate 3rd failure trigger
       if (container.healthChecksPassed >= 3) {
-        const failedContainer: { status: "failed"; healthChecksPassed: number } = {
+        const failedContainer: {
+          status: "failed";
+          healthChecksPassed: number;
+        } = {
           ...container,
           status: "failed",
         };
@@ -201,17 +202,16 @@ describe("container mutations", () => {
 
   describe("logContainerError mutation", () => {
     test("appends error to error log", () => {
-      const container = { errorLog: [] as Array<{ timestamp: number; message: string }> };
+      const container = {
+        errorLog: [] as Array<{ timestamp: number; message: string }>,
+      };
       const errorMessage = "Health check failed: timeout";
       const timestamp = Date.now();
 
       // Simulate error logging
       const updated = {
         ...container,
-        errorLog: [
-          ...container.errorLog,
-          { timestamp, message: errorMessage },
-        ],
+        errorLog: [...container.errorLog, { timestamp, message: errorMessage }],
       };
 
       expect(updated.errorLog).toHaveLength(1);
@@ -219,7 +219,9 @@ describe("container mutations", () => {
     });
 
     test("maintains chronological order in error log", () => {
-      let container = { errorLog: [] as Array<{ timestamp: number; message: string }> };
+      let container = {
+        errorLog: [] as Array<{ timestamp: number; message: string }>,
+      };
 
       // Add multiple errors
       const errors = [

@@ -60,7 +60,9 @@ git commit -m "type(scope): description"
 
 ## 3. Ensure Feature Branch (if needed)
 
-**If currently on dev, create branch:**
+**When working on a task:** Use branch name `feat/task-<taskId>` (task ID from your notification). Create from dev: `git checkout dev && git pull && git checkout -b feat/task-<taskId>`. If the branch already exists remotely: `git fetch origin && git checkout feat/task-<taskId>`. Do not use a generic branch name for task work.
+
+**If not in task context (or no task ID in notification):** Use conventional branch name. If currently on dev, create branch:
 
 - Format: `<type>/<short-description>`
 - Example: `feat/context-on-failure`, `fix/rule-evaluation`

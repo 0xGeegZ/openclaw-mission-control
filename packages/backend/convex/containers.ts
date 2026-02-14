@@ -15,10 +15,7 @@ import { logActivity } from "./lib/activity";
  * Container resource limits by plan tier.
  * Maps account plan to CPU and memory allocations.
  */
-const PLAN_RESOURCE_LIMITS: Record<
-  string,
-  { cpus: string; memory: string }
-> = {
+const PLAN_RESOURCE_LIMITS: Record<string, { cpus: string; memory: string }> = {
   starter: { cpus: "0.5", memory: "512M" },
   pro: { cpus: "1.0", memory: "1024M" },
   enterprise: { cpus: "2.0", memory: "2048M" },
@@ -54,9 +51,7 @@ async function getNextAvailablePort(
  * @returns CPU and memory limits
  * @throws Error if plan not recognized
  */
-function getPlanLimits(
-  plan: string,
-): { cpus: string; memory: string } {
+function getPlanLimits(plan: string): { cpus: string; memory: string } {
   const limits = PLAN_RESOURCE_LIMITS[plan];
   if (!limits) {
     throw new Error(`Unknown plan: ${plan}`);

@@ -19,6 +19,7 @@ vi.mock("../convex-client", () => ({
         listAgents: "listAgents",
         createTaskFromAgent: "createTaskFromAgent",
         assignTaskFromAgent: "assignTaskFromAgent",
+        updateTaskFromAgent: "updateTaskFromAgent",
         searchTasksForAgentTool: "searchTasksForAgentTool",
         loadTaskDetailsForAgentTool: "loadTaskDetailsForAgentTool",
         linkTaskToPrForAgentTool: "linkTaskToPrForAgentTool",
@@ -245,6 +246,49 @@ describe("executeAgentTool", () => {
         limit: 5,
       }),
     );
+  });
+
+  it("executes task_update and forwards params to updateTaskFromAgent", async () => {
+    mockAction.mockResolvedValue({
+      taskId: "task1",
+      changedFields: ["title", "priority"],
+    });
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_update",
+      arguments: JSON.stringify({
+        taskId: "task1",
+        title: "Updated title",
+        priority: 2,
+      }),
+    });
+    expect(result.success).toBe(true);
+    expect(result.taskId).toBe("task1");
+    expect(mockAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        taskId: "task1",
+        title: "Updated title",
+        priority: 2,
+      })
+    );
+  });
+
+  it("rejects task_update with status done when canMarkDone is false", async () => {
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_update",
+      arguments: JSON.stringify({
+        taskId: "task1",
+        status: "done",
+      }),
+      canMarkDone: false,
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "Forbidden: Not allowed to mark tasks as done",
+    });
+    expect(mockAction).not.toHaveBeenCalled();
   });
 
   it("validates task_load requires taskId", async () => {

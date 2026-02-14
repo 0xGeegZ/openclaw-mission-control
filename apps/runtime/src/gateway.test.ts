@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
 } from "./gateway";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -33,6 +34,24 @@ describe("buildNoResponseFallbackMessage", () => {
   it("includes mention prefix when provided", () => {
     const message = buildNoResponseFallbackMessage("@squad-lead");
     expect(message.startsWith("@squad-lead\n\n")).toBe(true);
+  });
+});
+
+describe("isNoResponseFallbackMessage", () => {
+  it("detects plain fallback text", () => {
+    const message = buildNoResponseFallbackMessage();
+    expect(isNoResponseFallbackMessage(message)).toBe(true);
+  });
+
+  it("detects mention-prefixed fallback text", () => {
+    const message = buildNoResponseFallbackMessage("@squad-lead @engineer");
+    expect(isNoResponseFallbackMessage(message)).toBe(true);
+  });
+
+  it("ignores regular messages", () => {
+    expect(isNoResponseFallbackMessage("Working on it, update soon.")).toBe(
+      false,
+    );
   });
 });
 

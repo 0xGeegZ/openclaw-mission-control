@@ -51,10 +51,11 @@ services:
       context: ./openclaw
       dockerfile: Dockerfile
     restart: unless-stopped
+    # ENFILE (file table overflow) occurs when session persistence opens too many FDs. Raise nofile so the gateway can handle many agents/sessions.
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 262144
+        hard: 262144
     profiles:
       - openclaw
     env_file:

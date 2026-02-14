@@ -100,7 +100,10 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
  * Available LLM models for agent configuration.
  */
 export const AVAILABLE_MODELS = [
-  { value: LLM_MODEL.CLAUDE_HAIKU_4_5, label: "Claude Haiku 4.5 (Recommended)" },
+  {
+    value: LLM_MODEL.CLAUDE_HAIKU_4_5,
+    label: "Claude Haiku 4.5 (Recommended)",
+  },
   { value: LLM_MODEL.GPT_5_NANO, label: "GPT-5 Nano" },
 ] as const;
 

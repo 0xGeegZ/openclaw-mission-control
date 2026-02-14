@@ -416,6 +416,12 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /**
+     * Timestamp of the most recent message in the task thread.
+     * Used to order tasks in the Kanban by last activity.
+     */
+    lastMessageAt: v.optional(v.number()),
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
@@ -710,11 +716,7 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
-    .index("by_recipient_unread", [
-      "recipientType",
-      "recipientId",
-      "readAt",
-    ])
+    .index("by_recipient_unread", ["recipientType", "recipientId", "readAt"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])

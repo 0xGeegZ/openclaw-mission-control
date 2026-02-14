@@ -134,10 +134,11 @@ export async function executeTaskUpdateTool(params: {
     accountId,
   } = params;
 
-  // Validate taskId
-  if (!taskId.trim()) {
+  // Validate taskId (guard against undefined/null and whitespace-only)
+  if (taskId == null || !String(taskId).trim()) {
     return { success: false, error: "taskId is required" };
   }
+  const trimmedTaskId = String(taskId).trim();
 
   // Validate at least one field is provided
   const hasUpdates =
@@ -189,7 +190,7 @@ export async function executeTaskUpdateTool(params: {
       accountId,
       serviceToken,
       agentId,
-      taskId: taskId as Id<"tasks">,
+      taskId: trimmedTaskId as Id<"tasks">,
       title: title?.trim(),
       description: description?.trim(),
       priority,
@@ -209,7 +210,7 @@ export async function executeTaskUpdateTool(params: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn("Task update failed; check Convex connectivity", {
-      taskId,
+      taskId: trimmedTaskId,
       error: message,
     });
     return { success: false, error: message };
