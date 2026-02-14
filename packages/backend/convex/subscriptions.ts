@@ -206,6 +206,37 @@ export async function ensureSubscribed(
 }
 
 /**
+ * Remove a subscriber from a task thread (e.g. when an assignee is removed).
+ * No-op if no subscription exists. Used to stop thread_update notifications for unassigned agents.
+ *
+ * @returns true if a subscription was found and deleted, false otherwise.
+ */
+export async function removeSubscriberIfSubscribed(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  taskId: Id<"tasks">,
+  subscriberType: RecipientType,
+  subscriberId: string,
+): Promise<boolean> {
+  const subscription = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_task_subscriber", (q) =>
+      q
+        .eq("taskId", taskId)
+        .eq("subscriberType", subscriberType)
+        .eq("subscriberId", subscriberId),
+    )
+    .unique();
+
+  if (!subscription || subscription.accountId !== accountId) {
+    return false;
+  }
+
+  await ctx.db.delete(subscription._id);
+  return true;
+}
+
+/**
  * Ensure the account's orchestrator (squad lead) is subscribed to the task thread.
  * No-op if orchestratorAgentId is not set or agent does not belong to the account.
  */
@@ -226,4 +257,53 @@ export async function ensureOrchestratorSubscribed(
   if (!agent || agent.accountId !== accountId) return;
 
   await ensureSubscribed(ctx, accountId, taskId, "agent", orchestratorAgentId);
+}
+
+/**
+ * Sync thread subscriptions when task assignees change: remove subscriptions for
+ * users/agents no longer assigned, ensure subscribed for new assignees, and
+ * keep the orchestrator subscribed. Call from tasks.assign and service/tasks.updateFromAgent.
+ */
+export async function syncSubscriptionsForAssignmentChange(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  taskId: Id<"tasks">,
+  previousAssignedUserIds: string[],
+  previousAssignedAgentIds: Id<"agents">[],
+  nextAssignedUserIds: string[],
+  nextAssignedAgentIds: Id<"agents">[],
+  orchestratorAgentId?: Id<"agents"> | null,
+): Promise<void> {
+  const prevUsers = new Set(previousAssignedUserIds);
+  const prevAgents = new Set(previousAssignedAgentIds);
+  const removedUserIds = previousAssignedUserIds.filter(
+    (id) => !nextAssignedUserIds.includes(id),
+  );
+  const removedAgentIds = previousAssignedAgentIds.filter(
+    (id) => !nextAssignedAgentIds.includes(id),
+  );
+  const newUserIds = nextAssignedUserIds.filter((id) => !prevUsers.has(id));
+  const newAgentIds = nextAssignedAgentIds.filter((id) => !prevAgents.has(id));
+
+  for (const uid of removedUserIds) {
+    await removeSubscriberIfSubscribed(ctx, accountId, taskId, "user", uid);
+  }
+  for (const agentId of removedAgentIds) {
+    if (agentId !== orchestratorAgentId) {
+      await removeSubscriberIfSubscribed(
+        ctx,
+        accountId,
+        taskId,
+        "agent",
+        agentId,
+      );
+    }
+  }
+  for (const uid of newUserIds) {
+    await ensureSubscribed(ctx, accountId, taskId, "user", uid);
+  }
+  for (const agentId of newAgentIds) {
+    await ensureSubscribed(ctx, accountId, taskId, "agent", agentId);
+  }
+  await ensureOrchestratorSubscribed(ctx, accountId, taskId);
 }

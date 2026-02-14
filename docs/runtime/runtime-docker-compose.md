@@ -133,6 +133,14 @@ If the gateway logs `touch: cannot touch '/root/clawd/MEMORY.md': Permission den
 
 If you only need to trim the session list shown at `/sessions`, set `OPENCLAW_SESSION_RETENTION_DAYS` (or `0` to clear) in `apps/runtime/.env` and restart the gateway; this prunes `sessions.json` entries but keeps transcripts/workspace intact.
 
+## Delivery behavior
+
+The runtime delivery loop polls Convex for undelivered agent notifications and sends them to the OpenClaw gateway. Behavior is simplified for stability:
+
+- **Thread updates:** For agent recipients, rapid thread_update notifications for the same task+recipient are coalesced in the backend (one undelivered notification per task+recipient, updated with the latest message). This reduces duplicate runtime work and model churn.
+- **No-response:** Each notification reaches a terminal state (delivered or skipped). Required types (assignment, mention, response_request) have a retry budget; after exhaustion the notification is marked delivered without posting a fallback message to the thread (no "OpenClaw did not return a response" boilerplate). Passive updates (e.g. thread_update when the message author is an agent) do not retry and are marked delivered without posting.
+- **Orchestrator:** The orchestrator continues to receive thread_update notifications but the runtime does not auto-post routine acknowledgments for assignee updates; explicit coordination uses the **response_request** tool.
+
 ## Troubleshooting
 
 - **Runtime exits on startup**  

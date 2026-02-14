@@ -20,6 +20,7 @@ import {
 import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
+  syncSubscriptionsForAssignmentChange,
 } from "./subscriptions";
 import {
   cascadeDeleteTask,
@@ -682,16 +683,32 @@ export const assign = mutation({
 
     await ctx.db.patch(args.taskId, updates);
 
-    const previousUserIds = new Set(task.assignedUserIds);
-    const previousAgentIds = new Set(task.assignedAgentIds);
+    const previousUserIds = task.assignedUserIds ?? [];
+    const previousAgentIds = task.assignedAgentIds ?? [];
     const newUserIds =
       args.assignedUserIds !== undefined
-        ? nextAssignedUserIds.filter((uid) => !previousUserIds.has(uid))
+        ? nextAssignedUserIds.filter((uid) => !previousUserIds.includes(uid))
         : [];
     const newAgentIds =
       args.assignedAgentIds !== undefined
-        ? nextAssignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
+        ? nextAssignedAgentIds.filter((aid) => !previousAgentIds.includes(aid))
         : [];
+
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    await syncSubscriptionsForAssignmentChange(
+      ctx,
+      task.accountId,
+      args.taskId,
+      previousUserIds,
+      previousAgentIds,
+      nextAssignedUserIds,
+      nextAssignedAgentIds,
+      orchestratorAgentId,
+    );
 
     for (const uid of newUserIds) {
       await createAssignmentNotification(
@@ -703,7 +720,6 @@ export const assign = mutation({
         userName,
         task.title,
       );
-      await ensureSubscribed(ctx, task.accountId, args.taskId, "user", uid);
     }
     for (const agentId of newAgentIds) {
       await createAssignmentNotification(
@@ -715,16 +731,7 @@ export const assign = mutation({
         userName,
         task.title,
       );
-      await ensureSubscribed(
-        ctx,
-        task.accountId,
-        args.taskId,
-        "agent",
-        agentId,
-      );
     }
-
-    await ensureOrchestratorSubscribed(ctx, task.accountId, args.taskId);
 
     if (
       nextStatus &&

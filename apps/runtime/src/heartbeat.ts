@@ -1,11 +1,8 @@
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
-import {
-  isNoResponseFallbackMessage,
-  sendOpenClawToolResults,
-  sendToOpenClaw,
-} from "./gateway";
+import { isNoResponseFallbackMessage } from "./delivery/no-response";
+import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
 import {

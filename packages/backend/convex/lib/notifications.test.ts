@@ -25,10 +25,22 @@ type SubscriptionRow = {
   subscriberId: string;
 };
 
+type ExistingNotificationRow = {
+  _id: Id<"notifications">;
+  accountId: Id<"accounts">;
+  type: string;
+  recipientType: string;
+  recipientId: string;
+  createdAt: number;
+  deliveredAt?: number;
+};
+
 function createMockNotificationContext(options?: {
   accountExists?: boolean;
   accountPrefs?: Record<string, boolean> | null;
   subscriptions?: SubscriptionRow[];
+  /** Existing notifications for the same task (e.g. undelivered thread_update for coalescing). */
+  existingNotifications?: ExistingNotificationRow[];
 }) {
   const accountExists = options?.accountExists !== false;
   const accountPrefs = options?.accountPrefs ?? {
@@ -37,7 +49,12 @@ function createMockNotificationContext(options?: {
     memberUpdates: true,
   };
   const subscriptions = options?.subscriptions ?? [];
+  const existingNotifications = options?.existingNotifications ?? [];
   const insertedNotifications: Array<Record<string, unknown>> = [];
+  const patchedNotifications: Array<{
+    id: Id<"notifications">;
+    patch: Record<string, unknown>;
+  }> = [];
 
   const db = {
     get: vi.fn().mockImplementation(async (_id: Id<"accounts">) => {
@@ -61,18 +78,31 @@ function createMockNotificationContext(options?: {
           return `id_${Math.random().toString(36).slice(2, 9)}`;
         },
       ),
-    query: vi.fn().mockReturnValue({
+    patch: vi
+      .fn()
+      .mockImplementation(
+        async (id: Id<"notifications">, patch: Record<string, unknown>) => {
+          patchedNotifications.push({ id, patch });
+        },
+      ),
+    query: vi.fn().mockImplementation((table: string) => ({
       withIndex: vi.fn().mockReturnValue({
-        collect: vi.fn().mockResolvedValue(subscriptions),
+        collect: vi
+          .fn()
+          .mockResolvedValue(
+            table === "notifications" ? existingNotifications : subscriptions,
+          ),
       }),
-    }),
+    })),
   };
 
   return {
     db,
     getInsertedNotifications: () => insertedNotifications,
+    getPatchedNotifications: () => patchedNotifications,
   } as unknown as MutationCtx & {
     getInsertedNotifications: () => typeof insertedNotifications;
+    getPatchedNotifications: () => typeof patchedNotifications;
   };
 }
 
@@ -355,6 +385,164 @@ describe("createThreadNotifications", () => {
     expect(
       inserted.map((row: Record<string, unknown>) => row.recipientId),
     ).toEqual(["agent_orchestrator", "user_alice"]);
+  });
+
+  it("coalesces agent thread_update: patches existing undelivered notification for same task+recipient", async () => {
+    const existingId = "notif_existing" as Id<"notifications">;
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: existingId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: Date.now() - 1000,
+          deliveredAt: undefined,
+        },
+      ],
+    });
+
+    const messageId2 = "msg_2" as Id<"messages">;
+    const ids = await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId2,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toBe(existingId);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(0);
+    const patched = ctx.getPatchedNotifications();
+    expect(patched).toHaveLength(1);
+    expect(patched[0]?.id).toBe(existingId);
+    expect(patched[0]?.patch).toMatchObject({
+      messageId: messageId2,
+      title: "Alice replied",
+      body: 'New message in task "Task Title"',
+    });
+  });
+
+  it("inserts new agent thread_update when no undelivered one exists for task+recipient", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.recipientId).toBe("agent_engineer");
+    expect(ctx.getPatchedNotifications()).toHaveLength(0);
+  });
+
+  it("does not coalesce when existing notification is already delivered", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: "notif_delivered" as Id<"notifications">,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: Date.now() - 5000,
+          deliveredAt: Date.now(),
+        },
+      ],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(1);
+    expect(ctx.getPatchedNotifications()).toHaveLength(0);
+  });
+
+  it("coalesces against the latest undelivered notification when duplicates exist", async () => {
+    const olderId = "notif_old" as Id<"notifications">;
+    const newerId = "notif_new" as Id<"notifications">;
+    const now = Date.now();
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: olderId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: now - 20_000,
+          deliveredAt: undefined,
+        },
+        {
+          _id: newerId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: now - 1_000,
+          deliveredAt: undefined,
+        },
+      ],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    const patched = ctx.getPatchedNotifications();
+    expect(patched).toHaveLength(1);
+    expect(patched[0]?.id).toBe(newerId);
   });
 });
 

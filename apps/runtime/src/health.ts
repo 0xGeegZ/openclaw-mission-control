@@ -308,6 +308,9 @@ export function startHealthServer(config: RuntimeConfig): void {
           consecutiveFailures: delivery.consecutiveFailures,
           lastErrorAt: delivery.lastErrorAt,
           lastErrorMessage: delivery.lastErrorMessage,
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
         },
         heartbeat: {
           running: heartbeat.isRunning,
@@ -1370,6 +1373,9 @@ export function startHealthServer(config: RuntimeConfig): void {
               running: delivery.isRunning,
               delivered: delivery.deliveredCount,
               failed: delivery.failedCount,
+              noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+              requiredNotificationRetryExhaustedCount:
+                delivery.requiredNotificationRetryExhaustedCount,
             },
             gateway: {
               running: gateway.isRunning,
@@ -1384,8 +1390,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         };
         sendJson(res, 200, json);
       } else {
-        // Prometheus text format
-        const prometheusText = formatPrometheusMetrics();
+        // Prometheus text format (include delivery counters)
+        const delivery = getDeliveryState();
+        const prometheusText = formatPrometheusMetrics({
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
+        });
         res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
         res.end(prometheusText);
       }

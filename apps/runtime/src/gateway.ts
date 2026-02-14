@@ -128,26 +128,11 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
-const NO_RESPONSE_PLACEHOLDER_MESSAGES = [
-  "No response from OpenClaw.",
-  "No reply from agent.",
-  "No response from agent.",
-];
-const NO_RESPONSE_MENTION_PREFIX_PATTERN =
-  /^(@[A-Za-z0-9_-]+)(\s+@[A-Za-z0-9_-]+)*$/;
-const NO_RESPONSE_FALLBACK_MESSAGE = [
-  "**Summary**",
-  "- OpenClaw did not return a response for this run.",
-  "",
-  "**Work done**",
-  "- None (no output received).",
-  "",
-  "**Next step (one)**",
-  "- Retry once the runtime or gateway is healthy; check OpenClaw logs if this persists.",
-  "",
-  "**Sources**",
-  "- None.",
-].join("\n");
+import {
+  buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 interface GatewayAddress {
   host: string;
@@ -251,56 +236,12 @@ const state: GatewayState = {
   lastSendError: null,
 };
 
-/**
- * Detect OpenClaw "no response" placeholder messages, including mention-only prefixes.
- */
-export function parseNoResponsePlaceholder(response: string): {
-  isPlaceholder: boolean;
-  mentionPrefix: string | null;
-} {
-  const trimmed = response.trim();
-  if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
-  if (NO_RESPONSE_PLACEHOLDER_MESSAGES.includes(trimmed)) {
-    return { isPlaceholder: true, mentionPrefix: null };
-  }
-  const matchedSuffix = NO_RESPONSE_PLACEHOLDER_MESSAGES.find((message) =>
-    trimmed.endsWith(message),
-  );
-  if (!matchedSuffix) {
-    return { isPlaceholder: false, mentionPrefix: null };
-  }
-  const prefix = trimmed.slice(0, trimmed.length - matchedSuffix.length).trim();
-  if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
-  if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {
-    return { isPlaceholder: true, mentionPrefix: prefix };
-  }
-  return { isPlaceholder: false, mentionPrefix: null };
-}
-
-/**
- * Build a fallback response for placeholder OpenClaw messages.
- */
-export function buildNoResponseFallbackMessage(
-  mentionPrefix?: string | null,
-): string {
-  const prefix = mentionPrefix ? `${mentionPrefix.trim()}\n\n` : "";
-  return `${prefix}${NO_RESPONSE_FALLBACK_MESSAGE}`;
-}
-
-/**
- * Detect fallback messages generated for no-response OpenClaw runs.
- * Accepts plain fallback and mention-prefixed variants.
- */
-export function isNoResponseFallbackMessage(content: string): boolean {
-  const trimmed = content.trim();
-  if (!trimmed) return false;
-  if (trimmed === NO_RESPONSE_FALLBACK_MESSAGE) return true;
-  if (!trimmed.endsWith(NO_RESPONSE_FALLBACK_MESSAGE)) return false;
-  const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FALLBACK_MESSAGE.length)
-    .trim();
-  return !prefix || NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix);
-}
+/** Re-export from shared no-response module for backward compatibility. */
+export {
+  buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 /**
  * Initialize the OpenClaw gateway.

@@ -20,6 +20,7 @@ import {
 import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
+  syncSubscriptionsForAssignmentChange,
 } from "../subscriptions";
 import { DEFAULT_TASK_SEARCH_LIMIT, MAX_TASK_SEARCH_LIMIT } from "../search";
 
@@ -753,6 +754,24 @@ export const updateFromAgent = internalMutation({
         `Invalid assignees: status '${task.status}' requires at least one assignee`,
       );
     }
+
+    const previousUserIds = task.assignedUserIds ?? [];
+    const previousAgentIds = task.assignedAgentIds ?? [];
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    await syncSubscriptionsForAssignmentChange(
+      ctx,
+      task.accountId,
+      args.taskId,
+      previousUserIds,
+      previousAgentIds,
+      nextAssignedUserIds,
+      nextAssignedAgentIds,
+      orchestratorAgentId,
+    );
 
     await ctx.db.patch(args.taskId, safeUpdates);
 

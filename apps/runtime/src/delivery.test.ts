@@ -639,7 +639,7 @@ describe("no reply signal detection", () => {
 });
 
 describe("no response fallback persistence policy", () => {
-  it("disables fallback persistence for actionable notifications", () => {
+  it("does not persist fallback to thread for any type (UX: no boilerplate in thread)", () => {
     expect(
       _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
     ).toBe(false);
@@ -651,9 +651,6 @@ describe("no response fallback persistence policy", () => {
         notificationType: "response_request",
       }),
     ).toBe(false);
-  });
-
-  it("skips fallback for routine thread updates", () => {
     expect(
       _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
     ).toBe(false);
@@ -664,7 +661,7 @@ describe("no response fallback persistence policy", () => {
 });
 
 describe("orchestrator no-reply acknowledgment policy", () => {
-  it("persists a short ack for orchestrator thread updates on in_progress tasks", () => {
+  it("does not persist orchestrator ack (silent-by-default)", () => {
     const ctx = buildContext({
       notification: {
         _id: "n1",
@@ -690,7 +687,7 @@ describe("orchestrator no-reply acknowledgment policy", () => {
         content: "Progress update",
       },
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(true);
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
 
   it("does not persist orchestrator ack for blocked tasks", () => {

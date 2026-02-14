@@ -65,6 +65,8 @@ vi.mock("../delivery", () => ({
     consecutiveFailures: 0,
     lastErrorAt: null,
     lastErrorMessage: null,
+    noResponseTerminalSkipCount: 0,
+    requiredNotificationRetryExhaustedCount: 0,
   }),
 }));
 

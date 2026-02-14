@@ -4,19 +4,19 @@ overview: Simplify runtime delivery and backend notification flow to reduce orch
 todos:
   - id: confirm-policy-matrix
     content: Finalize and codify simplified delivery policy matrix (silent-default orchestrator + terminal no-response behavior).
-    status: pending
+    status: completed
   - id: split-runtime-modules
     content: Extract runtime delivery policy/no-response/prompt modules and refactor delivery.ts orchestration flow.
-    status: pending
+    status: completed
   - id: backend-thread-coalesce
     content: Implement backend coalescing for undelivered agent thread_update notifications per task+recipient.
-    status: pending
+    status: completed
   - id: rewrite-tests
     content: Update runtime and backend tests to validate simplified policy and coalescing behavior.
-    status: pending
+    status: completed
   - id: update-docs
     content: Synchronize AGENTS/runtime docs and reliability checklist with simplified behavior.
-    status: pending
+    status: completed
   - id: qa-rollout
     content: Execute manual QA and rollout observability checks with rollback plan documented.
     status: pending
@@ -160,31 +160,31 @@ Policy simplification matrix (implementation target):
 - Run targeted tests and store baseline command output for comparison.
 - Files: no code change yet.
 
-2. **Define policy matrix in code-first doc comments**
+1. **Define policy matrix in code-first doc comments**
 
 - Add a small policy map (notification type -> retry/no-retry, synthetic post allowed, terminal behavior).
 - Place in new `[apps/runtime/src/delivery/policy.ts](apps/runtime/src/delivery/policy.ts)`.
 - Include JSDoc with invariant: every processed notification reaches terminal state.
 
-3. **Extract no-response primitives**
+1. **Extract no-response primitives**
 
 - Move/centralize no-response signal and placeholder detection to `[apps/runtime/src/delivery/no-response.ts](apps/runtime/src/delivery/no-response.ts)`.
 - Update imports in `delivery.ts`, `gateway.ts`, `heartbeat.ts`.
 - Keep function names stable where possible or provide temporary re-exports.
 
-4. **Refactor `delivery.ts` to use policy decisions**
+1. **Refactor `delivery.ts` to use policy decisions**
 
 - Replace nested no-response branches with a single decision function return.
 - Remove synthetic orchestrator routine ack path for passive `thread_update` handling.
 - Ensure exhausted retries for required notifications produce one deterministic terminal action and always call `markNotificationDelivered`.
 - Ensure passive notification no-response does not requeue forever.
 
-5. **Extract prompt construction**
+1. **Extract prompt construction**
 
 - Move `formatNotificationMessage()` and related formatting helpers into `[apps/runtime/src/delivery/prompt.ts](apps/runtime/src/delivery/prompt.ts)`.
 - Remove duplicated orchestrator instruction insertion and simplify message directives for silent-default orchestration.
 
-6. **Implement backend `thread_update` coalescing**
+1. **Implement backend `thread_update` coalescing**
 
 - In `[packages/backend/convex/lib/notifications.ts](packages/backend/convex/lib/notifications.ts)`, add helper:
   - Find latest undelivered `thread_update` for same `taskId` + `recipientId` (agent recipients).
@@ -192,7 +192,7 @@ Policy simplification matrix (implementation target):
   - Else: insert new notification.
 - Update both call paths through `messages.ts` and `service/messages.ts` compatibility as needed.
 
-7. **Harden terminal behavior invariants**
+1. **Harden terminal behavior invariants**
 
 - Audit `continue` paths in `[apps/runtime/src/delivery.ts](apps/runtime/src/delivery.ts)` and ensure intentional non-delivery states are explicit and observable.
 - Add logs/metrics counters for:
@@ -200,7 +200,7 @@ Policy simplification matrix (implementation target):
   - terminal no-response skip,
   - required notification exhausted retries.
 
-8. **Rewrite and expand runtime tests**
+1. **Rewrite and expand runtime tests**
 
 - Add unit tests for new `policy.ts` decisions.
 - Update `delivery.test.ts` for simplified behavior:
@@ -209,24 +209,24 @@ Policy simplification matrix (implementation target):
   - required notification retry budget then terminal action.
 - Keep/adjust loop prevention and orchestrator chat routing tests.
 
-9. **Add backend coalescing tests**
+1. **Add backend coalescing tests**
 
 - In `notifications.test.ts`, add cases verifying only one undelivered `thread_update` remains per task+recipient while `messageId` advances.
 - Validate no regression for mention/assignment/status creation.
 
-10. **Update documentation and reliability checklist**
+1. **Update documentation and reliability checklist**
 
 - Update runtime docs to match simplified policy and explicit escalation behavior.
 - Add a concise “delivery policy matrix” section in docs.
 - Ensure examples mention `response_request` as explicit coordination trigger.
 
-11. **Integration validation pass**
+1. **Integration validation pass**
 
 - Run runtime + backend test suites affected by these changes.
 - Execute manual QA flow in local docker profile with orchestrator + engineer conversation replay.
 - Verify reduced orchestrator chatter and guaranteed required-response handling.
 
-12. **Release guardrails and fallback plan**
+1. **Release guardrails and fallback plan**
 
 - Document rollback strategy (re-enable legacy policy module via quick revert commit if needed).
 - Record monitoring checks for first deployment window (notification volume, no-response terminal counts, delivery errors).

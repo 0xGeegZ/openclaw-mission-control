@@ -72,17 +72,18 @@ export function NotificationsPageContent({
   const dismissNotification = useMutation(api.notifications.remove);
 
   // Sync Convex query result to local state for pagination and optimistic updates.
+  // Defer setState to avoid synchronous setState in effect (react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (notificationsData) {
-      const incomingNotifications = notificationsData.notifications || [];
-      if (cursor === undefined) {
-        setAllNotifications(incomingNotifications);
-      } else {
-        setAllNotifications((prev) =>
-          mergeNotificationsById(prev, incomingNotifications),
-        );
-      }
-    }
+    if (!notificationsData) return;
+    const incomingNotifications = notificationsData.notifications || [];
+    const update =
+      cursor === undefined
+        ? () => setAllNotifications(incomingNotifications)
+        : () =>
+            setAllNotifications((prev) =>
+              mergeNotificationsById(prev, incomingNotifications),
+            );
+    queueMicrotask(update);
   }, [notificationsData, cursor]);
 
   const handleMarkAsRead = async (notificationId: string) => {
