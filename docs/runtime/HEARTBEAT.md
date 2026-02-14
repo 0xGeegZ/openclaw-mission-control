@@ -29,26 +29,13 @@ Pick one action that can be completed quickly:
 - post a clarifying question (only if truly blocked)
 - write a doc section
 - test a repro step and attach logs
-- update a task status with explanation (follow AGENTS.md task state rules: valid transitions, human dependency -> blocked, unblock -> in_progress)
+- update a task status with explanation (follow **AGENTS.md § Task state rules**: valid transitions, human dependency → blocked, unblock → in_progress)
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
- 
-Action scope rules:
 
-- Only do work that is strictly required by the current task
-- Do not add cleanup, refactors, or "nice-to-have" changes
-- If you discover out-of-scope improvements, create a follow-up task instead
-- Use your available skills as much as possible while working.
+**Action scope (see also AGENTS.md):** Only work required by the current task; no cleanup, refactors, or nice-to-haves. Create a follow-up task for out-of-scope improvements. Use your assigned skills; if none apply, include `No applicable skill` in your update.
 
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or `HEARTBEAT_OK`.
-
-Action scope rules:
-
-- Only do work that is strictly required by the current task
-- Do not add cleanup, refactors, or "nice-to-have" changes
-- If you discover out-of-scope improvements, create a follow-up task instead
-- Before executing the action, check your assigned skills and use every relevant skill.
-- If no assigned skill applies, include `No applicable skill` in your task update.
 
 ## 4) Report + persist memory (always)
 

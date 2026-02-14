@@ -76,7 +76,7 @@ interface TaskThreadProps {
 
 /**
  * Task thread component with messages and input.
- * Typing is task-scoped (receipts for this task, read/undelivered in window).
+ * Typing indicator uses the same source as the agents sidebar (listAgentIdsTypingByTask) so they stay in sync.
  * Seen by uses hybrid: strict (read latest user message) first, then reply-based fallback, then typing agents for this task.
  */
 export function TaskThread({
@@ -92,6 +92,11 @@ export function TaskThread({
   const receipts = useQuery(api.notifications.listAgentReceiptsByTask, {
     taskId,
   });
+  /** Same typing source as agents sidebar so thread and sidebar stay in sync. */
+  const typingAgentIdsFromQuery = useQuery(
+    api.notifications.listAgentIdsTypingByTask,
+    { taskId },
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const hasReceiptsInTypingWindow =
@@ -115,7 +120,27 @@ export function TaskThread({
     return map;
   }, [agents]);
 
-  /** Agents currently "typing" (readAt set, deliveredAt empty, within window). */
+  /**
+   * Typing agents from the same query as the sidebar (listAgentIdsTypingByTask).
+   * Keeps thread typing indicator in sync with sidebar and avoids race when thread mounts after read but before delivery.
+   */
+  const typingAgentsFromQuery = useMemo((): ReadByAgent[] => {
+    const ids = typingAgentIdsFromQuery ?? [];
+    if (ids.length === 0) return [];
+    const list: ReadByAgent[] = [];
+    for (const id of ids) {
+      const agent = agentsByAuthorId?.[id];
+      list.push({
+        id,
+        name: agent?.name ?? "Agent",
+        avatarUrl: agent?.avatarUrl,
+        icon: agent?.icon,
+      });
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [typingAgentIdsFromQuery, agentsByAuthorId]);
+
+  /** Agents currently "typing" from receipts (used for Seen-by hybrid only). */
   const typingAgents = useMemo(() => {
     if (!receipts) return [];
     const agentsMap = new Map<
@@ -229,11 +254,16 @@ export function TaskThread({
     useReadByFallback,
   ]);
 
+  /** Use same source as sidebar first, then fallback so thread and sidebar stay in sync. */
   const effectiveTypingAgents =
-    typingAgents.length > 0 ? typingAgents : fallbackTypingAgents;
+    typingAgentsFromQuery.length > 0
+      ? typingAgentsFromQuery
+      : fallbackTypingAgents;
 
   const hasTypingIndicatorsActive =
-    hasReceiptsInTypingWindow || fallbackTypingAgents.length > 0;
+    typingAgentsFromQuery.length > 0 ||
+    hasReceiptsInTypingWindow ||
+    fallbackTypingAgents.length > 0;
 
   /** Typing indicator shows whenever there are task-scoped typing agents; no longer gated by Seen by. */
   const shouldShowTypingIndicator = getShouldShowTypingIndicator(

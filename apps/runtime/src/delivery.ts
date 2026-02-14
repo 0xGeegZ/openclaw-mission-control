@@ -1392,7 +1392,7 @@ Use only the thread history shown above for this task; do not refer to or reply 
 If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
 ${isOrchestrator ? "When coordinating an active task (in_progress/review), acknowledge assignee progress updates in one short sentence instead of using NO_REPLY." : ""}
 
-Important: This system captures only one reply per notification. Do not send progress updates. When work can be parallelized, spawn subagents and reply once with combined results; if you spawn subagents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
+Important: This system captures only one reply per notification. Do not send progress updates. When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 
 ${statusInstructions}
 ${taskCreateInstructions}

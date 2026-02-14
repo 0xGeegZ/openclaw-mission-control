@@ -474,6 +474,11 @@ Use exactly one branch per task so each PR contains only that task's commits. Br
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write \`No applicable skill\`
 
+## Parallelization (sub-agents)
+
+- Prefer parallel work over sequential: when a task can be split into independent pieces, **spawn sub-agents** so they run in parallel, then aggregate results and reply once with the combined outcome.
+- Use the **sessions_spawn** tool (OpenClaw) to start each sub-agent with a clear \`task\` description; the sub-agent runs in an isolated session and announces its result back.
+
 ## Where to store memory
 
 - memory/WORKING.md: "what I'm doing right now", updated every time you act
@@ -570,6 +575,8 @@ Rules:
 - Only use \`in_progress\`, \`review\`, \`done\`, \`blocked\`
 - \`blockedReason\` is required when status is \`blocked\`
 - \`inbox\`/\`assigned\` are handled by assignment changes, not this tool
+- When QA is configured, only QA can set status to \`done\`
+- The backend rejects setting status to \`done\` when the task is not in REVIEW; move to REVIEW first (task_status \`review\`), then to DONE.
 
 Example (HTTP fallback):
 
@@ -581,7 +588,11 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
-**Orchestrator (squad lead):** Before requesting QA approval, the task MUST be in REVIEW. Move the task to review first (task_status), then call **response_request** so QA is notified. Do not request QA approval while the task is still in_progress. When a task is in REVIEW, request QA approval. If a QA agent exists, only QA should move the task to DONE after passing review. If no QA agent is configured, you may close it: use the **task_status** tool with \`"status": "done"\` (or the HTTP endpoint if the tool is not offered) **first**, then post your acceptance note. If you cannot (tool unavailable or endpoint unreachable), report **BLOCKED** — do not post a "final summary" or claim the task is DONE. If you only post in the thread, the task remains in REVIEW and the team will keep getting notifications. **When a task is BLOCKED:** When the human or external dependency has provided the needed input, move the task back to IN_PROGRESS using the task_status tool so the assignee can continue; if you are the assignee and the blocker is resolved, you may move it yourself.
+**Orchestrator (squad lead):**
+- Before requesting QA: task MUST be in REVIEW. Move to review first (task_status), then call **response_request** so QA is notified. Do not request QA approval while the task is still in_progress.
+- When in REVIEW: request QA approval via **response_request**. If a QA agent exists, only QA moves to DONE after passing review. Even if you agree or QA already posted, send response_request so QA can confirm and move to DONE — do not post "Approved" without sending it.
+- When no QA agent: you may close — use **task_status** with \`"status": "done"\` (or HTTP endpoint) **first**, then post your acceptance note. If you cannot update status, report **BLOCKED**; do not post a "final summary" or claim DONE. Posting in the thread alone does not change status and causes a loop.
+- When BLOCKED is resolved: move the task back to IN_PROGRESS (task_status) so the assignee can continue; if you are the assignee, you may move it yourself.
 
 ### Optional HTTP fallbacks (manual/CLI)
 
