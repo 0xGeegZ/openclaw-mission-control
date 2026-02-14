@@ -184,7 +184,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: null,
-      nowMs: 1000 + 3 * 60 * 60 * 1000 + 1,
+      nowMs: 1000 + 16 * 60 * 1000,
     });
     expect(shouldRequest).toBe(true);
   });
@@ -200,7 +200,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: 10_000,
-      nowMs: 10_000 + 30 * 60 * 1000,
+      nowMs: 10_000 + 10 * 60 * 1000,
     });
     expect(shouldRequest).toBe(false);
   });
@@ -249,7 +249,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: null,
-      nowMs: 1_000 + 3 * 60 * 60 * 1000 + 1,
+      nowMs: 1_000 + 16 * 60 * 1000,
     });
     expect(shouldRequest).toBe(true);
   });

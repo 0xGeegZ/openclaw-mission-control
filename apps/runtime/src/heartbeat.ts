@@ -46,7 +46,8 @@ const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
   "review",
   "assigned",
 ];
-const ORCHESTRATOR_ASSIGNEE_STALE_MS = 3 * 60 * 60 * 1000;
+/** Follow-up if no assignee message since last heartbeat (~15 min). */
+const ORCHESTRATOR_ASSIGNEE_STALE_MS = 15 * 60 * 1000;
 const ORCHESTRATOR_ASSIGNEE_BLOCKED_STALE_MS = 24 * 60 * 60 * 1000;
 const ORCHESTRATOR_ASSIGNEE_STARTUP_STALE_MS = 15 * 60 * 1000;
 const ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT = 3;

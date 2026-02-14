@@ -1,14 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { attachmentValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
-import {
-  extractMentionStrings,
-  resolveMentions,
-  hasAllMention,
-  getAllMentions,
-} from "./lib/mentions";
+import { resolveMentions, hasAllMention, getAllMentions } from "./lib/mentions";
 import { ensureSubscribed } from "./subscriptions";
 import {
   createMentionNotifications,
@@ -94,8 +90,9 @@ export const create = mutation({
       mentions = await getAllMentions(ctx, accountId, userId);
     } else {
       // Resolve specific mentions
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, accountId, {
+        content: args.content,
+      });
     }
 
     // Create message
@@ -155,9 +152,26 @@ export const create = mutation({
       );
     }
 
-    // Create thread update notifications
+    // Create thread update notifications (pass orchestrator chat options so Lead is notified)
     const mentionedIds = new Set(mentions.map((m) => m.id));
     const hasAgentMentions = mentions.some((m) => m.type === "agent");
+    const account = await ctx.db.get(task.accountId);
+    const settings = account?.settings as
+      | {
+          orchestratorChatTaskId?: Id<"tasks">;
+          orchestratorAgentId?: Id<"agents">;
+        }
+      | undefined;
+    const isOrchestratorChat =
+      task.labels?.includes("system:orchestrator-chat") === true ||
+      settings?.orchestratorChatTaskId === args.taskId;
+    const threadOptions =
+      isOrchestratorChat && settings?.orchestratorAgentId
+        ? {
+            isOrchestratorChat: true,
+            orchestratorAgentId: settings.orchestratorAgentId,
+          }
+        : undefined;
     await createThreadNotifications(
       ctx,
       accountId,
@@ -170,6 +184,7 @@ export const create = mutation({
       mentionedIds,
       hasAgentMentions,
       task.status,
+      threadOptions,
     );
 
     return messageId;
@@ -203,8 +218,9 @@ export const update = mutation({
     if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, message.accountId, userId);
     } else {
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, message.accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, message.accountId, {
+        content: args.content,
+      });
     }
 
     await ctx.db.patch(args.messageId, {

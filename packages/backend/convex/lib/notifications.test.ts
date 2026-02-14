@@ -14,6 +14,8 @@ import {
   createMemberAddedNotification,
   createMemberRemovedNotification,
   createMentionNotifications,
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
   createRoleChangeNotification,
   createStatusChangeNotification,
   createThreadNotifications,
@@ -23,6 +25,10 @@ import {
 type SubscriptionRow = {
   subscriberType: RecipientType;
   subscriberId: string;
+};
+
+type MembershipRow = {
+  userId: string;
 };
 
 type ExistingNotificationRow = {
@@ -39,6 +45,7 @@ function createMockNotificationContext(options?: {
   accountExists?: boolean;
   accountPrefs?: Record<string, boolean> | null;
   subscriptions?: SubscriptionRow[];
+  memberships?: MembershipRow[];
   /** Existing notifications for the same task (e.g. undelivered thread_update for coalescing). */
   existingNotifications?: ExistingNotificationRow[];
 }) {
@@ -49,6 +56,7 @@ function createMockNotificationContext(options?: {
     memberUpdates: true,
   };
   const subscriptions = options?.subscriptions ?? [];
+  const memberships = options?.memberships ?? [];
   const existingNotifications = options?.existingNotifications ?? [];
   const insertedNotifications: Array<Record<string, unknown>> = [];
   const patchedNotifications: Array<{
@@ -90,7 +98,13 @@ function createMockNotificationContext(options?: {
         collect: vi
           .fn()
           .mockResolvedValue(
-            table === "notifications" ? existingNotifications : subscriptions,
+            table === "notifications"
+              ? existingNotifications
+              : table === "subscriptions"
+                ? subscriptions
+                : table === "memberships"
+                  ? memberships
+                  : [],
           ),
       }),
     })),
@@ -374,6 +388,39 @@ describe("createThreadNotifications", () => {
       "Task Title",
       new Set(),
       false,
+      undefined,
+      {
+        isOrchestratorChat: true,
+        orchestratorAgentId: "agent_orchestrator" as Id<"agents">,
+      },
+    );
+
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["agent_orchestrator", "user_alice"]);
+  });
+
+  it("notifies orchestrator in orchestrator chat when user mentions an agent (hasAgentMentions)", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+        { subscriberType: "agent", subscriberId: "agent_orchestrator" },
+        { subscriberType: "user", subscriberId: "user_alice" },
+      ],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(["agent_engineer"]),
+      true,
       undefined,
       {
         isOrchestratorChat: true,
@@ -675,5 +722,59 @@ describe("targeted notification creators", () => {
       "member_removed",
       "role_changed",
     ]);
+  });
+
+  it("creates runtime offline notifications for each unique account member", async () => {
+    const ctx = createMockNotificationContext({
+      memberships: [
+        { userId: "user_alice" },
+        { userId: "user_bob" },
+        { userId: "user_alice" },
+      ],
+    });
+
+    const ids = await createRuntimeOfflineNotifications(ctx, accountId, "Acme");
+
+    expect(ids).toEqual([
+      "notif_1" as Id<"notifications">,
+      "notif_2" as Id<"notifications">,
+    ]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((row: Record<string, unknown>) => row.type)).toEqual([
+      "status_change",
+      "status_change",
+    ]);
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice", "user_bob"]);
+    expect(inserted[0]?.title).toBe("Runtime is offline");
+  });
+
+  it("creates runtime online notifications for each unique account member", async () => {
+    const ctx = createMockNotificationContext({
+      memberships: [
+        { userId: "user_alice" },
+        { userId: "user_bob" },
+        { userId: "user_bob" },
+      ],
+    });
+
+    const ids = await createRuntimeOnlineNotifications(ctx, accountId, "Acme");
+
+    expect(ids).toEqual([
+      "notif_1" as Id<"notifications">,
+      "notif_2" as Id<"notifications">,
+    ]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((row: Record<string, unknown>) => row.type)).toEqual([
+      "status_change",
+      "status_change",
+    ]);
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice", "user_bob"]);
+    expect(inserted[0]?.title).toBe("Runtime is online");
   });
 });

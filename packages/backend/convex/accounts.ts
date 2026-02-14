@@ -15,6 +15,10 @@ import {
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
 import { logActivity } from "./lib/activity";
+import {
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
+} from "./lib/notifications";
 
 /**
  * Create a new account.
@@ -433,6 +437,31 @@ export const updateRuntimeStatusInternal = internalMutation({
           newStatus: args.status,
         },
       });
+
+      const runtimeWentDown =
+        args.status === "offline" &&
+        (previousRuntimeStatus === "online" ||
+          previousRuntimeStatus === "degraded");
+      if (runtimeWentDown) {
+        await createRuntimeOfflineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
+
+      const runtimeCameOnline =
+        args.status === "online" &&
+        (previousRuntimeStatus === "offline" ||
+          previousRuntimeStatus === "error" ||
+          previousRuntimeStatus === "provisioning");
+      if (runtimeCameOnline) {
+        await createRuntimeOnlineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
     }
 
     /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
@@ -540,7 +569,7 @@ export const updateRuntimeStatusInternal = internalMutation({
 });
 
 /** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
-const RUNTIME_STALE_MS = 5 * 60 * 1000;
+const RUNTIME_STALE_MS = 90 * 1000;
 
 /**
  * Mark runtimes offline when lastHealthCheck is too old.
