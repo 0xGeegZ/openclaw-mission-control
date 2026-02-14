@@ -33,5 +33,12 @@ RUN npm run build
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
   CMD node -e "require('http').get('http://127.0.0.1:3000/health', (r) => { r.on('data', () => {}); r.on('end', () => process.exit(r.statusCode === 200 ? 0 : 1)); }).on('error', () => process.exit(1));"
 
+# Create non-root user (FIX 1.1: Security - prevent running as root)
+RUN addgroup --gid 1000 runtime && \
+    adduser --uid 1000 --ingroup runtime --disabled-password --gecos "" runtime && \
+    chown -R runtime:runtime /app
+
+USER runtime
+
 # Run
 CMD ["node", "dist/index.js"]

@@ -52,8 +52,16 @@ RUN chmod +x /usr/local/bin/start-openclaw.sh
 
 COPY openclaw.json.template /root/.openclaw-templates/openclaw.json.template
 
+# Create non-root user (FIX 2.1: Security - prevent running as root)
+RUN groupadd -g 1000 openclaw && \
+    useradd -u 1000 -g openclaw -d /home/openclaw -s /sbin/nologin -c "OpenClaw Gateway" openclaw && \
+    mkdir -p /home/openclaw && \
+    chown -R openclaw:openclaw /root/.openclaw /root/.openclaw-templates /root/clawd /home/openclaw
+
 WORKDIR /root/clawd
 
 EXPOSE 18789
+
+USER openclaw
 
 CMD ["/usr/local/bin/start-openclaw.sh"]
