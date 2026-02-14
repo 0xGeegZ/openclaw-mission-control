@@ -612,7 +612,7 @@ export const getWithSkills = query({
     await requireAccountMember(ctx, agent.accountId);
 
     // Resolve skill IDs to full skill objects
-    let skills: any[] = [];
+    let skills: Doc<"skills">[] = [];
     if (agent.openclawConfig?.skillIds) {
       skills = await Promise.all(
         agent.openclawConfig.skillIds.map((id) => ctx.db.get(id)),

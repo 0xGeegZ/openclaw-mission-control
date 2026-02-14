@@ -4,7 +4,10 @@ import { useMutation } from 'convex/react';
 import { api } from '@packages/backend/convex/_generated/api';
 import { Id } from '@packages/backend/convex/_generated/dataModel';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
-import { toast } from 'sonner';
+import {
+  useDeleteDialog,
+  DELETE_ENTITY_CONFIGS,
+} from '@/lib/dialogs/useDeleteDialog';
 
 interface DeleteTaskDialogProps {
   taskId: Id<'tasks'>;
@@ -16,8 +19,9 @@ interface DeleteTaskDialogProps {
 
 /**
  * Confirmation dialog for deleting a task.
- * 
- * Thin wrapper around ConfirmDeleteDialog that handles:
+ *
+ * Uses the useDeleteDialog factory hook to eliminate duplication
+ * across delete dialogs. Handles:
  * - Convex mutation (api.tasks.remove)
  * - Toast notifications
  * - Callback on successful deletion
@@ -30,29 +34,24 @@ export function DeleteTaskDialog({
   onDeleted,
 }: DeleteTaskDialogProps) {
   const removeTask = useMutation(api.tasks.remove);
-
-  const handleDelete = async () => {
-    try {
-      await removeTask({ taskId });
-      toast.success('Task deleted');
+  const { handleDelete, title, description, actionLabel } = useDeleteDialog(
+    DELETE_ENTITY_CONFIGS.task,
+    () => removeTask({ taskId }),
+    () => {
       onOpenChange(false);
       onDeleted?.();
-    } catch (error) {
-      throw error instanceof Error
-        ? new Error(error.message)
-        : new Error('Failed to delete task');
     }
-  };
+  );
 
   return (
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Delete Task"
-      description="This action cannot be undone. The task will be permanently removed along with all messages and attachments."
+      title={title}
+      description={description}
       itemName={taskTitle}
       onConfirm={handleDelete}
-      actionLabel="Delete Task"
+      actionLabel={actionLabel}
     />
   );
 }

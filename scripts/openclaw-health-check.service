@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenClaw Container Health Check Daemon
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/openclaw-health-check
+User=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-health-check

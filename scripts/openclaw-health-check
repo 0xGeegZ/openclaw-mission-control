@@ -1,0 +1,13 @@
+#!/bin/bash
+# Health Check Daemon Helper
+# Called by systemd timer every 30 seconds
+
+ORCHESTRATOR="/opt/openclaw/orchestrator-containers.sh"
+
+if [[ ! -x "$ORCHESTRATOR" ]]; then
+  echo "ERROR: Orchestrator script not found or not executable: $ORCHESTRATOR" >&2
+  exit 1
+fi
+
+# Run health check for all containers
+"$ORCHESTRATOR" health-check
