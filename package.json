@@ -26,7 +26,6 @@
     "lint-staged": "^16.2.7",
     "prettier": "3.7.4",
     "turbo": "2.8.3"
-<<<<<<< HEAD
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.57.1",

@@ -1060,4 +1060,52 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_action_type", ["actionType"])
     .index("by_account_action", ["accountId", "actionType"]),
+
+  // ==========================================================================
+  // CONTAINERS
+  // Docker containers provisioned for accounts. Subject to quota limits.
+  // ==========================================================================
+  containers: defineTable({
+    accountId: v.id("accounts"),
+    name: v.string(),
+    imageTag: v.string(),
+    config: v.object({
+      cpuLimit: v.optional(v.number()),
+      memoryLimit: v.optional(v.number()),
+      envVars: v.optional(v.object({})),
+    }),
+    status: v.string(), // provisioning, running, stopped, error
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
+
+  // ==========================================================================
+  // USAGE TRACKING
+  // Per-account quota tracking for subscription enforcement.
+  // Tracks messages, API calls, agents, and containers per plan tier.
+  // ==========================================================================
+  usage: defineTable({
+    accountId: v.id("accounts"),
+    planId: accountPlanValidator,
+
+    // Monthly message tracking
+    messagesThisMonth: v.number(),
+    messagesMonthStart: v.number(), // timestamp when current month started
+
+    // Daily API calls tracking
+    apiCallsToday: v.number(),
+    apiCallsDayStart: v.number(), // timestamp when current day started
+
+    // Real-time resource counts
+    agentCount: v.number(),
+    containerCount: v.number(),
+
+    // Reset configuration
+    resetCycle: v.union(v.literal("monthly"), v.literal("yearly")),
+    lastReset: v.number(), // timestamp of last reset
+
+    updatedAt: v.number(),
+  })
+    .index("by_account", ["accountId"]),
 });
