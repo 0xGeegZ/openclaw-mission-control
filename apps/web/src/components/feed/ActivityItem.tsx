@@ -18,7 +18,6 @@ import {
   UserMinus,
   Shield,
   Trash2,
-  Box,
 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
 import Link from "next/link";
@@ -80,19 +79,6 @@ const activityTypeConfig: Record<
   [ACTIVITY_TYPE.ROLE_CHANGED]: {
     icon: Shield,
     color: "text-muted-foreground",
-  },
-  [ACTIVITY_TYPE.CONTAINER_CREATED]: { icon: Box, color: "text-emerald-500" },
-  [ACTIVITY_TYPE.CONTAINER_DELETED]: {
-    icon: Trash2,
-    color: "text-destructive",
-  },
-  [ACTIVITY_TYPE.CONTAINER_RESTARTED]: {
-    icon: AlertCircle,
-    color: "text-amber-500",
-  },
-  [ACTIVITY_TYPE.CONTAINER_FAILED]: {
-    icon: AlertCircle,
-    color: "text-destructive",
   },
 };
 

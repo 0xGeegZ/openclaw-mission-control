@@ -137,10 +137,6 @@ export const ACTIVITY_TYPE = {
   MEMBER_REMOVED: "member_removed",
   MEMBER_UPDATED: "member_updated",
   ROLE_CHANGED: "role_changed",
-  CONTAINER_CREATED: "container_created",
-  CONTAINER_DELETED: "container_deleted",
-  CONTAINER_RESTARTED: "container_restarted",
-  CONTAINER_FAILED: "container_failed",
 } as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPE)[keyof typeof ACTIVITY_TYPE];

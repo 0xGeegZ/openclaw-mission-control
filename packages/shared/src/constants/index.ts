@@ -227,10 +227,6 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   [ACTIVITY_TYPE.MEMBER_REMOVED]: "Member removed",
   [ACTIVITY_TYPE.MEMBER_UPDATED]: "Member updated",
   [ACTIVITY_TYPE.ROLE_CHANGED]: "Role changed",
-  [ACTIVITY_TYPE.CONTAINER_CREATED]: "Container created",
-  [ACTIVITY_TYPE.CONTAINER_DELETED]: "Container deleted",
-  [ACTIVITY_TYPE.CONTAINER_RESTARTED]: "Container restarted",
-  [ACTIVITY_TYPE.CONTAINER_FAILED]: "Container failed",
 };
 
 // ============================================================================
