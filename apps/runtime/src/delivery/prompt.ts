@@ -222,7 +222,8 @@ export function buildHttpCapabilityLabels(options: {
 
 /**
  * Format notification message for OpenClaw. Orchestrator is silent-by-default (no routine ack instruction).
- * When the recipient is one of multiple task assignees, appends collaboration instructions (sub-scope, response_request).
+ * When the recipient is one of multiple task assignees, appends thread-first collaboration instructions
+ * (scope claim, Q/A exchange, response_request notification, agreement checkpoint).
  * @param context - Delivery context (notification, task, message, thread, flags).
  * @param taskStatusBaseUrl - Base URL for task-status HTTP fallback (e.g. http://runtime:3000).
  * @param toolCapabilities - Capability labels and schemas; must match tools sent to OpenClaw.
@@ -431,7 +432,14 @@ export function formatNotificationMessage(
       : "";
 
   const multiAssigneeBlock = isRecipientInMultiAssigneeTask(context)
-    ? "\n**Multi-assignee:** This task has multiple assignees. Declare your sub-scope in your reply, check the thread to avoid duplicating work, and use **response_request** for handoffs or dependencies on other assignees.\n"
+    ? `
+**Multi-assignee (thread-first collaboration required):** This task has multiple assignees. Collaboration means visible alignment in this task thread, not silent parallel work.
+- In your first substantive reply, claim your exact sub-scope.
+- If another assignee's work affects yours, ask a direct question in the thread and then send **response_request** so they are notified.
+- Do not treat silence as agreement: wait for a reply, or state a time-boxed assumption and ask the orchestrator to confirm.
+- Before moving to REVIEW, post a brief agreement summary in the thread (owners, decisions, remaining dependencies).
+- If a dependency is still unresolved, move to BLOCKED with blockedReason and send **response_request** to the blocking assignee.
+`
     : "";
 
   const thisTaskAnchor = task
