@@ -5,6 +5,10 @@ import {
   TASK_STATUS_TRANSITIONS,
   AGENT_STATUS_ORDER,
   AVAILABLE_MODELS,
+  getModelProviderLabel,
+  MODEL_PROVIDER_LABELS,
+  MODEL_TO_OPENCLAW,
+  OPENCLAW_FALLBACK_MODEL,
   SKILL_CATEGORY_LABELS,
   DEFAULT_OPENCLAW_CONFIG,
   ANALYTICS_TIME_RANGE,
@@ -222,29 +226,83 @@ describe("AVAILABLE_MODELS", () => {
     }
   });
 
-  it("includes the default model (claude-haiku-4.5)", () => {
+  it("includes the default model (minimax-m2.5)", () => {
     const hasDefaultModel = AVAILABLE_MODELS.some(
-      (m) => m.value === "claude-haiku-4.5",
+      (m) => m.value === "minimax-m2.5",
     );
     expect(hasDefaultModel).toBe(true);
   });
 
   it("default model is marked as recommended in the label", () => {
     const defaultModel = AVAILABLE_MODELS.find(
-      (m) => m.value === "claude-haiku-4.5",
+      (m) => m.value === "minimax-m2.5",
     );
     expect(defaultModel).toBeDefined();
     expect(defaultModel!.label).toContain("Recommended");
   });
 
-  it("has at least 2 model options", () => {
-    expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(2);
+  it("has exactly 4 model options", () => {
+    expect(AVAILABLE_MODELS.length).toBe(4);
+  });
+
+  it("first model is the default OpenClaw config model", () => {
+    expect(AVAILABLE_MODELS[0].value).toBe(DEFAULT_OPENCLAW_CONFIG.model);
   });
 
   it("model values are unique", () => {
     const values = AVAILABLE_MODELS.map((m) => m.value);
     const uniqueValues = new Set(values);
     expect(uniqueValues.size).toBe(values.length);
+  });
+
+  it("every model has a MODEL_TO_OPENCLAW mapping", () => {
+    for (const model of AVAILABLE_MODELS) {
+      expect(MODEL_TO_OPENCLAW[model.value]).toBeDefined();
+      expect(typeof MODEL_TO_OPENCLAW[model.value]).toBe("string");
+      expect(MODEL_TO_OPENCLAW[model.value].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("OPENCLAW_FALLBACK_MODEL matches the second model (Haiku) OpenClaw mapping", () => {
+    const secondModelValue = AVAILABLE_MODELS[1].value;
+    expect(OPENCLAW_FALLBACK_MODEL).toBe(MODEL_TO_OPENCLAW[secondModelValue]);
+  });
+});
+
+// ============================================================================
+// MODEL_PROVIDER_LABELS and getModelProviderLabel Tests
+// ============================================================================
+
+describe("MODEL_PROVIDER_LABELS", () => {
+  it("has an entry for every AVAILABLE_MODELS value", () => {
+    for (const model of AVAILABLE_MODELS) {
+      expect(MODEL_PROVIDER_LABELS[model.value]).toBeDefined();
+      expect(typeof MODEL_PROVIDER_LABELS[model.value]).toBe("string");
+      expect(MODEL_PROVIDER_LABELS[model.value].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("getModelProviderLabel", () => {
+  it("returns provider label for each known model value", () => {
+    expect(getModelProviderLabel("minimax-m2.5")).toBe("Minimax");
+    expect(getModelProviderLabel("claude-haiku-4.5")).toBe("Anthropic");
+    expect(getModelProviderLabel("kimi-k2.5")).toBe("Moonshot AI");
+    expect(getModelProviderLabel("gpt-5-nano")).toBe("OpenAI");
+  });
+
+  it("returns Other for unknown model value", () => {
+    expect(getModelProviderLabel("unknown-model")).toBe("Other");
+    expect(getModelProviderLabel("claude-3-opus")).toBe("Other");
+  });
+
+  it("returns Other for empty or whitespace", () => {
+    expect(getModelProviderLabel("")).toBe("Other");
+    expect(getModelProviderLabel("   ")).toBe("Other");
+  });
+
+  it("trims input before lookup", () => {
+    expect(getModelProviderLabel("  minimax-m2.5  ")).toBe("Minimax");
   });
 });
 

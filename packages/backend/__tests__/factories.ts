@@ -11,7 +11,11 @@
  */
 
 import type { DataModel } from "../convex/_generated/dataModel";
-import type { RecipientType, TaskStatus } from "@packages/shared";
+import {
+  DEFAULT_OPENCLAW_CONFIG,
+  type RecipientType,
+  type TaskStatus,
+} from "@packages/shared";
 
 type Account = DataModel["accounts"]["document"];
 type Membership = DataModel["memberships"]["document"];
@@ -110,7 +114,7 @@ export class AgentFactory {
       status: "online",
       heartbeatInterval: 15,
       openclawConfig: {
-        model: "claude-sonnet-4-20250514",
+        model: DEFAULT_OPENCLAW_CONFIG.model,
         temperature: 0.7,
         maxTokens: 4096,
         skillIds: [],

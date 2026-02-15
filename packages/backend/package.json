@@ -1,6 +1,7 @@
 {
   "name": "@packages/backend",
   "version": "1.0.1",
+  "private": true,
   "description": "",
   "scripts": {
     "dev": "convex dev",

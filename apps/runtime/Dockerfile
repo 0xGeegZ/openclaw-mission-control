@@ -13,6 +13,8 @@ COPY packages/backend/package.json ./packages/backend/
 
 # npm install (not ci): lockfile describes the full monorepo; we only copy
 # runtime/shared/backend, so ci would fail on missing optional deps (esbuild, turbo).
+# HUSKY=0 skips git-hook setup (no .git in image).
+ENV HUSKY=0
 RUN npm install
 
 COPY apps/runtime ./apps/runtime

@@ -52,6 +52,7 @@ import { cn } from "@packages/ui/lib/utils";
 import {
   AVAILABLE_MODELS,
   DEFAULT_OPENCLAW_CONFIG,
+  getModelProviderLabel,
   RUNTIME_STATUS,
 } from "@packages/shared";
 
@@ -72,20 +73,14 @@ const DEFAULT_MAX_TOKENS = DEFAULT_OPENCLAW_CONFIG.maxTokens ?? 4096;
 const DEFAULT_MAX_HISTORY =
   DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages;
 
-/**
- * Resolve a provider label for a given model value.
- */
-function getModelProviderLabel(modelValue: string): string {
-  if (modelValue.startsWith("claude-")) return "Anthropic";
-  if (modelValue.startsWith("gpt-")) return "OpenAI";
-  return "Other";
-}
-
 export default function OpenClawPage({ params }: OpenClawPageProps) {
   use(params);
   const { account, accountId, isLoading, isAdmin } = useAccount();
   const updateAccount = useMutation(api.accounts.update);
   const requestRestart = useMutation(api.accounts.requestRestart);
+  const migrateAgentsToDefaultModel = useMutation(
+    api.agents.migrateAgentsToDefaultModel,
+  );
   const provisionServiceToken = useAction(
     api.service.actions.provisionServiceToken,
   );
@@ -440,6 +435,51 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                         <p className="text-xs text-muted-foreground">
                           Conversation history included in context
                         </p>
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-amber-200/50 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
+                        <Label>Migrate existing agents to default model</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Set every agent and each account’s default model to{" "}
+                          {DEFAULT_MODEL}. The selector above will show the new
+                          default and existing agents will use it on next
+                          runtime sync.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          disabled={isSaving}
+                          onClick={async () => {
+                            try {
+                              const result = await migrateAgentsToDefaultModel(
+                                {},
+                              );
+                              const parts: string[] = [];
+                              if (result.agentsUpdated > 0)
+                                parts.push(
+                                  `${result.agentsUpdated} agent(s) updated`,
+                                );
+                              if (result.accountsUpdated > 0)
+                                parts.push("account default model updated");
+                              toast.success(
+                                parts.length > 0
+                                  ? parts.join("; ")
+                                  : "No agents or accounts needed updating",
+                              );
+                            } catch (e) {
+                              toast.error("Migration failed", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
+                            }
+                          }}
+                        >
+                          Migrate agents to default model
+                        </Button>
                       </div>
                     </div>
 

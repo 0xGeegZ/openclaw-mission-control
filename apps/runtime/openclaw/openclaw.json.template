@@ -11,11 +11,17 @@
     "defaults": {
       "workspace": "/root/clawd",
       "model": {
-        "primary": "vercel-ai-gateway/anthropic/claude-haiku-4.5",
-        "fallbacks": ["vercel-ai-gateway/openai/gpt-5-nano"]
+        "primary": "vercel-ai-gateway/minimax/minimax-m2.5",
+        "fallbacks": [
+          "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+          "vercel-ai-gateway/moonshotai/kimi-k2.5",
+          "vercel-ai-gateway/openai/gpt-5-nano"
+        ]
       },
       "models": {
+        "vercel-ai-gateway/minimax/minimax-m2.5": { "alias": "Minimax M2.5" },
         "vercel-ai-gateway/anthropic/claude-haiku-4.5": { "alias": "Claude Haiku 4.5" },
+        "vercel-ai-gateway/moonshotai/kimi-k2.5": { "alias": "Moonshot Kimi K2.5" },
         "vercel-ai-gateway/openai/gpt-5-nano": { "alias": "GPT-5 Nano" }
       },
       "compaction": { "mode": "safeguard" },

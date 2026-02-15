@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
+import {
+  requireAuth,
+  requireAccountMember,
+  requireAccountAdmin,
+} from "./lib/auth";
 import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
@@ -662,5 +666,66 @@ export const updateSkills = mutation({
     });
 
     return args.agentId;
+  },
+});
+
+/**
+ * One-time migration: set all agents and account defaults (in accounts the current
+ * user is a member of) to the shared default model. Use after changing
+ * DEFAULT_OPENCLAW_CONFIG so existing agents and the Admin OpenClaw selector use
+ * the new default (e.g. minimax-m2.5).
+ * Requires authentication; only migrates accounts the user belongs to.
+ */
+export const migrateAgentsToDefaultModel = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+
+    const memberships = await ctx.db
+      .query("memberships")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    const accountIds = Array.from(new Set(memberships.map((m) => m.accountId)));
+    let agentsUpdated = 0;
+    let accountsUpdated = 0;
+    const newModel = DEFAULT_OPENCLAW_CONFIG.model;
+
+    for (const accountId of accountIds) {
+      const account = await ctx.db.get(accountId);
+      const settings = (account?.settings ?? {}) as {
+        agentDefaults?: { model?: string; [key: string]: unknown };
+        [key: string]: unknown;
+      };
+      const agentDefaults = settings.agentDefaults ?? {};
+      if (agentDefaults.model !== newModel) {
+        await ctx.db.patch(accountId, {
+          settings: {
+            ...settings,
+            agentDefaults: { ...agentDefaults, model: newModel },
+          },
+        });
+        accountsUpdated += 1;
+      }
+
+      const agents = await ctx.db
+        .query("agents")
+        .withIndex("by_account", (q) => q.eq("accountId", accountId))
+        .collect();
+
+      for (const agent of agents) {
+        const current = agent.openclawConfig;
+        if (!current || current.model === newModel) continue;
+        await ctx.db.patch(agent._id, {
+          openclawConfig: {
+            ...current,
+            model: newModel,
+          },
+        });
+        agentsUpdated += 1;
+      }
+    }
+
+    return { agentsUpdated, accountsUpdated };
   },
 });
