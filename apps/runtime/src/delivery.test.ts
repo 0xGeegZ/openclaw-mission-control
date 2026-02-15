@@ -558,9 +558,17 @@ describe("formatNotificationMessage", () => {
         assignedAgentIds: ["engineer"],
       },
       mentionableAgents: [
-        { id: "orch", slug: "squad-lead", name: "Orchestrator", role: "Squad Lead" },
+        {
+          id: "orch",
+          slug: "squad-lead",
+          name: "Orchestrator",
+          role: "Squad Lead",
+        },
       ],
-      effectiveBehaviorFlags: { canModifyTaskStatus: true, canMentionAgents: true },
+      effectiveBehaviorFlags: {
+        canModifyTaskStatus: true,
+        canMentionAgents: true,
+      },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -576,7 +584,9 @@ describe("formatNotificationMessage", () => {
     expect(message).toContain("task MUST be in REVIEW");
     expect(message).toContain("Move the task to review first");
     expect(message).toContain("response_request");
-    expect(message).toContain("Do not request QA approval while the task is still in_progress");
+    expect(message).toContain(
+      "Do not request QA approval while the task is still in_progress",
+    );
   });
 
   it("includes blocked-task reminder to move back to in_progress when resolved", () => {
@@ -629,7 +639,7 @@ describe("no reply signal detection", () => {
 });
 
 describe("no response fallback persistence policy", () => {
-  it("disables fallback persistence for actionable notifications", () => {
+  it("does not persist fallback to thread for any type (UX: no boilerplate in thread)", () => {
     expect(
       _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
     ).toBe(false);
@@ -641,9 +651,6 @@ describe("no response fallback persistence policy", () => {
         notificationType: "response_request",
       }),
     ).toBe(false);
-  });
-
-  it("skips fallback for routine thread updates", () => {
     expect(
       _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
     ).toBe(false);
@@ -654,7 +661,7 @@ describe("no response fallback persistence policy", () => {
 });
 
 describe("orchestrator no-reply acknowledgment policy", () => {
-  it("persists a short ack for orchestrator thread updates on in_progress tasks", () => {
+  it("does not persist orchestrator ack (silent-by-default)", () => {
     const ctx = buildContext({
       notification: {
         _id: "n1",
@@ -680,7 +687,7 @@ describe("orchestrator no-reply acknowledgment policy", () => {
         content: "Progress update",
       },
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(true);
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
 
   it("does not persist orchestrator ack for blocked tasks", () => {

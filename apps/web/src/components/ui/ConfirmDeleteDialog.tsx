@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   AlertDialog,
@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@packages/ui/components/alert-dialog";
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 /**
  * Generic confirmation dialog for delete operations.
@@ -75,8 +75,8 @@ export function ConfirmDeleteDialog<_T = unknown>({
   description,
   itemName,
   onConfirm,
-  actionLabel = 'Delete',
-  cancelLabel = 'Cancel',
+  actionLabel = "Delete",
+  cancelLabel = "Cancel",
   className,
 }: ConfirmDeleteDialogProps<_T>) {
   const [isLoading, setIsLoading] = useState(false);
@@ -95,7 +95,7 @@ export function ConfirmDeleteDialog<_T = unknown>({
       onOpenChange(false);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'An error occurred while deleting'
+        err instanceof Error ? err.message : "An error occurred while deleting",
       );
     } finally {
       setIsLoading(false);
@@ -114,9 +114,7 @@ export function ConfirmDeleteDialog<_T = unknown>({
                 {itemName}
               </p>
             )}
-            {error && (
-              <p className="text-sm text-destructive mt-2">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive mt-2">{error}</p>}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="flex justify-end gap-3">
@@ -131,7 +129,7 @@ export function ConfirmDeleteDialog<_T = unknown>({
             disabled={isLoading}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {isLoading ? 'Deleting...' : actionLabel}
+            {isLoading ? "Deleting..." : actionLabel}
           </AlertDialogAction>
         </div>
       </AlertDialogContent>

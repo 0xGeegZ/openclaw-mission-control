@@ -68,14 +68,18 @@ describe("taskUpdateTool", () => {
         priority: 6,
       });
       expect(resultHigh.success).toBe(false);
-      expect(resultHigh.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
+      expect(resultHigh.error).toContain(
+        "priority must be between 1 (highest) and 5 (lowest)",
+      );
 
       const resultLow = await executeTaskUpdateTool({
         ...baseParams,
         priority: 0,
       });
       expect(resultLow.success).toBe(false);
-      expect(resultLow.error).toContain("priority must be between 1 (highest) and 5 (lowest)");
+      expect(resultLow.error).toContain(
+        "priority must be between 1 (highest) and 5 (lowest)",
+      );
     });
 
     it("returns error when status is invalid", async () => {
@@ -113,7 +117,7 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           title: "New Title",
-        })
+        }),
       );
     });
 
@@ -134,7 +138,7 @@ describe("taskUpdateTool", () => {
         expect.objectContaining({
           taskId: "task123",
           title: "Trimmed",
-        })
+        }),
       );
     });
 
@@ -173,7 +177,7 @@ describe("taskUpdateTool", () => {
         expect.objectContaining({
           status: "blocked",
           blockedReason: "Waiting on design approval",
-        })
+        }),
       );
     });
 
@@ -206,7 +210,7 @@ describe("taskUpdateTool", () => {
         expect.objectContaining({
           title: "New Title",
           description: "New description",
-        })
+        }),
       );
     });
 
@@ -216,12 +220,7 @@ describe("taskUpdateTool", () => {
         changedFields: ["status"],
       });
 
-      for (const status of [
-        "in_progress",
-        "review",
-        "done",
-        "blocked",
-      ]) {
+      for (const status of ["in_progress", "review", "done", "blocked"]) {
         mockAction.mockClear();
         const result = await executeTaskUpdateTool({
           ...baseParams,
@@ -248,7 +247,7 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           assignedAgentIds: agentIds,
-        })
+        }),
       );
     });
 
@@ -268,7 +267,7 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           assignedUserIds: userIds,
-        })
+        }),
       );
     });
 
@@ -289,9 +288,8 @@ describe("taskUpdateTool", () => {
         expect.anything(),
         expect.objectContaining({
           dueDate: futureDate,
-        })
+        }),
       );
     });
-
   });
 });

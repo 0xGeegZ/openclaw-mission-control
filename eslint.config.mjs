@@ -8,7 +8,14 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores([".next/**", "out/**", "dist/**", "build/**", "coverage/**"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    ".runtime/**",
+  ]),
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

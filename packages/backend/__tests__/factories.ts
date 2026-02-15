@@ -28,7 +28,9 @@ function generateId(table: string): string {
 }
 
 export class AccountFactory {
-  static create(overrides?: Partial<Omit<Account, "_id" | "_creationTime">>): Account {
+  static create(
+    overrides?: Partial<Omit<Account, "_id" | "_creationTime">>,
+  ): Account {
     const now = Date.now();
     return {
       _id: generateId("accounts") as Account["_id"],
@@ -52,13 +54,17 @@ export class AccountFactory {
 
   static createMany(count: number, overrides?: Partial<Account>): Account[] {
     return Array.from({ length: count }, () =>
-      AccountFactory.create(overrides as Partial<Omit<Account, "_id" | "_creationTime">>)
+      AccountFactory.create(
+        overrides as Partial<Omit<Account, "_id" | "_creationTime">>,
+      ),
     );
   }
 }
 
 export class MembershipFactory {
-  static create(overrides?: Partial<Omit<Membership, "_id" | "_creationTime">>): Membership {
+  static create(
+    overrides?: Partial<Omit<Membership, "_id" | "_creationTime">>,
+  ): Membership {
     const now = Date.now();
     return {
       _id: generateId("memberships") as Membership["_id"],
@@ -74,15 +80,22 @@ export class MembershipFactory {
     } as Membership;
   }
 
-  static createMany(count: number, overrides?: Partial<Membership>): Membership[] {
+  static createMany(
+    count: number,
+    overrides?: Partial<Membership>,
+  ): Membership[] {
     return Array.from({ length: count }, () =>
-      MembershipFactory.create(overrides as Partial<Omit<Membership, "_id" | "_creationTime">>)
+      MembershipFactory.create(
+        overrides as Partial<Omit<Membership, "_id" | "_creationTime">>,
+      ),
     );
   }
 }
 
 export class AgentFactory {
-  static create(overrides?: Partial<Omit<Agent, "_id" | "_creationTime">>): Agent {
+  static create(
+    overrides?: Partial<Omit<Agent, "_id" | "_creationTime">>,
+  ): Agent {
     const now = Date.now();
     const slug = "agent-" + Math.random().toString(36).substr(2, 6);
     return {
@@ -123,20 +136,27 @@ export class AgentFactory {
 
   static createMany(count: number, overrides?: Partial<Agent>): Agent[] {
     return Array.from({ length: count }, () =>
-      AgentFactory.create(overrides as Partial<Omit<Agent, "_id" | "_creationTime">>)
+      AgentFactory.create(
+        overrides as Partial<Omit<Agent, "_id" | "_creationTime">>,
+      ),
     );
   }
 
   static createWithStatus(
     status: "online" | "busy" | "idle" | "offline" | "error",
-    overrides?: Partial<Agent>
+    overrides?: Partial<Agent>,
   ): Agent {
-    return AgentFactory.create({ status, ...(overrides as Partial<Omit<Agent, "_id" | "_creationTime">>) });
+    return AgentFactory.create({
+      status,
+      ...(overrides as Partial<Omit<Agent, "_id" | "_creationTime">>),
+    });
   }
 }
 
 export class TaskFactory {
-  static create(overrides?: Partial<Omit<Task, "_id" | "_creationTime">>): Task {
+  static create(
+    overrides?: Partial<Omit<Task, "_id" | "_creationTime">>,
+  ): Task {
     const now = Date.now();
     return {
       _id: generateId("tasks") as Task["_id"],
@@ -158,14 +178,13 @@ export class TaskFactory {
 
   static createMany(count: number, overrides?: Partial<Task>): Task[] {
     return Array.from({ length: count }, () =>
-      TaskFactory.create(overrides as Partial<Omit<Task, "_id" | "_creationTime">>)
+      TaskFactory.create(
+        overrides as Partial<Omit<Task, "_id" | "_creationTime">>,
+      ),
     );
   }
 
-  static createWithStatus(
-    status: TaskStatus,
-    overrides?: Partial<Task>
-  ): Task {
+  static createWithStatus(status: TaskStatus, overrides?: Partial<Task>): Task {
     return TaskFactory.create({
       status,
       ...(overrides as Partial<Omit<Task, "_id" | "_creationTime">>),
@@ -175,9 +194,10 @@ export class TaskFactory {
   static createWithAssignee(
     assigneeId: string,
     type: RecipientType = "agent",
-    overrides?: Partial<Task>
+    overrides?: Partial<Task>,
   ): Task {
-    const assignedAgentIds = type === "agent" ? [assigneeId as Task["assignedAgentIds"][number]] : [];
+    const assignedAgentIds =
+      type === "agent" ? [assigneeId as Task["assignedAgentIds"][number]] : [];
     const assignedUserIds = type === "user" ? [assigneeId] : [];
     return TaskFactory.create({
       status: "assigned",
@@ -189,7 +209,9 @@ export class TaskFactory {
 }
 
 export class MessageFactory {
-  static create(overrides?: Partial<Omit<Message, "_id" | "_creationTime">>): Message {
+  static create(
+    overrides?: Partial<Omit<Message, "_id" | "_creationTime">>,
+  ): Message {
     const now = Date.now();
     return {
       _id: generateId("messages") as Message["_id"],
@@ -207,13 +229,15 @@ export class MessageFactory {
 
   static createMany(count: number, overrides?: Partial<Message>): Message[] {
     return Array.from({ length: count }, () =>
-      MessageFactory.create(overrides as Partial<Omit<Message, "_id" | "_creationTime">>)
+      MessageFactory.create(
+        overrides as Partial<Omit<Message, "_id" | "_creationTime">>,
+      ),
     );
   }
 
   static createWithMentions(
     mentions: Message["mentions"],
-    overrides?: Partial<Message>
+    overrides?: Partial<Message>,
   ): Message {
     return MessageFactory.create({
       mentions,
@@ -223,7 +247,9 @@ export class MessageFactory {
 }
 
 export class DocumentFactory {
-  static create(overrides?: Partial<Omit<Document, "_id" | "_creationTime">>): Document {
+  static create(
+    overrides?: Partial<Omit<Document, "_id" | "_creationTime">>,
+  ): Document {
     const now = Date.now();
     return {
       _id: generateId("documents") as Document["_id"],
@@ -243,13 +269,17 @@ export class DocumentFactory {
 
   static createMany(count: number, overrides?: Partial<Document>): Document[] {
     return Array.from({ length: count }, () =>
-      DocumentFactory.create(overrides as Partial<Omit<Document, "_id" | "_creationTime">>)
+      DocumentFactory.create(
+        overrides as Partial<Omit<Document, "_id" | "_creationTime">>,
+      ),
     );
   }
 }
 
 export class ActivityFactory {
-  static create(overrides?: Partial<Omit<Activity, "_id" | "_creationTime">>): Activity {
+  static create(
+    overrides?: Partial<Omit<Activity, "_id" | "_creationTime">>,
+  ): Activity {
     const now = Date.now();
     return {
       _id: generateId("activities") as Activity["_id"],
@@ -268,14 +298,16 @@ export class ActivityFactory {
 
   static createMany(count: number, overrides?: Partial<Activity>): Activity[] {
     return Array.from({ length: count }, () =>
-      ActivityFactory.create(overrides as Partial<Omit<Activity, "_id" | "_creationTime">>)
+      ActivityFactory.create(
+        overrides as Partial<Omit<Activity, "_id" | "_creationTime">>,
+      ),
     );
   }
 }
 
 export class NotificationFactory {
   static create(
-    overrides?: Partial<Omit<Notification, "_id" | "_creationTime">>
+    overrides?: Partial<Omit<Notification, "_id" | "_creationTime">>,
   ): Notification {
     const now = Date.now();
     return {
@@ -292,16 +324,21 @@ export class NotificationFactory {
     } as Notification;
   }
 
-  static createMany(count: number, overrides?: Partial<Notification>): Notification[] {
+  static createMany(
+    count: number,
+    overrides?: Partial<Notification>,
+  ): Notification[] {
     return Array.from({ length: count }, () =>
-      NotificationFactory.create(overrides as Partial<Omit<Notification, "_id" | "_creationTime">>)
+      NotificationFactory.create(
+        overrides as Partial<Omit<Notification, "_id" | "_creationTime">>,
+      ),
     );
   }
 }
 
 export class SubscriptionFactory {
   static create(
-    overrides?: Partial<Omit<Subscription, "_id" | "_creationTime">>
+    overrides?: Partial<Omit<Subscription, "_id" | "_creationTime">>,
   ): Subscription {
     const now = Date.now();
     return {
@@ -316,11 +353,14 @@ export class SubscriptionFactory {
     } as Subscription;
   }
 
-  static createMany(count: number, overrides?: Partial<Subscription>): Subscription[] {
+  static createMany(
+    count: number,
+    overrides?: Partial<Subscription>,
+  ): Subscription[] {
     return Array.from({ length: count }, () =>
       SubscriptionFactory.create(
-        overrides as Partial<Omit<Subscription, "_id" | "_creationTime">>
-      )
+        overrides as Partial<Omit<Subscription, "_id" | "_creationTime">>,
+      ),
     );
   }
 }

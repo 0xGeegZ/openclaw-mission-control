@@ -17,10 +17,13 @@ import {
   createAssignmentNotification,
   createStatusChangeNotification,
 } from "./lib/notifications";
-import { ensureSubscribed, ensureOrchestratorSubscribed } from "./subscriptions";
+import {
+  ensureSubscribed,
+  ensureOrchestratorSubscribed,
+  syncSubscriptionsForAssignmentChange,
+} from "./subscriptions";
 import {
   cascadeDeleteTask,
-  validateTaskReferences,
   validateAgentBelongsToAccount,
 } from "./lib/reference_validation";
 
@@ -70,7 +73,7 @@ export const list = query({
     await requireAccountMember(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
 
-    let tasksQuery = ctx.db
+    const tasksQuery = ctx.db
       .query("tasks")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId));
 
@@ -666,7 +669,8 @@ export const assign = mutation({
     const hasAssignees =
       nextAssignedUserIds.length > 0 || nextAssignedAgentIds.length > 0;
     const shouldAssign = task.status === TASK_STATUS.INBOX && hasAssignees;
-    const shouldUnassign = task.status === TASK_STATUS.ASSIGNED && !hasAssignees;
+    const shouldUnassign =
+      task.status === TASK_STATUS.ASSIGNED && !hasAssignees;
     const nextStatus: TaskStatus | null = shouldAssign
       ? TASK_STATUS.ASSIGNED
       : shouldUnassign
@@ -679,16 +683,32 @@ export const assign = mutation({
 
     await ctx.db.patch(args.taskId, updates);
 
-    const previousUserIds = new Set(task.assignedUserIds);
-    const previousAgentIds = new Set(task.assignedAgentIds);
+    const previousUserIds = task.assignedUserIds ?? [];
+    const previousAgentIds = task.assignedAgentIds ?? [];
     const newUserIds =
       args.assignedUserIds !== undefined
-        ? nextAssignedUserIds.filter((uid) => !previousUserIds.has(uid))
+        ? nextAssignedUserIds.filter((uid) => !previousUserIds.includes(uid))
         : [];
     const newAgentIds =
       args.assignedAgentIds !== undefined
-        ? nextAssignedAgentIds.filter((aid) => !previousAgentIds.has(aid))
+        ? nextAssignedAgentIds.filter((aid) => !previousAgentIds.includes(aid))
         : [];
+
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    await syncSubscriptionsForAssignmentChange(
+      ctx,
+      task.accountId,
+      args.taskId,
+      previousUserIds,
+      previousAgentIds,
+      nextAssignedUserIds,
+      nextAssignedAgentIds,
+      orchestratorAgentId,
+    );
 
     for (const uid of newUserIds) {
       await createAssignmentNotification(
@@ -700,7 +720,6 @@ export const assign = mutation({
         userName,
         task.title,
       );
-      await ensureSubscribed(ctx, task.accountId, args.taskId, "user", uid);
     }
     for (const agentId of newAgentIds) {
       await createAssignmentNotification(
@@ -712,16 +731,7 @@ export const assign = mutation({
         userName,
         task.title,
       );
-      await ensureSubscribed(
-        ctx,
-        task.accountId,
-        args.taskId,
-        "agent",
-        agentId,
-      );
     }
-
-    await ensureOrchestratorSubscribed(ctx, task.accountId, args.taskId);
 
     if (
       nextStatus &&
@@ -817,7 +827,7 @@ export const remove = mutation({
       throw new Error("Not found: Task does not exist");
     }
 
-    const { userId, userName } = await requireAccountMember(
+    const { userId: _userId, userName: _userName } = await requireAccountMember(
       ctx,
       task.accountId,
     );

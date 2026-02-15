@@ -181,7 +181,9 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
       </header>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {summary === undefined || metrics === undefined || agentStats === undefined ? (
+        {summary === undefined ||
+        metrics === undefined ||
+        agentStats === undefined ? (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats skeleton */}
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -279,7 +281,8 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                     {completionRate}%
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0} tasks done
+                    {summary.taskCountByStatus[TASK_STATUS.DONE] ?? 0} tasks
+                    done
                   </p>
                 </CardContent>
               </Card>
@@ -352,7 +355,10 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                           />
                           <Tooltip
                             content={<ChartTooltipContent />}
-                            cursor={{ stroke: "hsl(var(--primary))", opacity: 0.5 }}
+                            cursor={{
+                              stroke: "hsl(var(--primary))",
+                              opacity: 0.5,
+                            }}
                           />
                           <Line
                             type="monotone"
@@ -586,7 +592,10 @@ export default function AnalyticsPage({ params }: AnalyticsPageProps) {
                           <span className="flex items-center gap-2">
                             <div
                               className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: TASK_STATUS_CHART_COLORS[status] }}
+                              style={{
+                                backgroundColor:
+                                  TASK_STATUS_CHART_COLORS[status],
+                              }}
                             />
                             {TASK_STATUS_LABELS[status]}
                           </span>

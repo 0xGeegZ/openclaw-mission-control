@@ -85,7 +85,8 @@ export function AgentCard({
   isOrchestrator,
 }: AgentCardProps) {
   const status = statusConfig[agent.status] || statusConfig.offline;
-  const isActive = agent.status === AGENT_STATUS.ONLINE || agent.status === AGENT_STATUS.BUSY;
+  const isActive =
+    agent.status === AGENT_STATUS.ONLINE || agent.status === AGENT_STATUS.BUSY;
   const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
   const relativeTime = useRelativeTime(agent.lastHeartbeat, {
     addSuffix: true,

@@ -24,7 +24,8 @@ vi.mock("../convex-client", () => ({
         loadTaskDetailsForAgentTool: "loadTaskDetailsForAgentTool",
         linkTaskToPrForAgentTool: "linkTaskToPrForAgentTool",
         getAgentSkillsForTool: "getAgentSkillsForTool",
-        createResponseRequestNotifications: "createResponseRequestNotifications",
+        createResponseRequestNotifications:
+          "createResponseRequestNotifications",
       },
     },
   },
@@ -270,7 +271,7 @@ describe("executeAgentTool", () => {
         taskId: "task1",
         title: "Updated title",
         priority: 2,
-      })
+      }),
     );
   });
 
@@ -427,7 +428,9 @@ describe("executeAgentTool", () => {
     expect(mockAction).toHaveBeenCalledTimes(3);
 
     const createCall = mockAction.mock.calls.find(([, payload]) => {
-      return (payload as { title?: string }).title === "Delegate implementation";
+      return (
+        (payload as { title?: string }).title === "Delegate implementation"
+      );
     });
     expect(createCall).toBeDefined();
     expect(createCall?.[1]).toMatchObject({

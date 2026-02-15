@@ -105,7 +105,9 @@ export function getVisibleNotifications(
   notifications: NotificationItem[],
   dismissed: Set<string>,
 ): NotificationItem[] {
-  return notifications.filter((notification) => !dismissed.has(notification._id));
+  return notifications.filter(
+    (notification) => !dismissed.has(notification._id),
+  );
 }
 
 export function NotificationsList({
@@ -123,7 +125,10 @@ export function NotificationsList({
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const unreadCount = getUnreadCount(notifications);
-  const displayedNotifications = getDisplayedNotifications(notifications, filterBy);
+  const displayedNotifications = getDisplayedNotifications(
+    notifications,
+    filterBy,
+  );
   const visibleNotifications = getVisibleNotifications(
     displayedNotifications,
     dismissed,
@@ -134,7 +139,10 @@ export function NotificationsList({
     onDismiss?.(id);
   };
 
-  const handleNotificationOpen = (notification: NotificationItem, isUnread: boolean) => {
+  const handleNotificationOpen = (
+    notification: NotificationItem,
+    isUnread: boolean,
+  ) => {
     if (isUnread) {
       onMarkAsRead?.(notification._id);
     }
@@ -156,10 +164,7 @@ export function NotificationsList({
     return (
       <div className="space-y-3 p-4">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-16 bg-gray-100 rounded-lg animate-pulse"
-          />
+          <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -170,7 +175,9 @@ export function NotificationsList({
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <Bell className="w-8 h-8 text-gray-400 mb-4" />
         <p className="text-sm text-gray-600 font-medium">
-          {filterBy === "unread" ? "No unread notifications" : "No notifications"}
+          {filterBy === "unread"
+            ? "No unread notifications"
+            : "No notifications"}
         </p>
       </div>
     );
@@ -234,7 +241,9 @@ export function NotificationsList({
                   <div className="flex-1">
                     <p
                       className={`text-sm font-medium leading-tight ${
-                        isUnread ? "text-gray-900 dark:text-gray-50" : "text-gray-700 dark:text-gray-300"
+                        isUnread
+                          ? "text-gray-900 dark:text-gray-50"
+                          : "text-gray-700 dark:text-gray-300"
                       }`}
                     >
                       {notification.title}
@@ -276,9 +285,9 @@ export function NotificationsList({
                   variant="ghost"
                   size="sm"
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      handleDismiss(notification._id);
-                    }}
+                    e.stopPropagation();
+                    handleDismiss(notification._id);
+                  }}
                   title="Dismiss"
                   aria-label={`Dismiss notification "${notification.title}"`}
                 >

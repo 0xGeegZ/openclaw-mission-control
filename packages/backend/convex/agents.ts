@@ -4,7 +4,7 @@ import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
 import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 /**
@@ -612,7 +612,7 @@ export const getWithSkills = query({
     await requireAccountMember(ctx, agent.accountId);
 
     // Resolve skill IDs to full skill objects
-    let skills: any[] = [];
+    let skills: (Doc<"skills"> | null)[] = [];
     if (agent.openclawConfig?.skillIds) {
       skills = await Promise.all(
         agent.openclawConfig.skillIds.map((id) => ctx.db.get(id)),

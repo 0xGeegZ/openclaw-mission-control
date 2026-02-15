@@ -30,7 +30,10 @@ export function validateAccountName(name: string): ValidateAccountNameResult {
     return { valid: false, error: "Account name is required" };
   }
   if (trimmed.length > ACCOUNT_NAME_MAX_LEN) {
-    return { valid: false, error: `Account name must be ${ACCOUNT_NAME_MAX_LEN} characters or less` };
+    return {
+      valid: false,
+      error: `Account name must be ${ACCOUNT_NAME_MAX_LEN} characters or less`,
+    };
   }
   return { valid: true };
 }

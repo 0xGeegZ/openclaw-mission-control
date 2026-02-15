@@ -20,11 +20,9 @@ import {
 import {
   ensureSubscribed,
   ensureOrchestratorSubscribed,
+  syncSubscriptionsForAssignmentChange,
 } from "../subscriptions";
-import {
-  DEFAULT_TASK_SEARCH_LIMIT,
-  MAX_TASK_SEARCH_LIMIT,
-} from "../search";
+import { DEFAULT_TASK_SEARCH_LIMIT, MAX_TASK_SEARCH_LIMIT } from "../search";
 
 const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
 
@@ -327,7 +325,9 @@ export const createFromAgent = internalMutation({
       labels: args.labels ?? [],
       dueDate: args.dueDate,
       blockedReason:
-        requestedStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
+        requestedStatus === TASK_STATUS.BLOCKED
+          ? args.blockedReason
+          : undefined,
       createdBy: args.agentId,
       createdAt: now,
       updatedAt: now,
@@ -703,7 +703,10 @@ export const updateFromAgent = internalMutation({
     }
 
     // Validate assignedAgentIds references if provided
-    if (safeUpdates.assignedAgentIds && Array.isArray(safeUpdates.assignedAgentIds)) {
+    if (
+      safeUpdates.assignedAgentIds &&
+      Array.isArray(safeUpdates.assignedAgentIds)
+    ) {
       for (const agentId of safeUpdates.assignedAgentIds) {
         const assignedAgent = await ctx.db.get(agentId as Id<"agents">);
         if (!assignedAgent || assignedAgent.accountId !== task.accountId) {
@@ -724,11 +727,13 @@ export const updateFromAgent = internalMutation({
         const membership = await ctx.db
           .query("memberships")
           .withIndex("by_account_user", (q) =>
-            q.eq("accountId", task.accountId).eq("userId", userId)
+            q.eq("accountId", task.accountId).eq("userId", userId),
           )
           .unique();
         if (!membership) {
-          throw new Error(`Invalid user: ${userId} is not a member of this account`);
+          throw new Error(
+            `Invalid user: ${userId} is not a member of this account`,
+          );
         }
       }
       safeUpdates.assignedUserIds = valid;
@@ -750,6 +755,24 @@ export const updateFromAgent = internalMutation({
       );
     }
 
+    const previousUserIds = task.assignedUserIds ?? [];
+    const previousAgentIds = task.assignedAgentIds ?? [];
+    const account = await ctx.db.get(task.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    await syncSubscriptionsForAssignmentChange(
+      ctx,
+      task.accountId,
+      args.taskId,
+      previousUserIds,
+      previousAgentIds,
+      nextAssignedUserIds,
+      nextAssignedAgentIds,
+      orchestratorAgentId,
+    );
+
     await ctx.db.patch(args.taskId, safeUpdates);
 
     // Log activity
@@ -765,7 +788,7 @@ export const updateFromAgent = internalMutation({
       targetName: task.title,
       meta: {
         changedFields: Object.keys(safeUpdates).filter(
-          (k) => k !== "updatedAt"
+          (k) => k !== "updatedAt",
         ),
       },
     });

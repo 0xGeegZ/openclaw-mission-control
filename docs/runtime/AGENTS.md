@@ -71,6 +71,14 @@ Use exactly one branch per task so each PR contains only that task's commits. Br
 - memory/YYYY-MM-DD.md: a chronological log of actions and decisions
 - MEMORY.md: stable decisions, conventions, key learnings
 
+### Memory and read tool contract
+
+- Prefer `memory_get` / `memory_set` when those tools are available.
+- Use `read` only for explicit file paths, never for directories.
+- When calling `read`, pass JSON args with `path`, for example: `{ "path": "memory/WORKING.md" }`.
+- Only use `read` with paths under `/root/clawd`; do not read `/usr`, `/usr/local`, or `node_modules` — they are not in your workspace.
+- If `memory/YYYY-MM-DD.md` does not exist, create it before trying to read it.
+
 ## Required output format for task thread updates
 
 Post updates using this exact structure:
@@ -187,6 +195,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
 ```
 
 **Orchestrator (squad lead):**
+
 - Before requesting QA: task MUST be in REVIEW. Move to review first (task_status), then call **response_request** so QA is notified. Do not request QA approval while the task is still in_progress.
 - When in REVIEW: request QA approval via **response_request**. Even if you agree or QA already posted, you must send response_request so QA can confirm and move to DONE — do not post "Approved" without sending it. If a QA agent exists, only QA moves to DONE after passing review.
 - When no QA agent: you may close — use **task_status** with `"status": "done"` (or HTTP endpoint) **first**, then post your acceptance note. If you cannot update status, report **BLOCKED**; do not post a "final summary" or claim DONE. Posting in the thread alone does not change status and causes a loop.
@@ -205,6 +214,8 @@ All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are lo
 ## Orchestrator (squad lead)
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).
+
+You are **informed by updates** (the runtime delivers thread_update notifications to you) but you are **not required to post routine acknowledgments** for every assignee progress message. When you need an explicit response or action from another agent, use the **response_request** tool so they are notified; that is the intended coordination mechanism.
 
 **Never self-assign tasks.** You are the orchestrator/coordinator—only assign work to the actual agents who will execute (e.g. `assigneeSlugs: ["engineer"]`, not `["squad-lead", "engineer"]`). This keeps accountability clear.
 

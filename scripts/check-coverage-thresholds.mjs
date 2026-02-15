@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console, process */
 /**
  * Parses Istanbul-style coverage-final.json (v8 output) and enforces
  * coverage thresholds per package. Exits 1 if any package is below threshold.
@@ -50,16 +51,16 @@ function computeCoverage(cov) {
 
   for (const [file, data] of Object.entries(cov)) {
     if (!data.s) continue;
-    for (const [id, count] of Object.entries(data.s)) {
+    for (const [, count] of Object.entries(data.s)) {
       stTotal += 1;
       if (Number(count) > 0) stCovered += 1;
     }
-    for (const [id, count] of Object.entries(data.f || {})) {
+    for (const [, count] of Object.entries(data.f || {})) {
       fnTotal += 1;
       if (Number(count) > 0) fnCovered += 1;
     }
     for (const [, pair] of Object.entries(data.b || {})) {
-      const [hit, total] = Array.isArray(pair) ? pair : [0, 0];
+      const [hit] = Array.isArray(pair) ? pair : [0, 0];
       brTotal += 1;
       if (Number(hit) > 0) brCovered += 1;
     }
@@ -71,7 +72,10 @@ function computeCoverage(cov) {
         if (line != null) totalLines.add(line);
         if (Number(data.s[id]) > 0 && line != null) coveredLines.add(line);
       }
-      linesByFile.set(file, { total: totalLines.size, covered: coveredLines.size });
+      linesByFile.set(file, {
+        total: totalLines.size,
+        covered: coveredLines.size,
+      });
     }
   }
 
@@ -122,13 +126,15 @@ function main() {
     if (!linesOk || !fnOk || !stOk || !brOk) failed = true;
     const status = linesOk && fnOk && stOk && brOk ? "✓" : "✗";
     console.log(
-      `  ${pkg.name}: ${status} lines ${pct.lines.toFixed(1)}% (≥${t.lines}%) | functions ${pct.functions.toFixed(1)}% (≥${t.functions}%) | statements ${pct.statements.toFixed(1)}% (≥${t.statements}%) | branches ${pct.branches.toFixed(1)}% (≥${t.branches}%)`
+      `  ${pkg.name}: ${status} lines ${pct.lines.toFixed(1)}% (≥${t.lines}%) | functions ${pct.functions.toFixed(1)}% (≥${t.functions}%) | statements ${pct.statements.toFixed(1)}% (≥${t.statements}%) | branches ${pct.branches.toFixed(1)}% (≥${t.branches}%)`,
     );
   }
 
   console.log("");
   if (failed) {
-    console.error("One or more packages are below the required coverage thresholds.");
+    console.error(
+      "One or more packages are below the required coverage thresholds.",
+    );
     process.exit(1);
   }
   console.log("All coverage thresholds met.");

@@ -16,6 +16,7 @@ COPY packages/backend/package.json ./packages/backend/
 RUN npm install
 
 COPY apps/runtime ./apps/runtime
+COPY docs/runtime ./docs/runtime
 COPY packages/shared ./packages/shared
 COPY packages/backend ./packages/backend
 
@@ -47,7 +48,8 @@ RUN npm install --omit=dev --ignore-scripts
 # Non-root user (UID/GID 10001 to avoid clash with base image default 1000).
 RUN addgroup --gid 10001 runtime && \
     adduser --uid 10001 --ingroup runtime --disabled-password --gecos "" runtime && \
-    chown -R runtime:runtime /app
+    chown -R runtime:runtime /app && \
+    chmod -R o+rX /app
 
 USER runtime
 WORKDIR /app/apps/runtime

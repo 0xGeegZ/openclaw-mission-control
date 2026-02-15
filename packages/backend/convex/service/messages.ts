@@ -11,7 +11,6 @@ import {
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
 import {
-  extractMentionStrings,
   resolveMentions,
   hasAllMention,
   getAllMentions,
@@ -281,8 +280,9 @@ export const createFromAgent = internalMutation({
     } else if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, agent.accountId, args.agentId);
     } else {
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, agent.accountId, {
+        content: args.content,
+      });
     }
 
     const suppressAgentNotifications = args.suppressAgentNotifications === true;

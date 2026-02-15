@@ -1,11 +1,8 @@
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { getConvexClient, api } from "./convex-client";
 import { RuntimeConfig } from "./config";
-import {
-  isNoResponseFallbackMessage,
-  sendOpenClawToolResults,
-  sendToOpenClaw,
-} from "./gateway";
+import { isNoResponseFallbackMessage } from "./delivery/no-response";
+import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
 import { createLogger } from "./logger";
 import { recordSuccess, recordFailure } from "./metrics";
 import {
@@ -39,15 +36,18 @@ const ORCHESTRATOR_HEARTBEAT_TASK_LIMIT = 200;
 const HEARTBEAT_DESCRIPTION_MAX_CHARS = 240;
 const HEARTBEAT_THREAD_MESSAGE_LIMIT = 8;
 const HEARTBEAT_THREAD_MESSAGE_MAX_CHARS = 220;
-const HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = ["in_progress", "assigned"];
+const HEARTBEAT_STATUS_PRIORITY: HeartbeatStatus[] = [
+  "in_progress",
+  "assigned",
+];
 /** Single source of truth for orchestrator tracked statuses and ordering. */
 const ORCHESTRATOR_HEARTBEAT_STATUSES: HeartbeatStatus[] = [
   "in_progress",
   "review",
   "assigned",
-  "blocked",
 ];
-const ORCHESTRATOR_ASSIGNEE_STALE_MS = 3 * 60 * 60 * 1000;
+/** Follow-up if no assignee message since last heartbeat (~15 min). */
+const ORCHESTRATOR_ASSIGNEE_STALE_MS = 15 * 60 * 1000;
 const ORCHESTRATOR_ASSIGNEE_BLOCKED_STALE_MS = 24 * 60 * 60 * 1000;
 const ORCHESTRATOR_ASSIGNEE_STARTUP_STALE_MS = 15 * 60 * 1000;
 const ORCHESTRATOR_MAX_FOLLOW_UPS_PER_HEARTBEAT = 3;
@@ -253,6 +253,7 @@ export function buildHeartbeatMessage(options: {
 
 Follow the HEARTBEAT.md checklist.
 - Load context (WORKING.md, memory, mentions, assigned/tracked tasks, activity feed).
+- Prefer memory_get/memory_set for memory files. If read is needed, call read with JSON args containing path (example: {"path":"memory/WORKING.md"}) and never target a directory.
 ${actionLine}
 - Do not narrate the checklist or your intent; reply only with a concrete action update (include Task ID) or with ${HEARTBEAT_OK_RESPONSE}.
 - If you took action, post a thread update using AGENTS.md format.
@@ -384,13 +385,13 @@ function resolveHeartbeatBehaviorFlags(
 /**
  * Return true when an assignee message should not reset stale follow-up timers.
  */
-function shouldIgnoreAssigneeReplyForFollowUp(content: string | undefined): boolean {
+function shouldIgnoreAssigneeReplyForFollowUp(
+  content: string | undefined,
+): boolean {
   if (!content) return false;
   const trimmed = content.trim();
   if (!trimmed) return false;
-  return (
-    isHeartbeatOkResponse(trimmed) || isNoResponseFallbackMessage(trimmed)
-  );
+  return isHeartbeatOkResponse(trimmed) || isNoResponseFallbackMessage(trimmed);
 }
 
 /**
@@ -575,7 +576,11 @@ async function maybeAutoRequestAssigneeFollowUp(options: {
   let queuedFollowUps = 0;
   let agents: AgentForHeartbeat[] | null = null;
 
-  for (let batchIndex = 0; batchIndex < candidateBatches.length; batchIndex += 1) {
+  for (
+    let batchIndex = 0;
+    batchIndex < candidateBatches.length;
+    batchIndex += 1
+  ) {
     const tasks = candidateBatches[batchIndex];
     if (tasks.length === 0) continue;
     const isBlockedFallbackBatch = batchIndex > 0;
@@ -837,7 +842,8 @@ function runHeartbeatCycle(
             focusTaskThread = details.thread;
           }
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           log.warn(
             "Failed to load focus task thread for heartbeat context:",
             focusTask._id,

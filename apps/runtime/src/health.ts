@@ -1,6 +1,6 @@
 import http from "http";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api } from "./convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
 import { getAgentSyncState } from "./agent-sync";
 import { getDeliveryState } from "./delivery";
 import { getAgentIdForSessionKey, getGatewayState } from "./gateway";
@@ -174,10 +174,10 @@ async function resolveAgentSlugs(
   slugs: string[],
 ): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  });
+  })) as ListAgentsItem[];
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {
@@ -308,6 +308,9 @@ export function startHealthServer(config: RuntimeConfig): void {
           consecutiveFailures: delivery.consecutiveFailures,
           lastErrorAt: delivery.lastErrorAt,
           lastErrorMessage: delivery.lastErrorMessage,
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
         },
         heartbeat: {
           running: heartbeat.isRunning,
@@ -498,7 +501,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           log.warn("[task-update] Invalid status:", body.status);
           sendJson(res, 422, {
             success: false,
-            error: "Invalid status: must be in_progress, review, done, or blocked",
+            error:
+              "Invalid status: must be in_progress, review, done, or blocked",
           });
           return;
         }
@@ -512,7 +516,10 @@ export function startHealthServer(config: RuntimeConfig): void {
         }
       }
 
-      if (body.priority !== undefined && (body.priority < 1 || body.priority > 5)) {
+      if (
+        body.priority !== undefined &&
+        (body.priority < 1 || body.priority > 5)
+      ) {
         log.warn("[task-update] Invalid priority:", body.priority);
         sendJson(res, 422, {
           success: false,
@@ -632,10 +639,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           });
           return;
         }
-        const assigneeMap = await resolveAgentSlugs(
-          config,
-          body.assigneeSlugs,
-        );
+        const assigneeMap = await resolveAgentSlugs(config, body.assigneeSlugs);
         assigneeIds = Array.from(assigneeMap.values()).filter(
           Boolean,
         ) as Id<"agents">[];
@@ -737,10 +741,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
       try {
         const client = getConvexClient();
-        const assigneeMap = await resolveAgentSlugs(
-          config,
-          normalizedSlugs,
-        );
+        const assigneeMap = await resolveAgentSlugs(config, normalizedSlugs);
         const assigneeIds = Array.from(assigneeMap.values()).filter(
           Boolean,
         ) as Id<"agents">[];
@@ -1021,9 +1022,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         : undefined;
       let assigneeAgentId: Id<"agents"> | undefined;
       if (assigneeSlug) {
-        const assigneeMap = await resolveAgentSlugs(config, [
-          assigneeSlug,
-        ]);
+        const assigneeMap = await resolveAgentSlugs(config, [assigneeSlug]);
         const resolvedId = assigneeMap.get(assigneeSlug) ?? "";
         if (!resolvedId) {
           sendJson(res, 422, {
@@ -1239,12 +1238,15 @@ export function startHealthServer(config: RuntimeConfig): void {
         const queryAgentId = body.agentId
           ? (body.agentId as Id<"agents">)
           : undefined;
-        const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
-          accountId: config.accountId,
-          agentId,
-          serviceToken: config.serviceToken,
-          queryAgentId,
-        });
+        const skills = await client.action(
+          api.service.actions.getAgentSkillsForTool,
+          {
+            accountId: config.accountId,
+            agentId,
+            serviceToken: config.serviceToken,
+            queryAgentId,
+          },
+        );
         sendJson(res, 200, { success: true, data: { agents: skills } });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1371,6 +1373,9 @@ export function startHealthServer(config: RuntimeConfig): void {
               running: delivery.isRunning,
               delivered: delivery.deliveredCount,
               failed: delivery.failedCount,
+              noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+              requiredNotificationRetryExhaustedCount:
+                delivery.requiredNotificationRetryExhaustedCount,
             },
             gateway: {
               running: gateway.isRunning,
@@ -1385,8 +1390,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         };
         sendJson(res, 200, json);
       } else {
-        // Prometheus text format
-        const prometheusText = formatPrometheusMetrics();
+        // Prometheus text format (include delivery counters)
+        const delivery = getDeliveryState();
+        const prometheusText = formatPrometheusMetrics({
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
+        });
         res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
         res.end(prometheusText);
       }

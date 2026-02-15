@@ -160,7 +160,8 @@ export const listUndeliveredForAccount = internalQuery({
 /**
  * Mark a notification as read (service-only).
  * Called by runtime when it starts processing a notification (before sendToOpenClaw).
- * Idempotent: if readAt is already set, does nothing.
+ * Sets readAt if unset; always clears deliveryEndedAt so typing can show (including on retry).
+ * Idempotent for readAt; clearing deliveryEndedAt on retry allows typing indicator to appear again.
  */
 export const markRead = internalMutation({
   args: {
@@ -171,9 +172,38 @@ export const markRead = internalMutation({
     if (!notification) {
       throw new Error("Not found: Notification does not exist");
     }
+    const now = Date.now();
     if (!notification.readAt) {
       await ctx.db.patch(args.notificationId, {
-        readAt: Date.now(),
+        readAt: now,
+        deliveryEndedAt: undefined,
+      });
+    } else if (notification.deliveryEndedAt != null) {
+      await ctx.db.patch(args.notificationId, {
+        deliveryEndedAt: undefined,
+      });
+    }
+    return true;
+  },
+});
+
+/**
+ * Mark delivery as ended for this attempt (typing stops; notification stays undelivered for retry).
+ * Idempotent: only sets when deliveredAt is null; no-op if already delivered or already ended.
+ */
+export const markDeliveryEnded = internalMutation({
+  args: {
+    notificationId: v.id("notifications"),
+  },
+  handler: async (ctx, args) => {
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.deliveredAt != null) return true;
+    if (!notification.deliveryEndedAt) {
+      await ctx.db.patch(args.notificationId, {
+        deliveryEndedAt: Date.now(),
       });
     }
     return true;

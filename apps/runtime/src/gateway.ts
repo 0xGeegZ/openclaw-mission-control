@@ -1,6 +1,6 @@
 import net from "node:net";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api } from "./convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -128,22 +128,11 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
-const NO_RESPONSE_FROM_OPENCLAW_MESSAGE = "No response from OpenClaw.";
-const NO_RESPONSE_MENTION_PREFIX_PATTERN =
-  /^(@[A-Za-z0-9_-]+)(\s+@[A-Za-z0-9_-]+)*$/;
-const NO_RESPONSE_FALLBACK_MESSAGE = [
-  "**Summary**",
-  "- OpenClaw did not return a response for this run.",
-  "",
-  "**Work done**",
-  "- None (no output received).",
-  "",
-  "**Next step (one)**",
-  "- Retry once the runtime or gateway is healthy; check OpenClaw logs if this persists.",
-  "",
-  "**Sources**",
-  "- None.",
-].join("\n");
+import {
+  buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 interface GatewayAddress {
   host: string;
@@ -247,55 +236,12 @@ const state: GatewayState = {
   lastSendError: null,
 };
 
-/**
- * Detect OpenClaw "no response" placeholder messages, including mention-only prefixes.
- */
-export function parseNoResponsePlaceholder(response: string): {
-  isPlaceholder: boolean;
-  mentionPrefix: string | null;
-} {
-  const trimmed = response.trim();
-  if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
-  if (trimmed === NO_RESPONSE_FROM_OPENCLAW_MESSAGE) {
-    return { isPlaceholder: true, mentionPrefix: null };
-  }
-  if (!trimmed.endsWith(NO_RESPONSE_FROM_OPENCLAW_MESSAGE)) {
-    return { isPlaceholder: false, mentionPrefix: null };
-  }
-  const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FROM_OPENCLAW_MESSAGE.length)
-    .trim();
-  if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
-  if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {
-    return { isPlaceholder: true, mentionPrefix: prefix };
-  }
-  return { isPlaceholder: false, mentionPrefix: null };
-}
-
-/**
- * Build a fallback response for placeholder OpenClaw messages.
- */
-export function buildNoResponseFallbackMessage(
-  mentionPrefix?: string | null,
-): string {
-  const prefix = mentionPrefix ? `${mentionPrefix.trim()}\n\n` : "";
-  return `${prefix}${NO_RESPONSE_FALLBACK_MESSAGE}`;
-}
-
-/**
- * Detect fallback messages generated for no-response OpenClaw runs.
- * Accepts plain fallback and mention-prefixed variants.
- */
-export function isNoResponseFallbackMessage(content: string): boolean {
-  const trimmed = content.trim();
-  if (!trimmed) return false;
-  if (trimmed === NO_RESPONSE_FALLBACK_MESSAGE) return true;
-  if (!trimmed.endsWith(NO_RESPONSE_FALLBACK_MESSAGE)) return false;
-  const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FALLBACK_MESSAGE.length)
-    .trim();
-  return !prefix || NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix);
-}
+/** Re-export from shared no-response module for backward compatibility. */
+export {
+  buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 /**
  * Initialize the OpenClaw gateway.
@@ -309,10 +255,10 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   state.openclawRequestTimeoutMs = config.openclawRequestTimeoutMs;
 
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  });
+  })) as ListAgentsItem[];
 
   for (const agent of agents) {
     state.sessions.set(agent.sessionKey, {
