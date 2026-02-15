@@ -16,4 +16,3 @@ export * from "./components/textarea";
 export * from "./components/tabs";
 export * from "./components/select";
 export * from "./components/accordion";
-export * from "./components/progress";

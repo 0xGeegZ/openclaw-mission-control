@@ -24,7 +24,6 @@ import {
 } from "./lib/notifications";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { checkQuota, incrementUsage } from "./lib/quotaHelpers";
 
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
 
@@ -204,18 +203,6 @@ export const create = mutation({
       task.accountId,
     );
     const account = await ctx.db.get(accountId);
-    if (!account) {
-      throw new Error("Account not found");
-    }
-
-    // Check message quota before proceeding
-    const quotaCheck = await checkQuota(ctx, accountId, "messages");
-    if (!quotaCheck.allowed) {
-      throw new Error(
-        `Quota exceeded: ${quotaCheck.message}. Upgrade your plan to send more messages.`,
-      );
-    }
-
     const isOrchestratorChat = isOrchestratorChatTask({ account, task });
     const orchestratorAgentId =
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
@@ -303,9 +290,6 @@ export const create = mutation({
       updatedAt: now,
       lastMessageAt: now,
     });
-
-    // Increment message quota usage after successful insert
-    await incrementUsage(ctx, accountId, "messages");
 
     // Auto-subscribe author to thread
     await ensureSubscribed(ctx, accountId, args.taskId, "user", userId);

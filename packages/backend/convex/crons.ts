@@ -14,15 +14,4 @@ crons.interval(
   {},
 );
 
-/**
- * Every hour, reset monthly and daily quota counters for accounts that need it.
- * Proactively ensures quotas reset even if accounts have no activity.
- */
-crons.interval(
-  "reset quota counters",
-  { hours: 1 },
-  internal.usage.resetQuotasProactive,
-  {},
-);
-
 export default crons;
