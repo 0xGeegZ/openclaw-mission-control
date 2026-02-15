@@ -5,7 +5,11 @@
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
 import type { DeliveryContext } from "./types";
-import { isOrchestratorChatTask, isQaAgentProfile } from "./policy";
+import {
+  isOrchestratorChatTask,
+  isQaAgentProfile,
+  isRecipientInMultiAssigneeTask,
+} from "./policy";
 
 const MENTIONABLE_AGENTS_CAP = 25;
 const THREAD_MAX_MESSAGES = 25;
@@ -218,6 +222,7 @@ export function buildHttpCapabilityLabels(options: {
 
 /**
  * Format notification message for OpenClaw. Orchestrator is silent-by-default (no routine ack instruction).
+ * When the recipient is one of multiple task assignees, appends collaboration instructions (sub-scope, response_request).
  * @param context - Delivery context (notification, task, message, thread, flags).
  * @param taskStatusBaseUrl - Base URL for task-status HTTP fallback (e.g. http://runtime:3000).
  * @param toolCapabilities - Capability labels and schemas; must match tools sent to OpenClaw.
@@ -425,6 +430,10 @@ export function formatNotificationMessage(
       ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
       : "";
 
+  const multiAssigneeBlock = isRecipientInMultiAssigneeTask(context)
+    ? "\n**Multi-assignee:** This task has multiple assignees. Declare your sub-scope in your reply, check the thread to avoid duplicating work, and use **response_request** for handoffs or dependencies on other assignees.\n"
+    : "";
+
   const thisTaskAnchor = task
     ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${task.title} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
     : "\n**Respond only to this notification.** Ignore any other task or thread in the conversation history.\n";
@@ -464,6 +473,7 @@ ${orchestratorResponseRequestInstruction}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 ${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated. When an authorized actor (orchestrator or assignee) provides the needed input, move the task back to in_progress before resuming work." : ""}
 ${assignmentAckBlock}
+${multiAssigneeBlock}
 
 Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.
 

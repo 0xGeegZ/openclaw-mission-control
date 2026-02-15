@@ -8,6 +8,7 @@ import {
   canAgentMarkDone,
   isOrchestratorChatTask,
   isQaAgentProfile,
+  isRecipientInMultiAssigneeTask,
   isReviewerRole,
   shouldDeliverToAgent,
   shouldPersistNoResponseFallback,
@@ -271,5 +272,48 @@ describe("canAgentMarkDone", () => {
         hasQaAgent: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("isRecipientInMultiAssigneeTask", () => {
+  it("returns true when task has 2+ assignees and recipient agent is one of them", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a", "agent-b"] },
+          agent: { _id: "agent-a", role: "Engineer", name: "A" },
+        }),
+      ),
+    ).toBe(true);
+  });
+  it("returns false when task has only one assignee", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a"] },
+          agent: { _id: "agent-a", role: "Engineer", name: "A" },
+        }),
+      ),
+    ).toBe(false);
+  });
+  it("returns false when task has 2+ assignees but recipient is not in the list", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a", "agent-b"] },
+          agent: { _id: "agent-c", role: "Engineer", name: "C" },
+        }),
+      ),
+    ).toBe(false);
+  });
+  it("returns false when task or agent is missing", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(buildContext({ task: null, agent: null })),
+    ).toBe(false);
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({ task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: [] }, agent: { _id: "agent-a", name: "A" } }),
+      ),
+    ).toBe(false);
   });
 });
