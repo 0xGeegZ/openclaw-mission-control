@@ -2,7 +2,11 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
-import { attachmentValidator } from "./lib/validators";
+import {
+  attachmentValidator,
+  isAttachmentTypeAndSizeAllowed,
+  MESSAGE_CONTENT_MAX_LENGTH,
+} from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { resolveMentions, hasAllMention, getAllMentions } from "./lib/mentions";
 import { ensureSubscribed } from "./subscriptions";
@@ -118,6 +122,31 @@ export const create = mutation({
       ctx,
       task.accountId,
     );
+
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
+    // Validate attachments against storage metadata (type/size), not client-provided values
+    if (args.attachments?.length) {
+      for (const a of args.attachments) {
+        const meta = await ctx.db.system.get("_storage", a.storageId);
+        if (!meta) {
+          throw new Error(
+            `Attachment "${a.name}": file not found in storage (upload may have failed)`,
+          );
+        }
+        const type = meta.contentType ?? a.type;
+        const size = meta.size ?? a.size;
+        if (!isAttachmentTypeAndSizeAllowed(type, size, a.name)) {
+          throw new Error(
+            `Attachment "${a.name}": type or size not allowed (max 20MB, allowed types: images, PDF, .doc/.docx, .txt, .csv, .json)`,
+          );
+        }
+      }
+    }
 
     // Parse and resolve mentions
     let mentions;
@@ -247,6 +276,12 @@ export const update = mutation({
     // Only author can edit
     if (message.authorType !== "user" || message.authorId !== userId) {
       throw new Error("Forbidden: Only author can edit message");
+    }
+
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
     }
 
     // Re-parse mentions from new content

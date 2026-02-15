@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm --workspace @packages/backend run seed-skills:generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "pretypecheck": "npm --workspace @packages/backend run seed-skills:generate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
