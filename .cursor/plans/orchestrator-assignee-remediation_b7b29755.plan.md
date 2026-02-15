@@ -130,40 +130,40 @@ Target behavior:
 - Create a dedicated worktree and branch for this feature before implementation.
 - Confirm local runtime/backend test commands to run in that worktree.
 
-2. **Backend contract extension**
+1. **Backend contract extension**
 
 - Update `createTaskFromAgent` action schema and pass-through in [packages/backend/convex/service/actions.ts](packages/backend/convex/service/actions.ts).
 - Update `createFromAgent` args and handler in [packages/backend/convex/service/tasks.ts](packages/backend/convex/service/tasks.ts) to support explicit `assignedAgentIds`.
 
-3. **Backend create semantics hardening**
+1. **Backend create semantics hardening**
 
 - Implement assignee validation against account membership for initial assignees.
 - Preserve fallback creator auto-assignment only when needed.
 - Update initial subscription behavior for all initial assignees.
 
-4. **Runtime tool path alignment (B usage)**
+1. **Runtime tool path alignment (B usage)**
 
 - In [apps/runtime/src/tooling/agentTools.ts](apps/runtime/src/tooling/agentTools.ts), pass `assignedAgentIds` directly to create action.
 - Keep orchestrator status normalization + self-filter helper behavior.
 - Remove or gate post-create assign call when create already includes assignees.
 
-5. **Runtime HTTP fallback parity (A)**
+1. **Runtime HTTP fallback parity (A)**
 
 - In [apps/runtime/src/health.ts](apps/runtime/src/health.ts), replicate orchestrator normalization behavior currently only in tool path.
 - Pass normalized status and filtered `assignedAgentIds` to create action.
 - Avoid immediate follow-up assign when already provided at create.
 
-6. **Runtime test updates**
+1. **Runtime test updates**
 
 - Update [apps/runtime/src/tooling/agentTools.test.ts](apps/runtime/src/tooling/agentTools.test.ts) for new action payload and call-count expectations.
 - Add targeted `/agent/task-create` tests in [apps/runtime/src/**tests**/health-agent-endpoints.test.ts](apps/runtime/src/__tests__/health-agent-endpoints.test.ts) with mocked convex calls.
 
-7. **Backend test additions**
+1. **Backend test additions**
 
 - Extend [packages/backend/convex/service/tasks.test.ts](packages/backend/convex/service/tasks.test.ts) with creation-assignee matrix tests.
 - Extend [packages/backend/convex/service/actions.test.ts](packages/backend/convex/service/actions.test.ts) for argument validation/forwarding.
 
-8. **Verification pass**
+1. **Verification pass**
 
 - Run runtime tests (`agentTools`, health endpoint tests) and backend service tests.
 - Add one manual validation scenario: orchestrator create via tool and via HTTP fallback both produce assignees without orchestrator (unless intentionally assigned and allowed by policy).
