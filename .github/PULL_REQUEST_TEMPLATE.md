@@ -1,12 +1,14 @@
+# Pull request
+
 ## Summary
 
 <!-- Brief description of what this PR does -->
 
 ## Changes
 
-- 
-- 
-- 
+-
+-
+-
 
 ## Type of Change
 
@@ -33,6 +35,7 @@
 - [ ] I have updated documentation as needed
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged
+- [ ] If my change touches a versioned app or package, I added a changeset (`npx changeset`)
 
 ## Screenshots (if applicable)
 

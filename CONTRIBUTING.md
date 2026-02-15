@@ -48,6 +48,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
    ```
 
 5. **Verify setup**
+
    ```bash
    npm run typecheck
    npm run lint
@@ -69,7 +70,7 @@ Use descriptive branch names:
 
 Follow conventional commits:
 
-```
+```text
 type(scope): description
 
 [optional body]
@@ -171,7 +172,7 @@ npm run build
 
 ## Releases and changelog
 
-We use [Changesets](https://github.com/changesets/changesets) for versioning and changelog generation. When your change affects a versioned package, add a changeset with `npx changeset` and commit the new file under `.changeset/`. The Release workflow runs on the release branch and opens a "Version Packages" PR. See [docs/releasing.md](docs/releasing.md) for the full process and required secrets (e.g. `NPM_TOKEN` only if publishing to npm).
+We use [Changesets](https://github.com/changesets/changesets) for versioning and changelog generation. When your change affects a versioned package or app, add a changeset with `npx changeset` and commit the new file under `.changeset/`. The Release workflow runs on the release branch and opens a "Version Packages" PR. See [docs/releasing.md](docs/releasing.md) for the full list of versioned workspace members and required secrets (e.g. `NPM_TOKEN` only if publishing to npm).
 
 ## Documentation
 
