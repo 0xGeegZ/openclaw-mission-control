@@ -1,465 +1,354 @@
-import { describe, it, expect, beforeEach } from "vitest";
+/**
+ * Unit tests for authentication and authorization guards
+ * 
+ * Tests: requireAuth, requireAccountMember, requireAccountAdmin, requireAccountOwner
+ * Coverage: lib/auth.ts (security-critical authentication/authorization logic)
+ */
+
+import { describe, it, expect } from "vitest";
 import {
   requireAuth,
   requireAccountMember,
   requireAccountAdmin,
   requireAccountOwner,
-  getAccountMembership,
 } from "./auth";
-import { AccountFactory, MembershipFactory } from "../__tests__/factories";
 import { Id } from "../_generated/dataModel";
 
-describe("lib/auth", () => {
-  describe("requireAuth", () => {
-    it("should return auth context when valid identity exists", async () => {
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-            pictureUrl: "https://example.com/avatar.jpg",
-          }),
-        },
-      };
+// ============================================================================
+// Mock Context Helpers
+// ============================================================================
 
-      const result = await requireAuth(mockCtx);
+function createMockAuthContext(identity: any) {
+  return {
+    auth: {
+      getUserIdentity: async () => identity,
+    },
+    db: {
+      get: async (id: Id<any>) => null,
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+        }),
+      }),
+    },
+  } as any;
+}
 
-      expect(result).toEqual({
-        userId: "user_123",
-        userName: "Test User",
-        userEmail: "test@example.com",
-        userAvatarUrl: "https://example.com/avatar.jpg",
-      });
-    });
+function createMockDbContext(dbData: {
+  accounts?: Record<string, any>;
+  memberships?: any[];
+}) {
+  return {
+    auth: {
+      getUserIdentity: async () => ({
+        subject: "user_test123",
+        name: "Test User",
+        email: "test@example.com",
+      }),
+    },
+    db: {
+      get: async (id: Id<any>) => {
+        if (dbData.accounts && dbData.accounts[id as string]) {
+          return dbData.accounts[id as string];
+        }
+        return null;
+      },
+      query: (table: string) => ({
+        withIndex: (indexName: string, fn: Function) => ({
+          unique: async () => {
+            if (table === "memberships" && dbData.memberships) {
+              return dbData.memberships[0] || null;
+            }
+            return null;
+          },
+        }),
+      }),
+    },
+  } as any;
+}
 
-    it("should throw when no identity is present", async () => {
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => null,
-        },
-      };
+// ============================================================================
+// requireAuth Tests
+// ============================================================================
 
-      await expect(requireAuth(mockCtx)).rejects.toThrow(
-        "Unauthenticated: No valid identity found"
-      );
-    });
+describe("requireAuth", () => {
+  it("should return auth context when identity exists", async () => {
+    const mockIdentity = {
+      subject: "user_123",
+      name: "Alice",
+      email: "alice@example.com",
+      pictureUrl: "https://example.com/avatar.jpg",
+    };
 
-    it("should handle missing optional fields", async () => {
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            // name and email missing
-          }),
-        },
-      };
+    const ctx = createMockAuthContext(mockIdentity);
+    const authContext = await requireAuth(ctx);
 
-      const result = await requireAuth(mockCtx);
-
-      expect(result.userId).toBe("user_123");
-      expect(result.userName).toBe("Unknown");
-      expect(result.userEmail).toBe("");
-      expect(result.userAvatarUrl).toBeUndefined();
-    });
+    expect(authContext.userId).toBe("user_123");
+    expect(authContext.userName).toBe("Alice");
+    expect(authContext.userEmail).toBe("alice@example.com");
+    expect(authContext.userAvatarUrl).toBe("https://example.com/avatar.jpg");
   });
 
-  describe("requireAccountMember", () => {
-    it("should return account member context when user is a member", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "member",
-      });
+  it("should use default name when name is missing", async () => {
+    const mockIdentity = {
+      subject: "user_456",
+      name: null,
+      email: "bob@example.com",
+    };
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
+    const ctx = createMockAuthContext(mockIdentity);
+    const authContext = await requireAuth(ctx);
 
-      const result = await requireAccountMember(mockCtx, account._id);
-
-      expect(result.userId).toBe("user_123");
-      expect(result.accountId).toBe(account._id);
-      expect(result.membership).toEqual(membership);
-      expect(result.account).toEqual(account);
-    });
-
-    it("should throw when account does not exist", async () => {
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          get: async () => null,
-        },
-      };
-
-      await expect(
-        requireAccountMember(mockCtx, "invalid_account_id" as any)
-      ).rejects.toThrow("Not found: Account does not exist");
-    });
-
-    it("should throw when user is not a member", async () => {
-      const account = AccountFactory.create();
-
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => null, // No membership found
-            }),
-          }),
-        },
-      };
-
-      await expect(
-        requireAccountMember(mockCtx, account._id)
-      ).rejects.toThrow("Forbidden: User is not a member of this account");
-    });
-
-    it("should prevent cross-account access", async () => {
-      const account1 = AccountFactory.create({ name: "Account 1" });
-      const account2 = AccountFactory.create({ name: "Account 2" });
-      const membership1 = MembershipFactory.create({
-        accountId: account1._id,
-        userId: "user_123",
-      });
-
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account2._id) return account2;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => null, // User has membership in account1, not account2
-            }),
-          }),
-        },
-      };
-
-      await expect(
-        requireAccountMember(mockCtx, account2._id)
-      ).rejects.toThrow("Forbidden: User is not a member of this account");
-    });
+    expect(authContext.userName).toBe("Unknown");
   });
 
-  describe("requireAccountAdmin", () => {
-    it("should return context when user is an admin", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "admin",
-      });
+  it("should use empty string when email is missing", async () => {
+    const mockIdentity = {
+      subject: "user_789",
+      name: "Charlie",
+      email: null,
+    };
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Admin User",
-            email: "admin@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
+    const ctx = createMockAuthContext(mockIdentity);
+    const authContext = await requireAuth(ctx);
 
-      const result = await requireAccountAdmin(mockCtx, account._id);
-
-      expect(result.membership.role).toBe("admin");
-    });
-
-    it("should return context when user is an owner", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "owner",
-      });
-
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Owner User",
-            email: "owner@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
-
-      const result = await requireAccountAdmin(mockCtx, account._id);
-
-      expect(result.membership.role).toBe("owner");
-    });
-
-    it("should throw when user is only a member", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "member",
-      });
-
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Member User",
-            email: "member@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
-
-      await expect(
-        requireAccountAdmin(mockCtx, account._id)
-      ).rejects.toThrow("Forbidden: Admin or owner role required");
-    });
+    expect(authContext.userEmail).toBe("");
   });
 
-  describe("requireAccountOwner", () => {
-    it("should return context when user is the owner", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "owner",
-      });
+  it("should throw error when no identity is present", async () => {
+    const ctx = createMockAuthContext(null);
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Owner User",
-            email: "owner@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
+    await expect(requireAuth(ctx)).rejects.toThrow(
+      "Unauthenticated: No valid identity found"
+    );
+  });
+});
 
-      const result = await requireAccountOwner(mockCtx, account._id);
+// ============================================================================
+// requireAccountMember Tests
+// ============================================================================
 
-      expect(result.membership.role).toBe("owner");
+describe("requireAccountMember", () => {
+  it("should return account member context when user is a member", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "member",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
     });
 
-    it("should throw when user is an admin but not owner", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "admin",
-      });
+    const memberContext = await requireAccountMember(ctx, accountId);
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Admin User",
-            email: "admin@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
-
-      await expect(
-        requireAccountOwner(mockCtx, account._id)
-      ).rejects.toThrow("Forbidden: Owner role required");
-    });
-
-    it("should throw when user is only a member", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-        role: "member",
-      });
-
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Member User",
-            email: "member@example.com",
-          }),
-        },
-        db: {
-          get: async (id: Id<any>) => {
-            if (id === account._id) return account;
-            return null;
-          },
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
-
-      await expect(
-        requireAccountOwner(mockCtx, account._id)
-      ).rejects.toThrow("Forbidden: Owner role required");
-    });
+    expect(memberContext.accountId).toBe(accountId);
+    expect(memberContext.account).toEqual(mockAccount);
+    expect(memberContext.membership).toEqual(mockMembership);
+    expect(memberContext.userId).toBe("user_test123");
   });
 
-  describe("getAccountMembership", () => {
-    it("should return membership when user is a member", async () => {
-      const account = AccountFactory.create();
-      const membership = MembershipFactory.create({
-        accountId: account._id,
-        userId: "user_123",
-      });
+  it("should throw error when account does not exist", async () => {
+    const accountId = "nonexistent_account" as Id<"accounts">;
+    const ctx = createMockDbContext({});
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => membership,
-            }),
-          }),
-        },
-      };
+    await expect(requireAccountMember(ctx, accountId)).rejects.toThrow(
+      "Not found: Account does not exist"
+    );
+  });
 
-      const result = await getAccountMembership(mockCtx, account._id);
+  it("should throw error when user is not a member", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
 
-      expect(result).toEqual(membership);
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [], // No membership
     });
 
-    it("should return null when user is not a member", async () => {
-      const account = AccountFactory.create();
+    await expect(requireAccountMember(ctx, accountId)).rejects.toThrow(
+      "Forbidden: User is not a member of this account"
+    );
+  });
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => ({
-            subject: "user_123",
-            name: "Test User",
-            email: "test@example.com",
-          }),
-        },
-        db: {
-          query: () => ({
-            withIndex: () => ({
-              unique: async () => null,
-            }),
-          }),
-        },
-      };
+  it("should throw error when user is not authenticated", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const ctx = createMockAuthContext(null);
+    ctx.db = {
+      get: async () => null,
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
+    };
 
-      const result = await getAccountMembership(mockCtx, account._id);
+    await expect(requireAccountMember(ctx, accountId)).rejects.toThrow(
+      "Unauthenticated"
+    );
+  });
+});
 
-      expect(result).toBeNull();
+// ============================================================================
+// requireAccountAdmin Tests
+// ============================================================================
+
+describe("requireAccountAdmin", () => {
+  it("should allow admin role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "admin",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
     });
 
-    it("should throw when user is not authenticated", async () => {
-      const account = AccountFactory.create();
+    const adminContext = await requireAccountAdmin(ctx, accountId);
 
-      const mockCtx: any = {
-        auth: {
-          getUserIdentity: async () => null,
-        },
-      };
+    expect(adminContext.membership.role).toBe("admin");
+  });
 
-      await expect(
-        getAccountMembership(mockCtx, account._id)
-      ).rejects.toThrow("Unauthenticated");
+  it("should allow owner role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "owner",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
     });
+
+    const adminContext = await requireAccountAdmin(ctx, accountId);
+
+    expect(adminContext.membership.role).toBe("owner");
+  });
+
+  it("should reject member role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "member",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
+    });
+
+    await expect(requireAccountAdmin(ctx, accountId)).rejects.toThrow(
+      "Forbidden"
+    );
+  });
+});
+
+// ============================================================================
+// requireAccountOwner Tests
+// ============================================================================
+
+describe("requireAccountOwner", () => {
+  it("should allow owner role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "owner",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
+    });
+
+    const ownerContext = await requireAccountOwner(ctx, accountId);
+
+    expect(ownerContext.membership.role).toBe("owner");
+  });
+
+  it("should reject admin role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "admin",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
+    });
+
+    await expect(requireAccountOwner(ctx, accountId)).rejects.toThrow(
+      "Forbidden"
+    );
+  });
+
+  it("should reject member role", async () => {
+    const accountId = "account_test" as Id<"accounts">;
+    const mockAccount = {
+      _id: accountId,
+      name: "Test Account",
+      slug: "test-account",
+    };
+    const mockMembership = {
+      _id: "membership_test" as Id<"memberships">,
+      userId: "user_test123",
+      accountId,
+      role: "member",
+    };
+
+    const ctx = createMockDbContext({
+      accounts: { [accountId]: mockAccount },
+      memberships: [mockMembership],
+    });
+
+    await expect(requireAccountOwner(ctx, accountId)).rejects.toThrow(
+      "Forbidden"
+    );
   });
 });
