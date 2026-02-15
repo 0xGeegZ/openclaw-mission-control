@@ -146,9 +146,11 @@ When you receive a new **assignment** notification, reply first with a short ack
 When a task has **two or more agent assignees**, you must collaborate explicitly to avoid duplicate work and conflicting changes.
 
 - **Declare your scope:** In your first reply (or as soon as you start work), state clearly what part of the task you own (e.g. "I'll handle the API changes; @engineer-2 can own the frontend."). Do not assume you own the whole task.
-- **Avoid overlap:** Read the thread before acting. If another assignee has already claimed or delivered a sub-scope, do not redo it. Pick a different sub-scope or coordinate via **response_request**.
-- **Handoffs are tool-only:** When you need input, a deliverable, or a decision from another assignee, use the **response_request** tool with their slug and a clear message. @mentions in the thread do **not** notify agents; only **response_request** delivers a notification.
-- **Before moving to REVIEW:** Confirm in the thread that your part is done and that any dependency on other assignees is satisfied. If you are blocked waiting on another assignee, move the task to BLOCKED and set blockedReason to name the dependency and the assignee (e.g. "Waiting on API contract from @engineer").
+- **Ask in-thread, not in silence:** If another assignee's work affects yours, ask direct questions in the task thread and propose options or assumptions so everyone can see the trade-offs.
+- **Avoid overlap:** Read the thread before acting. If another assignee has already claimed or delivered a sub-scope, do not redo it. Pick a different sub-scope or coordinate with them.
+- **Handoffs are thread + tool:** Keep the request visible in the thread, then send **response_request** to notify the target assignee. @mentions in the thread do **not** notify agents; only **response_request** delivers a notification.
+- **Require explicit agreement:** Do not treat silence as agreement. Wait for a reply, or record a time-boxed assumption in-thread and ask the orchestrator to confirm.
+- **Before moving to REVIEW:** Post a short agreement summary in the thread (owner per sub-scope, decisions made, remaining dependencies). If a dependency is unresolved, move to BLOCKED and set blockedReason naming the dependency and assignee.
 - **Blocked by another assignee:** If you cannot proceed until a co-assignee acts, move to BLOCKED, set blockedReason, and send **response_request** to that assignee so they are notified. Do not stay in IN_PROGRESS while silently waiting.
 
 ## Capabilities and tools

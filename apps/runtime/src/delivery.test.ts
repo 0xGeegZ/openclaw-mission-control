@@ -639,8 +639,10 @@ describe("formatNotificationMessage", () => {
       "http://runtime:3000",
       toolCapabilities,
     );
-    expect(message).toContain("Multi-assignee");
-    expect(message).toContain("Declare your sub-scope");
+    expect(message).toContain("thread-first collaboration required");
+    expect(message).toContain("ask a direct question in the thread");
+    expect(message).toContain("Do not treat silence as agreement");
+    expect(message).toContain("agreement summary");
     expect(message).toContain("response_request");
   });
 
