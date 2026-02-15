@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "cd ../.. && npm --workspace @packages/backend run seed-skills:generate && cd apps/web && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
