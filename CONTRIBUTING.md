@@ -17,24 +17,28 @@ By participating in this project, you agree to maintain a respectful and inclusi
 ### Local Development Setup
 
 1. **Fork and clone the repository**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/openclaw-mission-control.git
    cd openclaw-mission-control
    ```
 
-2. **Install dependencies**
+2. **Install dependencies** (use nvm so Node 24 is active; otherwise `npm install` will fail)
+
    ```bash
    nvm use
    npm install
    ```
 
 3. **Set up environment variables**
+
    ```bash
    cp apps/web/.env.example apps/web/.env.local
    # Edit apps/web/.env.local with your Clerk and Convex keys (validated via @packages/env at build)
    ```
 
 4. **Start development servers**
+
    ```bash
    # Terminal 1: Convex backend
    cd packages/backend && npx convex dev
@@ -54,6 +58,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 ### Branch Naming
 
 Use descriptive branch names:
+
 - `feat/feature-name` - New features
 - `fix/bug-description` - Bug fixes
 - `docs/what-changed` - Documentation updates
@@ -63,6 +68,7 @@ Use descriptive branch names:
 ### Commit Messages
 
 Follow conventional commits:
+
 ```
 type(scope): description
 
@@ -74,6 +80,7 @@ type(scope): description
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
 Examples:
+
 - `feat(tasks): add drag-and-drop reordering`
 - `fix(agents): resolve heartbeat timeout issue`
 - `docs(readme): update installation instructions`
@@ -81,6 +88,7 @@ Examples:
 ### Pull Request Process
 
 1. **Create a feature branch**
+
    ```bash
    git checkout -b feat/your-feature
    ```
@@ -91,6 +99,7 @@ Examples:
    - Add tests for new functionality
 
 3. **Run checks locally**
+
    ```bash
    npm run typecheck
    npm run lint
@@ -98,9 +107,11 @@ Examples:
    ```
 
 4. **Push and create PR**
+
    ```bash
    git push origin feat/your-feature
    ```
+
    Then open a Pull Request on GitHub.
 
 5. **PR Review**
@@ -157,6 +168,10 @@ npm run build
 - Place unit tests next to the code they test
 - Use descriptive test names
 - Test edge cases and error conditions
+
+## Releases and changelog
+
+We use [Changesets](https://github.com/changesets/changesets) for versioning and changelog generation. When your change affects a versioned package, add a changeset with `npx changeset` and commit the new file under `.changeset/`. The Release workflow runs on the release branch and opens a "Version Packages" PR. See [docs/releasing.md](docs/releasing.md) for the full process and required secrets (e.g. `NPM_TOKEN` only if publishing to npm).
 
 ## Documentation
 

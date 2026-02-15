@@ -2,6 +2,7 @@
   "name": "openclaw-mission-control",
   "private": true,
   "scripts": {
+    "preinstall": "node -e \"const [m]=process.versions.node.split('.'); if (+m<24) { console.error('Node 24+ required. Run: nvm use'); process.exit(1); }\"",
     "dev": "(cd packages/backend && npm run dev) & (cd apps/web && npm run dev) & wait",
     "dev:openclaw": "cd apps/runtime && npm run docker:up:openclaw",
     "dev:openclaw:light": "BUILD=0 cd apps/runtime && npm run docker:up:openclaw",
