@@ -63,9 +63,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ## Primary repository
 
-- Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- Use the writable clone for all git operations. Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
-- One branch per task: use branch feat/task-<taskId> (from your notification); create it from dev before editing, and push/PR only from that branch.
+- Main clone (fetch, pull, worktree management only): /root/clawd/repos/openclaw-mission-control. In the main clone run only git fetch, git pull, and git worktree add/remove. Do not perform code edits, commits, or PR creation in the main clone.
+- Task worktree (required): all code work must happen in /root/clawd/worktrees/feat-task-<taskId>. From the main clone: git fetch origin, git checkout dev, git pull, then create worktree: git worktree add /root/clawd/worktrees/feat-task-<taskId> -b feat/task-<taskId> (or omit -b if the branch exists). All file edits, commit, push, and gh pr create must be run from the worktree directory.
+- Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
+- One branch per task: use branch feat/task-<taskId> (from your notification); work only in that branch's worktree and push/PR only from the worktree.
 
 ## Non-negotiable rules
 

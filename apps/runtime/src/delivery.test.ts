@@ -471,7 +471,7 @@ describe("formatNotificationMessage", () => {
     expect(message).toContain(expectedTruncated);
   });
 
-  it("includes one-branch-per-task rule with task ID when task is present", () => {
+  it("includes one-branch-per-task rule and task worktree path when task is present", () => {
     const ctx = buildContext({
       task: {
         _id: "k97abc",
@@ -493,9 +493,13 @@ describe("formatNotificationMessage", () => {
     );
     expect(message).toContain("feat/task-k97abc");
     expect(message).toContain("only branch");
+    expect(message).toContain("/root/clawd/worktrees/feat-task-k97abc");
+    expect(message).toContain("worktree");
+    expect(message).toContain("git worktree add");
+    expect(message).toContain("git checkout dev");
   });
 
-  it("omits task-branch rule when task is not present", () => {
+  it("omits task-branch and worktree rule when task is not present", () => {
     const ctx = buildContext({ task: null });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -509,6 +513,7 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).not.toContain("feat/task-");
+    expect(message).not.toContain("/root/clawd/worktrees/feat-task-");
   });
 
   it("includes workflow rules: human dependency -> blocked and move back to in_progress when resolved", () => {

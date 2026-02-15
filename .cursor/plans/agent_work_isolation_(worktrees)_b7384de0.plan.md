@@ -122,21 +122,21 @@ flowchart LR
 - Add `/root/clawd/worktrees` to **Workspace boundaries**.
 - In **Creating a PR**, say to run `gh pr create` from the worktree directory.
 
-3. **Runtime: update delivery prompt**
+1. **Runtime: update delivery prompt**
    In [apps/runtime/src/delivery/prompt.ts](apps/runtime/src/delivery/prompt.ts), extend the repo/task block so that when `taskBranchName` is set, the instructions require using the task worktree path for all code work and PR creation, and creating the worktree from the main repo if it does not exist.
-4. **Runtime: update embedded DEFAULT_AGENTS_MD**
+2. **Runtime: update embedded DEFAULT_AGENTS_MD**
    In [apps/runtime/src/openclaw-profiles.ts](apps/runtime/src/openclaw-profiles.ts), align the primary-repo and branch/worktree wording with the new AGENTS.md (worktree path, “all code work in worktree”).
-5. **Cursor: plan-feature workspace isolation**
+3. **Cursor: plan-feature workspace isolation**
    In [.cursor/skills/plan-feature/SKILL.md](.cursor/skills/plan-feature/SKILL.md):
 
 - In Phase 0, add **Workspace isolation**: create a worktree (path and branch from feature name/slug); require that all planning and implementation happen in that worktree (open in Cursor or run from that path).
 - Add checklist item: worktree created and Cursor/terminal using worktree path.
 
-6. **Cursor: create-pr run-from-worktree**
+1. **Cursor: create-pr run-from-worktree**
    In [.cursor/skills/create-pr/SKILL.md](.cursor/skills/create-pr/SKILL.md), add an explicit note at the start: run the command from the feature worktree directory, not from the main repo root.
-7. **Cursor rule (optional)**
+2. **Cursor rule (optional)**
    Add [.cursor/rules/06-worktree-isolation.mdc](.cursor/rules/06-worktree-isolation.mdc) (or equivalent) stating: use a worktree (or dedicated tmp folder) for feature/task work; do not use the main repo folder when multiple features/agents are in progress; reference plan-feature and AGENTS.md.
-8. **Docs and tests**
+3. **Docs and tests**
 
 - Update [apps/runtime/README.md](apps/runtime/README.md) or [docs/runtime/runtime-docker-compose.md](docs/runtime/runtime-docker-compose.md) to mention that agents use per-task worktrees under `worktrees/`.
 - If any test or script assumes a single clone path, adjust or add a note (e.g. openclaw-profiles tests that assert AGENTS.md content should expect the new worktree wording).
