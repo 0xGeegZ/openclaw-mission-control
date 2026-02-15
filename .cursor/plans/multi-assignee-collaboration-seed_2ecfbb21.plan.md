@@ -4,22 +4,22 @@ overview: Align seed/runtime instruction sources and notification prompts so age
 todos:
   - id: phase0-scope
     content: Confirm scope and acceptance criteria for multi-assignee collaboration behavior
-    status: pending
+    status: completed
   - id: phase0-worktree
     content: Create isolated worktree branch for implementation before editing
-    status: pending
+    status: completed
   - id: update-instruction-sources
     content: Add explicit multi-assignee collaboration protocol to seeded AGENTS/HEARTBEAT/SOUL content
-    status: pending
+    status: completed
   - id: prompt-reinforcement
     content: Reinforce multi-assignee protocol in runtime notification prompt for assigned tasks
-    status: pending
+    status: completed
   - id: tests
     content: Update runtime prompt tests and any affected instruction-content assertions
-    status: pending
+    status: completed
   - id: verify-release
     content: Run targeted runtime tests and document rollout/seed expectations
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -125,38 +125,38 @@ New files to create:
 - Create a feature worktree and branch (per project rule) and switch terminal/editor context to it.
 - Verify no implementation is done in main repo path.
 
-2. **Define collaboration protocol text once**
+1. **Define collaboration protocol text once**
 
 - Draft canonical wording in `docs/runtime/AGENTS.md` and `docs/runtime/HEARTBEAT.md`.
 - Keep wording concise and deterministic so seeded/runtime copies can reuse it exactly.
 
-3. **Propagate protocol into seed docs**
+1. **Propagate protocol into seed docs**
 
 - Update `DOC_AGENTS_CONTENT` and `DOC_HEARTBEAT_CONTENT` in `packages/backend/convex/seed.ts`.
 - Ensure seed-generated document titles/content remain unchanged except protocol additions.
 
-4. **Propagate protocol into SOUL role templates**
+1. **Propagate protocol into SOUL role templates**
 
 - Update `buildSoulContent()` role sections in `packages/backend/convex/seed.ts` to add role-specific multi-assignee responsibilities:
   - `squad-lead`: assign explicit ownership and monitor handoffs.
   - `engineer`: claim sub-scope and avoid overlapping implementation.
   - `qa`: verify cross-assignee integration and missing handoffs.
 
-5. **Update runtime fallback defaults**
+1. **Update runtime fallback defaults**
 
 - Mirror protocol changes in `apps/runtime/src/openclaw-profiles.ts` defaults to avoid drift when external docs files are unavailable.
 
-6. **Add per-notification reinforcement**
+1. **Add per-notification reinforcement**
 
 - In `apps/runtime/src/delivery/prompt.ts`, add conditional multi-assignee instructions when task has 2+ assignees.
 - Keep this additive and non-breaking to existing status/tool instructions.
 
-7. **Update tests**
+1. **Update tests**
 
 - Extend `apps/runtime/src/delivery.test.ts` with a multi-assignee case.
 - Update any assertions impacted by prompt text changes.
 
-8. **Verification and release notes alignment**
+1. **Verification and release notes alignment**
 
 - Run runtime targeted tests for prompt formatting.
 - Confirm seeded instruction strings and docs are aligned to avoid future drift.
