@@ -52,6 +52,7 @@ import { cn } from "@packages/ui/lib/utils";
 import {
   AVAILABLE_MODELS,
   DEFAULT_OPENCLAW_CONFIG,
+  getModelProviderLabel,
   RUNTIME_STATUS,
 } from "@packages/shared";
 
@@ -71,15 +72,6 @@ const DEFAULT_TEMPERATURE = DEFAULT_OPENCLAW_CONFIG.temperature;
 const DEFAULT_MAX_TOKENS = DEFAULT_OPENCLAW_CONFIG.maxTokens ?? 4096;
 const DEFAULT_MAX_HISTORY =
   DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages;
-
-/**
- * Resolve a provider label for a given model value.
- */
-function getModelProviderLabel(modelValue: string): string {
-  if (modelValue.startsWith("claude-")) return "Anthropic";
-  if (modelValue.startsWith("gpt-")) return "OpenAI";
-  return "Other";
-}
 
 export default function OpenClawPage({ params }: OpenClawPageProps) {
   use(params);

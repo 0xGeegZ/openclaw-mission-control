@@ -199,7 +199,9 @@ export type SkillCategory =
  * Available LLM models for OpenClaw.
  */
 export const LLM_MODEL = {
+  MINIMAX_M2_5: "minimax-m2.5",
   CLAUDE_HAIKU_4_5: "claude-haiku-4.5",
+  KIMI_K2_5: "kimi-k2.5",
   GPT_5_NANO: "gpt-5-nano",
 } as const;
 
