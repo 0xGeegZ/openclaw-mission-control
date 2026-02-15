@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { cn } from "@packages/ui/lib/utils";
+import { AgentStatus, AGENT_STATUS } from "@packages/shared";
 
 interface AgentStatusDialogProps {
   agent: Doc<"agents">;
@@ -31,24 +32,62 @@ interface AgentStatusDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type AgentStatus = "online" | "busy" | "idle" | "offline" | "error";
-
-const STATUS_OPTIONS: { value: AgentStatus; label: string; description: string; color: string }[] = [
-  { value: "online", label: "Online", description: "Agent is active and ready", color: "bg-emerald-500" },
-  { value: "busy", label: "Busy", description: "Agent is currently working on a task", color: "bg-amber-500" },
-  { value: "idle", label: "Idle", description: "Agent is available but not active", color: "bg-blue-400" },
-  { value: "offline", label: "Offline", description: "Agent is not running", color: "bg-muted-foreground/40" },
-  { value: "error", label: "Error", description: "Agent has encountered an error", color: "bg-destructive" },
+const STATUS_OPTIONS: {
+  value: AgentStatus;
+  label: string;
+  description: string;
+  color: string;
+}[] = [
+  {
+    value: AGENT_STATUS.ONLINE,
+    label: "Online",
+    description: "Agent is active and ready",
+    color: "bg-emerald-500",
+  },
+  {
+    value: AGENT_STATUS.BUSY,
+    label: "Busy",
+    description: "Agent is currently working on a task",
+    color: "bg-amber-500",
+  },
+  {
+    value: AGENT_STATUS.IDLE,
+    label: "Idle",
+    description: "Agent is available but not active",
+    color: "bg-blue-400",
+  },
+  {
+    value: AGENT_STATUS.OFFLINE,
+    label: "Offline",
+    description: "Agent is not running",
+    color: "bg-muted-foreground/40",
+  },
+  {
+    value: AGENT_STATUS.ERROR,
+    label: "Error",
+    description: "Agent has encountered an error",
+    color: "bg-destructive",
+  },
 ];
 
 /**
  * Dialog for manually updating agent status.
  */
-export function AgentStatusDialog({ agent, open, onOpenChange }: AgentStatusDialogProps) {
-  const [status, setStatus] = useState<AgentStatus>(agent.status as AgentStatus);
+export function AgentStatusDialog({
+  agent,
+  open,
+  onOpenChange,
+}: AgentStatusDialogProps) {
+  const [status, setStatus] = useState<AgentStatus>(agent.status);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const updateStatus = useMutation(api.agents.updateStatus);
+
+  useEffect(() => {
+    if (open) {
+      setStatus(agent.status);
+    }
+  }, [agent.status, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,13 +119,17 @@ export function AgentStatusDialog({ agent, open, onOpenChange }: AgentStatusDial
         <DialogHeader>
           <DialogTitle>Update Agent Status</DialogTitle>
           <DialogDescription>
-            Manually override the status for <span className="font-medium">{agent.name}</span>.
+            Manually override the status for{" "}
+            <span className="font-medium">{agent.name}</span>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="agent-status">Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as AgentStatus)}>
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v as AgentStatus)}
+            >
               <SelectTrigger id="agent-status">
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
@@ -116,7 +159,9 @@ export function AgentStatusDialog({ agent, open, onOpenChange }: AgentStatusDial
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {isSubmitting ? "Updating..." : "Update Status"}
             </Button>
           </DialogFooter>

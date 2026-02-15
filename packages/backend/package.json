@@ -1,6 +1,6 @@
 {
   "name": "@packages/backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "scripts": {
     "dev": "convex dev",
@@ -12,7 +12,7 @@
     "seed-skills:ensure": "tsx scripts/seed-skills-ensure.ts",
     "seed-skills:generate": "tsx scripts/seed-skills-generate.ts",
     "seed-skills:sync": "npm run seed-skills:download && npm run seed-skills:copy-cursor && npm run seed-skills:generate",
-    "build": "node -e \"if (process.env.SKIP_CONVEX_TYPEGEN === 'true') process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
+    "build": "npm run seed-skills:sync && node -e \"if (process.env.SKIP_CONVEX_TYPEGEN === 'true') process.exit(0); require('child_process').execSync('npx convex codegen', {stdio: 'inherit'})\"",
     "typecheck": "tsc --noEmit -p convex",
     "test": "vitest run",
     "test:watch": "vitest",

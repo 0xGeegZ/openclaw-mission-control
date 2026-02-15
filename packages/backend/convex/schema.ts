@@ -1,118 +1,37 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+import {
+  taskStatusValidator,
+  agentStatusValidator,
+  memberRoleValidator,
+  recipientTypeValidator,
+  documentTypeValidator,
+  documentKindValidator,
+  notificationTypeValidator,
+  activityTypeValidator,
+  runtimeStatusValidator,
+  runtimeV2StatusValidator,
+  accountPlanValidator,
+  skillCategoryValidator,
+  invitationStatusValidator,
+  runtimeProviderValidator,
+  upgradeStatusValidator,
+  upgradeStrategyValidator,
+  actorTypeValidator,
+  targetTypeValidator,
+  authTypeValidator,
+} from "./lib/validators";
+
 /**
  * OpenClaw Mission Control Database Schema
  *
  * Multi-tenant architecture: Every table (except accounts) includes accountId.
  * All queries MUST filter by accountId to enforce tenant isolation.
+ *
+ * Validators imported from lib/validators.ts which reference constants
+ * from lib/constants.ts — single source of truth for enum values.
  */
-
-// ============================================================================
-// Validators for Union Types
-// ============================================================================
-
-/**
- * Task status validator.
- * Canonical workflow: inbox → assigned → in_progress → review → done
- * Special state: blocked (can be entered from assigned or in_progress)
- * Archived: terminal state for deleted/removed tasks (soft delete with audit trail)
- */
-const taskStatusValidator = v.union(
-  v.literal("inbox"),
-  v.literal("assigned"),
-  v.literal("in_progress"),
-  v.literal("review"),
-  v.literal("done"),
-  v.literal("blocked"),
-  v.literal("archived"),
-);
-
-/**
- * Agent status validator.
- * Indicates the current operational state of an agent.
- */
-const agentStatusValidator = v.union(
-  v.literal("online"),
-  v.literal("busy"),
-  v.literal("idle"),
-  v.literal("offline"),
-  v.literal("error"),
-);
-
-/**
- * Membership role validator.
- * Defines permission levels within an account.
- */
-const memberRoleValidator = v.union(
-  v.literal("owner"),
-  v.literal("admin"),
-  v.literal("member"),
-);
-
-/**
- * Recipient type validator.
- * Distinguishes between human users and AI agents.
- */
-const recipientTypeValidator = v.union(v.literal("user"), v.literal("agent"));
-
-/**
- * Document type validator.
- */
-const documentTypeValidator = v.union(
-  v.literal("deliverable"),
-  v.literal("note"),
-  v.literal("template"),
-  v.literal("reference"),
-);
-
-/**
- * Document kind validator (file vs folder in tree).
- */
-const documentKindValidator = v.union(v.literal("file"), v.literal("folder"));
-
-/**
- * Notification type validator.
- */
-const notificationTypeValidator = v.union(
-  v.literal("mention"),
-  v.literal("assignment"),
-  v.literal("thread_update"),
-  v.literal("status_change"),
-  v.literal("response_request"),
-  v.literal("member_added"),
-  v.literal("member_removed"),
-  v.literal("role_changed"),
-);
-
-/**
- * Activity type validator.
- */
-const activityTypeValidator = v.union(
-  v.literal("task_created"),
-  v.literal("task_updated"),
-  v.literal("task_status_changed"),
-  v.literal("message_created"),
-  v.literal("document_created"),
-  v.literal("document_updated"),
-  v.literal("agent_status_changed"),
-  v.literal("runtime_status_changed"),
-  v.literal("member_added"),
-  v.literal("member_removed"),
-  v.literal("member_updated"),
-);
-
-/**
- * Runtime status validator.
- * Indicates the status of the per-account runtime server.
- */
-const runtimeStatusValidator = v.union(
-  v.literal("provisioning"),
-  v.literal("online"),
-  v.literal("degraded"),
-  v.literal("offline"),
-  v.literal("error"),
-);
 
 // ============================================================================
 // Schema Definition
@@ -131,7 +50,7 @@ export default defineSchema({
     slug: v.string(),
 
     /** Subscription plan */
-    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    plan: accountPlanValidator,
 
     /** Status of the per-account runtime server */
     runtimeStatus: runtimeStatusValidator,
@@ -155,13 +74,7 @@ export default defineSchema({
         /** Timestamp of last successful upgrade */
         lastUpgradeAt: v.optional(v.number()),
         /** Status of last upgrade attempt */
-        lastUpgradeStatus: v.optional(
-          v.union(
-            v.literal("success"),
-            v.literal("failed"),
-            v.literal("rolled_back"),
-          ),
-        ),
+        lastUpgradeStatus: v.optional(upgradeStatusValidator),
       }),
     ),
 
@@ -264,12 +177,7 @@ export default defineSchema({
     slug: v.string(),
 
     /** Skill category */
-    category: v.union(
-      v.literal("mcp_server"), // External MCP server integration
-      v.literal("tool"), // Built-in tool capability
-      v.literal("integration"), // Third-party service integration
-      v.literal("custom"), // Custom skill definition
-    ),
+    category: skillCategoryValidator,
 
     /** Detailed description of what this skill does */
     description: v.optional(v.string()),
@@ -291,9 +199,7 @@ export default defineSchema({
       serverUrl: v.optional(v.string()),
 
       /** For MCP servers: authentication method */
-      authType: v.optional(
-        v.union(v.literal("none"), v.literal("api_key"), v.literal("oauth")),
-      ),
+      authType: v.optional(authTypeValidator),
 
       /** Encrypted credentials reference (stored in env, not here) */
       credentialRef: v.optional(v.string()),
@@ -510,6 +416,12 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /**
+     * Timestamp of the most recent message in the task thread.
+     * Used to order tasks in the Kanban by last activity.
+     */
+    lastMessageAt: v.optional(v.number()),
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
@@ -610,7 +522,7 @@ export default defineSchema({
     storageId: v.id("_storage"),
 
     /** Who registered the upload */
-    createdByType: v.union(v.literal("user"), v.literal("agent")),
+    createdByType: recipientTypeValidator,
 
     /** User ID or agent ID depending on createdByType */
     createdBy: v.string(),
@@ -651,6 +563,12 @@ export default defineSchema({
     /** Document type (deliverable/note/template/reference). Files only. */
     type: v.optional(documentTypeValidator),
 
+    /** MIME type of the file (e.g., "text/markdown"). Optional for folders. */
+    mimeType: v.optional(v.string()),
+
+    /** Size of the file in bytes. Optional for folders. */
+    size: v.optional(v.number()),
+
     /**
      * Author type.
      */
@@ -669,13 +587,17 @@ export default defineSchema({
 
     /** Timestamp of last update */
     updatedAt: v.number(),
+
+    /** Timestamp of soft delete (for audit trail). null = not deleted. */
+    deletedAt: v.optional(v.number()),
   })
     .index("by_account", ["accountId"])
     .index("by_parent", ["accountId", "parentId"])
     .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
-    .index("by_account_updated", ["accountId", "updatedAt"]),
+    .index("by_account_updated", ["accountId", "updatedAt"])
+    .index("by_account_deleted", ["accountId", "deletedAt"]),
 
   // ==========================================================================
   // ACTIVITIES
@@ -693,11 +615,7 @@ export default defineSchema({
      * Actor type (who performed the action).
      * Can be "user", "agent", or "system".
      */
-    actorType: v.union(
-      v.literal("user"),
-      v.literal("agent"),
-      v.literal("system"),
-    ),
+    actorType: actorTypeValidator,
 
     /**
      * Actor ID.
@@ -714,14 +632,7 @@ export default defineSchema({
      * Target entity type.
      * What the action was performed on.
      */
-    targetType: v.union(
-      v.literal("task"),
-      v.literal("message"),
-      v.literal("document"),
-      v.literal("agent"),
-      v.literal("account"),
-      v.literal("membership"),
-    ),
+    targetType: targetTypeValidator,
 
     /** Target entity ID */
     targetId: v.string(),
@@ -792,6 +703,12 @@ export default defineSchema({
      */
     readAt: v.optional(v.number()),
 
+    /**
+     * Delivery loop ended for this attempt (success or failure); typing stops.
+     * Cleared on markRead so retries can show typing again.
+     */
+    deliveryEndedAt: v.optional(v.number()),
+
     /** Timestamp of creation */
     createdAt: v.number(),
   })
@@ -805,11 +722,7 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
-    .index("by_recipient_unread", [
-      "recipientType",
-      "recipientId",
-      "readAt",
-    ])
+    .index("by_recipient_unread", ["recipientType", "recipientId", "readAt"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
@@ -864,11 +777,7 @@ export default defineSchema({
     invitedBy: v.string(),
     /** Unique token for invite link (e.g. /invite/[token]). Set when creating. */
     token: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("expired"),
-    ),
+    status: invitationStatusValidator,
     expiresAt: v.number(),
     createdAt: v.number(),
   })
@@ -883,26 +792,14 @@ export default defineSchema({
   // ==========================================================================
   runtimes: defineTable({
     accountId: v.id("accounts"),
-    provider: v.union(
-      v.literal("digitalocean"),
-      v.literal("fly"),
-      v.literal("aws"),
-      v.literal("gcp"),
-    ),
+    provider: runtimeProviderValidator,
     providerId: v.string(),
     ipAddress: v.string(),
     region: v.string(),
     openclawVersion: v.string(),
     runtimeServiceVersion: v.string(),
     dockerImageTag: v.string(),
-    status: v.union(
-      v.literal("provisioning"),
-      v.literal("online"),
-      v.literal("degraded"),
-      v.literal("offline"),
-      v.literal("upgrading"),
-      v.literal("error"),
-    ),
+    status: runtimeV2StatusValidator,
     lastHealthCheck: v.optional(v.number()),
     healthScore: v.optional(v.number()),
     /** Pending upgrade request (cleared after runtime applies or cancels). */
@@ -912,11 +809,7 @@ export default defineSchema({
         targetRuntimeVersion: v.string(),
         initiatedAt: v.number(),
         initiatedBy: v.string(),
-        strategy: v.union(
-          v.literal("immediate"),
-          v.literal("rolling"),
-          v.literal("canary"),
-        ),
+        strategy: upgradeStrategyValidator,
       }),
     ),
     /** Last N upgrade results for fleet UI. */
@@ -927,11 +820,7 @@ export default defineSchema({
           toOpenclawVersion: v.string(),
           fromRuntimeVersion: v.string(),
           toRuntimeVersion: v.string(),
-          status: v.union(
-            v.literal("success"),
-            v.literal("failed"),
-            v.literal("rolled_back"),
-          ),
+          status: upgradeStatusValidator,
           startedAt: v.number(),
           completedAt: v.optional(v.number()),
           duration: v.optional(v.number()),

@@ -1,0 +1,17 @@
+# Used when build context is apps/runtime. For the default Compose build (context repo root), the root .dockerignore applies.
+node_modules
+npm-debug.log
+dist
+.git
+.gitignore
+.env
+.env.local
+.next
+coverage
+*.md
+!README.md
+.vscode
+.idea
+.DS_Store
+yarn-error.log
+pnpm-lock.yaml

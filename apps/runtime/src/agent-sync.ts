@@ -165,9 +165,16 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
       heartbeatMdPath: config.openclawHeartbeatMdPath,
     });
   } catch (error) {
-    log.warn("Initial profile sync failed", {
-      error: getErrorMessage(error),
-    });
+    const message = getErrorMessage(error);
+    log.warn("Initial profile sync failed", { error: message });
+    if (
+      message.includes("EACCES") ||
+      message.toLowerCase().includes("permission denied")
+    ) {
+      log.warn(
+        "Workspace mount must be writable by runtime. From repo root run: sudo chown -R $(id -u):$(id -g) .runtime/openclaw-workspace && sudo chmod -R a+rwX .runtime/openclaw-workspace (or re-run npm run dev:openclaw which does this automatically).",
+      );
+    }
   }
 }
 

@@ -64,7 +64,8 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 ## Primary repository
 
 - Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- Use the writable clone for all git operations. Write artifacts to /root/clawd/deliverables.
+- Use the writable clone for all git operations. Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
+- One branch per task: use branch feat/task-<taskId> (from your notification); create it from dev before editing, and push/PR only from that branch.
 
 ## Non-negotiable rules
 
@@ -78,16 +79,30 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
    - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
-8. Replies are single-shot: do not post progress updates. If you spawn subagents, wait and reply once with final results.
+8. Replies are single-shot: do not post progress updates. If you spawn sub-agents (via **sessions_spawn**), wait for their results and reply once with the combined outcome.
+
+## Parallelization (sub-agents)
+
+- Prefer parallel work over sequential: when a task can be split into independent pieces, spawn sub-agents so they run in parallel, then aggregate results and reply once with the combined outcome.
+- Use the **sessions_spawn** tool to start each sub-agent with a clear \`task\` description; the sub-agent runs in an isolated session and announces its result back.
+
+## Memory and read tool contract
+
+- Prefer memory tools first: use memory_get / memory_set when available.
+- Use read only for explicit file paths, never for directories.
+- Read arguments must include a JSON object with path, for example: {"path":"memory/WORKING.md"}.
+- Only use read with paths under /root/clawd; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
+- If memory/YYYY-MM-DD.md is missing, create it before reading it.
 
 ## Document sharing (critical)
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
-- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>).
+- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md, /root/clawd/deliverables/...) — the primary user cannot open them.
 
 ## Capabilities and tools
 
 - **task_status** — Update the current task's status before posting a reply.
+- **task_update** — Update task fields (title, description, priority, labels, assignees, status, dueDate); call before posting when you modify the task.
 - **task_create** — Create a new task when you need to spawn follow-up work.
 - **document_upsert** — Create or update a document (deliverable, note, template, reference).
 - **response_request** — Request a response from other agents; use instead of @mentions.
@@ -105,9 +120,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 ## Task state rules
 
 - If you start work: move task to IN_PROGRESS.
-- If you need human review: move to REVIEW.
-- If blocked: move to BLOCKED and explain.
+- If you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials): move to BLOCKED and set blockedReason to describe what you need and from whom. Do not use REVIEW for human input — REVIEW is for QA validation only.
+- If blocked: move to BLOCKED and explain in blockedReason.
 - If done: move to DONE only after QA review passes (QA marks done when configured).
+- When the blocker is resolved, an authorized actor (orchestrator or assignee with status permission) must move the task back to IN_PROGRESS before continuing work.
 - Update status via the runtime task_status tool or HTTP fallback before claiming status in thread.
 
 ## Orchestrator ping requests (required)
@@ -118,6 +134,10 @@ When the primary user asks the orchestrator to "ping" one or more agents or task
 - Send response_request for the same task and recipients so notifications are delivered.
 - For multiple tasks, repeat both actions per task.
 - If either step fails for any task, report BLOCKED with the failed task IDs/agent slugs.
+
+Before requesting QA or any reviewer to act, move the task to REVIEW first. Do not request QA approval while the task is still in_progress. When you need QA or any other agent to act (e.g. trigger CI, confirm review): call response_request with their slug in this reply — do not only post a thread message saying you are "requesting" or "asking" them; that does not notify them.
+
+When following up on **heartbeat** (requesting status from assignees), use response_request only and put your summary in your final reply; do not use task_message.
 `;
 
 /** Default HEARTBEAT.md content when file path is not available (e.g. in Docker runtime container). */
@@ -125,8 +145,12 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 
 ## 1) Load context (always)
 
-- Read memory/WORKING.md
-- Read today's note (memory/YYYY-MM-DD.md)
+- Prefer memory tools first: use memory_get / memory_set when available.
+- Read memory/WORKING.md.
+- Read today's note (memory/YYYY-MM-DD.md).
+- If today's note is missing, create it before proceeding.
+- If you must use read, pass JSON args with an explicit path key, for example: {"path":"memory/WORKING.md"}.
+- Never call read on a directory path.
 - Fetch:
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
@@ -138,7 +162,7 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others. When requesting status from assignees, use response_request only; put your follow-up summary in your reply (do not also post task_message).
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -388,6 +412,58 @@ function ensureDir(dirPath: string): void {
 }
 
 /**
+ * Ensure a file exists with default content.
+ */
+function ensureFileExists(filePath: string, content: string): void {
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, content, "utf-8");
+  }
+}
+
+/**
+ * Format YYYY-MM-DD in UTC with optional day offset.
+ */
+function formatMemoryDate(date: Date, offsetDays: number): string {
+  const utc = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + offsetDays,
+  );
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
+/**
+ * Ensure per-agent memory scaffold is present and idempotent.
+ */
+function ensureAgentMemoryScaffold(
+  agentDir: string,
+  now: Date = new Date(),
+): void {
+  const memoryDir = path.join(agentDir, "memory");
+  const deliverablesDir = path.join(agentDir, "deliverables");
+  ensureDir(memoryDir);
+  ensureDir(deliverablesDir);
+
+  ensureFileExists(
+    path.join(agentDir, "MEMORY.md"),
+    "# MEMORY\n\nStable decisions and key learnings.\n",
+  );
+  ensureFileExists(
+    path.join(memoryDir, "WORKING.md"),
+    "# WORKING\n\nWhat I'm doing right now.\n",
+  );
+
+  const dayOffsets = [-1, 0, 1];
+  for (const dayOffset of dayOffsets) {
+    const dailyNotePath = path.join(
+      memoryDir,
+      `${formatMemoryDate(now, dayOffset)}.md`,
+    );
+    ensureFileExists(dailyNotePath, "# DAILY NOTES\n\n");
+  }
+}
+
+/**
  * Read AGENTS.md from path or return embedded default.
  */
 function getAgentsMdContent(agentsMdPath: string | undefined): string {
@@ -430,7 +506,7 @@ function safeSlugForPath(slug: string): string | null {
   if (typeof slug !== "string" || !slug.trim()) return null;
   const trimmed = slug.trim();
   const sanitized = trimmed.replace(/^\/+|\/+$/g, "");
-  if (!sanitized || sanitized.includes("..") || /[\/\\]/.test(sanitized)) {
+  if (!sanitized || sanitized.includes("..") || /[/\\]/.test(sanitized)) {
     return null;
   }
   if (/[^a-zA-Z0-9_-]/.test(sanitized)) return null;
@@ -569,27 +645,7 @@ export function syncOpenClawProfiles(
       }
     }
 
-    const memoryDir = path.join(agentDir, "memory");
-    const deliverablesDir = path.join(agentDir, "deliverables");
-    ensureDir(memoryDir);
-    ensureDir(deliverablesDir);
-
-    const memoryMd = path.join(agentDir, "MEMORY.md");
-    const workingMd = path.join(memoryDir, "WORKING.md");
-    if (!fs.existsSync(memoryMd)) {
-      fs.writeFileSync(
-        memoryMd,
-        "# MEMORY\n\nStable decisions and key learnings.\n",
-        "utf-8",
-      );
-    }
-    if (!fs.existsSync(workingMd)) {
-      fs.writeFileSync(
-        workingMd,
-        "# WORKING\n\nWhat I'm doing right now.\n",
-        "utf-8",
-      );
-    }
+    ensureAgentMemoryScaffold(agentDir);
   }
 
   const openclawConfig = buildOpenClawConfig(

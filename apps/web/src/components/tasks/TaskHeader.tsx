@@ -29,6 +29,8 @@ import {
   Calendar,
   Flag,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,7 +42,10 @@ import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { TaskSubscription } from "./TaskSubscription";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { ScrollArea } from "@packages/ui/components/scroll-area";
+import { cn } from "@packages/ui/lib/utils";
 import { getTaskDetailSheetHref } from "@/lib/utils";
+import { TASK_STATUS } from "@packages/shared";
 
 interface TaskHeaderProps {
   task: Doc<"tasks">;
@@ -66,6 +71,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
   const updateTask = useMutation(api.tasks.update);
   const updateStatus = useMutation(api.tasks.updateStatus);
@@ -92,7 +98,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
     try {
       await updateStatus({
         taskId: task._id,
-        status: "done",
+        status: TASK_STATUS.DONE,
       });
       toast.success("Status updated");
     } catch (error) {
@@ -113,7 +119,12 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
       <div className="px-6 py-2 space-y-1.5">
         {/* Top bar: back button + title + actions all in one row */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-7 px-1.5 shrink-0" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-1.5 shrink-0"
+            asChild
+          >
             <Link href={getTaskDetailSheetHref(accountSlug, task._id)}>
               <ArrowLeft className="h-4 w-4" />
               <span className="sr-only">Back to Tasks</span>
@@ -135,7 +146,12 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
                 }}
                 autoFocus
               />
-              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleTitleSave}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={handleTitleSave}
+              >
                 <Check className="h-3.5 w-3.5" />
                 <span className="sr-only">Save</span>
               </Button>
@@ -172,8 +188,12 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
           <div className="flex items-center gap-1.5 shrink-0">
             <TaskSubscription taskId={task._id} />
 
-            {task.status === "review" && (
-              <Button size="sm" onClick={handleMarkAsDone} className="gap-1 h-7 text-xs">
+            {task.status === TASK_STATUS.REVIEW && (
+              <Button
+                size="sm"
+                onClick={handleMarkAsDone}
+                className="gap-1 h-7 text-xs"
+              >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Done
               </Button>
@@ -193,7 +213,7 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
                   <Settings2 className="mr-2 h-4 w-4" />
                   Edit Details
                 </DropdownMenuItem>
-                {task.status !== "archived" && (
+                {task.status !== TASK_STATUS.ARCHIVED && (
                   <DropdownMenuItem onClick={() => setShowArchiveDialog(true)}>
                     <Archive className="mr-2 h-4 w-4" />
                     Archive Task
@@ -213,13 +233,44 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
         </div>
 
         {task.description && (
-          <div className="max-h-16 overflow-y-auto pr-3 text-sm leading-relaxed text-muted-foreground">
-            <MarkdownRenderer content={task.description} compact />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Description
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => setDescriptionExpanded((prev) => !prev)}
+                aria-label={
+                  descriptionExpanded
+                    ? "Collapse description"
+                    : "Expand description"
+                }
+              >
+                {descriptionExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <ScrollArea
+              className={cn(
+                "text-sm leading-relaxed text-muted-foreground pr-3 rounded-md border border-transparent shrink-0",
+                descriptionExpanded ? "h-[40vh]" : "h-16",
+              )}
+            >
+              <div className="pr-2">
+                <MarkdownRenderer content={task.description} compact />
+              </div>
+            </ScrollArea>
           </div>
         )}
 
         {/* Blocked reason banner */}
-        {task.status === "blocked" && task.blockedReason && (
+        {task.status === TASK_STATUS.BLOCKED && task.blockedReason && (
           <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
             <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -260,7 +311,11 @@ export function TaskHeader({ task, accountSlug }: TaskHeaderProps) {
               <Separator orientation="vertical" className="h-3" />
               <div className="flex gap-1 flex-wrap">
                 {task.labels.map((label) => (
-                  <Badge key={label} variant="secondary" className="text-[10px] h-5">
+                  <Badge
+                    key={label}
+                    variant="secondary"
+                    className="text-[10px] h-5"
+                  >
                     {label}
                   </Badge>
                 ))}

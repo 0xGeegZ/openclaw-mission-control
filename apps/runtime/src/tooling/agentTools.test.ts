@@ -19,11 +19,13 @@ vi.mock("../convex-client", () => ({
         listAgents: "listAgents",
         createTaskFromAgent: "createTaskFromAgent",
         assignTaskFromAgent: "assignTaskFromAgent",
+        updateTaskFromAgent: "updateTaskFromAgent",
         searchTasksForAgentTool: "searchTasksForAgentTool",
         loadTaskDetailsForAgentTool: "loadTaskDetailsForAgentTool",
         linkTaskToPrForAgentTool: "linkTaskToPrForAgentTool",
         getAgentSkillsForTool: "getAgentSkillsForTool",
-        createResponseRequestNotifications: "createResponseRequestNotifications",
+        createResponseRequestNotifications:
+          "createResponseRequestNotifications",
       },
     },
   },
@@ -52,7 +54,7 @@ function schemaNames(schemas: unknown[]): string[] {
 }
 
 describe("getToolCapabilitiesAndSchemas", () => {
-  it("returns task_status only when hasTaskContext and canModifyTaskStatus", () => {
+  it("returns task_status and task_update only when hasTaskContext and canModifyTaskStatus", () => {
     const withTask = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
       canModifyTaskStatus: true,
@@ -63,7 +65,11 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(withTask.capabilityLabels).toContain(
       "change task status (task_status tool)",
     );
+    expect(withTask.capabilityLabels).toContain(
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
+    );
     expect(schemaNames(withTask.schemas)).toContain("task_status");
+    expect(schemaNames(withTask.schemas)).toContain("task_update");
 
     const noTask = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -75,7 +81,11 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(noTask.capabilityLabels).not.toContain(
       "change task status (task_status tool)",
     );
+    expect(noTask.capabilityLabels).not.toContain(
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
+    );
     expect(schemaNames(noTask.schemas)).not.toContain("task_status");
+    expect(schemaNames(noTask.schemas)).not.toContain("task_update");
 
     const noPermission = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -85,6 +95,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
     });
     expect(noPermission.hasTaskStatus).toBe(false);
     expect(schemaNames(noPermission.schemas)).not.toContain("task_status");
+    expect(schemaNames(noPermission.schemas)).not.toContain("task_update");
   });
 
   it("returns task_create when canCreateTasks is true", () => {
@@ -238,6 +249,49 @@ describe("executeAgentTool", () => {
     );
   });
 
+  it("executes task_update and forwards params to updateTaskFromAgent", async () => {
+    mockAction.mockResolvedValue({
+      taskId: "task1",
+      changedFields: ["title", "priority"],
+    });
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_update",
+      arguments: JSON.stringify({
+        taskId: "task1",
+        title: "Updated title",
+        priority: 2,
+      }),
+    });
+    expect(result.success).toBe(true);
+    expect(result.taskId).toBe("task1");
+    expect(mockAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        taskId: "task1",
+        title: "Updated title",
+        priority: 2,
+      }),
+    );
+  });
+
+  it("rejects task_update with status done when canMarkDone is false", async () => {
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_update",
+      arguments: JSON.stringify({
+        taskId: "task1",
+        status: "done",
+      }),
+      canMarkDone: false,
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "Forbidden: Not allowed to mark tasks as done",
+    });
+    expect(mockAction).not.toHaveBeenCalled();
+  });
+
   it("validates task_load requires taskId", async () => {
     const result = await executeAgentTool({
       ...baseParams,
@@ -374,7 +428,9 @@ describe("executeAgentTool", () => {
     expect(mockAction).toHaveBeenCalledTimes(3);
 
     const createCall = mockAction.mock.calls.find(([, payload]) => {
-      return (payload as { title?: string }).title === "Delegate implementation";
+      return (
+        (payload as { title?: string }).title === "Delegate implementation"
+      );
     });
     expect(createCall).toBeDefined();
     expect(createCall?.[1]).toMatchObject({

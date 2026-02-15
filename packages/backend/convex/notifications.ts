@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { TYPING_WINDOW_MS } from "@packages/shared";
 import { mutation, query } from "./_generated/server";
 import { requireAccountMember } from "./lib/auth";
 
@@ -128,6 +127,7 @@ export const listAgentReceiptsByTask = query({
         type: n.type,
         readAt: n.readAt,
         deliveredAt: n.deliveredAt,
+        deliveryEndedAt: n.deliveryEndedAt,
         createdAt: n.createdAt,
       }));
   },
@@ -136,9 +136,63 @@ export const listAgentReceiptsByTask = query({
 const LIST_TYPING_AGENTS_LIMIT = 200;
 
 /**
- * List agent IDs currently in the typing window for an account.
- * Used by the agents sidebar to show typing/busy state in sync with task thread.
- * Typing = notification read by runtime (readAt set) but not yet delivered (deliveredAt null), within TYPING_WINDOW_MS.
+ * True when a notification is read, not yet delivered, and delivery not ended.
+ * Typing stops only when deliveredAt or deliveryEndedAt is set (no time window).
+ * Shared by listAgentIdsTypingByTask and listAgentIdsTypingByAccount.
+ * Exported for unit tests.
+ */
+export function _isInTypingWindow(
+  readAt: number | undefined | null,
+  deliveredAt: number | undefined | null,
+  deliveryEndedAt: number | undefined | null,
+): boolean {
+  return readAt != null && deliveredAt == null && deliveryEndedAt == null;
+}
+
+/**
+ * List agent IDs currently in the typing window for a specific task.
+ * Used by task thread and agents sidebar when a task is selected.
+ * Typing = read by runtime (readAt set), not delivered, delivery not ended (deliveryEndedAt null).
+ */
+export const listAgentIdsTypingByTask = query({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return [];
+    }
+    await requireAccountMember(ctx, task.accountId);
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_task_recipient_created", (q) =>
+        q.eq("taskId", args.taskId).eq("recipientType", "agent"),
+      )
+      .order("desc")
+      .take(LIST_TYPING_AGENTS_LIMIT);
+
+    const typingAgentIds = new Set<string>();
+    for (const n of notifications) {
+      if (
+        n.accountId === task.accountId &&
+        n.recipientType === "agent" &&
+        n.recipientId &&
+        _isInTypingWindow(n.readAt, n.deliveredAt, n.deliveryEndedAt)
+      ) {
+        typingAgentIds.add(n.recipientId);
+      }
+    }
+    return Array.from(typingAgentIds);
+  },
+});
+
+/**
+ * List agent IDs currently in the typing window for an account (any task).
+ * Used by the agents sidebar when no task is selected.
+ * Typing = read by runtime (readAt set), not delivered, delivery not ended (deliveryEndedAt null).
+ * Returns [] when account runtime is offline (agents cannot be typing).
  */
 export const listAgentIdsTypingByAccount = query({
   args: {
@@ -146,6 +200,11 @@ export const listAgentIdsTypingByAccount = query({
   },
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
+
+    const account = await ctx.db.get(args.accountId);
+    if (!account || account.runtimeStatus === "offline") {
+      return [];
+    }
 
     const notifications = await ctx.db
       .query("notifications")
@@ -157,15 +216,13 @@ export const listAgentIdsTypingByAccount = query({
       )
       .take(LIST_TYPING_AGENTS_LIMIT);
 
-    const now = Date.now();
     const typingAgentIds = new Set<string>();
     for (const n of notifications) {
       if (
+        n.accountId === args.accountId &&
         n.recipientType === "agent" &&
         n.recipientId &&
-        n.readAt != null &&
-        n.deliveredAt == null &&
-        now - n.readAt <= TYPING_WINDOW_MS
+        _isInTypingWindow(n.readAt, n.deliveredAt, n.deliveryEndedAt)
       ) {
         typingAgentIds.add(n.recipientId);
       }

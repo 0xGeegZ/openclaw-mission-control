@@ -62,13 +62,19 @@ async function main() {
     startHealthServer(config);
 
     /**
-     * Start delivery, heartbeats, and agent sync once.
-     * Profile sync runs first so OpenClaw workspaces and config exist before heartbeats.
+     * Write OpenClaw config (openclaw.json + workspaces) before waiting for the gateway.
+     * If the gateway watches this file and restarts on change, the restart happens here
+     * and we will wait until it is reachable again, avoiding heartbeats failing mid-startup.
+     */
+    await runProfileSyncOnce(config);
+
+    /**
+     * Start delivery, heartbeats, and agent sync once gateway is reachable.
+     * Profile sync already ran above so we do not write config again here.
      */
     const startAgentWork = async () => {
       if (agentWorkStarted) return;
       agentWorkStarted = true;
-      await runProfileSyncOnce(config);
       startDeliveryLoop(config);
       await startHeartbeats(config);
       startAgentSync(config);

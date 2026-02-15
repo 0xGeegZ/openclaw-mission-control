@@ -1,15 +1,26 @@
 # OpenClaw Mission Control runtime + optional OpenClaw gateway (local dev).
+#
 # Usage (from repo root):
 #   docker compose -f apps/runtime/docker-compose.runtime.yml up --build
 #   With OpenClaw gateway:
 #   docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up --build
-# See docs/runtime/runtime-docker-compose.md
+#
+# Documentation: See docs/runtime/runtime-docker-compose.md
+#
+# Network Architecture:
+#   - Custom network: runtime_default (isolated from host)
+#   - runtime service: Listens on localhost:3000 (health checks, task-status HTTP fallback)
+#   - openclaw-gateway service: Listens on localhost:18789, accesses runtime via http://runtime:3000
+#   - Both services share /root/clawd volume for workspace and configuration
+#   - Firewall rules: All ports bound to 127.0.0.1 (localhost-only); not exposed to external networks in dev
 
 name: runtime
 
 networks:
   default:
     name: runtime_default
+    driver: bridge
+    # Network is internal to the compose setup; external access via port binding on 127.0.0.1 only
 
 services:
   runtime:
@@ -17,29 +28,53 @@ services:
     build:
       context: ../..
       dockerfile: apps/runtime/Dockerfile
+    container_name: openclaw-runtime
     restart: unless-stopped
+    # Run as host user when DOCKER_UID/DOCKER_GID set (e.g. by runtime-docker-up.sh) so bind mount is writable without sudo.
+    user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
     env_file:
       - ./.env
     environment:
       - HEALTH_HOST=0.0.0.0
+      # Runtime container runs as non-root; use /clawd (not /root/*) to avoid EACCES traversing /root.
+      - OPENCLAW_WORKSPACE_ROOT=/clawd/agents
+      - OPENCLAW_CONFIG_PATH=/clawd/openclaw.json
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
       - OPENCLAW_REQUEST_TIMEOUT_MS=300000
       # OpenClaw gateway (local) ignores client-side tools; use HTTP fallbacks instead.
       - OPENCLAW_CLIENT_TOOLS_ENABLED=0
+      # Use runtime-managed manuals for profile sync consistency.
+      - OPENCLAW_AGENTS_MD_PATH=/app/docs/runtime/AGENTS.md
+      - OPENCLAW_HEARTBEAT_MD_PATH=/app/docs/runtime/HEARTBEAT.md
     volumes:
-      # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
-      - ../../.runtime/openclaw-workspace:/root/clawd:delegated
+      # Shared with openclaw-gateway: runtime writes agent workspaces/openclaw.json to this host mount.
+      - ../../.runtime/openclaw-workspace:/clawd:delegated
     ports:
       - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        labels: "service=runtime,environment=development"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    # HEALTH_PORT can be set in .env (default 3000) if the health server uses a different port.
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const port = process.env.HEALTH_PORT || '3000'; require('http').get('http://127.0.0.1:' + port + '/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));",
-        ]
+      test: ["CMD-SHELL", "curl -f \"http://127.0.0.1:${HEALTH_PORT:-3000}/health\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,17 +85,22 @@ services:
     build:
       context: ./openclaw
       dockerfile: Dockerfile
+    container_name: openclaw-gateway
     restart: unless-stopped
+    # ENFILE (file table overflow) occurs when session persistence opens too many FDs. Raise nofile so the gateway can handle many agents/sessions.
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 262144
+        hard: 262144
     profiles:
       - openclaw
     env_file:
       - ./.env
     environment:
       - OPENCLAW_CONFIG_RELOAD=1
+    depends_on:
+      runtime:
+        condition: service_healthy
     # Same network as runtime so agent can reach http://runtime:3000 for task-status HTTP fallback
     networks:
       - default
@@ -69,3 +109,23 @@ services:
       - ../../.runtime/openclaw-workspace:/root/clawd:delegated
     ports:
       - "127.0.0.1:18789:18789"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        labels: "service=openclaw-gateway,environment=development"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      # SYS_ADMIN: Required for Chromium sandbox and namespace operations (user namespaces, mount operations)
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

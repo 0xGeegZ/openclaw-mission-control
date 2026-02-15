@@ -290,7 +290,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 15000),
     healthCheckInterval: parseIntOrDefault(
       process.env.HEALTH_CHECK_INTERVAL,
-      300000,
+      30000,
     ),
     agentSyncInterval: parseIntOrDefault(
       process.env.AGENT_SYNC_INTERVAL,

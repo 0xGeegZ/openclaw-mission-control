@@ -1,12 +1,31 @@
 import { QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
+import type { RecipientType } from "@packages/shared";
+import {
+  extractMentionCandidates,
+  extractSimpleMentionStrings,
+  findLongestMentionKey,
+  stripQuotedContentForMentions,
+} from "@packages/shared";
+
+/** Role/slug pattern for QA agents; aligned with service/tasks isQaAgent. */
+const QA_AGENT_PATTERN = /\bqa\b|quality assurance|quality\b/i;
+
+function isQaAgentProfile(
+  agent: Pick<Doc<"agents">, "role" | "slug">,
+): boolean {
+  const slug = (agent.slug ?? "").toLowerCase();
+  if (slug === "qa") return true;
+  return QA_AGENT_PATTERN.test(agent.role ?? "");
+}
 
 /**
  * Parsed mention with resolved entity.
  * slug is set for agents so the UI can match @slug in content (e.g. @squad-lead).
  */
 export interface ParsedMention {
-  type: "user" | "agent";
+  type: RecipientType;
   id: string;
   name: string;
   slug?: string;
@@ -20,39 +39,14 @@ export interface ParsedMention {
  * @returns Array of mention strings (unresolved)
  */
 export function extractMentionStrings(content: string): string[] {
-  const pattern = /@(\w+(?:-\w+)*|"[^"]+")/g;
-  const sanitized = stripQuotedContent(content);
-  const matches = sanitized.match(pattern) || [];
-
-  return matches.map((m) => {
-    // Remove @ prefix
-    let mention = m.slice(1);
-    // Remove quotes if present
-    if (mention.startsWith('"') && mention.endsWith('"')) {
-      mention = mention.slice(1, -1);
-    }
-    return mention.toLowerCase();
-  });
+  return extractSimpleMentionStrings(content);
 }
 
 /**
  * Check if content contains @all mention.
  */
 export function hasAllMention(content: string): boolean {
-  return /@all\b/i.test(stripQuotedContent(content));
-}
-
-/**
- * Strip quoted/cited content so mentions are only parsed from the new message body.
- * Removes fenced code blocks, inline code, and blockquoted lines.
- */
-function stripQuotedContent(content: string): string {
-  const withoutFences = content.replace(/```[\s\S]*?```/g, "");
-  const withoutInlineCode = withoutFences.replace(/`[^`]*`/g, "");
-  return withoutInlineCode
-    .split("\n")
-    .filter((line) => !line.trim().startsWith(">"))
-    .join("\n");
+  return /@all\b/i.test(stripQuotedContentForMentions(content));
 }
 
 /**
@@ -60,21 +54,134 @@ function stripQuotedContent(content: string): string {
  *
  * @param ctx - Convex context
  * @param accountId - Account to search within
- * @param mentionStrings - Array of mention strings to resolve
+ * @param options - Optional content and/or mentionStrings to resolve
  * @returns Array of resolved mentions
  */
+export interface ResolveMentionsOptions {
+  /**
+   * Full message content used for robust resolution (supports unquoted multi-word mentions).
+   */
+  content?: string;
+  /**
+   * Optional pre-parsed mention strings (legacy call path compatibility).
+   */
+  mentionStrings?: string[];
+}
+
+function normalizeResolveMentionsOptions(
+  options?: ResolveMentionsOptions | string[],
+): ResolveMentionsOptions {
+  if (Array.isArray(options)) {
+    return { mentionStrings: options };
+  }
+  return options ?? {};
+}
+
+/**
+ * Resolve a candidate by exact lookup first, then by longest space-delimited prefix.
+ */
+function resolveMentionCandidate(
+  candidate: string,
+  params: {
+    userByName: Map<string, Doc<"memberships">>;
+    userByEmailPrefix: Map<string, Doc<"memberships">>;
+    agentBySlug: Map<string, Doc<"agents">>;
+    agentByName: Map<string, Doc<"agents">>;
+    qaAgents: Doc<"agents">[];
+    sortedUserKeys: string[];
+    sortedAgentSlugKeys: string[];
+    sortedAgentNameKeys: string[];
+  },
+): ParsedMention | null {
+  const normalized = candidate.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const exactMember =
+    params.userByName.get(normalized) ??
+    params.userByEmailPrefix.get(normalized);
+  if (exactMember) {
+    return {
+      type: "user",
+      id: exactMember.userId,
+      name: exactMember.userName,
+    };
+  }
+
+  let exactAgent =
+    params.agentBySlug.get(normalized) ?? params.agentByName.get(normalized);
+
+  if (!exactAgent && normalized === "qa") {
+    exactAgent =
+      params.qaAgents.find((a) => a.slug.toLowerCase() === "qa") ??
+      params.qaAgents[0];
+  }
+
+  if (exactAgent) {
+    const slugForMention =
+      normalized === "qa" && exactAgent.slug.toLowerCase() !== "qa"
+        ? "qa"
+        : exactAgent.slug;
+    return {
+      type: "agent",
+      id: exactAgent._id,
+      name: exactAgent.name,
+      slug: slugForMention,
+    };
+  }
+
+  const userPrefix = findLongestMentionKey(normalized, params.sortedUserKeys);
+  if (userPrefix) {
+    const member = params.userByName.get(userPrefix);
+    if (member) {
+      return {
+        type: "user",
+        id: member.userId,
+        name: member.userName,
+      };
+    }
+  }
+
+  const agentSlugPrefix = findLongestMentionKey(
+    normalized,
+    params.sortedAgentSlugKeys,
+  );
+  if (agentSlugPrefix) {
+    const agent = params.agentBySlug.get(agentSlugPrefix);
+    if (agent) {
+      return {
+        type: "agent",
+        id: agent._id,
+        name: agent.name,
+        slug: agent.slug,
+      };
+    }
+  }
+
+  const agentNamePrefix = findLongestMentionKey(
+    normalized,
+    params.sortedAgentNameKeys,
+  );
+  if (agentNamePrefix) {
+    const agent = params.agentByName.get(agentNamePrefix);
+    if (agent) {
+      return {
+        type: "agent",
+        id: agent._id,
+        name: agent.name,
+        slug: agent.slug,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function resolveMentions(
   ctx: QueryCtx,
   accountId: Id<"accounts">,
-  mentionStrings: string[],
+  options?: ResolveMentionsOptions | string[],
 ): Promise<ParsedMention[]> {
-  if (mentionStrings.length === 0) {
-    return [];
-  }
-
-  const mentions: ParsedMention[] = [];
-  const resolved = new Set<string>();
-
+  const normalizedOptions = normalizeResolveMentionsOptions(options);
   // Fetch all members and agents for the account
   const memberships = await ctx.db
     .query("memberships")
@@ -86,45 +193,64 @@ export async function resolveMentions(
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
     .collect();
 
-  for (const mentionStr of mentionStrings) {
-    // Skip if already resolved
-    if (resolved.has(mentionStr)) continue;
-
-    // Try to match user by name (case-insensitive)
-    const matchedMember = memberships.find(
-      (m) =>
-        m.userName.toLowerCase() === mentionStr ||
-        m.userEmail.toLowerCase().split("@")[0] === mentionStr,
-    );
-
-    if (matchedMember) {
-      mentions.push({
-        type: "user",
-        id: matchedMember.userId,
-        name: matchedMember.userName,
-      });
-      resolved.add(mentionStr);
-      continue;
+  const mentionCandidates = new Set(
+    (normalizedOptions.mentionStrings ?? [])
+      .map((s) => s.toLowerCase().trim())
+      .filter(Boolean),
+  );
+  if (normalizedOptions.content) {
+    for (const candidate of extractMentionCandidates(
+      normalizedOptions.content,
+    )) {
+      mentionCandidates.add(candidate);
     }
+  }
+  if (mentionCandidates.size === 0) return [];
 
-    // Try to match agent by slug or name
-    const matchedAgent = agents.find(
-      (a) =>
-        a.slug.toLowerCase() === mentionStr ||
-        a.name.toLowerCase() === mentionStr,
-    );
+  const userByName = new Map<string, Doc<"memberships">>();
+  const userByEmailPrefix = new Map<string, Doc<"memberships">>();
+  for (const membership of memberships) {
+    userByName.set(membership.userName.toLowerCase(), membership);
+    const emailPrefix = membership.userEmail.toLowerCase().split("@")[0];
+    if (emailPrefix) userByEmailPrefix.set(emailPrefix, membership);
+  }
 
-    if (matchedAgent) {
-      mentions.push({
-        type: "agent",
-        id: matchedAgent._id,
-        name: matchedAgent.name,
-        slug: matchedAgent.slug,
-      });
-      resolved.add(mentionStr);
-    }
+  const agentBySlug = new Map<string, Doc<"agents">>();
+  const agentByName = new Map<string, Doc<"agents">>();
+  for (const agent of agents) {
+    agentBySlug.set(agent.slug.toLowerCase(), agent);
+    agentByName.set(agent.name.toLowerCase(), agent);
+  }
+  const qaAgents = agents.filter((a) => isQaAgentProfile(a));
+  const sortedUserKeys = Array.from(userByName.keys()).sort(
+    (a, b) => b.length - a.length,
+  );
+  const sortedAgentSlugKeys = Array.from(agentBySlug.keys()).sort(
+    (a, b) => b.length - a.length,
+  );
+  const sortedAgentNameKeys = Array.from(agentByName.keys()).sort(
+    (a, b) => b.length - a.length,
+  );
 
-    // If no match, skip (don't include unresolved mentions)
+  const mentions: ParsedMention[] = [];
+  const seenRecipients = new Set<string>();
+  for (const candidate of Array.from(mentionCandidates)) {
+    const resolved = resolveMentionCandidate(candidate, {
+      userByName,
+      userByEmailPrefix,
+      agentBySlug,
+      agentByName,
+      qaAgents,
+      sortedUserKeys,
+      sortedAgentSlugKeys,
+      sortedAgentNameKeys,
+    });
+    if (!resolved) continue;
+
+    const recipientKey = `${resolved.type}:${resolved.id}`;
+    if (seenRecipients.has(recipientKey)) continue;
+    seenRecipients.add(recipientKey);
+    mentions.push(resolved);
   }
 
   return mentions;
@@ -174,4 +300,65 @@ export async function getAllMentions(
   }
 
   return mentions;
+}
+
+/**
+ * List all mentionable candidates for @mention autocomplete.
+ * Returns workspace members and agents, grouped by type for UI.
+ *
+ * @param ctx - Convex context
+ * @param accountId - Account to search within
+ * @returns Object with users and agents arrays
+ */
+export async function listCandidates(
+  ctx: QueryCtx,
+  accountId: Id<"accounts">,
+): Promise<{
+  users: Array<{ id: string; name: string; email: string; avatarUrl?: string }>;
+  agents: Array<{ id: string; name: string; slug: string }>;
+}> {
+  // Fetch all members
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const users = memberships.map((m) => ({
+    id: m.userId,
+    name: m.userName,
+    email: m.userEmail,
+    avatarUrl: m.userAvatarUrl,
+  }));
+
+  // Fetch all agents
+  const agents = await ctx.db
+    .query("agents")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const account = await ctx.db.get(accountId);
+  const orchestratorAgentId = (
+    account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+  )?.orchestratorAgentId;
+
+  const agentList = agents
+    .map((a) => ({
+      id: a._id,
+      name: a.name,
+      slug: a.slug,
+    }))
+    .sort((a, b) => {
+      const aIsOrchestrator =
+        orchestratorAgentId != null && a.id === orchestratorAgentId;
+      const bIsOrchestrator =
+        orchestratorAgentId != null && b.id === orchestratorAgentId;
+      if (aIsOrchestrator && !bIsOrchestrator) return -1;
+      if (!aIsOrchestrator && bIsOrchestrator) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+  return {
+    users,
+    agents: agentList,
+  };
 }

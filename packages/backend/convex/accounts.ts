@@ -15,6 +15,10 @@ import {
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
 import { logActivity } from "./lib/activity";
+import {
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
+} from "./lib/notifications";
 
 /**
  * Create a new account.
@@ -58,7 +62,19 @@ export const create = mutation({
       joinedAt: Date.now(),
     });
 
-    // TODO: Log activity (implemented in Module 08)
+    // Log account creation activity
+    await logActivity({
+      ctx,
+      accountId,
+      type: "account_created",
+      actorType: "user",
+      actorId: authContext.userId,
+      actorName: authContext.userName,
+      targetType: "account",
+      targetId: accountId,
+      targetName: args.name,
+      meta: { slug: args.slug, plan: "free" },
+    });
 
     return accountId;
   },
@@ -201,7 +217,7 @@ export const update = mutation({
     settings: v.optional(accountSettingsValidator),
   },
   handler: async (ctx, args) => {
-    await requireAccountAdmin(ctx, args.accountId);
+    const { userId } = await requireAccountAdmin(ctx, args.accountId);
     const account = await ctx.db.get(args.accountId);
     if (!account) {
       throw new Error("Not found: Account does not exist");
@@ -303,6 +319,19 @@ export const update = mutation({
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.accountId, updates);
+
+      // Log account update activity
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "account_updated",
+        actorType: "user",
+        actorId: userId,
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: updates,
+      });
     }
 
     return args.accountId;
@@ -408,13 +437,42 @@ export const updateRuntimeStatusInternal = internalMutation({
           newStatus: args.status,
         },
       });
+
+      const runtimeWentDown =
+        args.status === "offline" &&
+        (previousRuntimeStatus === "online" ||
+          previousRuntimeStatus === "degraded");
+      if (runtimeWentDown) {
+        await createRuntimeOfflineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
+
+      const runtimeCameOnline =
+        args.status === "online" &&
+        (previousRuntimeStatus === "offline" ||
+          previousRuntimeStatus === "error" ||
+          previousRuntimeStatus === "provisioning");
+      if (runtimeCameOnline) {
+        await createRuntimeOnlineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
     }
 
-    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
     if (args.status === "offline") {
       await ctx.runMutation(internal.service.agents.markAllOffline, {
         accountId: args.accountId,
       });
+      await ctx.runMutation(
+        internal.service.notifications.clearTypingStateForAccount,
+        { accountId: args.accountId },
+      );
     }
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
@@ -511,7 +569,7 @@ export const updateRuntimeStatusInternal = internalMutation({
 });
 
 /** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
-const RUNTIME_STALE_MS = 5 * 60 * 1000;
+const RUNTIME_STALE_MS = 90 * 1000;
 
 /**
  * Mark runtimes offline when lastHealthCheck is too old.
@@ -524,7 +582,10 @@ export const markStaleRuntimesOffline = internalMutation({
     const accounts = await ctx.db.query("accounts").collect();
     let marked = 0;
     for (const account of accounts) {
-      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+      if (
+        account.runtimeStatus !== "online" &&
+        account.runtimeStatus !== "degraded"
+      ) {
         continue;
       }
       const lastCheck = account.runtimeConfig?.lastHealthCheck;

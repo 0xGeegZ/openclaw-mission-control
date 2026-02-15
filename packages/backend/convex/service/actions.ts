@@ -13,7 +13,12 @@ import {
   resolveBehaviorFlags,
   type BehaviorFlags,
 } from "../lib/behavior_flags";
-import { TASK_STATUS_TRANSITIONS, type TaskStatus } from "../lib/task_workflow";
+import {
+  TASK_STATUS,
+  TASK_STATUS_TRANSITIONS,
+  type TaskStatus,
+} from "../lib/task_workflow";
+import type { RecipientType } from "@packages/shared";
 
 export type { BehaviorFlags };
 
@@ -429,6 +434,40 @@ export const markNotificationRead = action({
 });
 
 /**
+ * Mark delivery as ended for a notification (typing stops; notification stays undelivered for retry).
+ * Called by runtime when delivery fails so the typing indicator stops immediately.
+ * On next attempt, markNotificationRead clears deliveryEndedAt so typing can show again.
+ */
+export const markNotificationDeliveryEnded = action({
+  args: {
+    notificationId: v.id("notifications"),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const notificationResult = await ctx.runQuery(
+      internal.service.notifications.getForDelivery,
+      { notificationId: args.notificationId },
+    );
+    const notification = notificationResult?.notification;
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.accountId !== args.accountId) {
+      throw new Error("Forbidden: Notification belongs to different account");
+    }
+    await ctx.runMutation(internal.service.notifications.markDeliveryEnded, {
+      notificationId: args.notificationId,
+    });
+    return { success: true };
+  },
+});
+
+/**
  * List agents for an account.
  * Called by runtime to get all agents for the account.
  */
@@ -437,7 +476,7 @@ export const listAgents = action({
     accountId: v.id("accounts"),
     serviceToken: v.string(),
   },
-  handler: async (ctx, args): Promise<any[]> => {
+  handler: async (ctx, args): Promise<unknown[]> => {
     // Validate service token and verify account matches
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -677,11 +716,11 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
     if (!allowedStatuses.has(args.status)) {
       throw new Error(
@@ -708,10 +747,10 @@ export const updateTaskStatusFromAgent = action({
     }
 
     const allowedNextStatuses = new Set<TaskStatus>([
-      "in_progress",
-      "review",
-      "done",
-      "blocked",
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
     ]);
 
     let changed = false;
@@ -721,7 +760,7 @@ export const updateTaskStatusFromAgent = action({
     // Apply the minimum number of valid transitions to reach the target status.
     // This makes tool calls resilient when the agent asks for "done" while the task is still
     // in_progress/assigned (we auto-advance through review).
-    const targetStatus = args.status as TaskStatus;
+    const targetStatus = args.status;
     for (let i = 0; i < 10; i++) {
       const task = await ctx.runQuery(internal.service.tasks.getInternal, {
         taskId: args.taskId,
@@ -730,22 +769,21 @@ export const updateTaskStatusFromAgent = action({
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
 
-      const currentStatus = task.status as TaskStatus;
+      const currentStatus = task.status;
       if (
         i === 0 &&
         args.expectedStatus &&
         currentStatus !== args.expectedStatus
-      )
-      {
+      ) {
         finalStatus = currentStatus;
         finalUpdatedAt = task.updatedAt;
         break;
       }
       if (
         i === 0 &&
-        targetStatus === "done" &&
-        currentStatus !== "review" &&
-        currentStatus !== "done"
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
       ) {
         throw new Error(
           "Forbidden: Task must be in review before marking done",
@@ -775,7 +813,7 @@ export const updateTaskStatusFromAgent = action({
         agentId: args.agentId,
         status: nextStatus,
         blockedReason:
-          nextStatus === "blocked" ? args.blockedReason : undefined,
+          nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
         suppressNotifications: !isFinalStep,
         suppressActivity: !isFinalStep,
       });
@@ -789,7 +827,7 @@ export const updateTaskStatusFromAgent = action({
       if (!task) throw new Error("Not found: Task does not exist");
       if (task.accountId !== args.accountId)
         throw new Error("Forbidden: Task belongs to different account");
-      finalStatus = task.status as TaskStatus;
+      finalStatus = task.status;
       finalUpdatedAt = task.updatedAt;
     }
 
@@ -914,6 +952,232 @@ export const assignTaskFromAgent = action({
 });
 
 /**
+ * Update task fields on behalf of an agent (service-only).
+ * Unified tool for updating title, description, priority, labels, assignees, status, dueDate.
+ * Gated by canModifyTaskStatus behavior flag.
+ */
+export const updateTaskFromAgent = action({
+  args: {
+    taskId: v.id("tasks"),
+    agentId: v.id("agents"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    priority: v.optional(v.number()),
+    labels: v.optional(v.array(v.string())),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
+    assignedUserIds: v.optional(v.array(v.string())),
+    status: v.optional(taskStatusValidator),
+    blockedReason: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    taskId: Id<"tasks">;
+    changedFields: string[];
+  }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) {
+      throw new Error("Not found: Agent does not exist");
+    }
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const account = await ctx.runQuery(internal.accounts.getInternal, {
+      accountId: args.accountId,
+    });
+    const flags = resolveBehaviorFlags(agent, account);
+    if (!flags.canModifyTaskStatus) {
+      throw new Error("Forbidden: Agent is not allowed to modify tasks");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    // Validate at least one field is being updated
+    const hasUpdates =
+      args.title !== undefined ||
+      args.description !== undefined ||
+      args.priority !== undefined ||
+      args.labels !== undefined ||
+      args.assignedAgentIds !== undefined ||
+      args.assignedUserIds !== undefined ||
+      args.status !== undefined ||
+      args.dueDate !== undefined;
+
+    if (!hasUpdates) {
+      return { taskId: args.taskId, changedFields: [] };
+    }
+
+    // Validate priority range (schema: 1 = highest, 5 = lowest)
+    if (
+      args.priority !== undefined &&
+      (args.priority < 1 || args.priority > 5)
+    ) {
+      throw new Error(
+        "Invalid priority: must be between 1 (highest) and 5 (lowest)",
+      );
+    }
+
+    // Validate status and blockedReason
+    const allowedStatuses = new Set<TaskStatus>([
+      TASK_STATUS.IN_PROGRESS,
+      TASK_STATUS.REVIEW,
+      TASK_STATUS.DONE,
+      TASK_STATUS.BLOCKED,
+    ]);
+    if (args.status && !allowedStatuses.has(args.status)) {
+      throw new Error(
+        "Invalid status: must be in_progress, review, done, or blocked",
+      );
+    }
+    if (args.status === TASK_STATUS.BLOCKED && !args.blockedReason?.trim()) {
+      throw new Error("blockedReason is required when status is 'blocked'");
+    }
+
+    const changedFields: string[] = [];
+    const updates: Record<string, unknown> = {};
+
+    if (args.title !== undefined) {
+      updates.title = args.title.trim();
+      changedFields.push("title");
+    }
+
+    if (args.description !== undefined) {
+      updates.description = args.description.trim();
+      changedFields.push("description");
+    }
+
+    if (args.priority !== undefined) {
+      updates.priority = args.priority;
+      changedFields.push("priority");
+    }
+
+    if (args.labels !== undefined) {
+      updates.labels = args.labels;
+      changedFields.push("labels");
+    }
+
+    if (args.assignedAgentIds !== undefined) {
+      updates.assignedAgentIds = args.assignedAgentIds;
+      changedFields.push("assignedAgentIds");
+    }
+
+    if (args.assignedUserIds !== undefined) {
+      updates.assignedUserIds = args.assignedUserIds;
+      changedFields.push("assignedUserIds");
+    }
+
+    if (args.dueDate !== undefined) {
+      updates.dueDate = args.dueDate;
+      changedFields.push("dueDate");
+    }
+
+    const hasNonStatusUpdates = Object.keys(updates).length > 0;
+    const hasAssigneeUpdates =
+      args.assignedAgentIds !== undefined || args.assignedUserIds !== undefined;
+    const applyUpdatesBeforeStatus =
+      hasNonStatusUpdates &&
+      hasAssigneeUpdates &&
+      args.status === TASK_STATUS.IN_PROGRESS &&
+      task.status !== TASK_STATUS.IN_PROGRESS;
+
+    if (applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    // If status is being changed, handle status transitions
+    if (args.status && args.status !== task.status) {
+      const allowedNextStatuses = new Set<TaskStatus>([
+        TASK_STATUS.IN_PROGRESS,
+        TASK_STATUS.REVIEW,
+        TASK_STATUS.DONE,
+        TASK_STATUS.BLOCKED,
+      ]);
+
+      const targetStatus = args.status;
+      const currentStatus = task.status;
+
+      // Validate task must be in review before marking done
+      if (
+        targetStatus === TASK_STATUS.DONE &&
+        currentStatus !== TASK_STATUS.REVIEW &&
+        currentStatus !== TASK_STATUS.DONE
+      ) {
+        throw new Error(
+          "Forbidden: Task must be in review before marking done",
+        );
+      }
+
+      // Apply status change through transitions
+      const path = findStatusPath({
+        from: currentStatus,
+        to: targetStatus,
+        allowedNextStatuses,
+      });
+      if (!path || path.length === 0) {
+        throw new Error(
+          `Invalid transition: Cannot move from '${currentStatus}' to '${targetStatus}'`,
+        );
+      }
+
+      for (let i = 0; i < path.length; i++) {
+        const nextStatus = path[i];
+        const isFinalStep = i === path.length - 1;
+        await ctx.runMutation(internal.service.tasks.updateStatusFromAgent, {
+          taskId: args.taskId,
+          agentId: args.agentId,
+          status: nextStatus,
+          blockedReason:
+            nextStatus === TASK_STATUS.BLOCKED ? args.blockedReason : undefined,
+          suppressNotifications: !isFinalStep,
+          suppressActivity: !isFinalStep,
+        });
+      }
+      changedFields.push("status");
+    }
+
+    // Only patch if there are non-status updates
+    if (hasNonStatusUpdates && !applyUpdatesBeforeStatus) {
+      updates.updatedAt = Date.now();
+      await ctx.runMutation(internal.service.tasks.updateFromAgent, {
+        taskId: args.taskId,
+        agentId: args.agentId,
+        updates,
+      });
+    }
+
+    return {
+      taskId: args.taskId,
+      changedFields,
+    };
+  },
+});
+
+/**
  * List tasks for orchestrator tools (service-only).
  */
 export const listTasksForAgentTool = action({
@@ -1005,6 +1269,7 @@ export const getTaskForAgentTool = action({
 
 /**
  * List task thread messages for orchestrator tools (service-only).
+ * Optional limit (1–200) for history size; underlying query defaults to 50 when omitted.
  */
 export const listTaskThreadForAgentTool = action({
   args: {
@@ -1020,7 +1285,7 @@ export const listTaskThreadForAgentTool = action({
   ): Promise<
     Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -1593,11 +1858,14 @@ export const loadTaskDetailsForAgentTool = action({
     taskId: v.id("tasks"),
     messageLimit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
     task: Doc<"tasks">;
     thread: Array<{
       messageId: Id<"messages">;
-      authorType: "user" | "agent";
+      authorType: RecipientType;
       authorId: string;
       authorName: string | null;
       content: string;
@@ -1708,6 +1976,7 @@ export const deleteTaskFromAgent = action({
 /**
  * Link a task to a GitHub PR bidirectionally.
  * Updates task metadata with prNumber and attempts to add task reference to PR description.
+ * Logs a warning (does not fail) if the PR head branch name does not contain the task ID (one-branch-per-task convention).
  * Orchestrator-only access.
  */
 export const linkTaskToPrForAgentTool = action({
@@ -1801,7 +2070,16 @@ export const linkTaskToPrForAgentTool = action({
           return { success: true };
         }
 
-        const pr = (await prResponse.json()) as { body?: string };
+        const pr = (await prResponse.json()) as {
+          body?: string;
+          head?: { ref?: string };
+        };
+        const prBranch = pr.head?.ref ?? "";
+        if (prBranch && !prBranch.includes(args.taskId)) {
+          console.warn(
+            `PR #${args.prNumber} branch "${prBranch}" does not match task ${args.taskId}; consider using branch feat/task-${args.taskId}`,
+          );
+        }
         let currentBody = pr.body || "";
 
         // Remove old task marker if present
@@ -1866,9 +2144,12 @@ export const getAgentSkillsForTool = action({
     }
 
     // Verify requesting agent exists and belongs to account
-    const requestingAgent = await ctx.runQuery(internal.service.agents.getInternal, {
-      agentId: args.agentId,
-    });
+    const requestingAgent = await ctx.runQuery(
+      internal.service.agents.getInternal,
+      {
+        agentId: args.agentId,
+      },
+    );
     if (!requestingAgent) {
       throw new Error("Not found: Requesting agent does not exist");
     }
@@ -1880,9 +2161,12 @@ export const getAgentSkillsForTool = action({
 
     // If queryAgentId specified, return that agent's skills (any agent may query any other)
     if (args.queryAgentId) {
-      const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
-        agentId: args.queryAgentId,
-      });
+      const targetAgent = await ctx.runQuery(
+        internal.service.agents.getInternal,
+        {
+          agentId: args.queryAgentId,
+        },
+      );
       if (!targetAgent) {
         throw new Error("Not found: Target agent does not exist");
       }

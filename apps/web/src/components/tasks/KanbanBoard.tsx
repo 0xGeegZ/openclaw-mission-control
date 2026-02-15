@@ -20,20 +20,24 @@ import { CreateTaskDialog } from "./CreateTaskDialog";
 import { BlockedReasonDialog } from "./BlockedReasonDialog";
 import { TaskDetailSheet } from "./TaskDetailSheet";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { TaskStatus, TASK_STATUS_ORDER } from "@packages/shared";
+import { TaskStatus, TASK_STATUS, TASK_STATUS_ORDER } from "@packages/shared";
 import { toast } from "sonner";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  useTaskIdFromSearchParams,
+  TASK_ID_SEARCH_PARAM,
+} from "@/lib/hooks/useTaskIdFromSearchParams";
 
-/** All known task statuses for validation and DnD resolution. */
-const VALID_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER;
+/** Set of all known task statuses for O(1) validation in DnD resolution. */
+const VALID_STATUS_SET = new Set<TaskStatus>(TASK_STATUS_ORDER);
 
 /** Statuses shown on the main Kanban board (archive is hidden by default). */
 const BOARD_STATUSES: readonly TaskStatus[] = TASK_STATUS_ORDER.filter(
-  (status) => status !== "archived",
+  (status) => status !== TASK_STATUS.ARCHIVED,
 );
 
 function isValidStatus(value: string): value is TaskStatus {
-  return (VALID_STATUSES as readonly string[]).includes(value);
+  return VALID_STATUS_SET.has(value as TaskStatus);
 }
 
 /** Resolve drop target to column status. Dropping on a column uses status id; dropping on a task uses that task's status. */
@@ -45,7 +49,7 @@ function resolveDropTargetToStatus(
   if (!tasksByStatus) return null;
   for (const tasks of Object.values(tasksByStatus)) {
     const task = tasks.find((t) => String(t._id) === overId);
-    if (task && isValidStatus(task.status)) return task.status as TaskStatus;
+    if (task) return task.status;
   }
   return null;
 }
@@ -69,16 +73,12 @@ export function KanbanBoard({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { accountId, isLoading: isAccountLoading } = useAccount();
+  const selectedTaskId = useTaskIdFromSearchParams();
   const [activeTask, setActiveTask] = useState<Doc<"tasks"> | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
   const [pendingBlockedTask, setPendingBlockedTask] =
     useState<Doc<"tasks"> | null>(null);
-
-  const selectedTaskId = useMemo(() => {
-    const taskId = searchParams.get("taskId");
-    return taskId ? (taskId as Id<"tasks">) : null;
-  }, [searchParams]);
 
   /**
    * Updates the taskId query param to control the task detail sheet.
@@ -87,9 +87,9 @@ export function KanbanBoard({
     (taskId: Id<"tasks"> | null) => {
       const nextParams = new URLSearchParams(searchParams.toString());
       if (taskId) {
-        nextParams.set("taskId", String(taskId));
+        nextParams.set(TASK_ID_SEARCH_PARAM, String(taskId));
       } else {
-        nextParams.delete("taskId");
+        nextParams.delete(TASK_ID_SEARCH_PARAM);
       }
       const queryString = nextParams.toString();
       const nextUrl = queryString ? `${pathname}?${queryString}` : pathname;
@@ -206,7 +206,7 @@ export function KanbanBoard({
       if (!isValidStatus(newStatus)) return;
 
       // For blocked status, show dialog to get reason
-      if (newStatus === "blocked") {
+      if (newStatus === TASK_STATUS.BLOCKED) {
         setPendingBlockedTask(currentTask);
         setShowBlockedDialog(true);
         return;
@@ -233,7 +233,7 @@ export function KanbanBoard({
     try {
       await updateStatus({
         taskId: pendingBlockedTask._id,
-        status: "blocked",
+        status: TASK_STATUS.BLOCKED,
         blockedReason: reason,
       });
       toast.success("Task marked as blocked");
@@ -272,7 +272,9 @@ export function KanbanBoard({
               tasks={displayTasks[status] || []}
               accountSlug={accountSlug}
               onAddTask={
-                status === "inbox" ? () => setShowCreateDialog(true) : undefined
+                status === TASK_STATUS.INBOX
+                  ? () => setShowCreateDialog(true)
+                  : undefined
               }
               onTaskClick={handleTaskClick}
               agents={agents}

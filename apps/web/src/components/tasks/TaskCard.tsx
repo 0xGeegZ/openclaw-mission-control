@@ -1,15 +1,34 @@
 "use client";
 
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Doc } from "@packages/backend/convex/_generated/dataModel";
-import { Card, CardContent, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { Badge } from "@packages/ui/components/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@packages/ui/components/avatar";
+import { Button } from "@packages/ui/components/button";
+import { ScrollArea } from "@packages/ui/components/scroll-area";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
 import { cn } from "@packages/ui/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronRight, Clock, AlertTriangle } from "lucide-react";
+import {
+  ChevronRight,
+  Clock,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { AGENT_ICON_MAP } from "@/lib/agentIcons";
+import { TASK_STATUS } from "@packages/shared";
 
 interface TaskCardProps {
   task: Doc<"tasks">;
@@ -19,7 +38,10 @@ interface TaskCardProps {
   assignedAgents?: Doc<"agents">[];
 }
 
-const priorityConfig: Record<number, { color: string; label: string; bgColor: string }> = {
+const priorityConfig: Record<
+  number,
+  { color: string; label: string; bgColor: string }
+> = {
   1: { color: "bg-red-500", label: "Critical", bgColor: "bg-red-500/10" },
   2: { color: "bg-orange-500", label: "High", bgColor: "bg-orange-500/10" },
   3: { color: "bg-amber-500", label: "Medium", bgColor: "bg-amber-500/10" },
@@ -41,29 +63,31 @@ const statusBorderColors: Record<string, string> = {
  * Task card component for Kanban board.
  * Draggable card showing task details with rich information.
  */
-export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: task._id });
+export function TaskCard({
+  task,
+  isDragging,
+  onClick,
+  assignedAgents,
+}: TaskCardProps) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: task._id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
 
-  const statusBorder = statusBorderColors[task.status] ?? statusBorderColors.inbox;
+  const statusBorder =
+    statusBorderColors[task.status] ?? statusBorderColors.inbox;
   const priority = priorityConfig[task.priority] || priorityConfig[5];
-  
+
   // Get the first assigned agent for display
   const primaryAgent = assignedAgents?.[0];
   const PrimaryFallbackIcon = primaryAgent?.icon
     ? AGENT_ICON_MAP[primaryAgent.icon]
     : null;
-  const isBlocked = task.status === "blocked";
+  const isBlocked = task.status === TASK_STATUS.BLOCKED;
   const isHighPriority = task.priority <= 2;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -88,22 +112,27 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
         "bg-card/80 backdrop-blur-sm",
         isDragging && "opacity-60 shadow-xl rotate-1 scale-105",
         onClick && "cursor-pointer",
-        isBlocked && "bg-destructive/5 border-destructive/20"
+        isBlocked && "bg-destructive/5 border-destructive/20",
       )}
     >
       <CardHeader className="p-3 pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2.5 flex-1 min-w-0">
             {/* Priority indicator */}
-            <div 
+            <div
               className={cn(
                 "shrink-0 mt-0.5 flex items-center justify-center h-5 w-5 rounded-md",
-                priority.bgColor
+                priority.bgColor,
               )}
               title={priority.label}
             >
               {isHighPriority ? (
-                <AlertTriangle className={cn("h-3 w-3", task.priority === 1 ? "text-red-500" : "text-orange-500")} />
+                <AlertTriangle
+                  className={cn(
+                    "h-3 w-3",
+                    task.priority === 1 ? "text-red-500" : "text-orange-500",
+                  )}
+                />
               ) : (
                 <div className={cn("w-2 h-2 rounded-full", priority.color)} />
               )}
@@ -115,22 +144,58 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
           <ChevronRight className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 mt-0.5" />
         </div>
       </CardHeader>
-      
+
       <CardContent className="p-3 pt-0 space-y-2.5">
         {/* Description preview */}
         {task.description && (
-          <p className="text-xs text-muted-foreground/80 line-clamp-2 leading-relaxed pl-7">
-            {task.description}
-          </p>
+          <div className="space-y-0.5 pl-7">
+            <div className="flex items-center justify-between gap-1 -mt-0.5">
+              <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                Description
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDescriptionExpanded((prev) => !prev);
+                }}
+                aria-label={
+                  descriptionExpanded
+                    ? "Collapse description"
+                    : "Expand description"
+                }
+              >
+                {descriptionExpanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+            {descriptionExpanded ? (
+              <ScrollArea className="h-32 text-xs text-muted-foreground/80 leading-relaxed pr-2 rounded-md border border-transparent">
+                <p>{task.description}</p>
+              </ScrollArea>
+            ) : (
+              <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
+                {task.description}
+              </p>
+            )}
+          </div>
         )}
-        
+
         {/* Agent and timestamp row */}
         <div className="flex items-center justify-between gap-2 pt-1">
           {primaryAgent ? (
             <div className="flex items-center gap-2 min-w-0">
               <Avatar className="h-6 w-6 ring-2 ring-background shadow-sm">
                 {primaryAgent.avatarUrl ? (
-                  <AvatarImage src={primaryAgent.avatarUrl} alt={primaryAgent.name} />
+                  <AvatarImage
+                    src={primaryAgent.avatarUrl}
+                    alt={primaryAgent.name}
+                  />
                 ) : null}
                 <AvatarFallback className="text-[9px] font-semibold bg-gradient-to-br from-primary/15 to-primary/5 text-primary">
                   {PrimaryFallbackIcon ? (
@@ -148,9 +213,11 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
               </span>
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground/50 italic">Unassigned</span>
+            <span className="text-xs text-muted-foreground/50 italic">
+              Unassigned
+            </span>
           )}
-          
+
           <div className="flex items-center gap-1 text-muted-foreground/50">
             <Clock className="h-3 w-3" />
             <span className="text-[10px] tabular-nums">
@@ -158,22 +225,22 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
             </span>
           </div>
         </div>
-        
+
         {/* Labels */}
         {task.labels.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
             {task.labels.slice(0, 3).map((label) => (
-              <Badge 
-                key={label} 
-                variant="outline" 
+              <Badge
+                key={label}
+                variant="outline"
                 className="text-[9px] px-1.5 py-0 h-[18px] bg-background/50 border-border/40 font-medium text-muted-foreground"
               >
                 {label}
               </Badge>
             ))}
             {task.labels.length > 3 && (
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className="text-[9px] px-1.5 py-0 h-[18px] bg-muted/50 border-border/40 font-medium"
               >
                 +{task.labels.length - 3}
@@ -181,20 +248,28 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
             )}
           </div>
         )}
-        
+
         {/* Additional assignees indicator */}
         {assignedAgents && assignedAgents.length > 1 && (
           <div className="flex items-center justify-end -space-x-1.5 pt-1">
             {assignedAgents.slice(1, 4).map((agent) => {
-              const FallbackIcon = agent.icon ? AGENT_ICON_MAP[agent.icon] : null;
+              const FallbackIcon = agent.icon
+                ? AGENT_ICON_MAP[agent.icon]
+                : null;
               return (
-                <Avatar key={agent._id} className="h-5 w-5 ring-2 ring-background shadow-sm">
+                <Avatar
+                  key={agent._id}
+                  className="h-5 w-5 ring-2 ring-background shadow-sm"
+                >
                   {agent.avatarUrl ? (
                     <AvatarImage src={agent.avatarUrl} alt={agent.name} />
                   ) : null}
                   <AvatarFallback className="text-[8px] font-semibold bg-muted text-muted-foreground">
                     {FallbackIcon ? (
-                      <FallbackIcon className="h-2.5 w-2.5 text-muted-foreground" aria-hidden />
+                      <FallbackIcon
+                        className="h-2.5 w-2.5 text-muted-foreground"
+                        aria-hidden
+                      />
                     ) : (
                       agent.name.slice(0, 2).toUpperCase()
                     )}
@@ -204,7 +279,9 @@ export function TaskCard({ task, isDragging, onClick, assignedAgents }: TaskCard
             })}
             {assignedAgents.length > 4 && (
               <div className="h-5 w-5 rounded-full ring-2 ring-background bg-muted/80 flex items-center justify-center shadow-sm">
-                <span className="text-[8px] font-semibold text-muted-foreground">+{assignedAgents.length - 4}</span>
+                <span className="text-[8px] font-semibold text-muted-foreground">
+                  +{assignedAgents.length - 4}
+                </span>
               </div>
             )}
           </div>

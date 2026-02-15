@@ -32,17 +32,23 @@ import {
   Clock,
   Flag,
   Tag,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { TaskThread } from "./TaskThread";
 import { TaskDocuments } from "./TaskDocuments";
+import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { TaskStatusSelect } from "./TaskStatusSelect";
 import { TaskAssignees } from "./TaskAssignees";
+import { PopoverInPlaceProvider } from "@/lib/PopoverInPlaceContext";
 import { cn } from "@packages/ui/lib/utils";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
 import { ArchiveTaskDialog } from "./ArchiveTaskDialog";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { TASK_STATUS } from "@packages/shared";
 
 interface TaskDetailSheetProps {
   taskId: Id<"tasks"> | null;
@@ -135,13 +141,14 @@ export function TaskDetailSheet({
 }: TaskDetailSheetProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const task = useQuery(api.tasks.get, taskId ? { taskId } : "skip");
   const updateStatus = useMutation(api.tasks.updateStatus);
 
   const handleMarkAsDone = async () => {
     if (!task) return;
     try {
-      await updateStatus({ taskId: task._id, status: "done" });
+      await updateStatus({ taskId: task._id, status: TASK_STATUS.DONE });
       toast.success("Status updated");
     } catch (error) {
       toast.error("Failed to update status", {
@@ -172,7 +179,7 @@ export function TaskDetailSheet({
                 <Maximize2 className="size-4" />
                 <span className="sr-only">Open full page</span>
               </Link>
-              {task.status !== "archived" && (
+              {task.status !== TASK_STATUS.ARCHIVED && (
                 <button
                   type="button"
                   onClick={() => setArchiveDialogOpen(true)}
@@ -203,188 +210,241 @@ export function TaskDetailSheet({
             <p className="text-muted-foreground">Task not found</p>
           </div>
         ) : (
-          <>
-            <SheetHeader className="px-4 pt-3 pb-2 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
-                <div
-                  className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
-                />
-                <span className="uppercase tracking-widest font-medium text-[10px]">
-                  Task Detail
-                </span>
-              </div>
-
-              <SheetTitle className="text-lg font-bold leading-tight text-balance pr-16">
-                {task.title}
-              </SheetTitle>
-            </SheetHeader>
-
-            <div className="px-4 py-2 space-y-2 shrink-0 border-b border-border/50">
-              {/* Status, priority, and inline metadata */}
-              <div
-                className="flex items-center gap-2 flex-wrap"
-                role="group"
-                aria-label="Task status and priority"
-              >
-                <TaskStatusSelect task={task} variant="compact" />
-
-                {task.status === "review" && (
-                  <Button
-                    size="sm"
-                    onClick={handleMarkAsDone}
-                    className="gap-1.5 h-7 text-xs"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Mark as done
-                  </Button>
-                )}
-
-                {task.priority && (
-                  <Badge
-                    variant="outline"
-                    className={`gap-1 border text-xs ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${PRIORITY_CONFIG[task.priority]?.color || PRIORITY_CONFIG[3].color}`}
-                    />
-                    {PRIORITY_CONFIG[task.priority]?.label || "Medium"}
-                  </Badge>
-                )}
-              </div>
-
-              {/* Description */}
-              {task.description && (
-                <div className="max-h-20 overflow-y-auto pr-3 text-sm leading-relaxed">
-                  <MarkdownRenderer content={task.description} compact />
+          <PopoverInPlaceProvider>
+            <>
+              <SheetHeader className="px-4 pt-3 pb-2 shrink-0 bg-gradient-to-b from-muted/30 to-transparent">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[task.status]?.color}`}
+                  />
+                  <span className="uppercase tracking-widest font-medium text-[10px]">
+                    Task Detail
+                  </span>
                 </div>
-              )}
 
-              {/* Blocked reason */}
-              {task.status === "blocked" && task.blockedReason && (
-                <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-                  <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium">Blocked</p>
-                    <div className="text-xs opacity-90">
-                      <MarkdownRenderer
-                        content={task.blockedReason}
-                        compact
-                        className="prose-p:my-0.5"
+                <SheetTitle className="text-lg font-bold leading-tight text-balance pr-16">
+                  {task.title}
+                </SheetTitle>
+              </SheetHeader>
+
+              <div className="px-4 py-2 space-y-2 shrink-0 border-b border-border/50">
+                {/* Status, priority, and inline metadata */}
+                <div
+                  className="flex items-center gap-2 flex-wrap"
+                  role="group"
+                  aria-label="Task status and priority"
+                >
+                  <TaskStatusSelect task={task} variant="compact" />
+
+                  {task.status === TASK_STATUS.REVIEW && (
+                    <Button
+                      size="sm"
+                      onClick={handleMarkAsDone}
+                      className="gap-1.5 h-7 text-xs"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Mark as done
+                    </Button>
+                  )}
+
+                  {task.priority && (
+                    <Badge
+                      variant="outline"
+                      className={`gap-1 border text-xs ${PRIORITY_CONFIG[task.priority]?.bgColor || PRIORITY_CONFIG[3].bgColor}`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${PRIORITY_CONFIG[task.priority]?.color || PRIORITY_CONFIG[3].color}`}
                       />
+                      {PRIORITY_CONFIG[task.priority]?.label || "Medium"}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Description */}
+                {task.description && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Description
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => setDescriptionExpanded((prev) => !prev)}
+                        aria-label={
+                          descriptionExpanded
+                            ? "Collapse description"
+                            : "Expand description"
+                        }
+                      >
+                        {descriptionExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <ScrollArea
+                      className={cn(
+                        "text-sm leading-relaxed pr-3 rounded-md border border-transparent shrink-0",
+                        descriptionExpanded ? "h-[40vh]" : "h-20",
+                      )}
+                    >
+                      <div className="pr-2">
+                        <MarkdownRenderer content={task.description} compact />
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {/* Blocked reason */}
+                {task.status === TASK_STATUS.BLOCKED && task.blockedReason && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
+                    <Flag className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium">Blocked</p>
+                      <div className="text-xs opacity-90">
+                        <MarkdownRenderer
+                          content={task.blockedReason}
+                          compact
+                          className="prose-p:my-0.5"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Compact metadata row */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {/* Assignees */}
-                <div
-                  className="flex items-center gap-1.5"
-                  role="group"
-                  aria-label="Task assignees"
-                >
-                  <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground/60">
-                    Assignees
-                  </span>
-                  <TaskAssignees task={task} showLabel={false} />
-                </div>
-
-                <span className="text-border">|</span>
-
-                {/* Due date */}
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3 text-muted-foreground/60" />
-                  <span>
-                    {task.dueDate
-                      ? format(new Date(task.dueDate), "MMM d, yyyy")
-                      : "No due date"}
-                  </span>
-                </div>
-
-                <span className="text-border">|</span>
-
-                {/* Created */}
-                <div className="flex items-center gap-1">
-                  <Clock className="h-3 w-3 text-muted-foreground/60" />
-                  <span className="tabular-nums">
-                    {formatDistanceToNow(task.createdAt, { addSuffix: true })}
-                  </span>
-                </div>
-
-                <span className="text-border">|</span>
-
-                {/* Updated */}
-                <div className="flex items-center gap-1">
-                  <Clock className="h-3 w-3 text-muted-foreground/60" />
-                  <span className="tabular-nums">
-                    {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Labels */}
-              {task.labels.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Tag className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-                  {task.labels.map((label) => (
-                    <Badge
-                      key={label}
-                      variant="secondary"
-                      className="text-[10px] h-5 bg-background/50 border border-border/30"
-                    >
-                      {label}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Tabs for Thread / Documents */}
-            <Tabs
-              defaultValue="thread"
-              className="flex-1 flex flex-col min-h-0"
-            >
-              <div className="shrink-0 border-b px-4">
-                <TabsList variant="line" className="h-9">
-                  <TabsTrigger value="thread" className="px-4 gap-2 text-sm">
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    Thread
-                  </TabsTrigger>
-                  <TabsTrigger value="documents" className="px-4 gap-2 text-sm">
-                    <FileText className="h-3.5 w-3.5" />
-                    Documents
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent
-                value="thread"
-                className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
-              >
-                <TaskThread
-                  taskId={task._id}
-                  accountSlug={accountSlug}
-                  accountId={task.accountId}
-                  useReadByFallback
-                />
-              </TabsContent>
-
-              <TabsContent
-                value="documents"
-                className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
-              >
-                <ScrollArea className="h-full">
-                  <div className="p-4">
-                    <TaskDocuments
-                      taskId={task._id}
-                      accountSlug={accountSlug}
-                    />
+                {/* Compact metadata row */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {/* Assignees */}
+                  <div
+                    className="flex items-center gap-1.5"
+                    role="group"
+                    aria-label="Task assignees"
+                  >
+                    <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground/60">
+                      Assignees
+                    </span>
+                    <TaskAssignees task={task} showLabel={false} />
                   </div>
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
-          </>
+
+                  <span className="text-border">|</span>
+
+                  {/* Due date */}
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-muted-foreground/60" />
+                    <span>
+                      {task.dueDate
+                        ? format(new Date(task.dueDate), "MMM d, yyyy")
+                        : "No due date"}
+                    </span>
+                  </div>
+
+                  <span className="text-border">|</span>
+
+                  {/* Created */}
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3 text-muted-foreground/60" />
+                    <span className="tabular-nums">
+                      {formatDistanceToNow(task.createdAt, { addSuffix: true })}
+                    </span>
+                  </div>
+
+                  <span className="text-border">|</span>
+
+                  {/* Updated */}
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3 text-muted-foreground/60" />
+                    <span className="tabular-nums">
+                      {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Labels */}
+                {task.labels.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Tag className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                    {task.labels.map((label) => (
+                      <Badge
+                        key={label}
+                        variant="secondary"
+                        className="text-[10px] h-5 bg-background/50 border border-border/30"
+                      >
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tabs for Thread / Documents */}
+              <Tabs
+                defaultValue="thread"
+                className="flex-1 flex flex-col min-h-0"
+              >
+                <div className="shrink-0 border-b px-4">
+                  <TabsList variant="line" className="h-9">
+                    <TabsTrigger value="thread" className="px-4 gap-2 text-sm">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Thread
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="activity"
+                      className="px-4 gap-2 text-sm"
+                    >
+                      <History className="h-3.5 w-3.5" />
+                      Activity
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="documents"
+                      className="px-4 gap-2 text-sm"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Documents
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent
+                  value="thread"
+                  className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
+                >
+                  <TaskThread
+                    taskId={task._id}
+                    accountSlug={accountSlug}
+                    accountId={task.accountId}
+                    useReadByFallback
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="activity"
+                  className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
+                >
+                  <TaskActivityTimeline
+                    taskId={task._id}
+                    accountSlug={accountSlug}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="documents"
+                  className="relative flex-1 min-h-0 mt-0 data-[state=inactive]:hidden"
+                >
+                  <ScrollArea className="h-full">
+                    <div className="p-4">
+                      <TaskDocuments
+                        taskId={task._id}
+                        accountSlug={accountSlug}
+                      />
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </>
+          </PopoverInPlaceProvider>
         )}
       </SheetContent>
       {task && (
