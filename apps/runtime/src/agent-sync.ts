@@ -103,6 +103,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
 
       const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
+        configWorkspaceRoot: config.openclawConfigWorkspaceRoot,
         configPath: config.openclawConfigPath,
         agentsMdPath: config.openclawAgentsMdPath,
         heartbeatMdPath: config.openclawHeartbeatMdPath,
@@ -160,6 +161,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
     )) as AgentForProfile[];
     syncOpenClawProfiles(profileAgents, {
       workspaceRoot: config.openclawWorkspaceRoot,
+      configWorkspaceRoot: config.openclawConfigWorkspaceRoot,
       configPath: config.openclawConfigPath,
       agentsMdPath: config.openclawAgentsMdPath,
       heartbeatMdPath: config.openclawHeartbeatMdPath,

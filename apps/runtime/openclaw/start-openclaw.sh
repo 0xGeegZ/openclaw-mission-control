@@ -23,9 +23,9 @@ fi
 CONFIG_DIR="/root/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 # Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
-OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
 # Per-agent workspace root used by OpenClaw sessions. Must exist before first delivery.
 OPENCLAW_WORKSPACE_ROOT="${OPENCLAW_WORKSPACE_ROOT:-/root/clawd/agents}"
+OPENCLAW_CONFIG_PATH="$(dirname "$OPENCLAW_WORKSPACE_ROOT")/openclaw.json"
 TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -105,6 +105,17 @@ if (githubToken) {
   config.agents.defaults.sandbox.docker.env = config.agents.defaults.sandbox.docker.env || {};
   config.agents.defaults.sandbox.docker.env.GH_TOKEN = githubToken;
   config.agents.defaults.sandbox.docker.env.GITHUB_TOKEN = githubToken;
+}
+
+/** Brave Search API: enable web_search when BRAVE_API_KEY is set. Key must be in Gateway env (e.g. Docker); not written to config. */
+if (process.env.BRAVE_API_KEY) {
+  config.tools = config.tools || {};
+  config.tools.web = config.tools.web || {};
+  config.tools.web.search = Object.assign(config.tools.web.search || {}, {
+    provider: 'brave',
+    maxResults: 5,
+    timeoutSeconds: 30,
+  });
 }
 
 const hasVercelKey = Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY);
@@ -368,7 +379,9 @@ function modelForVercelGateway(model) {
   if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 'vercel-ai-gateway/' + model;
   return model;
 }
-const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
+
+const workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT || '/root/clawd/agents';
+const openclawConfigPath = path.join(path.dirname(workspaceRoot), 'openclaw.json');
 try {
   if (require('fs').existsSync(openclawConfigPath)) {
     const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));

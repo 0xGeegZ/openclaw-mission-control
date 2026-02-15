@@ -223,6 +223,47 @@ describe("syncOpenClawProfiles", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("maps workspace paths in generated config when configWorkspaceRoot differs", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents-runtime");
+    const configWorkspaceRoot = "/root/clawd/agents";
+    const agents: AgentForProfile[] = [
+      {
+        _id: "agent1",
+        name: "Engineer",
+        slug: "engineer",
+        role: "Engineer",
+        sessionKey: "agent:engineer:acc1",
+        effectiveSoulContent: "# SOUL\n",
+        resolvedSkills: [
+          {
+            _id: "s1",
+            name: "Web Search",
+            slug: "web-search",
+            contentMarkdown: "# Web Search\n\nSearch the web.\n",
+          },
+        ],
+      },
+    ];
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configWorkspaceRoot,
+      configPath,
+    });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.agents.list[0].workspace).toBe("/root/clawd/agents/engineer");
+    expect(config.load.extraDirs).toContain(
+      "/root/clawd/agents/engineer/skills",
+    );
+
+    const sourceWorkspaceDir = path.join(workspaceRoot, "engineer");
+    expect(fs.existsSync(sourceWorkspaceDir)).toBe(true);
+    expect(fs.existsSync(path.join(sourceWorkspaceDir, "SOUL.md"))).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("skips agents with unsafe slug and does not add them to config", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
