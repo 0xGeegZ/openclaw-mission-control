@@ -1,6 +1,6 @@
-# Contributing to OpenClaw Mission Control
+# Contributing to LobsterControl
 
-Thank you for your interest in contributing to OpenClaw Mission Control! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to LobsterControl! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -19,8 +19,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 1. **Fork and clone the repository**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/openclaw-mission-control.git
-   cd openclaw-mission-control
+   git clone https://github.com/YOUR_USERNAME/lobster-control.git
+   cd lobster-control
    ```
 
 2. **Install dependencies** (use nvm so Node 24 is active; otherwise `npm install` will fail)

@@ -7,7 +7,7 @@
 
 ## Overview
 
-This document describes the security model for the OpenClaw Mission Control blog application, focusing on MDX execution, content security policies, and filesystem access controls.
+This document describes the security model for the LobsterControl blog application, focusing on MDX execution, content security policies, and filesystem access controls.
 
 ---
 

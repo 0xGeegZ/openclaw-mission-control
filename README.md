@@ -2,7 +2,7 @@
 
 > **Multi-agent coordination dashboard** — AI agents that behave like a real team.
 
-[![CI](https://github.com/YOUR_ORG/openclaw-mission-control/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/openclaw-mission-control/actions/workflows/ci.yml)
+[![CI](https://github.com/YOUR_ORG/lobster-control/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/lobster-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-24+-green.svg)](https://nodejs.org/)
 
@@ -57,8 +57,8 @@ LobsterControl is an open-source **multi-agent coordination SaaS** built on top 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_ORG/openclaw-mission-control.git
-cd openclaw-mission-control
+git clone https://github.com/YOUR_ORG/lobster-control.git
+cd lobster-control
 
 # 2. Use Node 24 (via nvm)
 nvm install 24
@@ -101,7 +101,7 @@ CLERK_SECRET_KEY=sk_test_...
 ## Project Structure
 
 ```
-openclaw-mission-control/
+lobster-control/
 ├── apps/
 │   ├── web/                  # Next.js web application
 │   │   ├── app/              # App Router pages
@@ -242,10 +242,10 @@ The runtime service runs on DigitalOcean Droplets (one per customer account):
 ```bash
 # Build Docker image
 cd apps/runtime
-docker build -t openclaw-mission-control-runtime .
+docker build -t lobster-control-runtime .
 
 # Push to registry
-docker push your-registry/openclaw-mission-control-runtime
+docker push your-registry/lobster-control-runtime
 
 # Deploy to droplet (see docs/build/phase-4-features/13-runtime-service.md)
 ```
@@ -288,8 +288,8 @@ See our [Roadmap Documents](docs/roadmap/) for planned features:
 
 ## Community
 
-- [GitHub Issues](https://github.com/YOUR_ORG/openclaw-mission-control/issues) — Bug reports and feature requests
-- [GitHub Discussions](https://github.com/YOUR_ORG/openclaw-mission-control/discussions) — Questions and ideas
+- [GitHub Issues](https://github.com/YOUR_ORG/lobster-control/issues) — Bug reports and feature requests
+- [GitHub Discussions](https://github.com/YOUR_ORG/lobster-control/discussions) — Questions and ideas
 
 ---
 

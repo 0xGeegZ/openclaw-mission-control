@@ -1,18 +1,18 @@
-# OpenClaw Mission Control (OpenClaw / Clawdbot) — Clean Reference Notes
+# LobsterControl (OpenClaw / Clawdbot) — Clean Reference Notes
 
-> Clean, structured **paraphrase** of Bhanu Teja P's article on X about building "OpenClaw Mission Control" (a multi-agent squad orchestrated with OpenClaw/Clawdbot + a shared Convex app).  
+> Clean, structured **paraphrase** of Bhanu Teja P's article on X about building "LobsterControl" (a multi-agent squad orchestrated with OpenClaw/Clawdbot + a shared Convex app).  
 > Source: https://x.com/pbteja1998/status/2017662163540971756
 
 ---
 
-## 1) Why OpenClaw Mission Control exists
+## 1) Why LobsterControl exists
 
 Many AI assistants behave like a "single chat box":
 - no durable continuity
 - context scattered across chat threads
 - hard to track work over time
 
-The goal of OpenClaw Mission Control is to make AI **behave like a team**:
+The goal of LobsterControl is to make AI **behave like a team**:
 - agents have roles and persistent context
 - tasks are assigned and tracked
 - collaboration happens in shared threads
@@ -88,10 +88,10 @@ agent:seo-analyst:main          → Vision
 
 ---
 
-## 4) The shared brain: OpenClaw Mission Control app (Convex)
+## 4) The shared brain: LobsterControl app (Convex)
 
 Multiple isolated sessions still need shared coordination.
-OpenClaw Mission Control provides the "office":
+LobsterControl provides the "office":
 - a shared task board (Kanban)
 - threaded comments and history
 - documents/deliverables in one place
@@ -128,7 +128,7 @@ npx convex run documents:create '{ "title": "...", "content": "...", "type": "de
 
 ---
 
-## 5) UI: what OpenClaw Mission Control shows
+## 5) UI: what LobsterControl shows
 
 A typical dashboard includes:
 - **Kanban board**: Inbox → Assigned → In Progress → Review → Done

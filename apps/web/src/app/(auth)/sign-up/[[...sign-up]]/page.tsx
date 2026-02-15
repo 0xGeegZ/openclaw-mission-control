@@ -15,7 +15,7 @@ export default function SignUpPage() {
           Create your account
         </h1>
         <p className="text-muted-foreground mt-2">
-          Get started with OpenClaw Mission Control in seconds
+          Get started with LobsterControl in seconds
         </p>
       </div>
 

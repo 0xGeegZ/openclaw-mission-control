@@ -1,5 +1,5 @@
 /**
- * Shared types for OpenClaw Mission Control.
+ * Shared types for LobsterControl.
  *
  * NOTE: These types must stay in sync with @packages/backend/convex/lib/constants.ts
  * and @packages/backend/convex/lib/validators.ts.

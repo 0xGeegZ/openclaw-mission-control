@@ -33,7 +33,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className="font-semibold text-foreground text-lg tracking-tight">
-            OpenClaw Mission Control
+            LobsterControl
           </span>
         </Link>
       </header>
@@ -46,7 +46,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       {/* Footer */}
       <footer className="absolute bottom-0 left-0 right-0 p-6 text-center text-sm text-muted-foreground">
         <p>
-          2026 OpenClaw Mission Control.{" "}
+          2026 LobsterControl.{" "}
           <Link
             href="/privacy"
             className="hover:text-foreground transition-colors"

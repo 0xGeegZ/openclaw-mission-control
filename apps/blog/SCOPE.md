@@ -153,5 +153,5 @@ The blog app is **standalone** and does not require the backend changes. The bac
 ## Related
 
 - Issue #49: PR #44 Blockers
-- PR #44: https://github.com/0xGeegZ/openclaw-mission-control/pull/44
+- PR #44: https://github.com/0xGeegZ/lobster-control/pull/44
 - Commits: fd1f845 (cleanup), 0b8f7ce (Phase 1), 24aa046 (Phase 2), 2af1310 (Phase 3), cbcdcb3 (blog)

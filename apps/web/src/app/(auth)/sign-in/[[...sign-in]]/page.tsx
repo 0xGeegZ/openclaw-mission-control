@@ -15,7 +15,7 @@ export default function SignInPage() {
           Welcome back
         </h1>
         <p className="text-muted-foreground mt-2">
-          Sign in to continue to OpenClaw Mission Control
+          Sign in to continue to LobsterControl
         </p>
       </div>
 

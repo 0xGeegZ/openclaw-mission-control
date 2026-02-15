@@ -46,7 +46,7 @@ async function main() {
   globalConfig = config;
   setLogLevel(config.logLevel);
 
-  log.info("=== OpenClaw Mission Control Runtime Service ===");
+  log.info("=== LobsterControl Runtime Service ===");
   log.info("Account ID:", config.accountId);
   log.info("Convex URL:", config.convexUrl);
   log.info(

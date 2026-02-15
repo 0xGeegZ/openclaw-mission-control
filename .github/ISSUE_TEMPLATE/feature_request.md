@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for OpenClaw Mission Control
+about: Suggest an idea for LobsterControl
 title: "[FEATURE] "
 labels: enhancement
 assignees: ""

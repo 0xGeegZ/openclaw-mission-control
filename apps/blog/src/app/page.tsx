@@ -5,7 +5,7 @@ import { BlogHeader, BlogFooter } from "@/components/BlogLayout";
 
 export const metadata: Metadata = {
   title: "Blog | OpenClaw",
-  description: "Read insights, tutorials, and updates about OpenClaw Mission Control",
+  description: "Read insights, tutorials, and updates about LobsterControl",
 };
 
 export default async function BlogPage() {

@@ -1,6 +1,6 @@
 # @packages/ui
 
-Shared UI components (shadcn/ui style) for the openclaw-mission-control monorepo.
+Shared UI components (shadcn/ui style) for the lobster-control monorepo.
 
 ## Updating shadcn components
 

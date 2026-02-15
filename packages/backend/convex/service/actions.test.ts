@@ -280,7 +280,7 @@ describe("linkTaskToPrForAgentTool", () => {
 
     it("should log warning when GitHub API returns 404", async () => {
       process.env.GITHUB_TOKEN = "ghp_test123";
-      process.env.GITHUB_REPO = "0xGeegZ/openclaw-mission-control";
+      process.env.GITHUB_REPO = "0xGeegZ/lobster-control";
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
         .mockImplementation(() => {});

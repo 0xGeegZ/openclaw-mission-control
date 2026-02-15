@@ -29,7 +29,7 @@ import {
 } from "@packages/ui/components/accordion";
 
 /**
- * Landing page for OpenClaw Mission Control
+ * Landing page for LobsterControl
  * Open Source AI Agent Coordination Platform - Building in Public
  */
 export default async function LandingPage() {
@@ -88,7 +88,7 @@ export default async function LandingPage() {
               className="hidden sm:inline-flex text-muted-foreground"
             >
               <a
-                href="https://github.com/0xGeegZ/openclaw-mission-control"
+                href="https://github.com/0xGeegZ/lobster-control"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -132,7 +132,7 @@ export default async function LandingPage() {
           </h1>
 
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto text-balance leading-relaxed mb-10">
-            OpenClaw Mission Control lets you build, manage, and coordinate
+            LobsterControl lets you build, manage, and coordinate
             multiple AI agents working as a team. Self-hosted with Docker.
             Fully open source.
           </p>
@@ -156,7 +156,7 @@ export default async function LandingPage() {
               className="w-full sm:w-auto rounded-lg px-6 h-11"
             >
               <a
-                href="https://github.com/0xGeegZ/openclaw-mission-control"
+                href="https://github.com/0xGeegZ/lobster-control"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -183,13 +183,13 @@ export default async function LandingPage() {
                 <div className="flex items-start gap-2">
                   <span className="text-primary select-none">$</span>
                   <code className="text-foreground">
-                    git clone https://github.com/0xGeegZ/openclaw-mission-control.git
+                    git clone https://github.com/0xGeegZ/lobster-control.git
                   </code>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-primary select-none">$</span>
                   <code className="text-foreground">
-                    cd openclaw-mission-control
+                    cd lobster-control
                   </code>
                 </div>
                 <div className="flex items-start gap-2">
@@ -542,7 +542,7 @@ export default async function LandingPage() {
               className="w-full sm:w-auto rounded-lg px-8 h-11"
             >
               <a
-                href="https://github.com/0xGeegZ/openclaw-mission-control"
+                href="https://github.com/0xGeegZ/lobster-control"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -574,7 +574,7 @@ export default async function LandingPage() {
 
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <a
-                href="https://github.com/0xGeegZ/openclaw-mission-control"
+                href="https://github.com/0xGeegZ/lobster-control"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-foreground transition-colors"

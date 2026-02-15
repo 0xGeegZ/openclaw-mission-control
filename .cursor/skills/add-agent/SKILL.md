@@ -1,6 +1,6 @@
 ---
 name: add-agent
-description: Guides adding a new agent to OpenClaw Mission Control with explicit SOUL/HEARTBEAT and skill content. Use when adding a new agent role, seed roster member, or when updating agent defaults and skills.
+description: Guides adding a new agent to LobsterControl with explicit SOUL/HEARTBEAT and skill content. Use when adding a new agent role, seed roster member, or when updating agent defaults and skills.
 disable-model-invocation: true
 ---
 

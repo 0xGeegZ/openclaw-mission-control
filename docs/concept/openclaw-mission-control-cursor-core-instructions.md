@@ -1,6 +1,6 @@
-# OpenClaw Mission Control SaaS — Core Engineering Instructions (Cursor)
+# LobsterControl SaaS — Core Engineering Instructions (Cursor)
 
-This document is the **foundation** for building the OpenClaw Mission Control SaaS with:
+This document is the **foundation** for building the LobsterControl SaaS with:
 
 - **Next.js (App Router)** for the web app
 - **Convex** for realtime database + server functions
@@ -16,7 +16,7 @@ Use this file as the **core instruction set** for Cursor agents and human engine
 
 **Assumption A (repo layout):** Monorepo with:
 
-- `apps/web` → Next.js app (OpenClaw Mission Control UI)
+- `apps/web` → Next.js app (LobsterControl UI)
 - `apps/runtime` → Node.js service that runs per-account (agent runtime + notification delivery)
 - `packages/ui` → shared shadcn wrappers / design system
 - `packages/shared` → shared types, constants, helpers (no server secrets)
@@ -43,7 +43,7 @@ Every Convex record is scoped to exactly one `accountId`.
 
 ## 1) Context & goal
 
-We are building an "OpenClaw Mission Control" dashboard that makes multiple AI agents work like a real team:
+We are building an "LobsterControl" dashboard that makes multiple AI agents work like a real team:
 
 - tasks move through a Kanban workflow
 - discussions happen in task threads with @mentions and subscriptions

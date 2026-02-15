@@ -6,7 +6,7 @@ If you believe you have found a security vulnerability in this project:
 
 1. **Do not** open a public GitHub issue.
 2. Report it privately:
-   - **Preferred:** Use [GitHub Security Advisories](https://github.com/0xGeegZ/openclaw-mission-control/security/advisories/new) for this repository (when published), or
+   - **Preferred:** Use [GitHub Security Advisories](https://github.com/0xGeegZ/lobster-control/security/advisories/new) for this repository (when published), or
    - Send a private message to the maintainers (e.g. via the repository’s “People” or “About” links if contact details are listed).
 3. Include a clear description, steps to reproduce, and impact if possible.
 4. Allow a reasonable time for a response before any public disclosure.
@@ -15,7 +15,7 @@ We will respond as soon as we can. We do **not** guarantee any particular respon
 
 ## Scope
 
-This policy applies to the **OpenClaw Mission Control** codebase in this repository. Third-party services (Convex, Clerk, OpenClaw, hosting providers, etc.) and how you deploy or configure them are outside this project’s scope.
+This policy applies to the **LobsterControl** codebase in this repository. Third-party services (Convex, Clerk, OpenClaw, hosting providers, etc.) and how you deploy or configure them are outside this project’s scope.
 
 ## No warranty or liability
 

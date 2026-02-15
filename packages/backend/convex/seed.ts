@@ -413,20 +413,20 @@ const seedAgents = [
 ] as const;
 
 /** Content for AGENTS.md — Operating Manual (from docs/runtime/AGENTS.md). */
-const DOC_AGENTS_CONTENT = `# AGENTS.md - OpenClaw Mission Control Operating Manual
+const DOC_AGENTS_CONTENT = `# AGENTS.md - LobsterControl Operating Manual
 
 ## What you are
 
-You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
+You are one specialist in a team of AI agents. You collaborate through LobsterControl (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
 
 ## Primary repository
 
-- Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- GitHub: https://github.com/0xGeegZ/openclaw-mission-control
+- Writable clone (use for all work): /root/clawd/repos/lobster-control
+- GitHub: https://github.com/0xGeegZ/lobster-control
 - Before starting a task, run \`git fetch origin\` and \`git pull\` in the writable clone.
-- If the writable clone is missing, run \`git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control\`
+- If the writable clone is missing, run \`git clone https://github.com/0xGeegZ/lobster-control.git /root/clawd/repos/lobster-control\`
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
-- To inspect directories, use exec (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
+- To inspect directories, use exec (e.g. \`ls /root/clawd/repos/lobster-control\`); use \`read\` only on files.
 - Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
 - You may write artifacts under /root/clawd/deliverables for local use. To share a deliverable with the primary user, use document_upsert and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md or /root/clawd/deliverables/...) — the user cannot open them.
 
@@ -437,7 +437,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
   - /root/clawd/agents/<slug> (your agent workspace, safe to create files/folders)
   - /root/clawd/memory (WORKING.md, daily notes, MEMORY.md)
   - /root/clawd/deliverables (local artifacts; share with user only via document_upsert and [Document](/document/<documentId>))
-  - /root/clawd/repos/openclaw-mission-control (code changes)
+  - /root/clawd/repos/lobster-control (code changes)
   - /root/clawd/skills (only if explicitly instructed)
 - Do not read or write outside /root/clawd (no /root, /etc, /usr, /tmp, or host paths).
 - If a required path under /root/clawd is missing, create it if you can (e.g. /root/clawd/agents and your /root/clawd/agents/<slug> workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
@@ -449,7 +449,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ### Creating a PR
 
-Work in /root/clawd/repos/openclaw-mission-control: create a branch, commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..." --base dev\`). Use \`dev\` as the base branch for all PRs (merge into \`dev\`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
+Work in /root/clawd/repos/lobster-control: create a branch, commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..." --base dev\`). Use \`dev\` as the base branch for all PRs (merge into \`dev\`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
 
 #### One branch per task
 
@@ -460,7 +460,7 @@ Use exactly one branch per task so each PR contains only that task's commits. Br
 1. Everything must be traceable to a task or a doc.
 2. If it matters tomorrow, write it down today:
    - update WORKING.md
-   - create/update an OpenClaw Mission Control document
+   - create/update an LobsterControl document
    - or post a message in the task thread
 3. Never assume permissions. If you cannot access something, report it and mark the task BLOCKED.
 4. Always include evidence when you claim facts (sources, logs, repro steps).
@@ -498,7 +498,7 @@ Post updates using this exact structure:
 
 **Summary**
 
-- What changed in OpenClaw Mission Control (status/message/doc)
+- What changed in LobsterControl (status/message/doc)
 
 **Work done**
 
@@ -765,9 +765,9 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 /** Content for Repository — Primary. */
 const DOC_REPOSITORY_CONTENT = `# Repository — Primary
 
-- **Name:** OpenClaw Mission Control
-- **Writable clone (use for all git work):** /root/clawd/repos/openclaw-mission-control
-- **GitHub:** https://github.com/0xGeegZ/openclaw-mission-control
+- **Name:** LobsterControl
+- **Writable clone (use for all git work):** /root/clawd/repos/lobster-control
+- **GitHub:** https://github.com/0xGeegZ/lobster-control
 - **Usage:** Before starting a task, run \`git fetch origin\` and \`git pull\`. Work in the writable clone for branch, commit, push, and \`gh pr create\`. Do not run \`gh auth login\` when GH_TOKEN is set.
 - **Access note:** If you see a 404, authentication is missing; request GH_TOKEN (Contents + Pull requests write scopes).
 `;

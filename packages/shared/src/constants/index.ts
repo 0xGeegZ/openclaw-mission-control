@@ -1,5 +1,5 @@
 /**
- * Shared constants for OpenClaw Mission Control.
+ * Shared constants for LobsterControl.
  *
  * NOTE: These constants must stay in sync with @packages/backend/convex/lib/constants.ts.
  * Use the same const object pattern for consistency.

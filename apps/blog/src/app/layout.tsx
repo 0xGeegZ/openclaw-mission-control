@@ -3,7 +3,7 @@ import "../globals.css";
 
 export const metadata: Metadata = {
   title: "OpenClaw Blog",
-  description: "Insights, tutorials, and updates about OpenClaw Mission Control",
+  description: "Insights, tutorials, and updates about LobsterControl",
   metadataBase: new URL("http://localhost:3000"),
 };
 

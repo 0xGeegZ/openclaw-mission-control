@@ -1,6 +1,6 @@
 # End-to-End Testing with Playwright
 
-This directory contains end-to-end tests for the OpenClaw Mission Control web application using Playwright.
+This directory contains end-to-end tests for the LobsterControl web application using Playwright.
 
 ## Quick Start
 

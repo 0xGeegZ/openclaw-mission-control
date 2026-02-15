@@ -55,15 +55,15 @@ export interface ProfileSyncOptions {
 }
 
 /** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). */
-const DEFAULT_AGENTS_MD = `# AGENTS.md - OpenClaw Mission Control Operating Manual
+const DEFAULT_AGENTS_MD = `# AGENTS.md - LobsterControl Operating Manual
 
 ## What you are
 
-You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
+You are one specialist in a team of AI agents. You collaborate through LobsterControl (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
 
 ## Primary repository
 
-- Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
+- Writable clone (use for all work): /root/clawd/repos/lobster-control
 - Use the writable clone for all git operations. Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
 - One branch per task: use branch feat/task-<taskId> (from your notification); create it from dev before editing, and push/PR only from that branch.
 

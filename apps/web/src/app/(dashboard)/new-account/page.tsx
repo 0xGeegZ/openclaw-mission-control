@@ -138,7 +138,7 @@ function NewAccountContent() {
           </div>
           <CardTitle className="text-2xl">Create Your Account</CardTitle>
           <CardDescription>
-            Get started by creating your first OpenClaw Mission Control account
+            Get started by creating your first LobsterControl account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -175,7 +175,7 @@ function NewAccountContent() {
                 pattern="[a-z0-9-]+"
               />
               <p className="text-xs text-muted-foreground">
-                Used in your account URL: openclaw-mission-control.app/
+                Used in your account URL: lobster-control.app/
                 {slug || "..."}
               </p>
             </div>

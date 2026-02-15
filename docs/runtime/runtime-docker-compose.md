@@ -1,11 +1,11 @@
 # Runtime Docker Compose (Local Dev)
 
-This guide covers running the OpenClaw Mission Control runtime (and optional OpenClaw gateway) locally with Docker Compose. Target is **local development only**; production deployment uses per-account infrastructure (e.g. DigitalOcean Droplets) and is documented elsewhere.
+This guide covers running the LobsterControl runtime (and optional OpenClaw gateway) locally with Docker Compose. Target is **local development only**; production deployment uses per-account infrastructure (e.g. DigitalOcean Droplets) and is documented elsewhere.
 
 ## Prerequisites
 
 - Docker and Docker Compose (Docker Desktop includes both).
-- Convex deployment with the OpenClaw Mission Control backend and a **service token** scoped to one account.
+- Convex deployment with the LobsterControl backend and a **service token** scoped to one account.
 - For OpenClaw gateway: **Vercel AI Gateway** API key (`VERCEL_AI_GATEWAY_API_KEY`); or Anthropic/OpenAI keys for legacy provider.
 
 ## Quick start
@@ -45,7 +45,7 @@ This guide covers running the OpenClaw Mission Control runtime (and optional Ope
 
 - OpenClaw Control UI: <http://localhost:18789/> (or `?token=...` if set)
 
-Set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789` in `apps/runtime/.env` so the runtime can send messages to agent sessions via the OpenResponses HTTP endpoint (`POST /v1/responses`). The gateway template and start script enable this endpoint on every boot. Agent responses from OpenClaw are **written back** to the OpenClaw Mission Control task thread (shared brain) for notification-triggered runs (mentions, assignments, thread updates). Set `VERCEL_AI_GATEWAY_API_KEY` for the gateway (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
+Set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789` in `apps/runtime/.env` so the runtime can send messages to agent sessions via the OpenResponses HTTP endpoint (`POST /v1/responses`). The gateway template and start script enable this endpoint on every boot. Agent responses from OpenClaw are **written back** to the LobsterControl task thread (shared brain) for notification-triggered runs (mentions, assignments, thread updates). Set `VERCEL_AI_GATEWAY_API_KEY` for the gateway (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; Chromium is installed in the gateway image for web tools.
 
 If you prefer, you can still run Compose directly:
 
@@ -58,7 +58,7 @@ docker compose -f apps/runtime/docker-compose.runtime.yml --profile openclaw up 
 
 - **File**: `apps/runtime/docker-compose.runtime.yml`.
 - **Services**:
-  - `runtime` — OpenClaw Mission Control runtime service (health on port 3000).
+  - `runtime` — LobsterControl runtime service (health on port 3000).
   - `openclaw-gateway` — OpenClaw (Clawdbot) gateway; started only with profile `openclaw`.
 
 Ports are bound to `127.0.0.1` by default so only the host can access them. Do not expose these ports publicly without setting gateway token and hardening (see OpenClaw docs).

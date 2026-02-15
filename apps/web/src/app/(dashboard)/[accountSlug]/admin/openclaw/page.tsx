@@ -686,7 +686,7 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                       Runtime service token
                     </CardTitle>
                     <CardDescription>
-                      Used by the OpenClaw Mission Control runtime to
+                      Used by the LobsterControl runtime to
                       authenticate with Convex. Add it to{" "}
                       <code className="text-xs bg-muted px-1 rounded">
                         apps/runtime/.env

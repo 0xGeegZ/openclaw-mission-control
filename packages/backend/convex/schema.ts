@@ -24,7 +24,7 @@ import {
 } from "./lib/validators";
 
 /**
- * OpenClaw Mission Control Database Schema
+ * LobsterControl Database Schema
  *
  * Multi-tenant architecture: Every table (except accounts) includes accountId.
  * All queries MUST filter by accountId to enforce tenant isolation.

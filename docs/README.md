@@ -1,4 +1,4 @@
-# OpenClaw Mission Control — Documentation
+# LobsterControl — Documentation
 
 Documentation is grouped into subfolders:
 
@@ -6,8 +6,8 @@ Documentation is grouped into subfolders:
 
 Foundational and vision docs:
 
-- **openclaw-mission-control-initial-article.md** — Original concept and vision (OpenClaw/Clawdbot, squad model, Convex).
-- **openclaw-mission-control-cursor-core-instructions.md** — Core engineering instructions for Cursor and engineers (architecture, invariants, runtime contract).
+- **lobster-control-initial-article.md** — Original concept and vision (OpenClaw/Clawdbot, squad model, Convex).
+- **lobster-control-cursor-core-instructions.md** — Core engineering instructions for Cursor and engineers (architecture, invariants, runtime contract).
 
 ## [runtime/](runtime/)
 

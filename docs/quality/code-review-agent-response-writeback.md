@@ -7,7 +7,7 @@
 
 ## 1. Understanding the change
 
-- **Goal:** Capture the OpenClaw `/v1/responses` reply and write it to the OpenClaw Mission Control task thread via `createMessageFromAgent`, only for notifications with a `taskId`. Heartbeats stay send-only. Idempotency via `sourceNotificationId` to avoid duplicates on retry.
+- **Goal:** Capture the OpenClaw `/v1/responses` reply and write it to the LobsterControl task thread via `createMessageFromAgent`, only for notifications with a `taskId`. Heartbeats stay send-only. Idempotency via `sourceNotificationId` to avoid duplicates on retry.
 - **Files touched:**
   - **Runtime:** `apps/runtime/src/gateway.ts`, `delivery.ts`, `config.ts`, `.env.example`
   - **Convex:** `packages/backend/convex/schema.ts`, `service/messages.ts`, `service/actions.ts`

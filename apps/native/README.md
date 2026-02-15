@@ -1,4 +1,4 @@
-# OpenClaw Mission Control Native App
+# LobsterControl Native App
 
 **Status:** Placeholder for v2
 

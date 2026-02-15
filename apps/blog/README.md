@@ -184,7 +184,7 @@ Post metadata is automatically converted to meta tags:
 
 ## License
 
-Same as OpenClaw Mission Control
+Same as LobsterControl
 
 ## Resources
 

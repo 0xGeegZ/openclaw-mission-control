@@ -273,7 +273,7 @@ export function formatNotificationMessage(
     : "";
   const threadDetails = formatThreadContext(thread);
   const localRepoHint =
-    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
+    "Writable clone (use for all git work): /root/clawd/repos/lobster-control. Before starting, run `git fetch origin` and `git pull`.";
   const taskBranchName = task ? `${TASK_BRANCH_PREFIX}${task._id}` : null;
   const taskBranchRule = taskBranchName
     ? `For this task use only branch \`${taskBranchName}\`. Before code edits: git fetch origin, git checkout dev, git pull, then git checkout -b ${taskBranchName} or git checkout ${taskBranchName} if it exists. Push and open PR from that branch only.`
@@ -289,7 +289,7 @@ export function formatNotificationMessage(
         "",
         "Use the repository context above as the default codebase. Do not ask which repo to use.",
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/lobster-control`) and only use read on files.",
         "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
         "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
         'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
@@ -302,7 +302,7 @@ export function formatNotificationMessage(
         "Repository context: not found.",
         localRepoHint,
         "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
+        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/lobster-control`) and only use read on files.",
         "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
         "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
         'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
