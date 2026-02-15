@@ -499,6 +499,41 @@ describe("linkTaskToPrForAgentTool", () => {
 });
 
 // ============================================================================
+// createTaskFromAgent assignedAgentIds forwarding
+// ============================================================================
+
+describe("createTaskFromAgent", () => {
+  it("forwards assignedAgentIds to createFromAgent mutation when provided", () => {
+    const payload = {
+      agentId: "agent1" as Id<"agents">,
+      title: "Task",
+      assignedAgentIds: ["agent2", "agent3"] as Id<"agents">[],
+    };
+    const mutationArgs = {
+      agentId: payload.agentId,
+      title: payload.title,
+      description: undefined,
+      priority: undefined,
+      labels: undefined,
+      dueDate: undefined,
+      status: undefined,
+      blockedReason: undefined,
+      assignedAgentIds: payload.assignedAgentIds,
+    };
+    expect(mutationArgs.assignedAgentIds).toEqual(["agent2", "agent3"]);
+  });
+
+  it("omits assignedAgentIds when not provided", () => {
+    const mutationArgs = {
+      agentId: "agent1" as Id<"agents">,
+      title: "Task",
+      assignedAgentIds: undefined,
+    };
+    expect(mutationArgs.assignedAgentIds).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // getAgentSkillsForTool Tests
 // ============================================================================
 
