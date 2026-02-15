@@ -41,7 +41,8 @@ services:
       - OPENCLAW_CONFIG_PATH=/clawd/openclaw.json
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
-      - OPENCLAW_REQUEST_TIMEOUT_MS=300000
+      # 10 min max so long-running agent runs (e.g. Writer with many tools) complete before timeout
+      - OPENCLAW_REQUEST_TIMEOUT_MS=600000
       # OpenClaw gateway (local) ignores client-side tools; use HTTP fallbacks instead.
       - OPENCLAW_CLIENT_TOOLS_ENABLED=0
       # Use runtime-managed manuals for profile sync consistency.

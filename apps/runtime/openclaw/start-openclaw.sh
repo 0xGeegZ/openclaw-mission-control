@@ -130,7 +130,7 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
   config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
-// Vercel AI Gateway: auth profile + model defaults (Haiku primary, GPT-5 Nano fallback)
+// Vercel AI Gateway: auth profile + model defaults (Minimax M2.5 primary, Haiku/Kimi/GPT-5 Nano fallbacks)
 if (hasVercelKey) {
   config.auth.profiles['vercel-ai-gateway:default'] = {
     provider: 'vercel-ai-gateway',
@@ -141,14 +141,21 @@ if (hasVercelKey) {
   if (gatewayKey) {
     config.env.AI_GATEWAY_API_KEY = gatewayKey;
   }
-  config.agents.defaults.model.primary = 'vercel-ai-gateway/anthropic/claude-haiku-4.5';
-  config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/openai/gpt-5-nano'];
+  config.agents.defaults.model.primary = 'vercel-ai-gateway/minimax/minimax-m2.5';
+  config.agents.defaults.model.fallbacks = [
+    'vercel-ai-gateway/anthropic/claude-haiku-4.5',
+    'vercel-ai-gateway/moonshotai/kimi-k2.5',
+    'vercel-ai-gateway/openai/gpt-5-nano',
+  ];
+  config.agents.defaults.models['vercel-ai-gateway/minimax/minimax-m2.5'] = { alias: 'Minimax M2.5' };
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/moonshotai/kimi-k2.5'] = { alias: 'Moonshot Kimi K2.5' };
   config.agents.defaults.models['vercel-ai-gateway/openai/gpt-5-nano'] = { alias: 'GPT-5 Nano' };
   delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
   delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'];
 } else {
-  // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
+  // Legacy: only if Vercel key not set. Anthropic/OpenAI from env; primary = Haiku, fallback = GPT-5 Nano.
+  // Minimax/Moonshot would require MINIMAX_API_KEY / MOONSHOT_API_KEY and provider blocks (not yet added).
   const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
   if (hasAnthropic) {
@@ -482,6 +489,7 @@ mkdir -p \
   "$WORKSPACE_DIR/memory" \
   "$WORKSPACE_DIR/deliverables" \
   "$WORKSPACE_DIR/repos" \
+  "$WORKSPACE_DIR/worktrees" \
   "$OPENCLAW_WORKSPACE_ROOT"
 # Touch may fail if the shared mount is owned by runtime (UID 10001); non-fatal so gateway can still start.
 touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md" 2>/dev/null || true

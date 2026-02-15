@@ -48,9 +48,11 @@ describe("mapModelToOpenClaw", () => {
     withTempEnv(
       { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
       () => {
+        expect(mapModelToOpenClaw("minimax-m2.5")).toBe("minimax/minimax-m2.5");
         expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
           "anthropic/claude-haiku-4.5",
         );
+        expect(mapModelToOpenClaw("kimi-k2.5")).toBe("moonshotai/kimi-k2.5");
         expect(mapModelToOpenClaw("gpt-5-nano")).toBe("openai/gpt-5-nano");
       },
     );
@@ -58,8 +60,14 @@ describe("mapModelToOpenClaw", () => {
 
   it("maps models through Vercel AI Gateway when configured", () => {
     withTempEnv({ VERCEL_AI_GATEWAY_API_KEY: "test-key" }, () => {
+      expect(mapModelToOpenClaw("minimax-m2.5")).toBe(
+        "vercel-ai-gateway/minimax/minimax-m2.5",
+      );
       expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
         "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+      );
+      expect(mapModelToOpenClaw("kimi-k2.5")).toBe(
+        "vercel-ai-gateway/moonshotai/kimi-k2.5",
       );
       expect(mapModelToOpenClaw("gpt-5-nano")).toBe(
         "vercel-ai-gateway/openai/gpt-5-nano",
@@ -497,6 +505,8 @@ description: Custom name in frontmatter
       expect(content).toContain("Before requesting QA");
       expect(content).toContain("move the task to REVIEW first");
       expect(content).not.toContain("If you need human review: move to REVIEW");
+      expect(content).toContain("worktree");
+      expect(content).toContain("/root/clawd/worktrees");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
