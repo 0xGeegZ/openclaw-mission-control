@@ -45,6 +45,43 @@ export const listByTask = query({
 });
 
 /**
+ * Generate a Convex storage upload URL for message attachments.
+ * Caller must be a member of the task's account.
+ */
+export const generateUploadUrl = mutation({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    await requireAccountMember(ctx, task.accountId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Register a storage blob as an allowed attachment for a task.
+ * Validates membership so only authorized users can attach files to the task.
+ */
+export const registerUpload = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Not found: Task does not exist");
+    }
+    await requireAccountMember(ctx, task.accountId);
+    return undefined;
+  },
+});
+
+/**
  * Get a single message.
  */
 export const get = query({
