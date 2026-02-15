@@ -505,6 +505,8 @@ description: Custom name in frontmatter
       expect(content).toContain("Before requesting QA");
       expect(content).toContain("move the task to REVIEW first");
       expect(content).not.toContain("If you need human review: move to REVIEW");
+      expect(content).toContain("worktree");
+      expect(content).toContain("/root/clawd/worktrees");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

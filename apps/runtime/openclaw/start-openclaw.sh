@@ -489,6 +489,7 @@ mkdir -p \
   "$WORKSPACE_DIR/memory" \
   "$WORKSPACE_DIR/deliverables" \
   "$WORKSPACE_DIR/repos" \
+  "$WORKSPACE_DIR/worktrees" \
   "$OPENCLAW_WORKSPACE_ROOT"
 # Touch may fail if the shared mount is owned by runtime (UID 10001); non-fatal so gateway can still start.
 touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md" 2>/dev/null || true

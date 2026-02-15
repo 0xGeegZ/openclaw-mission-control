@@ -21,7 +21,11 @@ globs:
 
 When invoked, execute the following workflow:
 
+**Run this command from the feature worktree** (the isolated folder for this feature/branch), not from the main repo root. If you are in the main repo, switch to the correct worktree directory first (e.g. the path you used with `git worktree add`). This keeps the PR scoped to this feature only.
+
 ## 1. Analyze Current State
+
+**Ensure you are in the feature worktree:** If the current directory is the main repo root (you did not open a worktree folder), instruct the user to switch to the feature worktree directory first; otherwise the PR may be created from the wrong branch or include unrelated changes.
 
 **Check git status:**
 
