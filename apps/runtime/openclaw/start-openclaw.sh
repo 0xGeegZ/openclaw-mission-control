@@ -25,7 +25,7 @@ CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 # Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
 # Per-agent workspace root used by OpenClaw sessions. Must exist before first delivery.
 OPENCLAW_WORKSPACE_ROOT="${OPENCLAW_WORKSPACE_ROOT:-/root/clawd/agents}"
-OPENCLAW_CONFIG_PATH="$(dirname "$OPENCLAW_WORKSPACE_ROOT")/openclaw.json"
+GENERATED_CONFIG_FILE_PATH="$(dirname "$OPENCLAW_WORKSPACE_ROOT")/openclaw.json"
 TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -411,7 +411,7 @@ try {
     }
   }
 } catch (e) {
-  console.warn('Could not merge OPENCLAW_CONFIG_PATH:', e.message);
+  console.warn('Could not merge generated OpenClaw config path:', e.message);
 }
 
 // Current clawdbot rejects top-level "load"; remove so config is valid.
@@ -449,8 +449,8 @@ fi
 for id in $(jq -r '.agents.list[]?.id // empty' "$CONFIG_FILE" 2>/dev/null); do
   [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
 done
-if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-  for id in $(jq -r '.agents.list[]?.id // empty' "$OPENCLAW_CONFIG_PATH" 2>/dev/null); do
+if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+  for id in $(jq -r '.agents.list[]?.id // empty' "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null); do
     [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
   done
 fi
@@ -611,13 +611,13 @@ if [ -n "${OPENCLAW_CONFIG_RELOAD:-}" ] && [ "${OPENCLAW_CONFIG_RELOAD}" = "1" ]
   (
     # Set baseline mtime so only changes after startup trigger a restart
     LAST_MTIME=""
-    if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-      LAST_MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+    if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+      LAST_MTIME=$(stat -c %Y "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null || stat -f %m "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null)
     fi
     while kill -0 "$GATEWAY_PID" 2>/dev/null; do
       sleep 30
-      if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-        MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+      if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+        MTIME=$(stat -c %Y "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null || stat -f %m "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null)
         if [ -n "$MTIME" ] && [ -n "$LAST_MTIME" ] && [ "$MTIME" != "$LAST_MTIME" ]; then
           echo "OpenClaw config changed, restarting gateway..."
           kill "$GATEWAY_PID" 2>/dev/null || true

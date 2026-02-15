@@ -38,7 +38,7 @@ services:
       - HEALTH_HOST=0.0.0.0
       # Runtime container runs as non-root; use /clawd (not /root/*) to avoid EACCES traversing /root.
       - OPENCLAW_WORKSPACE_ROOT=/clawd/agents
-      # OPENCLAW_CONFIG_PATH and OPENCLAW_HEARTBEAT_MD_PATH derive from OPENCLAW_WORKSPACE_ROOT.
+      # openclaw.json and manual fallback paths derive from OPENCLAW_WORKSPACE_ROOT.
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
       # 10 min max so long-running agent runs (e.g. Writer with many tools) complete before timeout
