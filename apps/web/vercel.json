@@ -1,5 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && npx turbo run build --filter=web-app"
+  "buildCommand": "cd ../.. && npm --workspace @packages/backend run seed-skills:generate && cd apps/web && next build"
 }

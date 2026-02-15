@@ -224,13 +224,11 @@ npx convex deploy
 
 ### Deploy Web App to Vercel
 
-1. Connect your GitHub repository to Vercel.
-2. Set **Root Directory** to `apps/web` (Vercel will use `apps/web/vercel.json` and `.nvmrc` for install/build and Node 24).
-3. Set **environment variables** in the Vercel project:
-   - **Required:** `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
-   - **Optional:** `NEXT_PUBLIC_OPENCLAW_UI_URL` (URL to OpenClaw Control UI)
-   - Clerk redirect URLs: `NEXT_PUBLIC_CLERK_SIGN_IN_URL`, `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`, etc. (defaults are in `@packages/env`)
-4. Deploy automatically on push to `master`, or deploy manually:
+1. Connect your GitHub repository to Vercel
+2. Set environment variables in Vercel dashboard
+3. Deploy automatically on push to `main`
+
+Or deploy manually:
 
 ```bash
 cd apps/web
