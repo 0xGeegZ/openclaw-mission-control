@@ -15,6 +15,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@radix-ui/react-progress": "^1.1.8",
     "@tailwindcss/typography": "^0.5.15",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",

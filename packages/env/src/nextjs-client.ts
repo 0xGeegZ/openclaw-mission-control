@@ -15,6 +15,8 @@ export const env = createEnv({
     NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: z.string().default("/"),
     NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: z.string().default("/"),
     NEXT_PUBLIC_OPENCLAW_UI_URL: z.string().url().optional(),
+    NEXT_PUBLIC_STRIPE_PRICE_PRO: z.string().optional(),
+    NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE: z.string().optional(),
   },
   runtimeEnv: {
     NEXT_PUBLIC_CONVEX_URL: process.env.NEXT_PUBLIC_CONVEX_URL,
@@ -27,5 +29,8 @@ export const env = createEnv({
     NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:
       process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL,
     NEXT_PUBLIC_OPENCLAW_UI_URL: process.env.NEXT_PUBLIC_OPENCLAW_UI_URL,
+    NEXT_PUBLIC_STRIPE_PRICE_PRO: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO,
+    NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE:
+      process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE,
   },
 });
