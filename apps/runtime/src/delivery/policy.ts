@@ -87,6 +87,20 @@ export function canAgentMarkDone(options: {
 }
 
 /**
+ * Whether the recipient agent is one of multiple assignees on the task (used to show collaboration instructions in the prompt).
+ * @param context - Full delivery context.
+ * @returns true when task has 2+ assignees and context.agent._id is in that list.
+ */
+export function isRecipientInMultiAssigneeTask(
+  context: DeliveryContext,
+): boolean {
+  const ids = context.task?.assignedAgentIds;
+  const agentId = context.agent?._id;
+  if (!ids || ids.length < 2 || !agentId) return false;
+  return ids.includes(agentId);
+}
+
+/**
  * Whether we should deliver this notification to the agent.
  * Orchestrator remains informed; loop prevention and task-state rules apply.
  * @param context - Full delivery context from getNotificationForDelivery.

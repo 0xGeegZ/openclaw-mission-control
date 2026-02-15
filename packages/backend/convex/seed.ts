@@ -539,6 +539,16 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 
 When you receive a new **assignment** notification, reply first with a short acknowledgment (1–2 sentences). Ask any clarifying questions now; if you need input from the orchestrator or the person who assigned the task, @mention them. Do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.
 
+## Working with multiple assignees
+
+When a task has **two or more agent assignees**, you must collaborate explicitly to avoid duplicate work and conflicting changes.
+
+- **Declare your scope:** In your first reply (or as soon as you start work), state clearly what part of the task you own (e.g. "I'll handle the API changes; @engineer-2 can own the frontend."). Do not assume you own the whole task.
+- **Avoid overlap:** Read the thread before acting. If another assignee has already claimed or delivered a sub-scope, do not redo it. Pick a different sub-scope or coordinate via **response_request**.
+- **Handoffs are tool-only:** When you need input, a deliverable, or a decision from another assignee, use the **response_request** tool with their slug and a clear message. @mentions in the thread do **not** notify agents; only **response_request** delivers a notification.
+- **Before moving to REVIEW:** Confirm in the thread that your part is done and that any dependency on other assignees is satisfied. If you are blocked waiting on another assignee, move the task to BLOCKED and set blockedReason to name the dependency and the assignee (e.g. "Waiting on API contract from @engineer").
+- **Blocked by another assignee:** If you cannot proceed until a co-assignee acts, move to BLOCKED, set blockedReason, and send **response_request** to that assignee so they are notified. Do not stay in IN_PROGRESS while silently waiting.
+
 ## Capabilities and tools
 
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.
@@ -701,6 +711,8 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread for scope claims and progress from other assignees. Do not duplicate work already claimed or done. If you are blocked on another assignee's output, use **response_request** to ask them, then move to BLOCKED with blockedReason naming the dependency if you cannot proceed. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
 
 ## 3) Execute one atomic action
 
@@ -872,6 +884,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Do not narrate the checklist on heartbeat; start with a concrete action update or reply with \`HEARTBEAT_OK\`.
 - When nudging assignees for status on heartbeat, use response_request only and put your summary in your final reply; do not use task_message for that.
 - Delegate to Engineer/QA with clear acceptance criteria.
+- When multiple agents are assigned to one task, assign or confirm explicit sub-scope ownership and monitor handoffs; use response_request to unblock dependencies between assignees.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
@@ -936,6 +949,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - Run or describe tests when changing behavior.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
+- When the task has other agent assignees, declare your sub-scope in your first reply and use response_request for any dependency on co-assignees; do not duplicate their work.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
 
 ## Domain strengths
@@ -987,6 +1001,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - Prefer automated checks where possible.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
+- When the task has multiple assignees, verify cross-assignee integration and call out missing handoffs or duplicate scope in the thread.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
 
 ## Domain strengths
@@ -1039,6 +1054,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Call out accessibility risks early.
 - Provide concrete design artifacts (layouts, component notes, or copy blocks).
 - Keep feedback actionable and scoped.
+- When co-assigned with other agents, state your design scope in your first reply and use response_request if you need input from another assignee.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
 
 ## Domain strengths
@@ -1085,6 +1101,7 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Avoid buzzwords and vague claims.
 - Ask for missing context only when blocked.
 - Provide multiple headline or CTA options when relevant.
+- When co-assigned with other agents, declare your content scope and use response_request for dependencies on other assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
 
 ## Domain strengths

@@ -617,6 +617,79 @@ describe("formatNotificationMessage", () => {
     expect(message).toContain("BLOCKED");
     expect(message).toContain("move the task back to in_progress");
   });
+
+  it("includes multi-assignee collaboration instructions when task has two or more assignees and recipient is assigned", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "Shared task",
+        assignedAgentIds: ["agent-a", "agent-b"],
+      },
+      agent: { _id: "agent-a", role: "Engineer", name: "Engineer" },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("Multi-assignee");
+    expect(message).toContain("Declare your sub-scope");
+    expect(message).toContain("response_request");
+  });
+
+  it("omits multi-assignee block when task has only one agent assignee", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "Solo task",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).not.toContain("**Multi-assignee:**");
+  });
+
+  it("omits multi-assignee block when task has multiple assignees but recipient is not one of them", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "Shared task",
+        assignedAgentIds: ["agent-a", "agent-b"],
+      },
+      agent: { _id: "agent-c", role: "Orchestrator", name: "Orch" },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).not.toContain("**Multi-assignee:**");
+  });
 });
 
 describe("no response retry decision", () => {

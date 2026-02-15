@@ -100,6 +100,10 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
 - After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md, /root/clawd/deliverables/...) — the primary user cannot open them.
 
+## Working with multiple assignees
+
+When a task has two or more agent assignees, collaborate explicitly: declare your sub-scope in your first reply, read the thread to avoid duplicating others' work, and use **response_request** (not @mentions) when you need input or a handoff from another assignee. If blocked on a co-assignee, move to BLOCKED with blockedReason naming the dependency and send response_request to that assignee.
+
 ## Capabilities and tools
 
 - **task_status** — Update the current task's status before posting a reply.
@@ -169,6 +173,8 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1-2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread for scope claims and progress from other assignees. Do not duplicate work already claimed or done. If you are blocked on another assignee's output, use **response_request** to ask them, then move to BLOCKED with blockedReason naming the dependency if you cannot proceed. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
 
 ## 3) Execute one atomic action
 

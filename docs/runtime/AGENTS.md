@@ -141,6 +141,16 @@ When the blocker is resolved (human provided input or dependency unblocked), an 
 
 When you receive a new **assignment** notification, reply first with a short acknowledgment (1–2 sentences). Ask any clarifying questions now; if you need input from the orchestrator or the person who assigned the task, @mention them. Do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.
 
+## Working with multiple assignees
+
+When a task has **two or more agent assignees**, you must collaborate explicitly to avoid duplicate work and conflicting changes.
+
+- **Declare your scope:** In your first reply (or as soon as you start work), state clearly what part of the task you own (e.g. "I'll handle the API changes; @engineer-2 can own the frontend."). Do not assume you own the whole task.
+- **Avoid overlap:** Read the thread before acting. If another assignee has already claimed or delivered a sub-scope, do not redo it. Pick a different sub-scope or coordinate via **response_request**.
+- **Handoffs are tool-only:** When you need input, a deliverable, or a decision from another assignee, use the **response_request** tool with their slug and a clear message. @mentions in the thread do **not** notify agents; only **response_request** delivers a notification.
+- **Before moving to REVIEW:** Confirm in the thread that your part is done and that any dependency on other assignees is satisfied. If you are blocked waiting on another assignee, move the task to BLOCKED and set blockedReason to name the dependency and the assignee (e.g. "Waiting on API contract from @engineer").
+- **Blocked by another assignee:** If you cannot proceed until a co-assignee acts, move to BLOCKED, set blockedReason, and send **response_request** to that assignee so they are notified. Do not stay in IN_PROGRESS while silently waiting.
+
 ## Capabilities and tools
 
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.

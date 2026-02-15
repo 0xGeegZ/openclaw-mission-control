@@ -26,6 +26,8 @@ Avoid posting review status reminders unless you have new feedback or a direct r
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
 
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread for scope claims and progress from other assignees. Do not duplicate work already claimed or done. If you are blocked on another assignee's output, use **response_request** to ask them, then move to BLOCKED with blockedReason naming the dependency if you cannot proceed. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
+
 ## 3) Execute one atomic action
 
 Pick one action that can be completed quickly:

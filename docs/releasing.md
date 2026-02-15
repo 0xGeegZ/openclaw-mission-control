@@ -40,3 +40,13 @@ npm run version
 ```
 
 This consumes existing changesets, bumps versions, and updates `CHANGELOG.md` files. Do not run this if you prefer the Release workflow to do it via the version PR.
+
+## Agent instruction and seed updates
+
+Changes to agent behavior that live in multiple places take effect at different times:
+
+- **Notification prompt** (e.g. multi-assignee collaboration line in the runtime): applies to every notification built after the new runtime is deployed. No account or reseed step required.
+- **Workspace AGENTS.md / HEARTBEAT.md**: used when the runtime writes or syncs agent workspaces (e.g. OpenClaw profile sync). Existing workspaces keep their current files until the runtime overwrites them (e.g. on next sync or container recreate).
+- **Seeded docs** (Convex seed: AGENTS.md, HEARTBEAT.md, SOUL content): affect new accounts or when seed is re-run. Existing accounts keep previously seeded content unless you re-seed or refresh agent profiles.
+
+When releasing changes that touch all three (e.g. multi-assignee protocol), prompt-level changes are effective immediately; for full consistency across existing accounts, consider documenting an optional “refresh agent workspaces” or re-seed step in release notes if your deployment supports it.
