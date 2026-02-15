@@ -17,6 +17,10 @@ import {
   getAllMetrics,
   formatPrometheusMetrics,
 } from "./metrics";
+import {
+  filterOrchestratorFromAssignees,
+  normalizeTaskCreateStatusForOrchestrator,
+} from "./task-create-orchestrator-utils";
 import type { TaskStatus } from "@packages/shared";
 
 const log = createLogger("[Health]");
@@ -136,6 +140,33 @@ function mapTaskStatusError(message: string): {
     return { status: 422, message };
   }
   return { status: 500, message: "Failed to update task status" };
+}
+
+/**
+ * Map task-create errors to HTTP status codes (validation vs auth vs forbidden).
+ * Aligns with mapTaskStatusError: 401 for auth, 403 for forbidden, 422 for validation.
+ */
+function mapTaskCreateError(message: string): {
+  status: number;
+  message: string;
+} {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("invalid agent") ||
+    normalized.includes("invalid status")
+  ) {
+    return { status: 422, message };
+  }
+  if (normalized.includes("unauthorized")) {
+    return { status: 401, message };
+  }
+  if (normalized.includes("forbidden")) {
+    return { status: 403, message };
+  }
+  if (normalized.includes("not found")) {
+    return { status: 404, message };
+  }
+  return { status: 403, message };
 }
 
 /**
@@ -654,6 +685,46 @@ export function startHealthServer(config: RuntimeConfig): void {
           return;
         }
       }
+      const isOrchestrator = await isOrchestratorAgent(agentId, config);
+      const allowedCreateStatuses = new Set<CreatableTaskStatus>([
+        "inbox",
+        "assigned",
+        "in_progress",
+        "review",
+        "done",
+        "blocked",
+      ]);
+      if (
+        body.status !== undefined &&
+        !allowedCreateStatuses.has(body.status as CreatableTaskStatus)
+      ) {
+        log.warn("[task-create] Invalid status:", body.status);
+        sendJson(res, 422, {
+          success: false,
+          error:
+            "Invalid status: must be inbox, assigned, in_progress, review, done, or blocked",
+        });
+        return;
+      }
+      if (body.status === "blocked" && !body.blockedReason?.trim()) {
+        log.warn("[task-create] Missing blockedReason for blocked status");
+        sendJson(res, 422, {
+          success: false,
+          error: "blockedReason is required when status is blocked",
+        });
+        return;
+      }
+      if (assigneeIds?.length) {
+        assigneeIds = filterOrchestratorFromAssignees({
+          assigneeIds,
+          requesterAgentId: agentId,
+          isOrchestrator,
+        });
+      }
+      const createStatus = normalizeTaskCreateStatusForOrchestrator(
+        body.status,
+        isOrchestrator,
+      ) as CreatableTaskStatus | undefined;
       try {
         const client = getConvexClient();
         const { taskId } = await client.action(
@@ -666,20 +737,12 @@ export function startHealthServer(config: RuntimeConfig): void {
             description: body.description?.trim(),
             priority: body.priority,
             labels: body.labels,
-            status: body.status as CreatableTaskStatus | undefined,
+            status: createStatus,
             blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
+            assignedAgentIds: assigneeIds?.length ? assigneeIds : undefined,
           },
         );
-        if (assigneeIds?.length) {
-          await client.action(api.service.actions.assignTaskFromAgent, {
-            accountId: config.accountId,
-            serviceToken: config.serviceToken,
-            agentId,
-            taskId: taskId as Id<"tasks">,
-            assignedAgentIds: assigneeIds,
-          });
-        }
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_create", duration);
         log.info("[task-create] Success:", {
@@ -697,7 +760,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
-        sendJson(res, 403, { success: false, error: message });
+        const mapped = mapTaskCreateError(message);
+        sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
       return;
     }

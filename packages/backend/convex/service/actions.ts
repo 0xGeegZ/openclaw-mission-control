@@ -856,6 +856,7 @@ export const createTaskFromAgent = action({
     dueDate: v.optional(v.number()),
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
@@ -894,6 +895,7 @@ export const createTaskFromAgent = action({
         dueDate: args.dueDate,
         status: args.status,
         blockedReason: args.blockedReason,
+        assignedAgentIds: args.assignedAgentIds,
       },
     );
 

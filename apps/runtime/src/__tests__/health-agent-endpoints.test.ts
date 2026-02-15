@@ -10,6 +10,8 @@ import { isLocalAddress } from "../health";
 import { startHealthServer, stopHealthServer } from "../health";
 import type { RuntimeConfig } from "../config";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { getConvexClient } from "../convex-client";
+import { getAgentIdForSessionKey } from "../gateway";
 
 const TEST_PORT = 39493;
 const BASE = `http://127.0.0.1:${TEST_PORT}`;
@@ -43,7 +45,7 @@ vi.mock("../gateway", () => ({
 
 vi.mock("../convex-client", () => ({
   getConvexClient: vi.fn(),
-  api: {},
+  api: { service: { actions: {} } },
 }));
 
 vi.mock("../agent-sync", () => ({
@@ -223,5 +225,101 @@ describe("agent endpoints - session validation", () => {
     const data = (await res.json()) as { success?: boolean; error?: string };
     expect(data.success).toBe(false);
     expect(data.error).toContain("Unknown session key");
+  });
+});
+
+describe("POST /agent/task-create orchestrator parity", () => {
+  const orchestratorId = "agent-orch1" as Id<"agents">;
+  const engineerId = "agent-eng1" as Id<"agents">;
+  const sessionKey = "agent:squad-lead:test-account-id";
+
+  const mockAction = vi.fn();
+
+  beforeEach(async () => {
+    vi.mocked(getAgentIdForSessionKey).mockReturnValue(orchestratorId);
+    vi.mocked(getConvexClient).mockReturnValue({
+      action: mockAction,
+    } as unknown as ReturnType<typeof getConvexClient>);
+    mockAction
+      .mockResolvedValueOnce({ orchestratorAgentId: orchestratorId })
+      .mockResolvedValueOnce([
+        { _id: orchestratorId, slug: "squad-lead" },
+        { _id: engineerId, slug: "engineer" },
+      ])
+      .mockResolvedValueOnce({ orchestratorAgentId: orchestratorId })
+      .mockResolvedValueOnce({ taskId: "task1" });
+    startHealthServer(minimalHealthConfig());
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  afterEach(() => {
+    stopHealthServer();
+    mockAction.mockReset();
+  });
+
+  it("sends status inbox and assignedAgentIds excluding orchestrator when orchestrator creates with assigneeSlugs", async () => {
+    const res = await fetch(`${BASE}/agent/task-create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-openclaw-session-key": sessionKey,
+      },
+      body: JSON.stringify({
+        title: "Implement feature",
+        status: "assigned",
+        assigneeSlugs: ["squad-lead", "engineer"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { success?: boolean; taskId?: string };
+    expect(data.success).toBe(true);
+    expect(data.taskId).toBe("task1");
+
+    const createCall = mockAction.mock.calls.find(
+      (call) => (call[1] as { title?: string }).title === "Implement feature",
+    );
+    expect(createCall).toBeDefined();
+    expect(createCall?.[1]).toMatchObject({
+      status: "inbox",
+      assignedAgentIds: [engineerId],
+    });
+  });
+
+  it("sends status inbox and no assignees when only orchestrator in assigneeSlugs", async () => {
+    mockAction.mockReset();
+    mockAction
+      .mockResolvedValueOnce({ orchestratorAgentId: orchestratorId })
+      .mockResolvedValueOnce([{ _id: orchestratorId, slug: "squad-lead" }])
+      .mockResolvedValueOnce({ orchestratorAgentId: orchestratorId })
+      .mockResolvedValueOnce({ taskId: "task2" });
+
+    const res = await fetch(`${BASE}/agent/task-create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-openclaw-session-key": sessionKey,
+      },
+      body: JSON.stringify({
+        title: "Solo orchestrator",
+        status: "assigned",
+        assigneeSlugs: ["squad-lead"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { success?: boolean; taskId?: string };
+    expect(data.success).toBe(true);
+    expect(data.taskId).toBe("task2");
+
+    const createCall = mockAction.mock.calls.find(
+      (call) => (call[1] as { title?: string }).title === "Solo orchestrator",
+    );
+    expect(createCall).toBeDefined();
+    expect(createCall?.[1]).toMatchObject({ status: "inbox" });
+    const payload = createCall?.[1] as { assignedAgentIds?: unknown };
+    expect(
+      payload.assignedAgentIds === undefined ||
+        (Array.isArray(payload.assignedAgentIds) &&
+          payload.assignedAgentIds.length === 0),
+    ).toBe(true);
   });
 });

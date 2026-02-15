@@ -21,6 +21,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,6 +38,8 @@ jobs:
           publish: npm run release
           commit: "chore(release): publish packages"
           title: "chore(release): version bump and changelog"
+          # Use GitHub API for commits to avoid git CLI push failures (permissions/force-push).
+          commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

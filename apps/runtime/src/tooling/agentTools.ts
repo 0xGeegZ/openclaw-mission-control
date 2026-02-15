@@ -6,6 +6,10 @@
  */
 
 import { getConvexClient, api, type ListAgentsItem } from "../convex-client";
+import {
+  filterOrchestratorFromAssignees,
+  normalizeTaskCreateStatusForOrchestrator,
+} from "../task-create-orchestrator-utils";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 import {
@@ -484,40 +488,6 @@ function normalizeTaskPriority(value: unknown): number | undefined {
 }
 
 /**
- * Avoid orchestrator self-assignment on task creation when requested status implies assignees.
- * The service createTask endpoint auto-assigns the creator for assigned/in_progress, so we
- * downgrade to inbox for orchestrator-created tasks and let explicit assignment happen after.
- */
-function normalizeTaskCreateStatusForOrchestrator(
-  status: unknown,
-  isOrchestrator: boolean | undefined,
-): TaskStatus | undefined {
-  if (typeof status !== "string") return undefined;
-  if (!isTaskStatus(status)) return undefined;
-  if (
-    isOrchestrator === true &&
-    (status === TASK_STATUS.ASSIGNED || status === TASK_STATUS.IN_PROGRESS)
-  ) {
-    return TASK_STATUS.INBOX;
-  }
-  return status;
-}
-
-/**
- * Remove explicit orchestrator self-assignment from delegated task creation requests.
- */
-function removeOrchestratorSelfAssignee(params: {
-  assigneeIds: Id<"agents">[];
-  requesterAgentId: Id<"agents">;
-  isOrchestrator: boolean | undefined;
-}): Id<"agents">[] {
-  if (params.isOrchestrator !== true) return params.assigneeIds;
-  return params.assigneeIds.filter(
-    (assigneeId) => assigneeId !== params.requesterAgentId,
-  );
-}
-
-/**
  * Resolve agent slugs to ids for tool calls.
  */
 async function resolveAgentSlugs(params: {
@@ -710,15 +680,15 @@ export async function executeAgentTool(params: {
             error: `Unknown assignee slugs: ${missing.join(", ")}`,
           };
         }
-        assigneeIds = removeOrchestratorSelfAssignee({
+        assigneeIds = filterOrchestratorFromAssignees({
           assigneeIds,
           requesterAgentId: agentId,
-          isOrchestrator,
+          isOrchestrator: isOrchestrator === true,
         });
       }
       const createStatus = normalizeTaskCreateStatusForOrchestrator(
         args.status,
-        isOrchestrator,
+        isOrchestrator === true,
       );
       const { taskId: newTaskId } = await client.action(
         api.service.actions.createTaskFromAgent,
@@ -733,17 +703,9 @@ export async function executeAgentTool(params: {
           status: createStatus,
           blockedReason: args.blockedReason?.trim(),
           dueDate: args.dueDate,
+          assignedAgentIds: assigneeIds.length > 0 ? assigneeIds : undefined,
         },
       );
-      if (assigneeIds.length > 0) {
-        await client.action(api.service.actions.assignTaskFromAgent, {
-          accountId,
-          serviceToken,
-          agentId,
-          taskId: newTaskId,
-          assignedAgentIds: assigneeIds,
-        });
-      }
       return { success: true, taskId: newTaskId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

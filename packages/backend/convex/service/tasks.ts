@@ -34,6 +34,28 @@ function requiresAssignee(status: TaskStatus): boolean {
 }
 
 /**
+ * Resolve initial assignedAgentIds for createFromAgent: use provided list when present,
+ * otherwise auto-assign creator when status requires assignees.
+ * Exported for unit tests.
+ */
+export function computeCreateFromAgentAssignedAgentIds(
+  provided: Id<"agents">[] | undefined,
+  requestedStatus: TaskStatus,
+  creatorAgentId: Id<"agents">,
+): Id<"agents">[] {
+  if (provided?.length) {
+    return [...provided];
+  }
+  if (
+    requestedStatus === TASK_STATUS.ASSIGNED ||
+    requestedStatus === TASK_STATUS.IN_PROGRESS
+  ) {
+    return [creatorAgentId];
+  }
+  return [];
+}
+
+/**
  * Returns true when an agent is considered QA based on role or slug.
  */
 function isQaAgent(
@@ -272,7 +294,8 @@ export const getForTool = internalQuery({
 
 /**
  * Create a task on behalf of an agent (service-only).
- * Enforces status requirements; auto-assigns creating agent when status is assigned/in_progress and no assignees.
+ * Enforces status requirements; accepts optional initial assignees; auto-assigns creating agent
+ * only when status is assigned/in_progress and no assignees were provided.
  */
 export const createFromAgent = internalMutation({
   args: {
@@ -284,6 +307,7 @@ export const createFromAgent = internalMutation({
     dueDate: v.optional(v.number()),
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
   },
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
@@ -294,15 +318,23 @@ export const createFromAgent = internalMutation({
     const now = Date.now();
 
     const assignedUserIds: string[] = [];
-    let assignedAgentIds: Id<"agents">[] = [];
     const requestedStatus = args.status ?? TASK_STATUS.INBOX;
-    if (
-      (requestedStatus === TASK_STATUS.ASSIGNED ||
-        requestedStatus === TASK_STATUS.IN_PROGRESS) &&
-      assignedUserIds.length === 0
-    ) {
-      assignedAgentIds = [args.agentId];
+
+    if (args.assignedAgentIds?.length) {
+      for (const aid of args.assignedAgentIds) {
+        const assignedAgent = await ctx.db.get(aid);
+        if (!assignedAgent || assignedAgent.accountId !== accountId) {
+          throw new Error(`Invalid agent: ${aid}`);
+        }
+      }
     }
+
+    const assignedAgentIds = computeCreateFromAgentAssignedAgentIds(
+      args.assignedAgentIds,
+      requestedStatus,
+      args.agentId,
+    );
+
     const hasAssignees =
       assignedUserIds.length > 0 || assignedAgentIds.length > 0;
     const requirementError = validateStatusRequirements(
@@ -346,8 +378,8 @@ export const createFromAgent = internalMutation({
     });
 
     await ensureOrchestratorSubscribed(ctx, accountId, taskId);
-    if (assignedAgentIds.includes(args.agentId)) {
-      await ensureSubscribed(ctx, accountId, taskId, "agent", args.agentId);
+    for (const assignedAgentId of assignedAgentIds) {
+      await ensureSubscribed(ctx, accountId, taskId, "agent", assignedAgentId);
     }
 
     return taskId;

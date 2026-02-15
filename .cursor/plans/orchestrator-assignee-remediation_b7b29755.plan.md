@@ -4,19 +4,19 @@ overview: Implement both remediation A and B so orchestrator-created tasks never
 todos:
   - id: setup-worktree
     content: Create isolated worktree/branch and verify test commands
-    status: pending
+    status: completed
   - id: backend-create-contract
     content: Add optional assignedAgentIds to createTaskFromAgent/createFromAgent and enforce account validation
-    status: pending
+    status: completed
   - id: runtime-parity
     content: Align runtime tool and HTTP task-create flows to pass normalized status + assignedAgentIds
-    status: pending
+    status: completed
   - id: tests
     content: Add/update runtime and backend tests for assignee semantics and parity
-    status: pending
+    status: completed
   - id: verification
     content: Run targeted tests and manual parity QA scenarios
-    status: pending
+    status: completed
 isProject: false
 ---
 

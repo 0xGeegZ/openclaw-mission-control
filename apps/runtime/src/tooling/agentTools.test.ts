@@ -410,7 +410,6 @@ describe("executeAgentTool", () => {
         { _id: "agent1", slug: "orchestrator" },
         { _id: "agent2", slug: "engineer" },
       ])
-      .mockResolvedValueOnce({ taskId: "task1" })
       .mockResolvedValueOnce({ taskId: "task1" });
 
     const result = await executeAgentTool({
@@ -425,7 +424,7 @@ describe("executeAgentTool", () => {
     });
 
     expect(result).toEqual({ success: true, taskId: "task1" });
-    expect(mockAction).toHaveBeenCalledTimes(3);
+    expect(mockAction).toHaveBeenCalledTimes(2);
 
     const createCall = mockAction.mock.calls.find(([, payload]) => {
       return (
@@ -436,14 +435,6 @@ describe("executeAgentTool", () => {
     expect(createCall?.[1]).toMatchObject({
       title: "Delegate implementation",
       status: "inbox",
-    });
-
-    const assignCall = mockAction.mock.calls.find(([, payload]) => {
-      return (payload as { taskId?: string }).taskId === "task1";
-    });
-    expect(assignCall).toBeDefined();
-    expect(assignCall?.[1]).toMatchObject({
-      taskId: "task1",
       assignedAgentIds: ["agent2"],
     });
   });
