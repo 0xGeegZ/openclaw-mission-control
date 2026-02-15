@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   TASK_STATUS_ORDER,
   TASK_STATUS_LABELS,
@@ -16,7 +16,6 @@ import {
 import type {
   TaskStatus,
   AnalyticsTimeRange,
-  LLMModel,
   SkillCategory,
 } from "../../types";
 
@@ -225,14 +224,14 @@ describe("AVAILABLE_MODELS", () => {
 
   it("includes the default model (claude-haiku-4.5)", () => {
     const hasDefaultModel = AVAILABLE_MODELS.some(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "claude-haiku-4.5",
     );
     expect(hasDefaultModel).toBe(true);
   });
 
   it("default model is marked as recommended in the label", () => {
     const defaultModel = AVAILABLE_MODELS.find(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "claude-haiku-4.5",
     );
     expect(defaultModel).toBeDefined();
     expect(defaultModel!.label).toContain("Recommended");
@@ -332,64 +331,68 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("contextConfig has all required nested properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "maxHistoryMessages"
+      "maxHistoryMessages",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTaskContext"
+      "includeTaskContext",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTeamContext"
+      "includeTeamContext",
     );
   });
 
   it("contextConfig.maxHistoryMessages is a positive number", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBe(
-      "number"
-    );
-    expect(DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBeGreaterThan(0);
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBe("number");
+    expect(
+      DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBeGreaterThan(0);
   });
 
   it("contextConfig flags are boolean values", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext,
+    ).toBe("boolean");
   });
 
   it("behaviorFlags has all required properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateTasks"
+      "canCreateTasks",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canModifyTaskStatus"
+      "canModifyTaskStatus",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateDocuments"
+      "canCreateDocuments",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canMentionAgents"
+      "canMentionAgents",
     );
   });
 
   it("behaviorFlags are all boolean values", () => {
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(
-      "boolean"
+      "boolean",
     );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments,
+    ).toBe("boolean");
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMentionAgents).toBe(
-      "boolean"
+      "boolean",
     );
   });
 
   it("canModifyTaskStatus is enabled by default for agents", () => {
-    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(true);
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
+      true,
+    );
   });
 
   it("canCreateTasks is disabled by default for security", () => {

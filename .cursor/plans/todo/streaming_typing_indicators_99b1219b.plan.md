@@ -66,8 +66,6 @@ flowchart TD
   MarkDelivered --> UIStopTyping["UI typing false"]
 ```
 
-
-
 ## 4. File & module changes
 
 Backend (Convex):
@@ -103,7 +101,7 @@ Frontend:
 - [apps/web/src/components/tasks/AgentsSidebar.tsx](apps/web/src/components/tasks/AgentsSidebar.tsx)
   - No component change required; it will reflect updated backend typing query.
 - Update call sites to remove `useReadByFallback` prop:
-  - [apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx](apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx)
+  - [apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/tasks/[taskId]/page.tsx>)
   - [apps/web/src/components/tasks/TaskDetailSheet.tsx](apps/web/src/components/tasks/TaskDetailSheet.tsx)
   - [apps/web/src/components/orchestrator/OrchestratorChat.tsx](apps/web/src/components/orchestrator/OrchestratorChat.tsx)
 
@@ -187,4 +185,3 @@ Docs/tests
 
 - Update runtime response write-back doc to reflect streaming.
 - Add unit tests for streaming parser behavior.
-

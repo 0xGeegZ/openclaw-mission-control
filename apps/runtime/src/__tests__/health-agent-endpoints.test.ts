@@ -15,6 +15,7 @@ const TEST_PORT = 39493;
 const BASE = `http://127.0.0.1:${TEST_PORT}`;
 const AGENT_ENDPOINTS = [
   "/agent/task-status",
+  "/agent/task-update",
   "/agent/task-create",
   "/agent/task-assign",
   "/agent/response-request",
@@ -64,6 +65,8 @@ vi.mock("../delivery", () => ({
     consecutiveFailures: 0,
     lastErrorAt: null,
     lastErrorMessage: null,
+    noResponseTerminalSkipCount: 0,
+    requiredNotificationRetryExhaustedCount: 0,
   }),
 }));
 

@@ -62,7 +62,10 @@ const activityTypeConfig: Record<
     icon: MessageSquare,
     color: "text-primary",
   },
-  [ACTIVITY_TYPE.DOCUMENT_CREATED]: { icon: FileText, color: "text-emerald-500" },
+  [ACTIVITY_TYPE.DOCUMENT_CREATED]: {
+    icon: FileText,
+    color: "text-emerald-500",
+  },
   [ACTIVITY_TYPE.DOCUMENT_UPDATED]: { icon: Pencil, color: "text-blue-500" },
   [ACTIVITY_TYPE.DOCUMENT_DELETED]: { icon: Trash2, color: "text-destructive" },
   [ACTIVITY_TYPE.AGENT_STATUS_CHANGED]: { icon: Bot, color: "text-amber-500" },
@@ -73,7 +76,10 @@ const activityTypeConfig: Record<
   [ACTIVITY_TYPE.MEMBER_ADDED]: { icon: UserPlus, color: "text-violet-500" },
   [ACTIVITY_TYPE.MEMBER_REMOVED]: { icon: UserMinus, color: "text-violet-500" },
   [ACTIVITY_TYPE.MEMBER_UPDATED]: { icon: UserPlus, color: "text-violet-500" },
-  [ACTIVITY_TYPE.ROLE_CHANGED]: { icon: Shield, color: "text-muted-foreground" },
+  [ACTIVITY_TYPE.ROLE_CHANGED]: {
+    icon: Shield,
+    color: "text-muted-foreground",
+  },
 };
 
 /**

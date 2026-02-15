@@ -160,7 +160,8 @@ export const listUndeliveredForAccount = internalQuery({
 /**
  * Mark a notification as read (service-only).
  * Called by runtime when it starts processing a notification (before sendToOpenClaw).
- * Idempotent: if readAt is already set, does nothing.
+ * Sets readAt if unset; always clears deliveryEndedAt so typing can show (including on retry).
+ * Idempotent for readAt; clearing deliveryEndedAt on retry allows typing indicator to appear again.
  */
 export const markRead = internalMutation({
   args: {
@@ -171,9 +172,38 @@ export const markRead = internalMutation({
     if (!notification) {
       throw new Error("Not found: Notification does not exist");
     }
+    const now = Date.now();
     if (!notification.readAt) {
       await ctx.db.patch(args.notificationId, {
-        readAt: Date.now(),
+        readAt: now,
+        deliveryEndedAt: undefined,
+      });
+    } else if (notification.deliveryEndedAt != null) {
+      await ctx.db.patch(args.notificationId, {
+        deliveryEndedAt: undefined,
+      });
+    }
+    return true;
+  },
+});
+
+/**
+ * Mark delivery as ended for this attempt (typing stops; notification stays undelivered for retry).
+ * Idempotent: only sets when deliveredAt is null; no-op if already delivered or already ended.
+ */
+export const markDeliveryEnded = internalMutation({
+  args: {
+    notificationId: v.id("notifications"),
+  },
+  handler: async (ctx, args) => {
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.deliveredAt != null) return true;
+    if (!notification.deliveryEndedAt) {
+      await ctx.db.patch(args.notificationId, {
+        deliveryEndedAt: Date.now(),
       });
     }
     return true;
@@ -201,6 +231,38 @@ export const markDelivered = internalMutation({
     }
 
     return true;
+  },
+});
+
+/**
+ * Clear typing state for an account when runtime goes offline.
+ * Resets readAt on all agent notifications that are read but not yet delivered,
+ * so they no longer count as "typing" and avoid false positives when runtime comes back.
+ * Called from accounts.setRuntimeStatus when status is set to "offline".
+ */
+export const clearTypingStateForAccount = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_account_undelivered", (q) =>
+        q
+          .eq("accountId", args.accountId)
+          .eq("recipientType", "agent")
+          .eq("deliveredAt", undefined),
+      )
+      .collect();
+
+    let cleared = 0;
+    for (const n of notifications) {
+      if (n.readAt != null) {
+        await ctx.db.patch(n._id, { readAt: undefined });
+        cleared++;
+      }
+    }
+    return { cleared };
   },
 });
 

@@ -5,7 +5,7 @@
  * Coverage: lib/mentions.ts (mention parsing and resolution logic)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   extractMentionStrings,
   hasAllMention,
@@ -19,11 +19,18 @@ import { Id } from "../_generated/dataModel";
 // Mock Context Helpers
 // ============================================================================
 
-function createMockQueryContext(memberships: any[] = [], agents: any[] = []) {
+function createMockQueryContext(
+  memberships: any[] = [],
+  agents: any[] = [],
+  accountDoc: {
+    _id: Id<"accounts">;
+    settings?: { orchestratorAgentId?: Id<"agents"> };
+  } | null = null,
+) {
   return {
     db: {
       query: (table: string) => ({
-        withIndex: (indexName: string, fn: Function) => ({
+        withIndex: (_indexName: string, _fn: (_q: unknown) => unknown) => ({
           collect: async () => {
             if (table === "memberships") return memberships;
             if (table === "agents") return agents;
@@ -31,6 +38,8 @@ function createMockQueryContext(memberships: any[] = [], agents: any[] = []) {
           },
         }),
       }),
+      get: async (id: Id<"accounts">) =>
+        accountDoc && id === accountDoc._id ? accountDoc : null,
     },
   } as any;
 }
@@ -132,13 +141,13 @@ describe("resolveMentions", () => {
           userEmail: "alice@example.com",
         },
       ],
-      []
+      [],
     );
 
     const result = await resolveMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      ["alice"]
+      ["alice"],
     );
 
     expect(result).toHaveLength(1);
@@ -155,13 +164,13 @@ describe("resolveMentions", () => {
           userEmail: "alice.smith@example.com",
         },
       ],
-      []
+      [],
     );
 
     const result = await resolveMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      ["alice.smith"]
+      ["alice.smith"],
     );
 
     expect(result).toHaveLength(1);
@@ -178,13 +187,39 @@ describe("resolveMentions", () => {
           slug: "squad-lead",
           accountId: "account_1" as Id<"accounts">,
         },
-      ]
+      ],
     );
 
     const result = await resolveMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      ["squad-lead"]
+      ["squad-lead"],
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].slug).toBe("squad-lead");
+  });
+
+  it("should resolve agent slug mentions from content when followed by sentence text", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_1" as Id<"agents">,
+          name: "Squad Lead",
+          slug: "squad-lead",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      {
+        content: "@squad-lead please answer engineer for the next steps",
+      },
     );
 
     expect(result).toHaveLength(1);
@@ -198,7 +233,7 @@ describe("resolveMentions", () => {
     const result = await resolveMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      ["nonexistent", "also-missing"]
+      ["nonexistent", "also-missing"],
     );
 
     expect(result).toHaveLength(0);
@@ -213,17 +248,98 @@ describe("resolveMentions", () => {
           userEmail: "alice@example.com",
         },
       ],
-      []
+      [],
     );
 
     const result = await resolveMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      ["ALICE"]
+      ["ALICE"],
     );
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Alice");
+  });
+
+  it("should resolve @qa by slug when agent has slug qa", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_qa" as Id<"agents">,
+          name: "QA",
+          slug: "qa",
+          role: "QA / Reviewer",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      ["qa"],
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].name).toBe("QA");
+    expect(result[0].slug).toBe("qa");
+  });
+
+  it("should resolve @qa by role when no agent has slug/name qa but one has QA role", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_qa" as Id<"agents">,
+          name: "QA Reviewer",
+          slug: "qa-reviewer",
+          role: "QA / Reviewer",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      ["qa"],
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].name).toBe("QA Reviewer");
+    expect(result[0].slug).toBe("qa");
+  });
+
+  it("should resolve unquoted full-name mention from content using longest prefix", async () => {
+    const mockCtx = createMockQueryContext(
+      [
+        {
+          userId: "user_1",
+          userName: "guillaume dieudonne",
+          userEmail: "guillaume@example.com",
+        },
+      ],
+      [],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      {
+        mentionStrings: ["guillaume"],
+        content: "Awaiting approval from **@guillaume dieudonne before merge**",
+      },
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      type: "user",
+      id: "user_1",
+      name: "guillaume dieudonne",
+    });
   });
 });
 
@@ -253,7 +369,7 @@ describe("getAllMentions", () => {
           slug: "squad-lead",
           accountId: "account_1" as Id<"accounts">,
         },
-      ]
+      ],
     );
 
     const result = await getAllMentions(mockCtx, "account_1" as Id<"accounts">);
@@ -277,13 +393,13 @@ describe("getAllMentions", () => {
           userEmail: "bob@example.com",
         },
       ],
-      []
+      [],
     );
 
     const result = await getAllMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      "user_1"
+      "user_1",
     );
 
     expect(result).toHaveLength(1);
@@ -306,13 +422,13 @@ describe("getAllMentions", () => {
           slug: "agent-2",
           accountId: "account_1" as Id<"accounts">,
         },
-      ]
+      ],
     );
 
     const result = await getAllMentions(
       mockCtx,
       "account_1" as Id<"accounts">,
-      "agent_1"
+      "agent_1",
     );
 
     expect(result).toHaveLength(1);
@@ -342,13 +458,10 @@ describe("listCandidates", () => {
           slug: "squad-lead",
           accountId: "account_1" as Id<"accounts">,
         },
-      ]
+      ],
     );
 
-    const result = await listCandidates(
-      mockCtx,
-      "account_1" as Id<"accounts">
-    );
+    const result = await listCandidates(mockCtx, "account_1" as Id<"accounts">);
 
     expect(result).toHaveProperty("users");
     expect(result).toHaveProperty("agents");
@@ -370,10 +483,7 @@ describe("listCandidates", () => {
   it("should return empty arrays for new account", async () => {
     const mockCtx = createMockQueryContext([], []);
 
-    const result = await listCandidates(
-      mockCtx,
-      "account_1" as Id<"accounts">
-    );
+    const result = await listCandidates(mockCtx, "account_1" as Id<"accounts">);
 
     expect(result.users).toHaveLength(0);
     expect(result.agents).toHaveLength(0);
@@ -389,13 +499,10 @@ describe("listCandidates", () => {
           userAvatarUrl: undefined,
         },
       ],
-      []
+      [],
     );
 
-    const result = await listCandidates(
-      mockCtx,
-      "account_1" as Id<"accounts">
-    );
+    const result = await listCandidates(mockCtx, "account_1" as Id<"accounts">);
 
     expect(result.users[0]).toHaveProperty("avatarUrl");
     expect(result.users[0].avatarUrl).toBeUndefined();

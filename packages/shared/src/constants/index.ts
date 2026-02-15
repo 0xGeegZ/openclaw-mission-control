@@ -100,7 +100,10 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
  * Available LLM models for agent configuration.
  */
 export const AVAILABLE_MODELS = [
-  { value: LLM_MODEL.CLAUDE_HAIKU_4_5, label: "Claude Haiku 4.5 (Recommended)" },
+  {
+    value: LLM_MODEL.CLAUDE_HAIKU_4_5,
+    label: "Claude Haiku 4.5 (Recommended)",
+  },
   { value: LLM_MODEL.GPT_5_NANO, label: "GPT-5 Nano" },
 ] as const;
 
@@ -243,13 +246,6 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NOTIFICATION_TYPE.MEMBER_REMOVED]: "Member removed",
   [NOTIFICATION_TYPE.ROLE_CHANGED]: "Role changed",
 };
-
-/**
- * Typing indicator window in ms (2 minutes).
- * Agent is considered "typing" when notification is read but not yet delivered, within this window.
- * Used by task thread and agents sidebar for consistent typing semantics.
- */
-export const TYPING_WINDOW_MS = 2 * 60 * 1000;
 
 /**
  * Default OpenClaw configuration for new agents.

@@ -105,7 +105,9 @@ export function getVisibleNotifications(
   notifications: NotificationItem[],
   dismissed: Set<string>,
 ): NotificationItem[] {
-  return notifications.filter((notification) => !dismissed.has(notification._id));
+  return notifications.filter(
+    (notification) => !dismissed.has(notification._id),
+  );
 }
 
 export function NotificationsList({
@@ -123,7 +125,10 @@ export function NotificationsList({
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const unreadCount = getUnreadCount(notifications);
-  const displayedNotifications = getDisplayedNotifications(notifications, filterBy);
+  const displayedNotifications = getDisplayedNotifications(
+    notifications,
+    filterBy,
+  );
   const visibleNotifications = getVisibleNotifications(
     displayedNotifications,
     dismissed,
@@ -132,6 +137,18 @@ export function NotificationsList({
   const handleDismiss = (id: string) => {
     setDismissed((prev) => new Set(prev).add(id));
     onDismiss?.(id);
+  };
+
+  const handleNotificationOpen = (
+    notification: NotificationItem,
+    isUnread: boolean,
+  ) => {
+    if (isUnread) {
+      onMarkAsRead?.(notification._id);
+    }
+    if (notification.taskId) {
+      onNavigate?.(notification.taskId);
+    }
   };
 
   if (error) {
@@ -147,10 +164,7 @@ export function NotificationsList({
     return (
       <div className="space-y-3 p-4">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-16 bg-gray-100 rounded-lg animate-pulse"
-          />
+          <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -161,7 +175,9 @@ export function NotificationsList({
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <Bell className="w-8 h-8 text-gray-400 mb-4" />
         <p className="text-sm text-gray-600 font-medium">
-          {filterBy === "unread" ? "No unread notifications" : "No notifications"}
+          {filterBy === "unread"
+            ? "No unread notifications"
+            : "No notifications"}
         </p>
       </div>
     );
@@ -210,16 +226,24 @@ export function NotificationsList({
               {/* Content */}
               <div
                 className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => {
-                  if (isUnread) onMarkAsRead?.(notification._id);
-                  if (notification.taskId) onNavigate?.(notification.taskId);
+                role="button"
+                tabIndex={0}
+                aria-label={`Open notification: ${notification.title}`}
+                onClick={() => handleNotificationOpen(notification, isUnread)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNotificationOpen(notification, isUnread);
+                  }
                 }}
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-1">
                     <p
                       className={`text-sm font-medium leading-tight ${
-                        isUnread ? "text-gray-900 dark:text-gray-50" : "text-gray-700 dark:text-gray-300"
+                        isUnread
+                          ? "text-gray-900 dark:text-gray-50"
+                          : "text-gray-700 dark:text-gray-300"
                       }`}
                     >
                       {notification.title}
@@ -252,6 +276,7 @@ export function NotificationsList({
                       onMarkAsRead?.(notification._id);
                     }}
                     title="Mark as read"
+                    aria-label={`Mark notification "${notification.title}" as read`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
                   </Button>
@@ -259,11 +284,12 @@ export function NotificationsList({
                 <Button
                   variant="ghost"
                   size="sm"
-onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      handleDismiss(notification._id);
-                    }}
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    handleDismiss(notification._id);
+                  }}
                   title="Dismiss"
+                  aria-label={`Dismiss notification "${notification.title}"`}
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />
                 </Button>

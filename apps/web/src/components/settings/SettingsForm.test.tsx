@@ -56,12 +56,20 @@ describe("settings-validation", () => {
     it("returns valid for non-empty names within length", () => {
       expect(validateAccountName("My Team")).toEqual({ valid: true });
       expect(validateAccountName("A")).toEqual({ valid: true });
-      expect(validateAccountName("a".repeat(ACCOUNT_NAME_MAX_LEN))).toEqual({ valid: true });
+      expect(validateAccountName("a".repeat(ACCOUNT_NAME_MAX_LEN))).toEqual({
+        valid: true,
+      });
     });
 
     it("returns invalid for empty or whitespace-only", () => {
-      expect(validateAccountName("")).toEqual({ valid: false, error: "Account name is required" });
-      expect(validateAccountName("   ")).toEqual({ valid: false, error: "Account name is required" });
+      expect(validateAccountName("")).toEqual({
+        valid: false,
+        error: "Account name is required",
+      });
+      expect(validateAccountName("   ")).toEqual({
+        valid: false,
+        error: "Account name is required",
+      });
     });
 
     it("returns invalid when over max length", () => {

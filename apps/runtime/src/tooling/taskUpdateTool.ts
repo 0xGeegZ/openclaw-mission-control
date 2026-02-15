@@ -20,7 +20,9 @@ const TASK_UPDATE_ALLOWED_STATUSES = [
 
 type TaskUpdateStatus = (typeof TASK_UPDATE_ALLOWED_STATUSES)[number];
 
-const ALLOWED_STATUSES = new Set<TaskUpdateStatus>(TASK_UPDATE_ALLOWED_STATUSES);
+const ALLOWED_STATUSES = new Set<TaskUpdateStatus>(
+  TASK_UPDATE_ALLOWED_STATUSES,
+);
 
 function isTaskUpdateStatus(value: string): value is TaskUpdateStatus {
   return ALLOWED_STATUSES.has(value as TaskUpdateStatus);
@@ -134,10 +136,11 @@ export async function executeTaskUpdateTool(params: {
     accountId,
   } = params;
 
-  // Validate taskId
-  if (!taskId.trim()) {
+  // Validate taskId (guard against undefined/null and whitespace-only)
+  if (taskId == null || !String(taskId).trim()) {
     return { success: false, error: "taskId is required" };
   }
+  const trimmedTaskId = String(taskId).trim();
 
   // Validate at least one field is provided
   const hasUpdates =
@@ -153,7 +156,8 @@ export async function executeTaskUpdateTool(params: {
   if (!hasUpdates) {
     return {
       success: false,
-      error: "At least one field (title, description, priority, labels, assignedAgentIds, assignedUserIds, status, dueDate) must be provided",
+      error:
+        "At least one field (title, description, priority, labels, assignedAgentIds, assignedUserIds, status, dueDate) must be provided",
     };
   }
 
@@ -185,21 +189,26 @@ export async function executeTaskUpdateTool(params: {
 
   try {
     const client = getConvexClient();
-    const result = await client.action(api.service.actions.updateTaskFromAgent, {
-      accountId,
-      serviceToken,
-      agentId,
-      taskId: taskId as Id<"tasks">,
-      title: title?.trim(),
-      description: description?.trim(),
-      priority,
-      labels,
-      assignedAgentIds: assignedAgentIds ? (assignedAgentIds as Id<"agents">[]) : undefined,
-      assignedUserIds,
-      status: validatedStatus,
-      blockedReason: blockedReason?.trim(),
-      dueDate,
-    });
+    const result = await client.action(
+      api.service.actions.updateTaskFromAgent,
+      {
+        accountId,
+        serviceToken,
+        agentId,
+        taskId: trimmedTaskId as Id<"tasks">,
+        title: title?.trim(),
+        description: description?.trim(),
+        priority,
+        labels,
+        assignedAgentIds: assignedAgentIds
+          ? (assignedAgentIds as Id<"agents">[])
+          : undefined,
+        assignedUserIds,
+        status: validatedStatus,
+        blockedReason: blockedReason?.trim(),
+        dueDate,
+      },
+    );
 
     return {
       success: true,
@@ -209,7 +218,7 @@ export async function executeTaskUpdateTool(params: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn("Task update failed; check Convex connectivity", {
-      taskId,
+      taskId: trimmedTaskId,
       error: message,
     });
     return { success: false, error: message };

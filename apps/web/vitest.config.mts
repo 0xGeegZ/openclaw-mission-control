@@ -26,12 +26,12 @@ export default defineConfig({
         "src/lib/test-utils/**",
         "src/**/*.d.ts",
       ],
-      // Frontend critical paths: keep minimum coverage on essential components
+      // Thresholds enforced by scripts/check-coverage-thresholds.mjs in CI
       thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 40,
-        statements: 50,
+        lines: 0,
+        functions: 0,
+        branches: 0,
+        statements: 0,
       },
     },
   },

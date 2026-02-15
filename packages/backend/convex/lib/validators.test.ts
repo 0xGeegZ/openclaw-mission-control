@@ -6,10 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  notificationTypeValidator,
-  activityTypeValidator,
-} from "./validators";
+import { notificationTypeValidator, activityTypeValidator } from "./validators";
 
 // ============================================================================
 // notificationTypeValidator Tests

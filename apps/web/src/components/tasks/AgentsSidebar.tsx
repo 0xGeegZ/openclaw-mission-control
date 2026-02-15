@@ -20,6 +20,8 @@ import { AGENT_STATUS } from "@packages/shared";
 
 interface AgentsSidebarProps {
   accountId: Id<"accounts"> | null;
+  /** When set, typing status is task-scoped (agents typing on this task). Otherwise account-scoped. */
+  activeTaskId?: Id<"tasks"> | null;
   selectedAgentId: Id<"agents"> | null;
   onSelectAgent: (agentId: Id<"agents"> | null) => void;
   className?: string;
@@ -34,21 +36,38 @@ function isLeadRole(role: string): boolean {
   );
 }
 
-const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  online: { color: "bg-primary", label: "ONLINE" },
-  busy: { color: "bg-amber-500", label: "BUSY" },
-  idle: { color: "bg-blue-400", label: "IDLE" },
-  offline: { color: "bg-muted-foreground/40", label: "OFFLINE" },
-  error: { color: "bg-destructive", label: "ERROR" },
-  typing: { color: "bg-amber-500", label: "TYPING" },
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; textColor: string; label: string }
+> = {
+  online: { color: "bg-primary", textColor: "text-primary", label: "ONLINE" },
+  busy: { color: "bg-amber-500", textColor: "text-amber-500", label: "BUSY" },
+  idle: { color: "bg-blue-400", textColor: "text-blue-400", label: "IDLE" },
+  offline: {
+    color: "bg-amber-500/80",
+    textColor: "text-amber-500",
+    label: "OFFLINE",
+  },
+  error: {
+    color: "bg-destructive",
+    textColor: "text-destructive",
+    label: "ERROR",
+  },
+  typing: {
+    color: "bg-cyan-500",
+    textColor: "text-cyan-500",
+    label: "TYPING",
+  },
 };
 
 /**
  * Agents sidebar component for task view.
  * Shows all agents with their status and allows filtering tasks by agent.
+ * When activeTaskId is set, TYPING badge is task-scoped; otherwise account-scoped.
  */
 export function AgentsSidebar({
   accountId,
+  activeTaskId = null,
   selectedAgentId,
   onSelectAgent,
   className,
@@ -57,18 +76,24 @@ export function AgentsSidebar({
     api.agents.getRoster,
     accountId ? { accountId } : "skip",
   );
-  const typingAgentIdsRaw = useQuery(
+  const taskTypingIdsRaw = useQuery(
+    api.notifications.listAgentIdsTypingByTask,
+    activeTaskId ? { taskId: activeTaskId } : "skip",
+  );
+  const accountTypingIdsRaw = useQuery(
     api.notifications.listAgentIdsTypingByAccount,
-    accountId ? { accountId } : "skip",
+    accountId && !activeTaskId ? { accountId } : "skip",
   );
-  const typingAgentIds = useMemo(
-    () => new Set(typingAgentIdsRaw ?? []),
-    [typingAgentIdsRaw],
-  );
+  const typingAgentIds = useMemo(() => {
+    const raw = activeTaskId ? taskTypingIdsRaw : accountTypingIdsRaw;
+    return new Set(raw ?? []);
+  }, [activeTaskId, taskTypingIdsRaw, accountTypingIdsRaw]);
 
   const isLoading = accountId && agents === undefined;
   const activeAgents =
-    agents?.filter((a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY) ?? [];
+    agents?.filter(
+      (a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY,
+    ) ?? [];
 
   return (
     <div className={cn("flex flex-col h-full border-r bg-card", className)}>
@@ -190,10 +215,7 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
         ) : null}
         <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
           {FallbackIcon ? (
-            <FallbackIcon
-              className="h-5 w-5 text-primary"
-              aria-hidden
-            />
+            <FallbackIcon className="h-5 w-5 text-primary" aria-hidden />
           ) : (
             agent.name.slice(0, 2).toUpperCase()
           )}
@@ -217,7 +239,12 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
               statusConfig.color,
             )}
           />
-          <span className="text-xs text-primary font-medium uppercase tracking-wide">
+          <span
+            className={cn(
+              "text-xs font-medium uppercase tracking-wide",
+              statusConfig.textColor,
+            )}
+          >
             {statusConfig.label}
           </span>
         </div>

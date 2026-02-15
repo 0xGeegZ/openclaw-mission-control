@@ -1,35 +1,39 @@
-import { defineConfig } from 'vitest/config'
-import path from 'path'
+import { defineConfig } from "vitest/config";
+import path from "path";
 
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
-    setupFiles: ['./src/test/setup.ts'],
+    environment: "node",
+    setupFiles: ["./src/test/setup.ts"],
+    // Health server tests share a global server; run sequentially to avoid races
+    poolOptions: {
+      threads: { singleThread: true },
+    },
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
+      provider: "v8",
+      reporter: ["text", "json", "html", "lcov"],
       exclude: [
-        'node_modules/',
-        'dist/',
-        'coverage/',
-        '**/*.d.ts',
-        '**/index.ts',
+        "node_modules/",
+        "dist/",
+        "coverage/",
+        "**/*.d.ts",
+        "**/index.ts",
       ],
-      // Runtime safety-critical paths should keep a solid baseline
+      // Thresholds enforced by scripts/check-coverage-thresholds.mjs in CI
       thresholds: {
-        lines: 60,
-        functions: 60,
-        branches: 50,
-        statements: 60,
+        lines: 0,
+        functions: 0,
+        branches: 0,
+        statements: 0,
       },
     },
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', '.idea', '.git', '.cache'],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["node_modules", "dist", ".idea", ".git", ".cache"],
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
-})
+});

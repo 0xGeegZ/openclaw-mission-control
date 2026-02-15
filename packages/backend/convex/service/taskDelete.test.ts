@@ -135,7 +135,7 @@ describe("deleteTaskFromAgent mutation (service)", () => {
   describe("Soft-delete behavior", () => {
     it("sets status to archived and archivedAt timestamp", () => {
       const now = Date.now();
-      const currentTask = {
+      const _currentTask = {
         _id: "task1" as Id<"tasks">,
         status: "in_progress" as const,
       };
@@ -185,9 +185,9 @@ describe("deleteTaskFromAgent mutation (service)", () => {
 
   describe("Activity logging", () => {
     it("logs activity with archival reason", () => {
-      const agentName = "Squad Lead";
+      const _agentName = "Squad Lead";
       const reason = "out of scope";
-      const taskTitle = "Old Task";
+      const _taskTitle = "Old Task";
 
       const activityMeta = {
         oldStatus: "in_progress",
@@ -277,7 +277,6 @@ describe("deleteTaskFromAgent action (HTTP service)", () => {
       const isOrchestrator = agentId === orchestratorAgentId;
       expect(isOrchestrator).toBe(false);
     });
-
   });
 });
 

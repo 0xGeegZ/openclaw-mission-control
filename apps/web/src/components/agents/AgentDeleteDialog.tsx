@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useMutation } from 'convex/react';
-import { api } from '@packages/backend/convex/_generated/api';
-import { Id } from '@packages/backend/convex/_generated/dataModel';
-import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
-import { toast } from 'sonner';
+import { useMutation } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
+import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { ConfirmDeleteDialog } from "@/components/ui/ConfirmDeleteDialog";
+import { toast } from "sonner";
 
 interface AgentDeleteDialogProps {
-  agentId: Id<'agents'>;
+  agentId: Id<"agents">;
   agentName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -16,7 +16,7 @@ interface AgentDeleteDialogProps {
 
 /**
  * Confirmation dialog for deleting an agent.
- * 
+ *
  * Thin wrapper around ConfirmDeleteDialog that handles:
  * - Convex mutation (api.agents.remove)
  * - Toast notifications
@@ -34,13 +34,13 @@ export function AgentDeleteDialog({
   const handleDelete = async () => {
     try {
       await removeAgent({ agentId });
-      toast.success('Agent deleted');
+      toast.success("Agent deleted");
       onOpenChange(false);
       onDeleted?.();
     } catch (error) {
       throw error instanceof Error
         ? new Error(error.message)
-        : new Error('Failed to delete agent');
+        : new Error("Failed to delete agent");
     }
   };
 

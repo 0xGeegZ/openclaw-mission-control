@@ -5,7 +5,7 @@
  * Tools are attached only when the agent's effective behavior flags allow them.
  */
 
-import { getConvexClient, api } from "../convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "../convex-client";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 import {
@@ -210,7 +210,8 @@ export const TASK_SEARCH_TOOL_SCHEMA = {
       properties: {
         query: {
           type: "string",
-          description: "Search query (e.g., 'PR #65', 'database', 'blocked by auth')",
+          description:
+            "Search query (e.g., 'PR #65', 'database', 'blocked by auth')",
         },
         limit: {
           type: "number",
@@ -393,7 +394,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("change task status (task_status tool)");
     schemas.push(createTaskStatusToolSchema({ allowDone: canMarkDone }));
     capabilityLabels.push(
-      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate"
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
     );
     schemas.push(TASK_UPDATE_TOOL_SCHEMA);
   }
@@ -525,10 +526,10 @@ async function resolveAgentSlugs(params: {
   slugs: string[];
 }): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: params.accountId,
     serviceToken: params.serviceToken,
-  });
+  })) as ListAgentsItem[];
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {
@@ -1170,12 +1171,15 @@ export async function executeAgentTool(params: {
       const queryAgentId = args.agentId
         ? (args.agentId as Id<"agents">)
         : undefined;
-      const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
-        accountId,
-        agentId,
-        serviceToken,
-        queryAgentId,
-      });
+      const skills = await client.action(
+        api.service.actions.getAgentSkillsForTool,
+        {
+          accountId,
+          agentId,
+          serviceToken,
+          queryAgentId,
+        },
+      );
       return { success: true, data: { agents: skills } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

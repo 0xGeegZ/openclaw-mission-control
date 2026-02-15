@@ -434,6 +434,40 @@ export const markNotificationRead = action({
 });
 
 /**
+ * Mark delivery as ended for a notification (typing stops; notification stays undelivered for retry).
+ * Called by runtime when delivery fails so the typing indicator stops immediately.
+ * On next attempt, markNotificationRead clears deliveryEndedAt so typing can show again.
+ */
+export const markNotificationDeliveryEnded = action({
+  args: {
+    notificationId: v.id("notifications"),
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+    const notificationResult = await ctx.runQuery(
+      internal.service.notifications.getForDelivery,
+      { notificationId: args.notificationId },
+    );
+    const notification = notificationResult?.notification;
+    if (!notification) {
+      throw new Error("Not found: Notification does not exist");
+    }
+    if (notification.accountId !== args.accountId) {
+      throw new Error("Forbidden: Notification belongs to different account");
+    }
+    await ctx.runMutation(internal.service.notifications.markDeliveryEnded, {
+      notificationId: args.notificationId,
+    });
+    return { success: true };
+  },
+});
+
+/**
  * List agents for an account.
  * Called by runtime to get all agents for the account.
  */
@@ -442,7 +476,7 @@ export const listAgents = action({
     accountId: v.id("accounts"),
     serviceToken: v.string(),
   },
-  handler: async (ctx, args): Promise<any[]> => {
+  handler: async (ctx, args): Promise<unknown[]> => {
     // Validate service token and verify account matches
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -740,8 +774,7 @@ export const updateTaskStatusFromAgent = action({
         i === 0 &&
         args.expectedStatus &&
         currentStatus !== args.expectedStatus
-      )
-      {
+      ) {
         finalStatus = currentStatus;
         finalUpdatedAt = task.updatedAt;
         break;
@@ -995,8 +1028,13 @@ export const updateTaskFromAgent = action({
     }
 
     // Validate priority range (schema: 1 = highest, 5 = lowest)
-    if (args.priority !== undefined && (args.priority < 1 || args.priority > 5)) {
-      throw new Error("Invalid priority: must be between 1 (highest) and 5 (lowest)");
+    if (
+      args.priority !== undefined &&
+      (args.priority < 1 || args.priority > 5)
+    ) {
+      throw new Error(
+        "Invalid priority: must be between 1 (highest) and 5 (lowest)",
+      );
     }
 
     // Validate status and blockedReason
@@ -1820,7 +1858,10 @@ export const loadTaskDetailsForAgentTool = action({
     taskId: v.id("tasks"),
     messageLimit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
     task: Doc<"tasks">;
     thread: Array<{
       messageId: Id<"messages">;
@@ -1935,6 +1976,7 @@ export const deleteTaskFromAgent = action({
 /**
  * Link a task to a GitHub PR bidirectionally.
  * Updates task metadata with prNumber and attempts to add task reference to PR description.
+ * Logs a warning (does not fail) if the PR head branch name does not contain the task ID (one-branch-per-task convention).
  * Orchestrator-only access.
  */
 export const linkTaskToPrForAgentTool = action({
@@ -2028,7 +2070,16 @@ export const linkTaskToPrForAgentTool = action({
           return { success: true };
         }
 
-        const pr = (await prResponse.json()) as { body?: string };
+        const pr = (await prResponse.json()) as {
+          body?: string;
+          head?: { ref?: string };
+        };
+        const prBranch = pr.head?.ref ?? "";
+        if (prBranch && !prBranch.includes(args.taskId)) {
+          console.warn(
+            `PR #${args.prNumber} branch "${prBranch}" does not match task ${args.taskId}; consider using branch feat/task-${args.taskId}`,
+          );
+        }
         let currentBody = pr.body || "";
 
         // Remove old task marker if present
@@ -2093,9 +2144,12 @@ export const getAgentSkillsForTool = action({
     }
 
     // Verify requesting agent exists and belongs to account
-    const requestingAgent = await ctx.runQuery(internal.service.agents.getInternal, {
-      agentId: args.agentId,
-    });
+    const requestingAgent = await ctx.runQuery(
+      internal.service.agents.getInternal,
+      {
+        agentId: args.agentId,
+      },
+    );
     if (!requestingAgent) {
       throw new Error("Not found: Requesting agent does not exist");
     }
@@ -2107,9 +2161,12 @@ export const getAgentSkillsForTool = action({
 
     // If queryAgentId specified, return that agent's skills (any agent may query any other)
     if (args.queryAgentId) {
-      const targetAgent = await ctx.runQuery(internal.service.agents.getInternal, {
-        agentId: args.queryAgentId,
-      });
+      const targetAgent = await ctx.runQuery(
+        internal.service.agents.getInternal,
+        {
+          agentId: args.queryAgentId,
+        },
+      );
       if (!targetAgent) {
         throw new Error("Not found: Target agent does not exist");
       }

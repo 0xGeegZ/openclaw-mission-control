@@ -4,7 +4,13 @@ import { use, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@packages/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@packages/ui/components/card";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
@@ -52,7 +58,7 @@ export default function FleetPage({ params }: FleetPageProps) {
   const { accountId, isLoading, isAdmin } = useAccount();
   const runtime = useQuery(
     api.runtimes.getByAccount,
-    accountId ? { accountId } : "skip"
+    accountId ? { accountId } : "skip",
   );
   const requestRestart = useMutation(api.accounts.requestRestart);
   const requestUpgrade = useMutation(api.runtimes.requestUpgrade);
@@ -62,7 +68,9 @@ export default function FleetPage({ params }: FleetPageProps) {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [targetOpenclaw, setTargetOpenclaw] = useState("");
   const [targetRuntime, setTargetRuntime] = useState("");
-  const [strategy, setStrategy] = useState<"immediate" | "rolling" | "canary">("immediate");
+  const [strategy, setStrategy] = useState<"immediate" | "rolling" | "canary">(
+    "immediate",
+  );
   const [isRestarting, setIsRestarting] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -86,7 +94,10 @@ export default function FleetPage({ params }: FleetPageProps) {
   };
 
   const getStatusBadge = (status: string | undefined) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    const variants: Record<
+      string,
+      "default" | "secondary" | "destructive" | "outline"
+    > = {
       [RUNTIME_V2_STATUS.ONLINE]: "default",
       [RUNTIME_V2_STATUS.DEGRADED]: "secondary",
       [RUNTIME_V2_STATUS.OFFLINE]: "destructive",
@@ -116,7 +127,9 @@ export default function FleetPage({ params }: FleetPageProps) {
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-border/50 bg-card/50 backdrop-blur-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Fleet</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Fleet
+            </h1>
             <Badge variant="secondary" className="rounded-full">
               <Shield className="h-3 w-3 mr-1" />
               Admin
@@ -145,7 +158,9 @@ export default function FleetPage({ params }: FleetPageProps) {
           <Card className="border-border/50">
             <CardContent className="py-12 text-center">
               <Server className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No runtime registered for this account.</p>
+              <p className="text-muted-foreground">
+                No runtime registered for this account.
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
                 The runtime will appear here after the service reports health.
               </p>
@@ -165,13 +180,17 @@ export default function FleetPage({ params }: FleetPageProps) {
                 <CardContent>
                   <div className="flex items-center gap-3">
                     {getStatusIcon(runtime.status)}
-                    <Badge variant={getStatusBadge(runtime.status)} className="capitalize">
+                    <Badge
+                      variant={getStatusBadge(runtime.status)}
+                      className="capitalize"
+                    >
                       {runtime.status}
                     </Badge>
                   </div>
                   {runtime.lastHealthCheck != null && (
                     <p className="text-xs text-muted-foreground mt-3">
-                      Last health: {new Date(runtime.lastHealthCheck).toLocaleString()}
+                      Last health:{" "}
+                      {new Date(runtime.lastHealthCheck).toLocaleString()}
                     </p>
                   )}
                   {runtime.healthScore != null && (
@@ -220,10 +239,13 @@ export default function FleetPage({ params }: FleetPageProps) {
                     Pending Upgrade
                   </CardTitle>
                   <CardDescription>
-                    Target: OpenClaw {runtime.pendingUpgrade.targetOpenclawVersion}, Runtime{" "}
+                    Target: OpenClaw{" "}
+                    {runtime.pendingUpgrade.targetOpenclawVersion}, Runtime{" "}
                     {runtime.pendingUpgrade.targetRuntimeVersion} · Strategy:{" "}
                     {runtime.pendingUpgrade.strategy} ·{" "}
-                    {new Date(runtime.pendingUpgrade.initiatedAt).toLocaleString()}
+                    {new Date(
+                      runtime.pendingUpgrade.initiatedAt,
+                    ).toLocaleString()}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -240,7 +262,8 @@ export default function FleetPage({ params }: FleetPageProps) {
                         setUpgradeOpen(false);
                       } catch (e) {
                         toast.error("Failed to cancel", {
-                          description: e instanceof Error ? e.message : "Unknown error",
+                          description:
+                            e instanceof Error ? e.message : "Unknown error",
                         });
                       } finally {
                         setIsClearing(false);
@@ -259,7 +282,8 @@ export default function FleetPage({ params }: FleetPageProps) {
               <CardHeader>
                 <CardTitle>Actions</CardTitle>
                 <CardDescription>
-                  Restart runtime, request an upgrade, or rollback to a previous version.
+                  Restart runtime, request an upgrade, or rollback to a previous
+                  version.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-3">
@@ -273,24 +297,35 @@ export default function FleetPage({ params }: FleetPageProps) {
                     try {
                       await requestRestart({ accountId });
                       toast.success("Restart requested", {
-                        description: "Runtime will restart on next health check.",
+                        description:
+                          "Runtime will restart on next health check.",
                       });
                     } catch (e) {
                       toast.error("Failed to request restart", {
-                        description: e instanceof Error ? e.message : "Unknown error",
+                        description:
+                          e instanceof Error ? e.message : "Unknown error",
                       });
                     } finally {
                       setIsRestarting(false);
                     }
                   }}
                 >
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isRestarting && "animate-spin")} />
+                  <RefreshCw
+                    className={cn(
+                      "h-4 w-4 mr-2",
+                      isRestarting && "animate-spin",
+                    )}
+                  />
                   {isRestarting ? "Requesting…" : "Restart"}
                 </Button>
 
                 <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="rounded-xl" disabled={!accountId}>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl"
+                      disabled={!accountId}
+                    >
                       <Upload className="h-4 w-4 mr-2" />
                       Upgrade
                     </Button>
@@ -299,12 +334,15 @@ export default function FleetPage({ params }: FleetPageProps) {
                     <DialogHeader>
                       <DialogTitle>Request upgrade</DialogTitle>
                       <DialogDescription>
-                        Set target versions and strategy. Immediate applies on next health check.
+                        Set target versions and strategy. Immediate applies on
+                        next health check.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                       <div className="space-y-2">
-                        <Label htmlFor="target-openclaw">Target OpenClaw version</Label>
+                        <Label htmlFor="target-openclaw">
+                          Target OpenClaw version
+                        </Label>
                         <Input
                           id="target-openclaw"
                           placeholder={runtime.openclawVersion ?? "e.g. v1.2.0"}
@@ -314,10 +352,14 @@ export default function FleetPage({ params }: FleetPageProps) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="target-runtime">Target runtime service version</Label>
+                        <Label htmlFor="target-runtime">
+                          Target runtime service version
+                        </Label>
                         <Input
                           id="target-runtime"
-                          placeholder={runtime.runtimeServiceVersion ?? "e.g. 0.2.0"}
+                          placeholder={
+                            runtime.runtimeServiceVersion ?? "e.g. 0.2.0"
+                          }
                           value={targetRuntime}
                           onChange={(e) => setTargetRuntime(e.target.value)}
                           className="rounded-xl"
@@ -327,7 +369,9 @@ export default function FleetPage({ params }: FleetPageProps) {
                         <Label>Strategy</Label>
                         <Select
                           value={strategy}
-                          onValueChange={(v) => setStrategy(v as "immediate" | "rolling" | "canary")}
+                          onValueChange={(v) =>
+                            setStrategy(v as "immediate" | "rolling" | "canary")
+                          }
                         >
                           <SelectTrigger className="rounded-xl">
                             <SelectValue />
@@ -341,18 +385,24 @@ export default function FleetPage({ params }: FleetPageProps) {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setUpgradeOpen(false)}>
+                      <Button
+                        variant="outline"
+                        onClick={() => setUpgradeOpen(false)}
+                      >
                         Cancel
                       </Button>
                       <Button
-                        disabled={!accountId || isUpgrading || !targetRuntime.trim()}
+                        disabled={
+                          !accountId || isUpgrading || !targetRuntime.trim()
+                        }
                         onClick={async () => {
                           if (!accountId) return;
                           setIsUpgrading(true);
                           try {
                             await requestUpgrade({
                               accountId,
-                              targetOpenclawVersion: targetOpenclaw.trim() || undefined,
+                              targetOpenclawVersion:
+                                targetOpenclaw.trim() || undefined,
                               targetRuntimeVersion: targetRuntime.trim(),
                               strategy,
                             });
@@ -362,7 +412,10 @@ export default function FleetPage({ params }: FleetPageProps) {
                             setTargetRuntime("");
                           } catch (e) {
                             toast.error("Failed to request upgrade", {
-                              description: e instanceof Error ? e.message : "Unknown error",
+                              description:
+                                e instanceof Error
+                                  ? e.message
+                                  : "Unknown error",
                             });
                           } finally {
                             setIsUpgrading(false);
@@ -385,18 +438,25 @@ export default function FleetPage({ params }: FleetPageProps) {
                     try {
                       await rollbackRuntime({ accountId });
                       toast.success("Rollback recorded", {
-                        description: "Runtime will use previous version on next restart if configured.",
+                        description:
+                          "Runtime will use previous version on next restart if configured.",
                       });
                     } catch (e) {
                       toast.error("Failed to rollback", {
-                        description: e instanceof Error ? e.message : "Unknown error",
+                        description:
+                          e instanceof Error ? e.message : "Unknown error",
                       });
                     } finally {
                       setIsRollingBack(false);
                     }
                   }}
                 >
-                  <RotateCcw className={cn("h-4 w-4 mr-2", isRollingBack && "animate-spin")} />
+                  <RotateCcw
+                    className={cn(
+                      "h-4 w-4 mr-2",
+                      isRollingBack && "animate-spin",
+                    )}
+                  />
                   {isRollingBack ? "Rolling back…" : "Rollback"}
                 </Button>
               </CardContent>
@@ -431,9 +491,11 @@ export default function FleetPage({ params }: FleetPageProps) {
                           {entry.status}
                         </Badge>
                         <span className="text-muted-foreground">
-                          Runtime {entry.fromRuntimeVersion} → {entry.toRuntimeVersion}
+                          Runtime {entry.fromRuntimeVersion} →{" "}
+                          {entry.toRuntimeVersion}
                           {" · OpenClaw "}
-                          {entry.fromOpenclawVersion} → {entry.toOpenclawVersion}
+                          {entry.fromOpenclawVersion} →{" "}
+                          {entry.toOpenclawVersion}
                         </span>
                         <span className="text-xs text-muted-foreground ml-auto">
                           {new Date(entry.startedAt).toLocaleString()}

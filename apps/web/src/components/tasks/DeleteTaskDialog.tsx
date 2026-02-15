@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useMutation } from 'convex/react';
-import { api } from '@packages/backend/convex/_generated/api';
-import { Id } from '@packages/backend/convex/_generated/dataModel';
-import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
-import { toast } from 'sonner';
+import { useMutation } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
+import { Id } from "@packages/backend/convex/_generated/dataModel";
+import { ConfirmDeleteDialog } from "@/components/ui/ConfirmDeleteDialog";
+import { toast } from "sonner";
 
 interface DeleteTaskDialogProps {
-  taskId: Id<'tasks'>;
+  taskId: Id<"tasks">;
   taskTitle: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -16,7 +16,7 @@ interface DeleteTaskDialogProps {
 
 /**
  * Confirmation dialog for deleting a task.
- * 
+ *
  * Thin wrapper around ConfirmDeleteDialog that handles:
  * - Convex mutation (api.tasks.remove)
  * - Toast notifications
@@ -34,13 +34,13 @@ export function DeleteTaskDialog({
   const handleDelete = async () => {
     try {
       await removeTask({ taskId });
-      toast.success('Task deleted');
+      toast.success("Task deleted");
       onOpenChange(false);
       onDeleted?.();
     } catch (error) {
       throw error instanceof Error
         ? new Error(error.message)
-        : new Error('Failed to delete task');
+        : new Error("Failed to delete task");
     }
   };
 
