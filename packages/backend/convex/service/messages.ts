@@ -4,6 +4,7 @@ import { Doc, Id } from "../_generated/dataModel";
 import {
   attachmentValidator,
   isAttachmentTypeAndSizeAllowed,
+  MESSAGE_CONTENT_MAX_LENGTH,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
 import {
@@ -201,6 +202,13 @@ export const createFromAgent = internalMutation({
     if (task.accountId !== agent.accountId) {
       throw new Error("Forbidden: Task belongs to different account");
     }
+
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
     const account = await ctx.db.get(agent.accountId);
     const isOrchestratorChat = isOrchestratorChatTask({ account, task });
     const orchestratorAgentId =

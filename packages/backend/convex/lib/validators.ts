@@ -427,6 +427,9 @@ export const mentionValidator = v.object({
 /** Max size per attachment (20MB). */
 export const ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
+/** Maximum message content length (characters) to prevent DoS and abuse. */
+export const MESSAGE_CONTENT_MAX_LENGTH = 100_000;
+
 /** Allowed MIME type prefixes/values for attachments (matches UI accept). */
 export const ATTACHMENT_ALLOWED_TYPES = [
   "image/",
