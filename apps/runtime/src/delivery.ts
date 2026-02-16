@@ -80,6 +80,20 @@ const state: DeliveryState = {
 };
 
 /**
+ * Normalize assistant text parts by trimming and removing empty entries.
+ * Kept as a helper so delivery behavior can be regression-tested.
+ *
+ * @param texts - Candidate text parts from OpenClaw
+ * @returns Non-empty text parts in original order
+ */
+export function _normalizeNonEmptyTexts(
+  texts: string[] | null | undefined,
+): string[] {
+  if (!Array.isArray(texts) || texts.length === 0) return [];
+  return texts.map((text) => text.trim()).filter((text) => text.length > 0);
+}
+
+/**
  * @internal Track retries for placeholder/empty OpenClaw responses.
  */
 export function _getNoResponseRetryDecision(
@@ -275,10 +289,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               sendOptions,
             );
 
-            let textsToPost: string[] = result.texts
-              .map((t) => t.trim())
-              .filter((t) => t.length > 0);
-            let suppressAgentNotifications = false;
+            let textsToPost: string[] = _normalizeNonEmptyTexts(result.texts);
             let skipMessageReason: string | null = null;
             const taskId = context.notification?.taskId;
             // Use first part for retry/HEARTBEAT decision; all parts must be valid to avoid retry.
@@ -355,7 +366,6 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                         noResponsePlaceholder?.mentionPrefix,
                       ),
                     ];
-                    suppressAgentNotifications = true;
                     skipMessageReason = reason;
                   } else {
                     textsToPost = [];
@@ -411,9 +421,12 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                     context.agent.sessionKey,
                     outputs,
                   );
-                  textsToPost = finalTexts
-                    .map((t) => t.trim())
-                    .filter((t) => t.length > 0);
+                  const normalizedFinalTexts =
+                    _normalizeNonEmptyTexts(finalTexts);
+                  // Preserve pre-tool assistant text when tool follow-up has no final message.
+                  if (normalizedFinalTexts.length > 0) {
+                    textsToPost = normalizedFinalTexts;
+                  }
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err);
                   log.warn("Failed to send tool results to OpenClaw", msg);
@@ -470,19 +483,25 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
             }
             // Persist parts in order; on failure we throw and do not mark delivered, so retry is idempotent per part.
             if (taskId && partsToPost.length > 0) {
-              for (let partIndex = 0; partIndex < partsToPost.length; partIndex++) {
+              for (
+                let partIndex = 0;
+                partIndex < partsToPost.length;
+                partIndex++
+              ) {
                 const { content, suppress } = partsToPost[partIndex];
-                await client.action(api.service.actions.createMessageFromAgent, {
-                  agentId: context.agent._id,
-                  taskId,
-                  content,
-                  serviceToken: config.serviceToken,
-                  accountId: config.accountId,
-                  sourceNotificationId: notification._id,
-                  // @ts-expect-error Backend createMessageFromAgent has sourceNotificationPartIndex; API types align after `npx convex codegen`
-                  sourceNotificationPartIndex: partIndex,
-                  suppressAgentNotifications: suppress,
-                });
+                await client.action(
+                  api.service.actions.createMessageFromAgent,
+                  {
+                    agentId: context.agent._id,
+                    taskId,
+                    content,
+                    serviceToken: config.serviceToken,
+                    accountId: config.accountId,
+                    sourceNotificationId: notification._id,
+                    sourceNotificationPartIndex: partIndex,
+                    suppressAgentNotifications: suppress,
+                  },
+                );
                 if (partIndex === 0) {
                   log.info(
                     "Persisted agent message(s) to Convex",

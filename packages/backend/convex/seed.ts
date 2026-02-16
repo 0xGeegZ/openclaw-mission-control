@@ -421,26 +421,38 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ## Primary repository
 
-- Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- GitHub: https://github.com/0xGeegZ/openclaw-mission-control
-- Before starting a task, run \`git fetch origin\` and \`git pull\` in the writable clone.
-- If the writable clone is missing, run \`git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control\`
+- Main clone (for fetch, pull, and worktree management only): \`/root/clawd/repos/openclaw-mission-control\`
+- GitHub: <https://github.com/0xGeegZ/openclaw-mission-control>
+- In the main clone, run only: \`git fetch origin\`, \`git pull\`, and \`git worktree add/remove\`. Do not perform code edits, commits, or PR creation in the main clone.
+- If the main clone is missing, run \`git clone https://github.com/0xGeegZ/openclaw-mission-control.git /root/clawd/repos/openclaw-mission-control\`
 - If local checkout is available, use it instead of GitHub/web_fetch. If access fails, mark the task BLOCKED and request credentials.
-- To inspect directories, use exec (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
-- Use the writable clone for all git operations (branch, commit, push) and PR creation. Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
-- You may write artifacts under /root/clawd/deliverables for local use. To share a deliverable with the primary user, use document_upsert and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md or /root/clawd/deliverables/...) — the user cannot open them.
+- To inspect directories, use \`exec\` (e.g. \`ls /root/clawd/repos/openclaw-mission-control\`); use \`read\` only on files.
+- Do not run \`gh auth login\`; when GH_TOKEN is set, use \`gh\` and \`git\` directly.
+- You may write artifacts under \`/root/clawd/deliverables\` for local use. To share a deliverable with the primary user, use the **document_upsert** tool and reference it in the thread only as \`[Document](/document/<documentId>)\`. Do not post local paths (e.g. \`/deliverables/PLAN_*.md\` or \`/root/clawd/deliverables/...\`) — the user cannot open them.
+
+### Task worktree (required)
+
+All code work for a task must happen in a **task worktree**, not in the main clone. This keeps each task's changes isolated and avoids mixed PRs.
+
+- **Path:** \`/root/clawd/worktrees/feat-task-<taskId>\` where \`<taskId>\` is the Task ID from your notification (e.g. \`/root/clawd/worktrees/feat-task-k972tbe4p5b4pywsdw4sze8gm9812kvz\`).
+- **Create worktree (from main clone):** \`cd /root/clawd/repos/openclaw-mission-control\`, then \`git fetch origin\`, \`git checkout dev\`, \`git pull\`, then:
+  - If the branch does not exist yet: \`git worktree add /root/clawd/worktrees/feat-task-<taskId> -b feat/task-<taskId>\`
+  - If the branch already exists: \`git worktree add /root/clawd/worktrees/feat-task-<taskId> feat/task-<taskId>\`
+- **All read/write of code, commit, push, and \`gh pr create\` must be from the worktree directory.** Run all file edits, \`git add\`, \`git commit\`, \`git push\`, and \`gh pr create\` from \`/root/clawd/worktrees/feat-task-<taskId>\`.
+- Do not perform code edits or commits in \`/root/clawd/repos/openclaw-mission-control\`.
 
 ## Workspace boundaries (read/write)
 
-- Allowed root: /root/clawd only.
+- Allowed root: \`/root/clawd\` only.
 - Allowed working paths:
-  - /root/clawd/agents/<slug> (your agent workspace, safe to create files/folders)
-  - /root/clawd/memory (WORKING.md, daily notes, MEMORY.md)
-  - /root/clawd/deliverables (local artifacts; share with user only via document_upsert and [Document](/document/<documentId>))
-  - /root/clawd/repos/openclaw-mission-control (code changes)
-  - /root/clawd/skills (only if explicitly instructed)
-- Do not read or write outside /root/clawd (no /root, /etc, /usr, /tmp, or host paths).
-- If a required path under /root/clawd is missing, create it if you can (e.g. /root/clawd/agents and your /root/clawd/agents/<slug> workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
+  - \`/root/clawd/agents/<slug>\` (your agent workspace, safe to create files/folders)
+  - \`/root/clawd/memory\` (WORKING.md, daily notes, MEMORY.md)
+  - \`/root/clawd/deliverables\` (local artifacts; share with user only via document_upsert and \`[Document](/document/<documentId>)\`)
+  - \`/root/clawd/repos/openclaw-mission-control\` (fetch, pull, worktree add/remove only; no code edits here)
+  - \`/root/clawd/worktrees\` (task worktrees; do all code edits in your task worktree under this path)
+  - \`/root/clawd/skills\` (only if explicitly instructed)
+- Do not read or write outside \`/root/clawd\` (no \`/root\`, \`/etc\`, \`/usr\`, \`/tmp\`, or host paths).
+- If a required path under \`/root/clawd\` is missing, create it if you can (e.g. \`/root/clawd/agents\` and your \`/root/clawd/agents/<slug>\` workspace). If creation fails, report it as BLOCKED and request the runtime owner to create it.
 
 ## Runtime ownership (critical)
 
@@ -449,11 +461,12 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 ### Creating a PR
 
-Work in /root/clawd/repos/openclaw-mission-control: create a branch, commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..." --base dev\`). Use \`dev\` as the base branch for all PRs (merge into \`dev\`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
+Work in your **task worktree** at \`/root/clawd/worktrees/feat-task-<taskId>\`. From that directory: commit, push, then open the PR with \`gh pr create\` (e.g. \`gh pr create --title "..." --body "..." --base dev\`). Use \`dev\` as the base branch for all PRs (merge into \`dev\`, not master). Ensure GH_TOKEN has Contents write and Pull requests write scopes.
+Only include changes that directly support the current task. If any change is not explicitly required, remove it and file a follow-up task instead.
 
 #### One branch per task
 
-Use exactly one branch per task so each PR contains only that task's commits. Branch name must be \`feat/task-<taskId>\` where \`<taskId>\` is the Task ID from your notification (e.g. \`feat/task-k972tbe4p5b4pywsdw4sze8gm9812kvz\`). Before any code edit: run \`git fetch origin\`, \`git checkout dev\`, \`git pull\`, then either \`git checkout -b feat/task-<taskId>\` (create) or \`git checkout feat/task-<taskId>\` (if it already exists). All commits and the PR for this task must be on that branch only.
+Use exactly one branch per task so each PR contains only that task's commits. Branch name must be \`feat/task-<taskId>\` where \`<taskId>\` is the Task ID from your notification (e.g. \`feat/task-k972tbe4p5b4pywsdw4sze8gm9812kvz\`). Ensure a worktree exists for that branch (see **Task worktree (required)**). All commits and the PR for this task must be on that branch only, and all work must be done from the worktree directory.
 
 ## Non-negotiable rules
 
