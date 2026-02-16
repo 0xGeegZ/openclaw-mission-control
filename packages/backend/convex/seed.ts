@@ -777,9 +777,11 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 const DOC_REPOSITORY_CONTENT = `# Repository — Primary
 
 - **Name:** OpenClaw Mission Control
-- **Writable clone (use for all git work):** /root/clawd/repos/openclaw-mission-control
+- **Main clone (fetch/pull/worktree management only):** /root/clawd/repos/openclaw-mission-control
+- **Task worktrees (required for code changes):** /root/clawd/worktrees/feat-task-<taskId>
 - **GitHub:** https://github.com/0xGeegZ/openclaw-mission-control
-- **Usage:** Before starting a task, run \`git fetch origin\` and \`git pull\`. Work in the writable clone for branch, commit, push, and \`gh pr create\`. Do not run \`gh auth login\` when GH_TOKEN is set.
+- **Branch policy:** one branch per task, \`feat/task-<taskId>\`. PR base branch: \`dev\`.
+- **Usage:** In the main clone, run only \`git fetch origin\`, \`git checkout dev\`, \`git pull\`, and \`git worktree add/remove\`. Do all file edits, commit, push, and \`gh pr create\` from the task worktree. Do not run \`gh auth login\` when GH_TOKEN is set.
 - **Access note:** If you see a 404, authentication is missing; request GH_TOKEN (Contents + Pull requests write scopes).
 `;
 

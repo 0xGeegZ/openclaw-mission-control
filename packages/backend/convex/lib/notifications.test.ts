@@ -308,7 +308,7 @@ describe("createThreadNotifications", () => {
     ).toEqual(["user_alice"]);
   });
 
-  it("notifies user and agent subscribers when task is done", async () => {
+  it("skips all agent thread notifications when task is done", async () => {
     const ctx = createMockNotificationContext({
       subscriptions: [
         { subscriberType: "user", subscriberId: "user_alice" },
@@ -333,7 +333,7 @@ describe("createThreadNotifications", () => {
     const inserted = ctx.getInsertedNotifications();
     expect(
       inserted.map((row: Record<string, unknown>) => row.recipientId),
-    ).toEqual(["user_alice", "agent_reviewer"]);
+    ).toEqual(["user_alice"]);
   });
 
   it("skips user recipients when agentActivity preference is disabled", async () => {

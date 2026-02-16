@@ -13,7 +13,10 @@ import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
 import { Id, Doc } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
-import { buildDefaultUserContent, buildDefaultIdentityContent } from "./lib/user_identity_fallback";
+import {
+  buildDefaultUserContent,
+  buildDefaultIdentityContent,
+} from "./lib/user_identity_fallback";
 
 /**
  * Generate a session key for an agent.
@@ -796,11 +799,39 @@ export const migratePromptScaffold = mutation({
       [key: string]: unknown;
     };
 
-    if (settings.userMd === undefined || settings.userMd === null) {
+    const settingsBehaviorFlags =
+      typeof settings.agentDefaults?.behaviorFlags === "object" &&
+      settings.agentDefaults?.behaviorFlags !== null
+        ? (settings.agentDefaults.behaviorFlags as Record<string, unknown>)
+        : undefined;
+    const needsAccountDefaultsBackfill =
+      settingsBehaviorFlags !== undefined &&
+      (typeof settingsBehaviorFlags.canReviewTasks !== "boolean" ||
+        typeof settingsBehaviorFlags.canMarkDone !== "boolean");
+    const needsUserMdBackfill =
+      settings.userMd === undefined || settings.userMd === null;
+    if (needsUserMdBackfill || needsAccountDefaultsBackfill) {
       await ctx.db.patch(args.accountId, {
         settings: {
           ...account.settings,
-          userMd: buildDefaultUserContent(),
+          ...(needsUserMdBackfill && { userMd: buildDefaultUserContent() }),
+          ...(needsAccountDefaultsBackfill && {
+            agentDefaults: {
+              ...(settings.agentDefaults ?? {}),
+              behaviorFlags: {
+                ...getDefaultOpenclawConfig().behaviorFlags,
+                ...settingsBehaviorFlags,
+                canReviewTasks:
+                  typeof settingsBehaviorFlags?.canReviewTasks === "boolean"
+                    ? settingsBehaviorFlags.canReviewTasks
+                    : false,
+                canMarkDone:
+                  typeof settingsBehaviorFlags?.canMarkDone === "boolean"
+                    ? settingsBehaviorFlags.canMarkDone
+                    : false,
+              },
+            },
+          }),
         },
       });
       accountsUpdated = 1;
@@ -815,7 +846,10 @@ export const migratePromptScaffold = mutation({
 
     for (const agent of agents) {
       const updates: Record<string, unknown> = {};
-      if (agent.identityContent === undefined || agent.identityContent === null) {
+      if (
+        agent.identityContent === undefined ||
+        agent.identityContent === null
+      ) {
         updates.identityContent = buildDefaultIdentityContent(
           agent.name,
           agent.role,

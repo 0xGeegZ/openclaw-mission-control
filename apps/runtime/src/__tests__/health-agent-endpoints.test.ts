@@ -118,6 +118,29 @@ function minimalHealthConfig(): RuntimeConfig {
   } as RuntimeConfig;
 }
 
+/**
+ * Retries fetch a few times to tolerate short-lived startup/teardown socket races
+ * in local HTTP integration tests.
+ */
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 describe("isLocalAddress", () => {
   it("returns false for undefined", () => {
     expect(isLocalAddress(undefined)).toBe(false);
@@ -177,7 +200,7 @@ describe("agent endpoints - session validation", () => {
   it.each(AGENT_ENDPOINTS)(
     "GET %s returns 405 Method Not Allowed",
     async (endpoint) => {
-      const res = await fetch(`${BASE}${endpoint}`, { method: "GET" });
+      const res = await fetchWithRetry(`${BASE}${endpoint}`, { method: "GET" });
       expect(res.status).toBe(405);
       expect(res.headers.get("Allow")).toBe("POST");
     },
@@ -186,7 +209,7 @@ describe("agent endpoints - session validation", () => {
   it.each(AGENT_ENDPOINTS)(
     "POST %s without x-openclaw-session-key returns 401",
     async (endpoint) => {
-      const res = await fetch(`${BASE}${endpoint}`, {
+      const res = await fetchWithRetry(`${BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

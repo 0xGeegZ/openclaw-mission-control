@@ -86,7 +86,7 @@ Main files audited:
 - Frontend:
   - [apps/web/src/app/(dashboard)/[accountSlug]/settings/page.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/settings/page.tsx>)
   - [apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx>)
-  - [apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/\_components/AgentBehaviorFlagsCard.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx>)
+  - [apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/components/AgentBehaviorFlagsCard.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx>)
 - Docs/tests:
   - [docs/runtime/AGENTS.md](docs/runtime/AGENTS.md)
   - [docs/runtime/HEARTBEAT.md](docs/runtime/HEARTBEAT.md)
@@ -253,7 +253,7 @@ Keep in static AGENTS:
 - [apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/admin/openclaw/page.tsx>)
   - Add migration trigger button for prompt scaffold migration (immediate rollout).
   - Extend default behavior flag controls for `canReviewTasks` and `canMarkDone`.
-- [apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/\_components/AgentBehaviorFlagsCard.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx>)
+- [apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/components/AgentBehaviorFlagsCard.tsx](<apps/web/src/app/(dashboard)/[accountSlug]/agents/[agentId]/_components/AgentBehaviorFlagsCard.tsx>)
   - Add per-agent override controls for new review/close flags.
 - [apps/web/src/lib/settings-validation.ts](apps/web/src/lib/settings-validation.ts)
   - Add client validator for USER markdown length and basic sanity checks.
@@ -280,75 +280,75 @@ Keep in static AGENTS:
 
 - Create and switch to feature worktree (`feat/seed-user-identity`) and verify `pwd` is worktree path.
 
-2. **Schema extension commit**
+1. **Schema extension commit**
 
 - Update `schema.ts` for `settings.userMd`, `agents.identityContent`, and new behavior flags.
 - Regenerate Convex types.
 
-3. **Shared config/type alignment commit**
+1. **Shared config/type alignment commit**
 
 - Extend shared `OpenClawConfig` types and `DEFAULT_OPENCLAW_CONFIG.behaviorFlags`.
 - Update shared constant tests.
 
-4. **Backend settings API commit**
+1. **Backend settings API commit**
 
 - Extend `accounts.update` validator + merge logic for `userMd` and validation bounds.
 
-5. **Backend agent API + migration commit**
+1. **Backend agent API + migration commit**
 
 - Extend `agents.create`/`agents.update` for `identityContent`.
 - Extend `updateOpenclawConfig` behavior flags.
 - Add account-scoped admin migration mutation returning counts.
 
-6. **Seed ownership refactor commit**
+1. **Seed ownership refactor commit**
 
 - Add USER/IDENTITY seed builders.
 - Seed `settings.userMd` defaults and `identityContent` for seed agents.
 - Reassign repo-specific instructions to seed-managed docs.
 - Update managed-doc sync logic in `ensureDocs`.
 
-7. **Runtime payload expansion commit**
+1. **Runtime payload expansion commit**
 
 - Extend `service/agents.listForRuntime` + `service/actions.listAgentsForRuntime` to return effective USER/IDENTITY.
 
-8. **Profile sync file materialization commit**
+1. **Profile sync file materialization commit**
 
 - Update `openclaw-profiles.ts` to write `USER.md` and `IDENTITY.md` with idempotent writes.
 - Update `agent-sync.ts` type usage.
 
-9. **Delivery/policy decoupling commit**
+1. **Delivery/policy decoupling commit**
 
 - Remove role/slug QA/reviewer heuristics.
 - Base review/done behavior on explicit behavior flags.
 - Update `delivery.ts`, `delivery/policy.ts`, and `delivery/types.ts`.
 
-10. **AGENTS separation commit**
+1. **AGENTS separation commit**
 
 - Remove repo-specific sections from static AGENTS docs and runtime defaults.
   - Remove hardcoded repo/worktree constants and Mission Control-specific wording from `delivery/prompt.ts`.
   - Keep task/orchestrator/tool behavior static.
 
-11. **Settings UI USER editor commit**
+1. **Settings UI USER editor commit**
 
 - Add new settings tab and save flow for `USER.md` account content.
   - Add client-side validation and admin-only write behavior.
 
-12. **Admin migration + behavior flags UI commit**
+1. **Admin migration + behavior flags UI commit**
 
 - Add migration button in OpenClaw admin page.
   - Surface new behavior flags in admin defaults and per-agent override card.
 
-13. **Prompt audit documentation commit**
+1. **Prompt audit documentation commit**
 
 - Add `PROMPT_LAYERING_AUDIT.md`, `USER_TEMPLATE.md`, `IDENTITY_TEMPLATE.md`.
   - Update runtime docs and docker-compose docs.
 
-14. **Test updates commit**
+1. **Test updates commit**
 
 - Runtime tests, policy tests, delivery tests, profile sync tests, shared constant tests.
   - Add migration-focused tests for backend helpers/mutation behavior.
 
-15. **Manual QA + rollout runbook commit**
+1. **Manual QA + rollout runbook commit**
 
 - Execute migration in target account(s), verify workspace files and UI behavior, and document runbook.
 

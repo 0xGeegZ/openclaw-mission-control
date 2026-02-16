@@ -12,7 +12,7 @@ import {
   requireAccountAdmin,
   requireAccountOwner,
 } from "./lib/auth";
-import { AVAILABLE_MODELS } from "@packages/shared";
+import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
 import { logActivity } from "./lib/activity";
 import {
@@ -211,6 +211,54 @@ const accountSettingsValidator = v.object({
 });
 
 /**
+ * Normalizes legacy agentDefaults.behaviorFlags so account settings patches remain
+ * valid after schema changes (for example when older accounts are missing new
+ * boolean flags).
+ */
+function normalizeAgentDefaults(
+  agentDefaults: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!agentDefaults) return undefined;
+  const rawBehaviorFlags =
+    typeof agentDefaults.behaviorFlags === "object" &&
+    agentDefaults.behaviorFlags !== null
+      ? (agentDefaults.behaviorFlags as Record<string, unknown>)
+      : undefined;
+  if (!rawBehaviorFlags) return agentDefaults;
+
+  const defaultFlags = DEFAULT_OPENCLAW_CONFIG.behaviorFlags;
+  return {
+    ...agentDefaults,
+    behaviorFlags: {
+      canCreateTasks:
+        typeof rawBehaviorFlags.canCreateTasks === "boolean"
+          ? rawBehaviorFlags.canCreateTasks
+          : defaultFlags.canCreateTasks,
+      canModifyTaskStatus:
+        typeof rawBehaviorFlags.canModifyTaskStatus === "boolean"
+          ? rawBehaviorFlags.canModifyTaskStatus
+          : defaultFlags.canModifyTaskStatus,
+      canCreateDocuments:
+        typeof rawBehaviorFlags.canCreateDocuments === "boolean"
+          ? rawBehaviorFlags.canCreateDocuments
+          : defaultFlags.canCreateDocuments,
+      canMentionAgents:
+        typeof rawBehaviorFlags.canMentionAgents === "boolean"
+          ? rawBehaviorFlags.canMentionAgents
+          : defaultFlags.canMentionAgents,
+      canReviewTasks:
+        typeof rawBehaviorFlags.canReviewTasks === "boolean"
+          ? rawBehaviorFlags.canReviewTasks
+          : defaultFlags.canReviewTasks,
+      canMarkDone:
+        typeof rawBehaviorFlags.canMarkDone === "boolean"
+          ? rawBehaviorFlags.canMarkDone
+          : defaultFlags.canMarkDone,
+    },
+  };
+}
+
+/**
  * Update account details (name, slug, settings).
  * Requires admin role. Slug must be unique if changed.
  */
@@ -302,6 +350,9 @@ export const update = mutation({
             };
           }
         ).settings ?? {};
+      const normalizedCurrentAgentDefaults = normalizeAgentDefaults(
+        current.agentDefaults,
+      );
       updates.settings = {
         ...current,
         ...(args.settings.theme !== undefined && {
@@ -319,6 +370,10 @@ export const update = mutation({
         ...(args.settings.agentDefaults !== undefined && {
           agentDefaults: args.settings.agentDefaults,
         }),
+        ...(args.settings.agentDefaults === undefined &&
+          normalizedCurrentAgentDefaults !== undefined && {
+            agentDefaults: normalizedCurrentAgentDefaults,
+          }),
         ...("orchestratorAgentId" in args.settings && {
           orchestratorAgentId:
             args.settings.orchestratorAgentId === null

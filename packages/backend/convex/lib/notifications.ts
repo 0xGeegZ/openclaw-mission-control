@@ -132,7 +132,7 @@ async function buildUndeliveredAgentThreadUpdateMap(
  * @param taskTitle - Task title for body.
  * @param mentionedIds - Subscriber IDs to skip (already mentioned).
  * @param hasAgentMentions - When true, skip agent thread_update to avoid duplicate replies.
- * @param taskStatus - Reserved for future use (e.g. delivery policy).
+ * @param taskStatus - When done/blocked, skip agent thread_update notifications.
  * @param options - Orchestrator chat filter and suppressAgentNotifications.
  * @returns Array of notification IDs (inserted or coalesced).
  */
@@ -155,6 +155,8 @@ export async function createThreadNotifications(
     suppressAgentNotifications?: boolean;
   },
 ): Promise<Id<"notifications">[]> {
+  const shouldSkipAgentThreadUpdates =
+    taskStatus === "done" || taskStatus === "blocked";
   const subscriptions = await ctx.db
     .query("subscriptions")
     .withIndex("by_task", (q) => q.eq("taskId", taskId))
@@ -179,7 +181,8 @@ export async function createThreadNotifications(
       }
     }
     if (
-      options?.suppressAgentNotifications === true &&
+      (shouldSkipAgentThreadUpdates ||
+        options?.suppressAgentNotifications === true) &&
       subscription.subscriberType === "agent"
     )
       continue;
