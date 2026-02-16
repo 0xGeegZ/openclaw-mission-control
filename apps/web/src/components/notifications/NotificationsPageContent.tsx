@@ -7,12 +7,43 @@ import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { NotificationsList } from "./NotificationsList";
 import { Button } from "@packages/ui/components/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@packages/ui/components/tabs";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
 interface NotificationsPageContentProps {
   accountSlug: string;
   accountId: Id<"accounts">;
+}
+
+/**
+ * Merge incoming notifications into the current list by id.
+ * Existing items are updated in place, and unseen items are appended.
+ */
+export function mergeNotificationsById(
+  current: Doc<"notifications">[],
+  incoming: Doc<"notifications">[],
+): Doc<"notifications">[] {
+  const next = [...current];
+  const indexById = new Map(
+    next.map((notification, index) => [notification._id, index]),
+  );
+
+  for (const notification of incoming) {
+    const existingIndex = indexById.get(notification._id);
+    if (existingIndex === undefined) {
+      indexById.set(notification._id, next.length);
+      next.push(notification);
+      continue;
+    }
+    next[existingIndex] = notification;
+  }
+
+  return next;
 }
 
 export function NotificationsPageContent({
@@ -22,7 +53,9 @@ export function NotificationsPageContent({
   const router = useRouter();
   const [filterBy, setFilterBy] = useState<"all" | "unread">("unread");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [allNotifications, setAllNotifications] = useState<Doc<"notifications">[]>([]);
+  const [allNotifications, setAllNotifications] = useState<
+    Doc<"notifications">[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch notifications
@@ -39,63 +72,69 @@ export function NotificationsPageContent({
   const dismissNotification = useMutation(api.notifications.remove);
 
   // Sync Convex query result to local state for pagination and optimistic updates.
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional sync from query to local state for pagination. */
+  // Defer setState to avoid synchronous setState in effect (react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (notificationsData) {
-      if (cursor === undefined) {
-        setAllNotifications(notificationsData.notifications || []);
-      } else {
-        setAllNotifications((prev) => [
-          ...prev,
-          ...(notificationsData.notifications || []),
-        ]);
-      }
-    }
+    if (!notificationsData) return;
+    const incomingNotifications = notificationsData.notifications || [];
+    const update =
+      cursor === undefined
+        ? () => setAllNotifications(incomingNotifications)
+        : () =>
+            setAllNotifications((prev) =>
+              mergeNotificationsById(prev, incomingNotifications),
+            );
+    queueMicrotask(update);
   }, [notificationsData, cursor]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
+      setError(null);
       await markAsRead({
         notificationId: notificationId as Id<"notifications">,
       });
       // Update local state
       setAllNotifications((prev) =>
         prev.map((n) =>
-          n._id === notificationId ? { ...n, readAt: Date.now() } : n
-        )
+          n._id === notificationId ? { ...n, readAt: Date.now() } : n,
+        ),
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to mark notification as read"
+        err instanceof Error
+          ? err.message
+          : "Failed to mark notification as read",
       );
     }
   };
 
   const handleMarkAllAsRead = async () => {
     try {
+      setError(null);
       await markAllAsRead({ accountId });
       // Update local state
       setAllNotifications((prev) =>
-        prev.map((n) => ({ ...n, readAt: n.readAt || Date.now() }))
+        prev.map((n) => ({ ...n, readAt: n.readAt || Date.now() })),
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to mark all as read"
+        err instanceof Error ? err.message : "Failed to mark all as read",
       );
     }
   };
 
   const handleDismiss = async (notificationId: string) => {
     try {
+      setError(null);
       await dismissNotification({
         notificationId: notificationId as Id<"notifications">,
       });
       // Update local state
-      setAllNotifications((prev) => prev.filter((n) => n._id !== notificationId));
+      setAllNotifications((prev) =>
+        prev.filter((n) => n._id !== notificationId),
+      );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to dismiss notification"
+        err instanceof Error ? err.message : "Failed to dismiss notification",
       );
     }
   };
@@ -159,6 +198,7 @@ export function NotificationsPageContent({
           <Tabs
             value={filterBy}
             onValueChange={(value: string) => {
+              setError(null);
               setFilterBy(value as "all" | "unread");
               setCursor(undefined);
               setAllNotifications([]);

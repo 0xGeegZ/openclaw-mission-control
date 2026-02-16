@@ -7,7 +7,7 @@ import {
   TASK_STATUS_TRANSITIONS,
   isValidTransition,
   validateStatusRequirements,
-  PAUSE_ALLOWED_STATUSES,
+  PAUSE_ALLOWED_STATUS_SET,
   isPauseAllowedStatus,
 } from "./task_workflow";
 
@@ -26,7 +26,7 @@ describe("task_workflow", () => {
       expect(isPauseAllowedStatus("archived")).toBe(false);
     });
 
-    it("matches PAUSE_ALLOWED_STATUSES", () => {
+    it("matches PAUSE_ALLOWED_STATUS_SET", () => {
       const statuses: TaskStatus[] = [
         "inbox",
         "assigned",
@@ -37,9 +37,7 @@ describe("task_workflow", () => {
         "archived",
       ];
       for (const s of statuses) {
-        expect(isPauseAllowedStatus(s)).toBe(
-          (PAUSE_ALLOWED_STATUSES as readonly string[]).includes(s),
-        );
+        expect(isPauseAllowedStatus(s)).toBe(PAUSE_ALLOWED_STATUS_SET.has(s));
       }
     });
   });

@@ -6,10 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  notificationTypeValidator,
-  activityTypeValidator,
-} from "./validators";
+import { notificationTypeValidator, activityTypeValidator } from "./validators";
 
 // ============================================================================
 // notificationTypeValidator Tests
@@ -97,6 +94,7 @@ describe("activityTypeValidator", () => {
       "message_created",
       "document_created",
       "document_updated",
+      "document_deleted",
       "task_created",
       "task_status_changed",
       "account_created",
@@ -121,6 +119,7 @@ describe("activityTypeValidator", () => {
       "message_created",
       "document_created",
       "document_updated",
+      "document_deleted",
     ];
 
     for (const type of types) {

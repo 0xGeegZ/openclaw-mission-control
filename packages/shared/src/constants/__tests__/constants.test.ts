@@ -1,13 +1,23 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   TASK_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_TRANSITIONS,
+  AGENT_STATUS_ORDER,
   AVAILABLE_MODELS,
   SKILL_CATEGORY_LABELS,
   DEFAULT_OPENCLAW_CONFIG,
+  ANALYTICS_TIME_RANGE,
+  ANALYTICS_TIME_RANGE_ORDER,
+  ANALYTICS_TIME_RANGE_LABELS,
+  TASK_STATUS_CHART_COLORS,
+  AGENT_STATUS_CHART_COLORS,
 } from "../index";
-import type { TaskStatus, LLMModel, SkillCategory } from "../../types";
+import type {
+  TaskStatus,
+  AnalyticsTimeRange,
+  SkillCategory,
+} from "../../types";
 
 // ============================================================================
 // Task Status Constants Tests
@@ -214,14 +224,14 @@ describe("AVAILABLE_MODELS", () => {
 
   it("includes the default model (claude-haiku-4.5)", () => {
     const hasDefaultModel = AVAILABLE_MODELS.some(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "claude-haiku-4.5",
     );
     expect(hasDefaultModel).toBe(true);
   });
 
   it("default model is marked as recommended in the label", () => {
     const defaultModel = AVAILABLE_MODELS.find(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "claude-haiku-4.5",
     );
     expect(defaultModel).toBeDefined();
     expect(defaultModel!.label).toContain("Recommended");
@@ -321,67 +331,133 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("contextConfig has all required nested properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "maxHistoryMessages"
+      "maxHistoryMessages",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTaskContext"
+      "includeTaskContext",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTeamContext"
+      "includeTeamContext",
     );
   });
 
   it("contextConfig.maxHistoryMessages is a positive number", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBe(
-      "number"
-    );
-    expect(DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBeGreaterThan(0);
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBe("number");
+    expect(
+      DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBeGreaterThan(0);
   });
 
   it("contextConfig flags are boolean values", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext,
+    ).toBe("boolean");
   });
 
   it("behaviorFlags has all required properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateTasks"
+      "canCreateTasks",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canModifyTaskStatus"
+      "canModifyTaskStatus",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateDocuments"
+      "canCreateDocuments",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canMentionAgents"
+      "canMentionAgents",
     );
   });
 
   it("behaviorFlags are all boolean values", () => {
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(
-      "boolean"
+      "boolean",
     );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments,
+    ).toBe("boolean");
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMentionAgents).toBe(
-      "boolean"
+      "boolean",
     );
   });
 
   it("canModifyTaskStatus is enabled by default for agents", () => {
-    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(true);
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
+      true,
+    );
   });
 
   it("canCreateTasks is disabled by default for security", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(false);
+  });
+});
+
+// ============================================================================
+// Analytics Time Range Constants
+// ============================================================================
+
+describe("ANALYTICS_TIME_RANGE_ORDER", () => {
+  it("contains only day, week, month (no custom in tab order)", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER).toEqual([
+      ANALYTICS_TIME_RANGE.DAY,
+      ANALYTICS_TIME_RANGE.WEEK,
+      ANALYTICS_TIME_RANGE.MONTH,
+    ]);
+  });
+
+  it("has exactly 3 entries for dashboard tabs", () => {
+    expect(ANALYTICS_TIME_RANGE_ORDER.length).toBe(3);
+  });
+});
+
+describe("ANALYTICS_TIME_RANGE_LABELS", () => {
+  const allRanges: AnalyticsTimeRange[] = [
+    ANALYTICS_TIME_RANGE.DAY,
+    ANALYTICS_TIME_RANGE.WEEK,
+    ANALYTICS_TIME_RANGE.MONTH,
+    ANALYTICS_TIME_RANGE.CUSTOM,
+  ];
+
+  it("has an entry for every AnalyticsTimeRange", () => {
+    for (const range of allRanges) {
+      expect(ANALYTICS_TIME_RANGE_LABELS[range]).toBeDefined();
+    }
+  });
+
+  it("all labels are non-empty strings", () => {
+    for (const range of allRanges) {
+      expect(typeof ANALYTICS_TIME_RANGE_LABELS[range]).toBe("string");
+      expect(ANALYTICS_TIME_RANGE_LABELS[range].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
+// Chart Color Constants
+// ============================================================================
+
+describe("TASK_STATUS_CHART_COLORS", () => {
+  it("has an entry for every TaskStatus", () => {
+    for (const status of TASK_STATUS_ORDER) {
+      expect(TASK_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(TASK_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+});
+
+describe("AGENT_STATUS_CHART_COLORS", () => {
+  it("has an entry for every AgentStatus", () => {
+    for (const status of AGENT_STATUS_ORDER) {
+      expect(AGENT_STATUS_CHART_COLORS[status]).toBeDefined();
+      expect(AGENT_STATUS_CHART_COLORS[status]).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
   });
 });

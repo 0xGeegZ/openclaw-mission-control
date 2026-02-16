@@ -7,15 +7,19 @@ import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Label } from "@packages/ui/components/label";
+import { ACTIVITY_TYPE } from "@packages/shared";
 import { ActivityItem } from "@/components/feed/ActivityItem";
-import type { ActivityType } from "@packages/backend/convex/lib/activity";
 
 interface TaskActivityTimelineProps {
   taskId: Id<"tasks">;
   accountSlug: string;
 }
 
-type ActivityFilter = "all" | "status_changes" | "assignments" | "comments_documents";
+type ActivityFilter =
+  | "all"
+  | "status_changes"
+  | "assignments"
+  | "comments_documents";
 
 /**
  * Activity timeline for a specific task.
@@ -45,18 +49,18 @@ export function TaskActivityTimeline({
     ? activities.filter((activity) => {
         if (filter === "all") return true;
 
-        const actType = activity.type as ActivityType;
+        const actType = activity.type;
 
         switch (filter) {
           case "status_changes":
-            return actType === "task_status_changed";
+            return actType === ACTIVITY_TYPE.TASK_STATUS_CHANGED;
           case "assignments":
-            return actType === "task_updated";
+            return actType === ACTIVITY_TYPE.TASK_UPDATED;
           case "comments_documents":
             return (
-              actType === "message_created" ||
-              actType === "document_created" ||
-              actType === "document_updated"
+              actType === ACTIVITY_TYPE.MESSAGE_CREATED ||
+              actType === ACTIVITY_TYPE.DOCUMENT_CREATED ||
+              actType === ACTIVITY_TYPE.DOCUMENT_UPDATED
             );
           default:
             return true;
@@ -79,7 +83,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-all" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-all"
+              className="cursor-pointer font-normal text-sm"
+            >
               All
             </Label>
           </div>
@@ -93,7 +100,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-status" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-status"
+              className="cursor-pointer font-normal text-sm"
+            >
               Status Changes
             </Label>
           </div>
@@ -107,7 +117,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-assignments" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-assignments"
+              className="cursor-pointer font-normal text-sm"
+            >
               Assignments
             </Label>
           </div>
@@ -121,7 +134,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-comments" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-comments"
+              className="cursor-pointer font-normal text-sm"
+            >
               Comments & Documents
             </Label>
           </div>

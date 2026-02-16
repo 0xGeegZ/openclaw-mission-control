@@ -4,7 +4,7 @@ import { requireAccountMember, requireAccountAdmin } from "./lib/auth";
 import { agentStatusValidator } from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
 /**
@@ -29,6 +29,7 @@ function getDefaultOpenclawConfig() {
 
 /**
  * List all agents for an account.
+ * Ordered: Orchestrator first (if set), then others alphabetically by name.
  */
 export const list = query({
   args: {
@@ -37,10 +38,27 @@ export const list = query({
   handler: async (ctx, args) => {
     await requireAccountMember(ctx, args.accountId);
 
-    return ctx.db
+    const agents = await ctx.db
       .query("agents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
       .collect();
+
+    const account = await ctx.db.get(args.accountId);
+    const orchestratorAgentId = (
+      account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined
+    )?.orchestratorAgentId;
+
+    agents.sort((a, b) => {
+      const aIsOrchestrator =
+        orchestratorAgentId != null && a._id === orchestratorAgentId;
+      const bIsOrchestrator =
+        orchestratorAgentId != null && b._id === orchestratorAgentId;
+      if (aIsOrchestrator && !bIsOrchestrator) return -1;
+      if (!aIsOrchestrator && bIsOrchestrator) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+    return agents;
   },
 });
 
@@ -594,7 +612,7 @@ export const getWithSkills = query({
     await requireAccountMember(ctx, agent.accountId);
 
     // Resolve skill IDs to full skill objects
-    let skills: any[] = [];
+    let skills: (Doc<"skills"> | null)[] = [];
     if (agent.openclawConfig?.skillIds) {
       skills = await Promise.all(
         agent.openclawConfig.skillIds.map((id) => ctx.db.get(id)),

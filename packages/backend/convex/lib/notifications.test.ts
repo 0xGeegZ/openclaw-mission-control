@@ -1,418 +1,780 @@
 /**
- * Unit tests for notification trigger functions
+ * Behavioral tests for notification helper functions.
  *
- * Tests: createMentionNotifications, createThreadNotifications, shouldCreateUserNotification
- * Coverage: lib/notifications.ts (notification creation logic)
+ * These tests call real helpers from lib/notifications.ts and verify concrete
+ * side effects (created notification rows and returned IDs).
  */
 
 import { describe, it, expect, vi } from "vitest";
 import { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+import type { RecipientType } from "@packages/shared";
+import {
+  createAssignmentNotification,
+  createMemberAddedNotification,
+  createMemberRemovedNotification,
+  createMentionNotifications,
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
+  createRoleChangeNotification,
+  createStatusChangeNotification,
+  createThreadNotifications,
+  shouldCreateUserNotification,
+} from "./notifications";
 
-// ============================================================================
-// Mock Context Helpers
-// ============================================================================
+type SubscriptionRow = {
+  subscriberType: RecipientType;
+  subscriberId: string;
+};
 
-function createMockNotificationContext(
-  accountPrefs?: Record<string, boolean>,
-  existingNotifications: any[] = []
-) {
-  let insertedNotifications: any[] = [];
+type MembershipRow = {
+  userId: string;
+};
+
+type ExistingNotificationRow = {
+  _id: Id<"notifications">;
+  accountId: Id<"accounts">;
+  type: string;
+  recipientType: string;
+  recipientId: string;
+  createdAt: number;
+  deliveredAt?: number;
+};
+
+function createMockNotificationContext(options?: {
+  accountExists?: boolean;
+  accountPrefs?: Record<string, boolean> | null;
+  subscriptions?: SubscriptionRow[];
+  memberships?: MembershipRow[];
+  /** Existing notifications for the same task (e.g. undelivered thread_update for coalescing). */
+  existingNotifications?: ExistingNotificationRow[];
+}) {
+  const accountExists = options?.accountExists !== false;
+  const accountPrefs = options?.accountPrefs ?? {
+    taskUpdates: true,
+    agentActivity: true,
+    memberUpdates: true,
+  };
+  const subscriptions = options?.subscriptions ?? [];
+  const memberships = options?.memberships ?? [];
+  const existingNotifications = options?.existingNotifications ?? [];
+  const insertedNotifications: Array<Record<string, unknown>> = [];
+  const patchedNotifications: Array<{
+    id: Id<"notifications">;
+    patch: Record<string, unknown>;
+  }> = [];
+
+  const db = {
+    get: vi.fn().mockImplementation(async (_id: Id<"accounts">) => {
+      if (!accountExists) return null;
+      return {
+        _id: "account_1" as Id<"accounts">,
+        settings:
+          accountPrefs === null
+            ? undefined
+            : { notificationPreferences: accountPrefs },
+      };
+    }),
+    insert: vi
+      .fn()
+      .mockImplementation(
+        async (table: string, data: Record<string, unknown>) => {
+          if (table === "notifications") {
+            insertedNotifications.push(data);
+            return `notif_${insertedNotifications.length}` as Id<"notifications">;
+          }
+          return `id_${Math.random().toString(36).slice(2, 9)}`;
+        },
+      ),
+    patch: vi
+      .fn()
+      .mockImplementation(
+        async (id: Id<"notifications">, patch: Record<string, unknown>) => {
+          patchedNotifications.push({ id, patch });
+        },
+      ),
+    query: vi.fn().mockImplementation((table: string) => ({
+      withIndex: vi.fn().mockReturnValue({
+        collect: vi
+          .fn()
+          .mockResolvedValue(
+            table === "notifications"
+              ? existingNotifications
+              : table === "subscriptions"
+                ? subscriptions
+                : table === "memberships"
+                  ? memberships
+                  : [],
+          ),
+      }),
+    })),
+  };
 
   return {
-    db: {
-      get: vi.fn().mockImplementation((id: Id<any>) => {
-        // Mock account with preferences
-        return Promise.resolve({
-          _id: "account_1" as Id<"accounts">,
-          name: "Test Account",
-          slug: "test-account",
-          settings: {
-            notificationPreferences: accountPrefs ?? {
-              taskUpdates: true,
-              agentActivity: true,
-              memberUpdates: true,
-            },
-          },
-        });
-      }),
-      insert: vi.fn().mockImplementation((table: string, data: any) => {
-        if (table === "notifications") {
-          insertedNotifications.push(data);
-          return `notif_${insertedNotifications.length}` as Id<"notifications">;
-        }
-        return `id_${Math.random().toString(36).substr(2, 9)}`;
-      }),
-      query: vi.fn().mockReturnValue({
-        withIndex: vi.fn().mockReturnValue({
-          collect: vi.fn().mockResolvedValue([]),
-          unique: vi.fn().mockResolvedValue(null),
-        }),
-      }),
-    },
+    db,
     getInsertedNotifications: () => insertedNotifications,
-  } as any;
+    getPatchedNotifications: () => patchedNotifications,
+  } as unknown as MutationCtx & {
+    getInsertedNotifications: () => typeof insertedNotifications;
+    getPatchedNotifications: () => typeof patchedNotifications;
+  };
 }
 
-// ============================================================================
-// shouldCreateUserNotification Tests
-// ============================================================================
-
 describe("shouldCreateUserNotification", () => {
-  it("should return true when forceCreate is true regardless of preferences", async () => {
-    // When forceCreate=true, preferences are bypassed (for system alerts)
-    const shouldCreate = true;
-    expect(shouldCreate).toBe(true);
+  const accountId = "account_1" as Id<"accounts">;
+
+  it("returns true when forceCreate is set", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: { agentActivity: false },
+    });
+    const result = await shouldCreateUserNotification(
+      ctx,
+      accountId,
+      "agentActivity",
+      { forceCreate: true },
+    );
+    expect(result).toBe(true);
   });
 
-  it("should return true when category preference is undefined (default)", async () => {
-    // Undefined category preference should default to create
-    const shouldCreate = true;
-    expect(shouldCreate).toBe(true);
+  it("returns false when account is missing", async () => {
+    const ctx = createMockNotificationContext({ accountExists: false });
+    const result = await shouldCreateUserNotification(
+      ctx,
+      accountId,
+      "agentActivity",
+    );
+    expect(result).toBe(false);
   });
 
-  it("should return true when category preference is explicitly true", async () => {
-    // Explicit true should create notification
-    const shouldCreate = true;
-    expect(shouldCreate).toBe(true);
+  it("returns true when preferences object is absent", async () => {
+    const ctx = createMockNotificationContext({ accountPrefs: null });
+    const result = await shouldCreateUserNotification(
+      ctx,
+      accountId,
+      "taskUpdates",
+    );
+    expect(result).toBe(true);
   });
 
-  it("should return false when category preference is explicitly false", async () => {
-    // Explicit false should skip notification creation
-    const shouldCreate = false;
-    expect(shouldCreate).toBe(false);
-  });
-
-  it("should skip user notifications if account not found", async () => {
-    // Safety check: if account doesn't exist, don't create notification
-    const accountExists = false;
-    if (!accountExists) {
-      const shouldCreate = false;
-      expect(shouldCreate).toBe(false);
-    }
-  });
-
-  it("should handle missing notificationPreferences object", async () => {
-    // If settings.notificationPreferences is undefined, default to create
-    const shouldCreate = true;
-    expect(shouldCreate).toBe(true);
+  it("returns false only when category is explicitly false", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: true,
+        agentActivity: false,
+        memberUpdates: true,
+      },
+    });
+    const result = await shouldCreateUserNotification(
+      ctx,
+      accountId,
+      "agentActivity",
+    );
+    expect(result).toBe(false);
   });
 });
-
-// ============================================================================
-// createMentionNotifications Tests
-// ============================================================================
 
 describe("createMentionNotifications", () => {
-  it("should create mention notification for mentioned user", async () => {
-    const mockCtx = createMockNotificationContext();
+  const accountId = "account_1" as Id<"accounts">;
+  const taskId = "task_1" as Id<"tasks">;
+  const messageId = "msg_1" as Id<"messages">;
 
-    // Simulate creating mention notification
-    const mentions = [
-      { type: "user" as const, id: "user_alice", name: "Alice" },
-    ];
-
-    // The helper should call ctx.db.insert("notifications", {...})
-    // with type: "mention"
-    const expectedNotification = {
-      type: "mention",
-      recipientType: "user",
-      recipientId: "user_alice",
-      title: expect.stringContaining("mentioned you"),
-    };
-
-    expect(expectedNotification.type).toBe("mention");
-  });
-
-  it("should create mention notification for mentioned agent", async () => {
-    const mockCtx = createMockNotificationContext();
-
-    const mentions = [
-      {
-        type: "agent" as const,
-        id: "agent_1",
-        name: "Squad Lead",
-        slug: "squad-lead",
-      },
-    ];
-
-    // Agent mentions should create notifications regardless of preferences
-    const expectedNotification = {
-      type: "mention",
-      recipientType: "agent",
-    };
-
-    expect(expectedNotification.type).toBe("mention");
-    expect(expectedNotification.recipientType).toBe("agent");
-  });
-
-  it("should skip user mention if agentActivity preference is false", async () => {
-    const mockCtx = createMockNotificationContext({
-      taskUpdates: true,
-      agentActivity: false,
-      memberUpdates: true,
-    });
-
-    // When agentActivity is false, user mentions should be skipped
-    // (but agent mentions should still be created)
-    const shouldCreateUserMention = false;
-    expect(shouldCreateUserMention).toBe(false);
-  });
-
-  it("should include author name in notification title", async () => {
-    const mockCtx = createMockNotificationContext();
-
-    const authorName = "Alice Smith";
-    const expectedTitle = `${authorName} mentioned you`;
-
-    expect(expectedTitle).toContain(authorName);
-    expect(expectedTitle).toContain("mentioned you");
-  });
-
-  it("should include task title in notification body", async () => {
-    const mockCtx = createMockNotificationContext();
-
-    const taskTitle = "Implement user profile page";
-    const expectedBody = `You were mentioned in task "${taskTitle}"`;
-
-    expect(expectedBody).toContain(taskTitle);
-  });
-
-  it("should return array of created notification IDs", async () => {
-    const mockCtx = createMockNotificationContext();
-
-    // When multiple mentions exist, should return array of IDs
-    const mentions = [
-      { type: "user" as const, id: "user_1", name: "Alice" },
-      { type: "agent" as const, id: "agent_1", name: "Bot", slug: "bot" },
-    ];
-
-    const notificationIds = await Promise.resolve(
-      mentions.map((_, i) => `notif_${i}`)
+  it("creates mention notifications and returns their ids", async () => {
+    const ctx = createMockNotificationContext();
+    const ids = await createMentionNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      [
+        { type: "user", id: "user_alice", name: "Alice" },
+        {
+          type: "agent",
+          id: "agent_reviewer",
+          name: "Reviewer",
+          slug: "reviewer",
+        },
+      ],
+      "Bob",
+      "Fix auth checks",
     );
 
-    expect(Array.isArray(notificationIds)).toBe(true);
-    expect(notificationIds.length).toBeGreaterThan(0);
+    expect(ids).toEqual([
+      "notif_1" as Id<"notifications">,
+      "notif_2" as Id<"notifications">,
+    ]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]?.type).toBe("mention");
+    expect(inserted[0]?.recipientId).toBe("user_alice");
+    expect(inserted[1]?.recipientId).toBe("agent_reviewer");
+  });
+
+  it("skips user mentions when agentActivity preference is disabled", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: true,
+        agentActivity: false,
+        memberUpdates: true,
+      },
+    });
+    const ids = await createMentionNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      [
+        { type: "user", id: "user_alice", name: "Alice" },
+        {
+          type: "agent",
+          id: "agent_reviewer",
+          name: "Reviewer",
+          slug: "reviewer",
+        },
+      ],
+      "Bob",
+      "Fix auth checks",
+    );
+
+    expect(ids).toEqual(["notif_1" as Id<"notifications">]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.recipientType).toBe("agent");
   });
 });
-
-// ============================================================================
-// createThreadNotifications Tests
-// ============================================================================
 
 describe("createThreadNotifications", () => {
-  it("should create thread_update notification for task subscribers", async () => {
-    const mockCtx = createMockNotificationContext();
+  const accountId = "account_1" as Id<"accounts">;
+  const taskId = "task_1" as Id<"tasks">;
+  const messageId = "msg_1" as Id<"messages">;
 
-    // Thread update notifications go to all subscribers except author and mentioned
-    const expectedNotification = {
-      type: "thread_update",
-      recipientType: expect.any(String),
-    };
+  it("notifies subscribers except author and mentioned recipients", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "user", subscriberId: "user_author" },
+        { subscriberType: "user", subscriberId: "user_alice" },
+        { subscriberType: "user", subscriberId: "user_mentioned" },
+        { subscriberType: "agent", subscriberId: "agent_reviewer" },
+      ],
+    });
 
-    expect(expectedNotification.type).toBe("thread_update");
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(["user_mentioned"]),
+      false,
+    );
+
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice", "agent_reviewer"]);
+    expect(
+      inserted.every(
+        (row: Record<string, unknown>) => row.type === "thread_update",
+      ),
+    ).toBe(true);
   });
 
-  it("should skip already-mentioned recipients in thread notifications", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("skips all agent thread notifications when hasAgentMentions is true", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "user", subscriberId: "user_alice" },
+        { subscriberType: "agent", subscriberId: "agent_reviewer" },
+      ],
+    });
 
-    const mentionedIds = new Set(["user_alice", "agent_1"]);
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(),
+      true,
+    );
 
-    // Recipients in mentionedIds should get "mention" notifications, not "thread_update"
-    expect(mentionedIds.has("user_alice")).toBe(true);
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice"]);
   });
 
-  it("should exclude author from thread notifications", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("skips all agent thread notifications when task is done", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "user", subscriberId: "user_alice" },
+        { subscriberType: "agent", subscriberId: "agent_reviewer" },
+      ],
+    });
 
-    const authorId = "user_author";
-    const authorType: "user" | "agent" = "user";
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(),
+      false,
+      "done",
+    );
 
-    // Author should not receive thread_update notification for their own message
-    const shouldNotifyAuthor = false;
-    expect(shouldNotifyAuthor).toBe(false);
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice"]);
   });
 
-  it("should skip agent thread_update when hasAgentMentions is true", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("skips user recipients when agentActivity preference is disabled", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: true,
+        agentActivity: false,
+        memberUpdates: true,
+      },
+      subscriptions: [
+        { subscriberType: "user", subscriberId: "user_alice" },
+        { subscriberType: "agent", subscriberId: "agent_reviewer" },
+      ],
+    });
 
-    // When agent is explicitly mentioned, skip agent thread_update to avoid multiple replies
-    const hasAgentMentions = true;
-    const shouldCreateAgentThreadNotif = !hasAgentMentions;
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(),
+      false,
+    );
 
-    expect(shouldCreateAgentThreadNotif).toBe(false);
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["agent_reviewer"]);
   });
 
-  it("should skip agent thread_update when task is done/blocked", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("allows only the orchestrator agent among agents in orchestrator chat mode", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_reviewer" },
+        { subscriberType: "agent", subscriberId: "agent_orchestrator" },
+        { subscriberType: "user", subscriberId: "user_alice" },
+      ],
+    });
 
-    const taskStatus = "done";
-    const shouldSkipAgent = taskStatus === "done" || taskStatus === "blocked";
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(),
+      false,
+      undefined,
+      {
+        isOrchestratorChat: true,
+        orchestratorAgentId: "agent_orchestrator" as Id<"agents">,
+      },
+    );
 
-    expect(shouldSkipAgent).toBe(true);
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["agent_orchestrator", "user_alice"]);
   });
 
-  it("should skip notifications when suppressAgentNotifications is true", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("notifies orchestrator in orchestrator chat when user mentions an agent (hasAgentMentions)", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+        { subscriberType: "agent", subscriberId: "agent_orchestrator" },
+        { subscriberType: "user", subscriberId: "user_alice" },
+      ],
+    });
 
-    const suppressAgentNotifications = true;
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_author",
+      "Author",
+      "Task Title",
+      new Set(["agent_engineer"]),
+      true,
+      undefined,
+      {
+        isOrchestratorChat: true,
+        orchestratorAgentId: "agent_orchestrator" as Id<"agents">,
+      },
+    );
 
-    // When suppressed, agent thread_update notifications should be skipped
-    const shouldCreateAgent = !suppressAgentNotifications;
-    expect(shouldCreateAgent).toBe(false);
+    const inserted = ctx.getInsertedNotifications();
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["agent_orchestrator", "user_alice"]);
   });
 
-  it("should include orchestrator in thread notifications if configured", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("coalesces agent thread_update: patches existing undelivered notification for same task+recipient", async () => {
+    const existingId = "notif_existing" as Id<"notifications">;
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: existingId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: Date.now() - 1000,
+          deliveredAt: undefined,
+        },
+      ],
+    });
 
-    const orchestratorAgentId = "agent_orchestrator" as Id<"agents">;
-    const isOrchestratorChat = false;
+    const messageId2 = "msg_2" as Id<"messages">;
+    const ids = await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId2,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
 
-    // Orchestrator should auto-subscribe to task threads
-    expect(orchestratorAgentId).toBeTruthy();
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toBe(existingId);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(0);
+    const patched = ctx.getPatchedNotifications();
+    expect(patched).toHaveLength(1);
+    expect(patched[0]?.id).toBe(existingId);
+    expect(patched[0]?.patch).toMatchObject({
+      messageId: messageId2,
+      title: "Alice replied",
+      body: 'New message in task "Task Title"',
+    });
   });
 
-  it("should skip notifications for orchestrator chat threads", async () => {
-    const mockCtx = createMockNotificationContext();
+  it("inserts new agent thread_update when no undelivered one exists for task+recipient", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [],
+    });
 
-    const isOrchestratorChat = true;
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
 
-    // Orchestrator chat threads should not trigger notifications (prevents notification spam)
-    const shouldCreateNotif = !isOrchestratorChat;
-    expect(shouldCreateNotif).toBe(false);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.recipientId).toBe("agent_engineer");
+    expect(ctx.getPatchedNotifications()).toHaveLength(0);
+  });
+
+  it("does not coalesce when existing notification is already delivered", async () => {
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: "notif_delivered" as Id<"notifications">,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: Date.now() - 5000,
+          deliveredAt: Date.now(),
+        },
+      ],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(1);
+    expect(ctx.getPatchedNotifications()).toHaveLength(0);
+  });
+
+  it("coalesces against the latest undelivered notification when duplicates exist", async () => {
+    const olderId = "notif_old" as Id<"notifications">;
+    const newerId = "notif_new" as Id<"notifications">;
+    const now = Date.now();
+    const ctx = createMockNotificationContext({
+      subscriptions: [
+        { subscriberType: "agent", subscriberId: "agent_engineer" },
+      ],
+      existingNotifications: [
+        {
+          _id: olderId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: now - 20_000,
+          deliveredAt: undefined,
+        },
+        {
+          _id: newerId,
+          accountId,
+          type: "thread_update",
+          recipientType: "agent",
+          recipientId: "agent_engineer",
+          createdAt: now - 1_000,
+          deliveredAt: undefined,
+        },
+      ],
+    });
+
+    await createThreadNotifications(
+      ctx,
+      accountId,
+      taskId,
+      messageId,
+      "user",
+      "user_alice",
+      "Alice",
+      "Task Title",
+      new Set(),
+      false,
+    );
+
+    const patched = ctx.getPatchedNotifications();
+    expect(patched).toHaveLength(1);
+    expect(patched[0]?.id).toBe(newerId);
   });
 });
 
-// ============================================================================
-// Notification Preference Tests
-// ============================================================================
+describe("targeted notification creators", () => {
+  const accountId = "account_1" as Id<"accounts">;
+  const taskId = "task_1" as Id<"tasks">;
 
-describe("Notification Preferences", () => {
-  it("should respect taskUpdates preference for task-related notifications", async () => {
-    const mockCtx = createMockNotificationContext({
-      taskUpdates: false,
-      agentActivity: true,
-      memberUpdates: true,
+  it("assignment/status creators skip user notifications when taskUpdates is false", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: false,
+        agentActivity: true,
+        memberUpdates: true,
+      },
     });
 
-    // When taskUpdates is false, task creation/status change notifications should be skipped
-    const shouldCreate = false;
-    expect(shouldCreate).toBe(false);
+    const assignmentId = await createAssignmentNotification(
+      ctx,
+      accountId,
+      taskId,
+      "user",
+      "user_alice",
+      "Bob",
+      "Task",
+    );
+    const statusId = await createStatusChangeNotification(
+      ctx,
+      accountId,
+      taskId,
+      "user",
+      "user_alice",
+      "Bob",
+      "Task",
+      "review",
+    );
+
+    expect(assignmentId).toBeNull();
+    expect(statusId).toBeNull();
+    expect(ctx.getInsertedNotifications()).toHaveLength(0);
   });
 
-  it("should respect agentActivity preference for agent notifications", async () => {
-    const mockCtx = createMockNotificationContext({
-      taskUpdates: true,
-      agentActivity: false,
-      memberUpdates: true,
+  it("assignment creator still allows agent recipients when taskUpdates is false", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: false,
+        agentActivity: true,
+        memberUpdates: true,
+      },
     });
 
-    // When agentActivity is false, agent mentions/messages should be skipped
-    const shouldCreate = false;
-    expect(shouldCreate).toBe(false);
+    const assignmentId = await createAssignmentNotification(
+      ctx,
+      accountId,
+      taskId,
+      "agent",
+      "agent_reviewer",
+      "Bob",
+      "Task",
+    );
+
+    expect(assignmentId).toBe("notif_1");
+    expect(ctx.getInsertedNotifications()[0]?.recipientType).toBe("agent");
   });
 
-  it("should respect memberUpdates preference for member notifications", async () => {
-    const mockCtx = createMockNotificationContext({
-      taskUpdates: true,
-      agentActivity: true,
-      memberUpdates: false,
+  it("member-related creators skip when memberUpdates is false", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: true,
+        agentActivity: true,
+        memberUpdates: false,
+      },
     });
 
-    // When memberUpdates is false, member_added/removed/role_changed should be skipped
-    const shouldCreate = false;
-    expect(shouldCreate).toBe(false);
+    const added = await createMemberAddedNotification(
+      ctx,
+      accountId,
+      "user_alice",
+      "Acme",
+      "Bob",
+    );
+    const removed = await createMemberRemovedNotification(
+      ctx,
+      accountId,
+      "user_alice",
+      "Acme",
+    );
+    const roleChanged = await createRoleChangeNotification(
+      ctx,
+      accountId,
+      "user_alice",
+      "admin",
+      "Acme",
+    );
+
+    expect(added).toBeNull();
+    expect(removed).toBeNull();
+    expect(roleChanged).toBeNull();
+    expect(ctx.getInsertedNotifications()).toHaveLength(0);
   });
 
-  it("should allow force-create to bypass all preferences", async () => {
-    const mockCtx = createMockNotificationContext({
-      taskUpdates: false,
-      agentActivity: false,
-      memberUpdates: false,
+  it("member-related creators create notifications when memberUpdates is true", async () => {
+    const ctx = createMockNotificationContext({
+      accountPrefs: {
+        taskUpdates: true,
+        agentActivity: true,
+        memberUpdates: true,
+      },
     });
 
-    // forceCreate=true should create even with all preferences disabled
-    const shouldCreate = true;
-    expect(shouldCreate).toBe(true);
-  });
-});
+    await createMemberAddedNotification(
+      ctx,
+      accountId,
+      "user_alice",
+      "Acme",
+      "Bob",
+    );
+    await createMemberRemovedNotification(ctx, accountId, "user_alice", "Acme");
+    await createRoleChangeNotification(
+      ctx,
+      accountId,
+      "user_alice",
+      "admin",
+      "Acme",
+    );
 
-// ============================================================================
-// Notification Type Tests
-// ============================================================================
-
-describe("Notification Types", () => {
-  it("should use mention type for @mention notifications", async () => {
-    const notificationType = "mention";
-    expect(notificationType).toBe("mention");
-  });
-
-  it("should use thread_update type for subscriber notifications", async () => {
-    const notificationType = "thread_update";
-    expect(notificationType).toBe("thread_update");
-  });
-
-  it("should use member_added type for membership notifications", async () => {
-    const notificationType = "member_added";
-    expect(notificationType).toBe("member_added");
-  });
-
-  it("should use member_removed type for member removal notifications", async () => {
-    const notificationType = "member_removed";
-    expect(notificationType).toBe("member_removed");
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(3);
+    expect(inserted.map((row: Record<string, unknown>) => row.type)).toEqual([
+      "member_added",
+      "member_removed",
+      "role_changed",
+    ]);
   });
 
-  it("should use role_changed type for role change notifications", async () => {
-    const notificationType = "role_changed";
-    expect(notificationType).toBe("role_changed");
+  it("creates runtime offline notifications for each unique account member", async () => {
+    const ctx = createMockNotificationContext({
+      memberships: [
+        { userId: "user_alice" },
+        { userId: "user_bob" },
+        { userId: "user_alice" },
+      ],
+    });
+
+    const ids = await createRuntimeOfflineNotifications(ctx, accountId, "Acme");
+
+    expect(ids).toEqual([
+      "notif_1" as Id<"notifications">,
+      "notif_2" as Id<"notifications">,
+    ]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((row: Record<string, unknown>) => row.type)).toEqual([
+      "status_change",
+      "status_change",
+    ]);
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice", "user_bob"]);
+    expect(inserted[0]?.title).toBe("Runtime is offline");
   });
 
-  it("should use task_status_changed type for status change notifications", async () => {
-    const notificationType = "task_status_changed";
-    expect(notificationType).toBe("task_status_changed");
-  });
-});
+  it("creates runtime online notifications for each unique account member", async () => {
+    const ctx = createMockNotificationContext({
+      memberships: [
+        { userId: "user_alice" },
+        { userId: "user_bob" },
+        { userId: "user_bob" },
+      ],
+    });
 
-// ============================================================================
-// Notification Content Tests
-// ============================================================================
+    const ids = await createRuntimeOnlineNotifications(ctx, accountId, "Acme");
 
-describe("Notification Content", () => {
-  it("should include recipient type (user or agent)", async () => {
-    const validRecipientTypes = ["user", "agent"];
-
-    for (const type of validRecipientTypes) {
-      expect(["user", "agent"]).toContain(type);
-    }
-  });
-
-  it("should include recipient ID", async () => {
-    const recipientId = "user_123";
-    expect(recipientId).toBeTruthy();
-  });
-
-  it("should include taskId reference", async () => {
-    const taskId = "task_abc" as Id<"tasks">;
-    expect(taskId).toBeTruthy();
-  });
-
-  it("should include messageId reference when applicable", async () => {
-    const messageId = "msg_xyz" as Id<"messages">;
-    expect(messageId).toBeTruthy();
-  });
-
-  it("should include title and body", async () => {
-    const notification = {
-      title: "Alice mentioned you",
-      body: 'You were mentioned in task "Fix auth gaps"',
-    };
-
-    expect(notification.title).toBeTruthy();
-    expect(notification.body).toBeTruthy();
-  });
-
-  it("should include createdAt timestamp", async () => {
-    const createdAt = Date.now();
-    expect(typeof createdAt).toBe("number");
-    expect(createdAt).toBeGreaterThan(0);
+    expect(ids).toEqual([
+      "notif_1" as Id<"notifications">,
+      "notif_2" as Id<"notifications">,
+    ]);
+    const inserted = ctx.getInsertedNotifications();
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((row: Record<string, unknown>) => row.type)).toEqual([
+      "status_change",
+      "status_change",
+    ]);
+    expect(
+      inserted.map((row: Record<string, unknown>) => row.recipientId),
+    ).toEqual(["user_alice", "user_bob"]);
+    expect(inserted[0]?.title).toBe("Runtime is online");
   });
 });

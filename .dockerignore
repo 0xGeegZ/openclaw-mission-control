@@ -6,11 +6,17 @@
 **/.turbo
 **/dist
 **/build
+**/coverage
 **/.runtime
 **/.cursor
 **/.cache
+**/.vscode
+**/.idea
 **/.env
 **/.env.local
 **/.env.development
 **/.env.production
 **/.env.test
+**/npm-debug.log
+**/yarn-error.log
+**/pnpm-lock.yaml

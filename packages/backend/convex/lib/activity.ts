@@ -1,24 +1,10 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
-/**
- * Activity type definitions.
- */
-export type ActivityType =
-  | "account_created"
-  | "account_updated"
-  | "task_created"
-  | "task_updated"
-  | "task_status_changed"
-  | "message_created"
-  | "document_created"
-  | "document_updated"
-  | "agent_status_changed"
-  | "runtime_status_changed"
-  | "member_added"
-  | "member_removed"
-  | "member_updated"
-  | "role_changed";
+import type { ActivityType, ActorType, TargetType } from "./validators";
+
+// Re-export for backward compatibility
+export type { ActivityType };
 
 /**
  * Parameters for logging an activity.
@@ -27,10 +13,10 @@ export interface LogActivityParams {
   ctx: MutationCtx;
   accountId: Id<"accounts">;
   type: ActivityType;
-  actorType: "user" | "agent" | "system";
+  actorType: ActorType;
   actorId: string;
   actorName?: string;
-  targetType: "task" | "message" | "document" | "agent" | "account" | "membership";
+  targetType: TargetType;
   targetId: string;
   targetName?: string;
   meta?: Record<string, unknown>;
@@ -39,13 +25,26 @@ export interface LogActivityParams {
 /**
  * Log an activity to the activity feed.
  * This is the full implementation (not a stub).
- * 
+ *
  * @param params - Activity parameters
  * @returns The created activity ID
  */
-export async function logActivity(params: LogActivityParams): Promise<Id<"activities">> {
-  const { ctx, accountId, type, actorType, actorId, actorName, targetType, targetId, targetName, meta } = params;
-  
+export async function logActivity(
+  params: LogActivityParams,
+): Promise<Id<"activities">> {
+  const {
+    ctx,
+    accountId,
+    type,
+    actorType,
+    actorId,
+    actorName,
+    targetType,
+    targetId,
+    targetName,
+    meta,
+  } = params;
+
   return ctx.db.insert("activities", {
     accountId,
     type,
@@ -73,13 +72,15 @@ export function getActivityDescription(
   type: ActivityType,
   actorName: string,
   targetName?: string,
-  meta?: Record<string, unknown>
+  meta?: Record<string, unknown>,
 ): string {
   const target = targetName ?? "an item";
 
   switch (type) {
     case "account_created":
       return `${actorName} created account "${target}"`;
+    case "account_updated":
+      return `${actorName} updated account settings`;
     case "task_created":
       return `${actorName} created task "${target}"`;
     case "task_updated":
@@ -92,6 +93,8 @@ export function getActivityDescription(
       return `${actorName} created document "${target}"`;
     case "document_updated":
       return `${actorName} updated document "${target}"`;
+    case "document_deleted":
+      return `${actorName} deleted document "${target}"`;
     case "agent_status_changed": {
       const oldS = meta?.oldStatus as string | undefined;
       const newS = meta?.newStatus as string | undefined;
@@ -100,10 +103,14 @@ export function getActivityDescription(
       }
       return "status changed";
     }
-    case "runtime_status_changed":
-      return `Runtime status changed`;
-    case "account_updated":
-      return `${actorName} updated account settings`;
+    case "runtime_status_changed": {
+      const oldS = meta?.oldStatus as string | undefined;
+      const newS = meta?.newStatus as string | undefined;
+      if (oldS != null && newS != null) {
+        return `status changed from ${formatStatus(oldS)} to ${formatStatus(newS)}`;
+      }
+      return "runtime status changed";
+    }
     case "member_added":
       return `${actorName} added ${targetName ?? "a member"}`;
     case "member_removed":

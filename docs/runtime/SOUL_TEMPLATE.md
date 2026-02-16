@@ -27,7 +27,7 @@ One sentence. What outcomes you own.
 - Evidence attached when making claims
 - Clear next step
 - Task state is correct
-- Use your available skills as much as possible
+- If a skill applies to the current operation, that skill was used (or `No applicable skill` was stated)
 
 ## What you never do
 

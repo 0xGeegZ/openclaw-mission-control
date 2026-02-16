@@ -1,7 +1,8 @@
 {
-  "name": "openclaw-mission-control",
+  "name": "lobster-control",
   "private": true,
   "scripts": {
+    "preinstall": "node -e \"const [m]=process.versions.node.split('.'); if (+m<24) { console.error('Node 24+ required. Run: nvm use'); process.exit(1); }\"",
     "dev": "(cd packages/backend && npm run dev) & (cd apps/web && npm run dev) & wait",
     "dev:openclaw": "cd apps/runtime && npm run docker:up:openclaw",
     "dev:openclaw:light": "BUILD=0 cd apps/runtime && npm run docker:up:openclaw",
@@ -10,13 +11,22 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "test": "turbo run test --filter=@packages/shared",
+    "test": "turbo run test",
+    "test:shared": "turbo run test --filter=@packages/shared",
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
-    "test:all": "turbo run test"
+    "prepare": "husky install",
+    "test:all": "turbo run test",
+    "version": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "eslint": "^9.39.1",
+    "husky": "^9.1.7",
+    "typescript-eslint": "^8.30.0",
+    "lint-staged": "^16.2.7",
     "prettier": "3.7.4",
     "turbo": "2.8.3"
   },
@@ -32,5 +42,17 @@
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "npm@11.6.1"
+  "packageManager": "npm@11.6.1",
+  "dependencies": {
+    "@changesets/changelog-git": "^0.2.1",
+    "@changesets/cli": "^2.29.8",
+    "@packages/backend": "^1.0.0",
+    "@packages/ui": "^0.1.0",
+    "convex": "^1.31.7",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "sonner": "^2.0.7",
+    "usehooks-ts": "^3.1.1"
+  }
 }

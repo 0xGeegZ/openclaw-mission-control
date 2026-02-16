@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@packages/ui/components/button";
 import { Badge } from "@packages/ui/components/badge";
+import { NOTIFICATION_TYPE, type NotificationType } from "@packages/shared";
 import {
   AlertCircle,
   Bell,
@@ -15,17 +16,9 @@ import {
   MailCheck,
 } from "lucide-react";
 
-interface Notification {
+export interface NotificationItem {
   _id: string;
-  type:
-    | "mention"
-    | "thread_update"
-    | "assignment"
-    | "status_change"
-    | "member_added"
-    | "member_removed"
-    | "role_changed"
-    | "response_request";
+  type: NotificationType;
   title: string;
   body: string;
   readAt?: number;
@@ -36,7 +29,7 @@ interface Notification {
 }
 
 interface NotificationsListProps {
-  notifications: Notification[];
+  notifications: NotificationItem[];
   onMarkAsRead?: (id: string) => void;
   onMarkAllAsRead?: () => void;
   onDismiss?: (id: string) => void;
@@ -48,40 +41,73 @@ interface NotificationsListProps {
   hasMore?: boolean;
 }
 
-function getNotificationIcon(type: string) {
+function getNotificationIcon(type: NotificationType) {
   switch (type) {
-    case "mention":
+    case NOTIFICATION_TYPE.MENTION:
       return <AlertCircle className="w-4 h-4 text-blue-500" />;
-    case "thread_update":
+    case NOTIFICATION_TYPE.THREAD_UPDATE:
       return <MessageSquare className="w-4 h-4 text-green-500" />;
-    case "assignment":
+    case NOTIFICATION_TYPE.ASSIGNMENT:
       return <CheckCircle2 className="w-4 h-4 text-orange-500" />;
-    case "status_change":
+    case NOTIFICATION_TYPE.STATUS_CHANGE:
       return <CheckCircle2 className="w-4 h-4 text-purple-500" />;
-    case "member_added":
-    case "member_removed":
+    case NOTIFICATION_TYPE.MEMBER_ADDED:
+    case NOTIFICATION_TYPE.MEMBER_REMOVED:
       return <Users className="w-4 h-4 text-indigo-500" />;
-    case "role_changed":
+    case NOTIFICATION_TYPE.ROLE_CHANGED:
       return <Shield className="w-4 h-4 text-red-500" />;
-    case "response_request":
+    case NOTIFICATION_TYPE.RESPONSE_REQUEST:
       return <MessageSquare className="w-4 h-4 text-cyan-500" />;
     default:
       return <Bell className="w-4 h-4 text-gray-500" />;
   }
 }
 
-function getNotificationTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    mention: "Mention",
-    thread_update: "Reply",
-    assignment: "Assigned",
-    status_change: "Status",
-    member_added: "Member",
-    member_removed: "Removed",
-    role_changed: "Role",
-    response_request: "Request",
-  };
+const NOTIFICATION_BADGE_LABELS: Record<NotificationType, string> = {
+  [NOTIFICATION_TYPE.MENTION]: "Mention",
+  [NOTIFICATION_TYPE.THREAD_UPDATE]: "Reply",
+  [NOTIFICATION_TYPE.ASSIGNMENT]: "Assigned",
+  [NOTIFICATION_TYPE.STATUS_CHANGE]: "Status",
+  [NOTIFICATION_TYPE.MEMBER_ADDED]: "Member",
+  [NOTIFICATION_TYPE.MEMBER_REMOVED]: "Removed",
+  [NOTIFICATION_TYPE.ROLE_CHANGED]: "Role",
+  [NOTIFICATION_TYPE.RESPONSE_REQUEST]: "Request",
+};
+
+export function getNotificationTypeLabel(type: NotificationType): string {
+  const labels: Record<NotificationType, string> = NOTIFICATION_BADGE_LABELS;
   return labels[type] || "Notification";
+}
+
+/**
+ * Counts notifications that are still unread.
+ */
+export function getUnreadCount(notifications: NotificationItem[]): number {
+  return notifications.filter((notification) => !notification.readAt).length;
+}
+
+/**
+ * Applies list filtering based on the selected view.
+ */
+export function getDisplayedNotifications(
+  notifications: NotificationItem[],
+  filterBy: "all" | "unread",
+): NotificationItem[] {
+  return filterBy === "unread"
+    ? notifications.filter((notification) => !notification.readAt)
+    : notifications;
+}
+
+/**
+ * Excludes dismissed notifications from the rendered list.
+ */
+export function getVisibleNotifications(
+  notifications: NotificationItem[],
+  dismissed: Set<string>,
+): NotificationItem[] {
+  return notifications.filter(
+    (notification) => !dismissed.has(notification._id),
+  );
 }
 
 export function NotificationsList({
@@ -98,19 +124,31 @@ export function NotificationsList({
 }: NotificationsListProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  const unreadCount = notifications.filter((n) => !n.readAt).length;
-  const displayedNotifications =
-    filterBy === "unread"
-      ? notifications.filter((n) => !n.readAt)
-      : notifications;
-
-  const visibleNotifications = displayedNotifications.filter(
-    (n) => !dismissed.has(n._id)
+  const unreadCount = getUnreadCount(notifications);
+  const displayedNotifications = getDisplayedNotifications(
+    notifications,
+    filterBy,
+  );
+  const visibleNotifications = getVisibleNotifications(
+    displayedNotifications,
+    dismissed,
   );
 
   const handleDismiss = (id: string) => {
     setDismissed((prev) => new Set(prev).add(id));
     onDismiss?.(id);
+  };
+
+  const handleNotificationOpen = (
+    notification: NotificationItem,
+    isUnread: boolean,
+  ) => {
+    if (isUnread) {
+      onMarkAsRead?.(notification._id);
+    }
+    if (notification.taskId) {
+      onNavigate?.(notification.taskId);
+    }
   };
 
   if (error) {
@@ -126,10 +164,7 @@ export function NotificationsList({
     return (
       <div className="space-y-3 p-4">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-16 bg-gray-100 rounded-lg animate-pulse"
-          />
+          <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -140,7 +175,9 @@ export function NotificationsList({
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <Bell className="w-8 h-8 text-gray-400 mb-4" />
         <p className="text-sm text-gray-600 font-medium">
-          {filterBy === "unread" ? "No unread notifications" : "No notifications"}
+          {filterBy === "unread"
+            ? "No unread notifications"
+            : "No notifications"}
         </p>
       </div>
     );
@@ -189,16 +226,24 @@ export function NotificationsList({
               {/* Content */}
               <div
                 className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => {
-                  if (isUnread) onMarkAsRead?.(notification._id);
-                  if (notification.taskId) onNavigate?.(notification.taskId);
+                role="button"
+                tabIndex={0}
+                aria-label={`Open notification: ${notification.title}`}
+                onClick={() => handleNotificationOpen(notification, isUnread)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNotificationOpen(notification, isUnread);
+                  }
                 }}
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-1">
                     <p
                       className={`text-sm font-medium leading-tight ${
-                        isUnread ? "text-gray-900 dark:text-gray-50" : "text-gray-700 dark:text-gray-300"
+                        isUnread
+                          ? "text-gray-900 dark:text-gray-50"
+                          : "text-gray-700 dark:text-gray-300"
                       }`}
                     >
                       {notification.title}
@@ -231,6 +276,7 @@ export function NotificationsList({
                       onMarkAsRead?.(notification._id);
                     }}
                     title="Mark as read"
+                    aria-label={`Mark notification "${notification.title}" as read`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
                   </Button>
@@ -238,11 +284,12 @@ export function NotificationsList({
                 <Button
                   variant="ghost"
                   size="sm"
-onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      handleDismiss(notification._id);
-                    }}
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    handleDismiss(notification._id);
+                  }}
                   title="Dismiss"
+                  aria-label={`Dismiss notification "${notification.title}"`}
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />
                 </Button>

@@ -2,20 +2,24 @@
 
 ## 1) Load context (always)
 
-- Read memory/WORKING.md
-- Read today's note (memory/YYYY-MM-DD.md)
+- Prefer memory tools first: use `memory_get` / `memory_set` when available.
+- Load `memory/WORKING.md`.
+- Load today's note (`memory/YYYY-MM-DD.md`).
+- If today's note is missing, create it under your workspace memory directory before continuing.
+- If you must use `read`, pass JSON arguments with an explicit file path key, for example: `{ "path": "memory/WORKING.md" }`.
+- Do not call `read` on directories.
 - Fetch:
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
   - last 20 activities for the account
-- If you are the orchestrator: also review in_progress tasks across the account.
+- If you are the orchestrator: also review assigned / in_progress / blocked tasks across the account.
 
 ## 2) Decide what to do (priority order)
 
 1. A direct @mention to me
 2. A task assigned to me and in IN_PROGRESS / ASSIGNED
 3. A thread I'm subscribed to with new messages
-4. If orchestrator: follow up on in_progress tasks even if assigned to others.
+4. If orchestrator: follow up on assigned / in_progress / blocked tasks even if assigned to others. When requesting status from assignees, use **response_request** only; put your follow-up summary in your reply (do not also post task_message).
 5. Otherwise: scan the activity feed for something I can improve
 
 Avoid posting review status reminders unless you have new feedback or a direct request.
@@ -29,25 +33,13 @@ Pick one action that can be completed quickly:
 - post a clarifying question (only if truly blocked)
 - write a doc section
 - test a repro step and attach logs
-- update a task status with explanation
+- update a task status with explanation (follow **AGENTS.md § Task state rules**: valid transitions, human dependency → blocked, unblock → in_progress)
 - refactor a small component (developer agent)
 - produce a small deliverable chunk
- 
-Action scope rules:
 
-- Only do work that is strictly required by the current task
-- Do not add cleanup, refactors, or "nice-to-have" changes
-- If you discover out-of-scope improvements, create a follow-up task instead
-- Use your available skills as much as possible while working.
+**Action scope (see also AGENTS.md):** Only work required by the current task; no cleanup, refactors, or nice-to-haves. Create a follow-up task for out-of-scope improvements. Use your assigned skills; if none apply, include `No applicable skill` in your update.
 
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or `HEARTBEAT_OK`.
- 
-Action scope rules:
-
-- Only do work that is strictly required by the current task
-- Do not add cleanup, refactors, or "nice-to-have" changes
-- If you discover out-of-scope improvements, create a follow-up task instead
-- Use your available skills as much as possible while working.
 
 ## 4) Report + persist memory (always)
 

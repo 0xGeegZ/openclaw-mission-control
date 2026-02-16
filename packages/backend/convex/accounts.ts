@@ -15,6 +15,10 @@ import {
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
 import { logActivity } from "./lib/activity";
+import {
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
+} from "./lib/notifications";
 
 /**
  * Create a new account.
@@ -401,6 +405,12 @@ export const updateRuntimeStatusInternal = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    const previousRuntimeStatus = account.runtimeStatus;
     const updates: Record<string, unknown> = {
       runtimeStatus: args.status,
     };
@@ -411,11 +421,58 @@ export const updateRuntimeStatusInternal = internalMutation({
 
     await ctx.db.patch(args.accountId, updates);
 
-    /** When runtime goes offline, mark all agents for this account offline so the UI reflects reality. */
+    if (previousRuntimeStatus !== args.status) {
+      await logActivity({
+        ctx,
+        accountId: args.accountId,
+        type: "runtime_status_changed",
+        actorType: "system",
+        actorId: "system",
+        actorName: "System",
+        targetType: "account",
+        targetId: args.accountId,
+        targetName: account.name,
+        meta: {
+          oldStatus: previousRuntimeStatus,
+          newStatus: args.status,
+        },
+      });
+
+      const runtimeWentDown =
+        args.status === "offline" &&
+        (previousRuntimeStatus === "online" ||
+          previousRuntimeStatus === "degraded");
+      if (runtimeWentDown) {
+        await createRuntimeOfflineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
+
+      const runtimeCameOnline =
+        args.status === "online" &&
+        (previousRuntimeStatus === "offline" ||
+          previousRuntimeStatus === "error" ||
+          previousRuntimeStatus === "provisioning");
+      if (runtimeCameOnline) {
+        await createRuntimeOnlineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
+    }
+
+    /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
     if (args.status === "offline") {
       await ctx.runMutation(internal.service.agents.markAllOffline, {
         accountId: args.accountId,
       });
+      await ctx.runMutation(
+        internal.service.notifications.clearTypingStateForAccount,
+        { accountId: args.accountId },
+      );
     }
 
     // Sync runtimes table for fleet UI (pendingUpgrade, upgradeHistory).
@@ -512,7 +569,7 @@ export const updateRuntimeStatusInternal = internalMutation({
 });
 
 /** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
-const RUNTIME_STALE_MS = 5 * 60 * 1000;
+const RUNTIME_STALE_MS = 90 * 1000;
 
 /**
  * Mark runtimes offline when lastHealthCheck is too old.
@@ -525,7 +582,10 @@ export const markStaleRuntimesOffline = internalMutation({
     const accounts = await ctx.db.query("accounts").collect();
     let marked = 0;
     for (const account of accounts) {
-      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+      if (
+        account.runtimeStatus !== "online" &&
+        account.runtimeStatus !== "degraded"
+      ) {
         continue;
       }
       const lastCheck = account.runtimeConfig?.lastHealthCheck;

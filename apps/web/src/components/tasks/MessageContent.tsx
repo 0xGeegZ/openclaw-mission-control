@@ -2,6 +2,8 @@
 
 import React, { useMemo } from "react";
 import { Streamdown } from "streamdown";
+import type { RecipientType } from "@packages/shared";
+import { MENTION_TOKEN_REGEX, findLongestMentionKey } from "@packages/shared";
 
 /**
  * Display shape for a mention. Matches Convex messages.mentions stored shape
@@ -10,7 +12,7 @@ import { Streamdown } from "streamdown";
 export interface Mention {
   name: string;
   id?: string;
-  type?: "user" | "agent";
+  type?: RecipientType;
   /** Agent slug so @slug in content matches (e.g. @squad-lead). */
   slug?: string;
 }
@@ -29,12 +31,6 @@ function MentionBadge({ name }: { name: string }) {
   );
 }
 
-/**
- * Regex for @mentions: @"quoted name" or @word (including @word-word).
- * Aligned with backend extractMentionStrings pattern.
- */
-const MENTION_REGEX = /@(?:"([^"]+)"|(\w+(?:-\w+)*))/g;
-
 /** Matches @all so we can render it as a badge even though backend stores expanded list. */
 const HAS_ALL_MENTION = /@all\b/i;
 
@@ -50,6 +46,7 @@ const HAS_ALL_MENTION = /@all\b/i;
 function processTextWithMentions(
   text: string,
   mentionMap: Map<string, Mention>,
+  sortedMentionKeys: string[],
 ): (string | React.ReactNode)[] {
   if (!text) {
     return [text];
@@ -58,7 +55,7 @@ function processTextWithMentions(
   const parts: (string | React.ReactNode)[] = [];
   let lastIndex = 0;
   let keyIndex = 0;
-  const re = new RegExp(MENTION_REGEX.source, MENTION_REGEX.flags);
+  const re = new RegExp(MENTION_TOKEN_REGEX.source, MENTION_TOKEN_REGEX.flags);
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(text)) !== null) {
@@ -66,8 +63,21 @@ function processTextWithMentions(
       parts.push(text.slice(lastIndex, match.index));
     }
 
-    const mentionName = match[1] ?? match[2] ?? "";
-    const mention = mentionMap.get(mentionName.toLowerCase());
+    const quoted = match[1];
+    const unquoted = match[2] ?? "";
+    const mentionName = quoted ?? unquoted;
+    const normalized = mentionName.trim().toLowerCase();
+    let mention = mentionMap.get(normalized);
+    let consumedLength = match[0].length;
+
+    if (!mention && unquoted) {
+      const key = findLongestMentionKey(unquoted, sortedMentionKeys);
+      if (key) {
+        mention = mentionMap.get(key);
+        consumedLength = 1 + key.length;
+      }
+    }
+
     if (!mention) {
       parts.push(match[0]);
       lastIndex = match.index + match[0].length;
@@ -77,6 +87,9 @@ function processTextWithMentions(
     parts.push(
       <MentionBadge key={`mention-${keyIndex++}`} name={mention.name} />,
     );
+    if (consumedLength < match[0].length) {
+      parts.push(match[0].slice(consumedLength));
+    }
 
     lastIndex = match.index + match[0].length;
   }
@@ -92,10 +105,17 @@ function processTextWithMentions(
  * Builds Streamdown custom component overrides (p, span, li, td, th) that
  * run processTextWithMentions on string children so mention badges render inline.
  */
-function createMentionComponents(mentionMap: Map<string, Mention>) {
+function createMentionComponents(
+  mentionMap: Map<string, Mention>,
+  sortedMentionKeys: string[],
+) {
   const processChildren = (children: React.ReactNode): React.ReactNode => {
     if (typeof children === "string") {
-      const processed = processTextWithMentions(children, mentionMap);
+      const processed = processTextWithMentions(
+        children,
+        mentionMap,
+        sortedMentionKeys,
+      );
       return processed.length === 1 && typeof processed[0] === "string" ? (
         processed[0]
       ) : (
@@ -105,15 +125,29 @@ function createMentionComponents(mentionMap: Map<string, Mention>) {
     if (Array.isArray(children)) {
       return children.map((child, index) => {
         if (typeof child === "string") {
-          const processed = processTextWithMentions(child, mentionMap);
+          const processed = processTextWithMentions(
+            child,
+            mentionMap,
+            sortedMentionKeys,
+          );
           return processed.length === 1 && typeof processed[0] === "string" ? (
             processed[0]
           ) : (
             <React.Fragment key={index}>{processed}</React.Fragment>
           );
         }
+        if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
+          const nestedChildren = processChildren(child.props.children);
+          return React.cloneElement(child, undefined, nestedChildren);
+        }
         return child;
       });
+    }
+    // Single element (e.g. <strong> from **bold** markdown): recurse so @mentions inside are processed
+    if (React.isValidElement<{ children?: React.ReactNode }>(children)) {
+      const element = children;
+      const nestedChildren = processChildren(element.props.children);
+      return React.cloneElement(element, undefined, nestedChildren);
     }
     return children;
   };
@@ -173,8 +207,11 @@ export function MessageContent({ content, mentions }: MessageContentProps) {
       mentionMap.set("all", { name: "all" });
     }
 
+    const sortedMentionKeys = Array.from(mentionMap.keys()).sort(
+      (a, b) => b.length - a.length,
+    );
     // Always use mention components so resolved @-tokens render as badges inline.
-    return createMentionComponents(mentionMap);
+    return createMentionComponents(mentionMap, sortedMentionKeys);
   }, [content, mentions]);
 
   return <Streamdown components={components}>{content}</Streamdown>;

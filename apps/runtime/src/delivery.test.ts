@@ -5,7 +5,10 @@
 import { describe, it, expect } from "vitest";
 import {
   _getNoResponseRetryDecision,
+  _isNoReplySignal,
   _resetNoResponseRetryState,
+  _shouldPersistOrchestratorThreadAck,
+  _shouldPersistNoResponseFallback,
   canAgentMarkDone,
   shouldDeliverToAgent,
   formatNotificationMessage,
@@ -467,6 +470,148 @@ describe("formatNotificationMessage", () => {
     expect(message).not.toContain("msg-0");
     expect(message).toContain(expectedTruncated);
   });
+
+  it("includes one-branch-per-task rule with task ID when task is present", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "k97abc",
+        status: "in_progress",
+        title: "Sample",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("feat/task-k97abc");
+    expect(message).toContain("only branch");
+  });
+
+  it("omits task-branch rule when task is not present", () => {
+    const ctx = buildContext({ task: null });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).not.toContain("feat/task-");
+  });
+
+  it("includes workflow rules: human dependency -> blocked and move back to in_progress when resolved", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+      effectiveBehaviorFlags: { canModifyTaskStatus: true },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("human input");
+    expect(message).toContain("blocked");
+    expect(message).toContain("blockedReason");
+    expect(message).toContain("move the task back to in_progress");
+    expect(message).toContain("blocked -> in_progress");
+  });
+
+  it("includes orchestrator rule: move to review before requesting QA and use response_request", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      mentionableAgents: [
+        {
+          id: "orch",
+          slug: "squad-lead",
+          name: "Orchestrator",
+          role: "Squad Lead",
+        },
+      ],
+      effectiveBehaviorFlags: {
+        canModifyTaskStatus: true,
+        canMentionAgents: true,
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("task MUST be in REVIEW");
+    expect(message).toContain("Move the task to review first");
+    expect(message).toContain("response_request");
+    expect(message).toContain(
+      "Do not request QA approval while the task is still in_progress",
+    );
+  });
+
+  it("includes blocked-task reminder to move back to in_progress when resolved", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "t1",
+        status: "blocked",
+        title: "T",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const message = formatNotificationMessage(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(message).toContain("BLOCKED");
+    expect(message).toContain("move the task back to in_progress");
+  });
 });
 
 describe("no response retry decision", () => {
@@ -478,6 +623,129 @@ describe("no response retry decision", () => {
     expect(first.shouldRetry).toBe(true);
     expect(second.shouldRetry).toBe(true);
     expect(third.shouldRetry).toBe(false);
+  });
+});
+
+describe("no reply signal detection", () => {
+  it("detects legacy no-reply sentinel values", () => {
+    expect(_isNoReplySignal("NO_REPLY")).toBe(true);
+    expect(_isNoReplySignal("NO")).toBe(true);
+    expect(_isNoReplySignal("NO_")).toBe(true);
+  });
+
+  it("does not treat HEARTBEAT_OK as a no-reply signal", () => {
+    expect(_isNoReplySignal("HEARTBEAT_OK")).toBe(false);
+  });
+});
+
+describe("no response fallback persistence policy", () => {
+  it("does not persist fallback to thread for any type (UX: no boilerplate in thread)", () => {
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "mention" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({
+        notificationType: "response_request",
+      }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
+    ).toBe(false);
+    expect(
+      _shouldPersistNoResponseFallback({ notificationType: "status_change" }),
+    ).toBe(false);
+  });
+});
+
+describe("orchestrator no-reply acknowledgment policy", () => {
+  it("does not persist orchestrator ack (silent-by-default)", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      task: {
+        _id: "t1",
+        status: "in_progress",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "engineer",
+        content: "Progress update",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+  });
+
+  it("does not persist orchestrator ack for blocked tasks", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "orch",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      task: {
+        _id: "t1",
+        status: "blocked",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "engineer",
+        content: "Still blocked",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+  });
+
+  it("does not persist orchestrator ack when recipient is not orchestrator", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "n1",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientId: "engineer",
+        recipientType: "agent",
+        accountId: "acc1",
+      },
+      orchestratorAgentId: "orch",
+      agent: { _id: "engineer", role: "Engineer", name: "Engineer" },
+      task: {
+        _id: "t1",
+        status: "review",
+        title: "T",
+        assignedAgentIds: ["engineer"],
+      },
+      message: {
+        _id: "m1",
+        authorType: "agent",
+        authorId: "qa",
+        content: "QA update",
+      },
+    });
+    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
 });
 
