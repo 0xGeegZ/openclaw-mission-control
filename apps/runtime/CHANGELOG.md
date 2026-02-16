@@ -37,7 +37,7 @@
   - Periodic fetch of agent list from Convex; update local roster so new or updated agents are used without restarting the runtime.
 
   **Profile sync**
-  - One-time (at startup): write OpenClaw config (openclaw.json) and per-agent workspace files (SOUL.md, TOOLS.md, AGENTS.md, HEARTBEAT.md when profile sync enabled). Optional `OPENCLAW_AGENTS_MD_PATH` / `OPENCLAW_HEARTBEAT_MD_PATH` for repo-sourced content. Env `OPENCLAW_PROFILE_SYNC=true` to enable.
+  - One-time (at startup): write OpenClaw config (openclaw.json) and per-agent workspace files (SOUL.md, TOOLS.md, AGENTS.md, HEARTBEAT.md when profile sync enabled). Optional custom AGENTS/HEARTBEAT sources from repo/workspace path discovery. Env `OPENCLAW_PROFILE_SYNC=true` to enable.
 
   **Health server**
   - HTTP server (default port 3000). **GET /health** — Full JSON: gateway state, delivery state (deliveredCount, consecutiveFailures, lastErrorAt, lastErrorMessage), runtime and OpenClaw versions, droplet/infra ids, uptime, metrics. **GET /version** — Lightweight: runtime version, OpenClaw version, droplet id/region. Agent endpoints (POST, require `x-openclaw-session-key`, local-only): `/agent/task-status`, `/agent/task-create`, `/agent/task-assign`, `/agent/response-request`, `/agent/document`, `/agent/task-message`, `/agent/task-list`, `/agent/task-get`, `/agent/task-thread`, `/agent/task-search`, `/agent/task-load`, `/agent/get-agent-skills`, `/agent/task-delete`, `/agent/task-link-pr`. Used as HTTP fallbacks when client-side tools are disabled. Session validation: 401 if session key missing or unknown.

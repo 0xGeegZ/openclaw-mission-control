@@ -431,6 +431,18 @@ export function formatNotificationMessage(
       ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
       : "";
 
+  const multiAssigneeCoordinationGateBlock =
+    notification?.type === "assignment" &&
+    isRecipientInMultiAssigneeTask(context)
+      ? `
+**Multi-assignee assignment gate (required):**
+- Your first reply to this assignment must be coordination-only: acknowledge, claim your sub-scope, and ask dependency questions.
+- In that first reply, call **response_request** for any assignee whose input you need.
+- Do not run substantive execution before coordination (for example: domain checks, coding, tests, or broad research). The only allowed pre-work is reading task/thread context needed to ask precise questions.
+- Exception rule: this assignment coordination reply takes priority over the "single reply per notification" rule. Send this coordination reply first, then continue when dependencies are clarified.
+`
+      : "";
+
   const multiAssigneeBlock = isRecipientInMultiAssigneeTask(context)
     ? `
 **Multi-assignee (thread-first collaboration required):** This task has multiple assignees. Collaboration means visible alignment in this task thread, not silent parallel work.
@@ -466,7 +478,7 @@ ${formatPrimaryUserMentionSection(primaryUserMention)}
 Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.
 If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
 
-Important: This system captures only one reply per notification. Do not send progress updates. When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
+Important: This system captures only one reply per notification. Do not send progress updates. Exception: on assignment notifications with multi-assignee coordination gate, send the required coordination-only reply first, then continue work after dependencies are clarified. When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
 
 ${statusInstructions}
 ${taskCreateInstructions}
@@ -481,6 +493,7 @@ ${orchestratorResponseRequestInstruction}
 ${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
 ${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated. When an authorized actor (orchestrator or assignee) provides the needed input, move the task back to in_progress before resuming work." : ""}
 ${assignmentAckBlock}
+${multiAssigneeCoordinationGateBlock}
 ${multiAssigneeBlock}
 
 Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.

@@ -47,6 +47,11 @@ function resolveSoulContent(agent: AgentForProfile): string {
 /** Options for syncOpenClawProfiles. */
 export interface ProfileSyncOptions {
   workspaceRoot: string;
+  /**
+   * Optional workspace root path to write into generated openclaw.json.
+   * Defaults to workspaceRoot. Useful when runtime and gateway mount paths differ.
+   */
+  configWorkspaceRoot?: string;
   configPath: string;
   /** Optional path to AGENTS.md to copy into each workspace; if unset, embedded default is used */
   agentsMdPath?: string;
@@ -556,6 +561,25 @@ function resolveAgentDir(workspaceRoot: string, slug: string): string | null {
 }
 
 /**
+ * Map a path under runtime workspaceRoot into configWorkspaceRoot for openclaw.json.
+ * Returns sourcePath unchanged when it does not belong to runtimeWorkspaceRoot.
+ */
+function mapWorkspacePathForConfig(
+  sourcePath: string,
+  runtimeWorkspaceRoot: string,
+  configWorkspaceRoot: string,
+): string {
+  const runtimeRootResolved = path.resolve(runtimeWorkspaceRoot);
+  const configRootResolved = path.resolve(configWorkspaceRoot);
+  const sourceResolved = path.resolve(sourcePath);
+  const relative = path.relative(runtimeRootResolved, sourceResolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return sourceResolved;
+  }
+  return path.resolve(configRootResolved, relative);
+}
+
+/**
  * Write file only if content changed (by hash) to avoid unnecessary churn.
  */
 function writeIfChanged(filePath: string, content: string): boolean {
@@ -584,14 +608,25 @@ export function syncOpenClawProfiles(
   agents: AgentForProfile[],
   options: ProfileSyncOptions,
 ): { configChanged: boolean } {
-  const { workspaceRoot, configPath, agentsMdPath, heartbeatMdPath } = options;
+  const {
+    workspaceRoot,
+    configWorkspaceRoot,
+    configPath,
+    agentsMdPath,
+    heartbeatMdPath,
+  } = options;
   const agentsMdContent = getAgentsMdContent(agentsMdPath);
   const heartbeatMdContent = getHeartbeatMdContent(heartbeatMdPath);
 
   ensureDir(workspaceRoot);
 
   const rootResolved = path.resolve(workspaceRoot);
-  const validAgents: Array<{ agent: AgentForProfile; agentDir: string }> = [];
+  const configRootResolved = path.resolve(configWorkspaceRoot || workspaceRoot);
+  const validAgents: Array<{
+    agent: AgentForProfile;
+    agentDir: string;
+    configAgentDir: string;
+  }> = [];
   const extraDirsSet = new Set<string>();
   /** OpenClaw skills.entries keys: must match frontmatter `name` in each SKILL.md. */
   const materializedSkillKeysSet = new Set<string>();
@@ -605,7 +640,12 @@ export function syncOpenClawProfiles(
       });
       continue;
     }
-    validAgents.push({ agent, agentDir });
+    const configAgentDir = mapWorkspacePathForConfig(
+      agentDir,
+      rootResolved,
+      configRootResolved,
+    );
+    validAgents.push({ agent, agentDir, configAgentDir });
     ensureDir(agentDir);
 
     writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
@@ -617,6 +657,7 @@ export function syncOpenClawProfiles(
     );
 
     const skillsDir = path.join(agentDir, "skills");
+    const configSkillsDir = path.join(configAgentDir, "skills");
     for (const skill of agent.resolvedSkills) {
       const rawContent = skill.contentMarkdown?.trim();
       if (!rawContent) continue;
@@ -640,7 +681,7 @@ export function syncOpenClawProfiles(
       try {
         ensureDir(skillDir);
         writeIfChanged(skillMdPath, contentToWrite);
-        extraDirsSet.add(skillsDir);
+        extraDirsSet.add(configSkillsDir);
         materializedSkillKeysSet.add(configKey);
       } catch (err) {
         log.error("Failed to write SKILL.md; skipping skill", {
@@ -656,11 +697,10 @@ export function syncOpenClawProfiles(
   }
 
   const openclawConfig = buildOpenClawConfig(
-    validAgents.map(({ agent, agentDir }) => ({
+    validAgents.map(({ agent, configAgentDir }) => ({
       ...agent,
-      _workspacePath: agentDir,
+      _workspacePath: configAgentDir,
     })),
-    rootResolved,
     Array.from(extraDirsSet),
     Array.from(materializedSkillKeysSet),
   );
@@ -711,7 +751,6 @@ interface AgentWithWorkspacePath extends AgentForProfile {
  */
 function buildOpenClawConfig(
   agents: AgentWithWorkspacePath[],
-  _workspaceRoot: string,
   extraDirs: string[],
   materializedSkillKeys: string[],
 ): Record<string, unknown> {

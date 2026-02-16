@@ -110,6 +110,7 @@ function minimalHealthConfig(): RuntimeConfig {
     openclawClientToolsEnabled: true,
     taskStatusBaseUrl: `http://127.0.0.1:${TEST_PORT}`,
     openclawWorkspaceRoot: "/tmp/test",
+    openclawConfigWorkspaceRoot: "/tmp/test",
     openclawConfigPath: "/tmp/test/openclaw.json",
     openclawAgentsMdPath: undefined,
     openclawHeartbeatMdPath: "/tmp/test/HEARTBEAT.md",
