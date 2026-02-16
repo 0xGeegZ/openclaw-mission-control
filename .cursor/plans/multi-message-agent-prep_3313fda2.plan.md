@@ -118,54 +118,54 @@ Architecture fit:
 - From repo root, create a feature worktree and branch: `feat/multi-message-prestream`.
 - Ensure implementation commands run from the worktree path only.
 
-2. **Define runtime response-part model**
+1. **Define runtime response-part model**
 
 - Edit `SendToOpenClawResult` in `gateway.ts` to `texts: string[]`.
 - Refactor parser to return ordered parts; preserve existing single-text fallbacks.
 - Update `sendToOpenClaw()` and `sendOpenClawToolResults()` callers/types.
 
-3. **Introduce backend part-index schema support**
+1. **Introduce backend part-index schema support**
 
 - Add optional `sourceNotificationPartIndex` to messages schema.
 - Add `by_source_notification_part` composite index.
 - Run Convex codegen/dev flow required for schema updates.
 
-4. **Extend service action/mutation contracts**
+1. **Extend service action/mutation contracts**
 
 - Add optional `sourceNotificationPartIndex` to `createMessageFromAgent` action args.
 - Thread argument through to `service/messages.createFromAgent`.
 
-5. **Implement idempotency logic for message parts**
+1. **Implement idempotency logic for message parts**
 
 - In `service/messages.ts`, use composite index for idempotency check.
 - Add backward-compatible fallback for legacy messages when `partIndex===0`.
 - Ensure inserted records store part index deterministically.
 
-6. **Refactor delivery persistence to multi-part**
+1. **Refactor delivery persistence to multi-part**
 
 - Convert single `textToPost` flow to `textsToPost` array in `delivery.ts`.
 - After tool execution, compute final array of message parts.
 - For each part, call `createMessageFromAgent` with `sourceNotificationPartIndex`.
 - Keep `markNotificationDelivered` only after all parts are persisted.
 
-7. **Preserve no-reply/placeholder behavior per part**
+1. **Preserve no-reply/placeholder behavior per part**
 
 - Reuse existing `parseNoResponsePlaceholder` and fallback builder per part.
 - Maintain existing suppression rules for placeholder fallback messages.
 
-8. **Runtime + backend test implementation**
+1. **Runtime + backend test implementation**
 
 - Add parser tests for multi-output and mixed function_call/output payloads.
 - Add backend tests for multi-part idempotency and retry safety.
 - Add delivery tests (or extend current ones) for partial failure + retry behavior.
 
-9. **Manual QA and regression checks**
+1. **Manual QA and regression checks**
 
 - Validate one notification yields N ordered agent messages.
 - Simulate retry after partial write and confirm no duplicates.
 - Confirm typing indicator/read receipts and message thread behavior remain correct.
 
-10. **Changeset and rollout gating**
+1. **Changeset and rollout gating**
 
 - Add/update changeset notes.
 - Optionally gate runtime behavior with config flag (`ENABLE_MULTI_PART_AGENT_MESSAGES`) default-on in non-prod first.
