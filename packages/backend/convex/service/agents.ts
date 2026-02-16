@@ -4,6 +4,10 @@ import type { Id } from "../_generated/dataModel";
 import { agentStatusValidator } from "../lib/validators";
 import { logActivity } from "../lib/activity";
 import { generateDefaultSoul } from "../lib/agent_soul";
+import {
+  buildDefaultUserContent,
+  buildDefaultIdentityContent,
+} from "../lib/user_identity_fallback";
 
 /**
  * Service-only agent functions.
@@ -114,13 +118,18 @@ export const listInternal = internalQuery({
 
 /**
  * List agents for runtime profile sync.
- * Returns effectiveSoulContent (fallback to default), openclawConfig, and resolvedSkills.
+ * Returns effectiveSoulContent, effectiveUserMd, effectiveIdentityContent, openclawConfig, and resolvedSkills.
  */
 export const listForRuntime = internalQuery({
   args: {
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    const effectiveUserMd =
+      (account?.settings as { userMd?: string } | undefined)?.userMd?.trim() ||
+      buildDefaultUserContent();
+
     const agents = await ctx.db
       .query("agents")
       .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
@@ -131,6 +140,9 @@ export const listForRuntime = internalQuery({
         const effectiveSoulContent =
           agent.soulContent?.trim() ||
           generateDefaultSoul(agent.name, agent.role);
+        const effectiveIdentityContent =
+          agent.identityContent?.trim() ||
+          buildDefaultIdentityContent(agent.name, agent.role);
 
         const rawSkillIds = agent.openclawConfig?.skillIds ?? [];
         const skillIds: Id<"skills">[] = rawSkillIds.filter(
@@ -165,6 +177,8 @@ export const listForRuntime = internalQuery({
           sessionKey: agent.sessionKey,
           openclawConfig: agent.openclawConfig,
           effectiveSoulContent,
+          effectiveUserMd,
+          effectiveIdentityContent,
           resolvedSkills,
         };
       }),

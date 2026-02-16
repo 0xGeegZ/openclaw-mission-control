@@ -7,7 +7,6 @@ import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
 import type { DeliveryContext } from "./types";
 import {
   isOrchestratorChatTask,
-  isQaAgentProfile,
   isRecipientInMultiAssigneeTask,
 } from "./policy";
 
@@ -17,12 +16,7 @@ const THREAD_MAX_CHARS_PER_MESSAGE = 1500;
 const TASK_DESCRIPTION_MAX_CHARS = 4000;
 const REPOSITORY_CONTEXT_MAX_CHARS = 12000;
 const GLOBAL_CONTEXT_MAX_CHARS = 4000;
-const TASK_BRANCH_PREFIX = "feat/task-";
-/**
- * Path prefix for per-task worktrees; task ID (Convex doc ID) is appended.
- * Convex document IDs are alphanumeric and safe for path segments. Kept in sync with docs/runtime/AGENTS.md.
- */
-const TASK_WORKTREE_PATH_PREFIX = "/root/clawd/worktrees/feat-task-";
+/** Task branch/worktree are defined by the repository context document (seed-owned); no hardcoded paths here. */
 
 const STATUS_INSTRUCTION_VALID_TRANSITIONS =
   "Valid next statuses from current: assigned -> in_progress, in_progress -> review, in_progress -> blocked, review -> done or back to in_progress, review -> blocked, blocked -> in_progress. Do not move directly to done unless the current status is review.";
@@ -283,15 +277,6 @@ export function formatNotificationMessage(
       ].join("\n")
     : "";
   const threadDetails = formatThreadContext(thread);
-  const localRepoHint =
-    "Main clone (fetch/pull/worktree management only): /root/clawd/repos/openclaw-mission-control. Do all code work in a task worktree, not in the main clone.";
-  const taskBranchName = task ? `${TASK_BRANCH_PREFIX}${task._id}` : null;
-  const taskWorktreePath = task
-    ? `${TASK_WORKTREE_PATH_PREFIX}${task._id}`
-    : null;
-  const taskBranchRule = taskBranchName
-    ? `For this task use only branch \`${taskBranchName}\` and work only in the task worktree at \`${taskWorktreePath}\`. From the main clone: git fetch origin, git checkout dev, git pull, then create worktree if missing: \`git worktree add ${taskWorktreePath} -b ${taskBranchName}\` (or \`git worktree add ${taskWorktreePath} ${taskBranchName}\` if the branch already exists). All file edits, git add, git commit, git push, and gh pr create must be run from \`${taskWorktreePath}\`. Do not perform code edits or commits in the main clone.`
-    : null;
   const repositoryDetails = repositoryDoc?.content?.trim()
     ? [
         "Repository context:",
@@ -299,31 +284,20 @@ export function formatNotificationMessage(
           repositoryDoc.content.trim(),
           REPOSITORY_CONTEXT_MAX_CHARS,
         ),
-        localRepoHint,
         "",
-        "Use the repository context above as the default codebase. Do not ask which repo to use.",
-        "Use the task worktree for all code work (see task branch rule below). PRs must target `dev` (use `--base dev`, not master).",
+        "Use the repository context above for repo paths, worktree, and branch rules. Do not ask which repo to use.",
         "To inspect the repo tree, use exec (e.g., `ls` on the worktree path) and only use read on files.",
-        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
-        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
-        'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
-        "Only use the read tool with paths under `/root/clawd` (e.g. /root/clawd/agents/<slug>/memory/WORKING.md). Do not read paths under /usr, /usr/local, or node_modules — they are not in your workspace and will fail.",
-        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
-        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos, worktrees). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
-        ...(taskBranchRule ? ["", taskBranchRule] : []),
+        "Never call read on directories; for directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
+        "When a path contains bracket segments, keep them exact and quote shell paths containing brackets/parentheses.",
+        'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` and only target files.',
+        "Only use the read tool with paths under your workspace; do not read /usr, /usr/local, or node_modules.",
+        "To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local file paths — the user cannot open them.",
+        "Stay within your workspace boundaries; if a required path is missing, create it if you can, otherwise report BLOCKED.",
       ].join("\n")
     : [
         "Repository context: not found.",
-        localRepoHint,
-        "Use the task worktree for all code work when a task is set (see task branch rule below). PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls` on the worktree path) and only use read on files.",
-        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
-        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
-        'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
-        "Only use the read tool with paths under `/root/clawd` (e.g. /root/clawd/agents/<slug>/memory/WORKING.md). Do not read paths under /usr, /usr/local, or node_modules — they are not in your workspace and will fail.",
-        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
-        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos, worktrees). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
-        ...(taskBranchRule ? ["", taskBranchRule] : []),
+        "Add a Repository document in account settings for repo-specific workflow and paths.",
+        "Only use the read tool with paths under your workspace; do not read directories. Use document_upsert to share deliverables and reference as [Document](/document/<documentId>).",
       ].join("\n");
   const globalContextSection = globalBriefingDoc?.content?.trim()
     ? [
@@ -340,18 +314,12 @@ export function formatNotificationMessage(
     mentionableAgents,
   );
 
-  const hasQaAgent = context.mentionableAgents.some((agent) =>
-    isQaAgentProfile(agent),
-  );
   const isOrchestratorChat = isOrchestratorChatTask(task);
-  const qaReviewNote = hasQaAgent
-    ? " When QA is configured, only QA can mark tasks as done after review passes."
-    : "";
+  const qaReviewNote =
+    " Only an agent with close permission can mark tasks as done after review.";
   const doneRestrictionNote = toolCapabilities.canMarkDone
     ? ""
-    : hasQaAgent
-      ? " You are not allowed to mark tasks as done; QA must approve and close the task."
-      : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed.";
+    : " You are not allowed to mark tasks as done; ask an agent with close permission or the orchestrator if a task should be closed.";
   const humanBlockedNote =
     " When you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials), move to blocked and set blockedReason to describe what you need and from whom; do not stay in_progress while waiting for humans. When an authorized actor (orchestrator or assignee with status permission) acknowledges the blocked request or provides the needed input, move the task back to in_progress before continuing work.";
   const statusInstructions = task

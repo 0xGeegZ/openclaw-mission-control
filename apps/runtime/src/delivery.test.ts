@@ -142,7 +142,7 @@ describe("shouldDeliverToAgent", () => {
     expect(shouldDeliverToAgent(ctx)).toBe(false);
   });
 
-  it("returns true for status_change to agent when task is review and agent is reviewer", () => {
+  it("returns true for status_change to agent when task is review and agent has canReviewTasks", () => {
     const ctx = buildContext({
       notification: {
         _id: "n1",
@@ -160,6 +160,7 @@ describe("shouldDeliverToAgent", () => {
         title: "T",
         assignedAgentIds: ["agent-a"],
       },
+      effectiveBehaviorFlags: { canReviewTasks: true },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
   });
@@ -491,16 +492,12 @@ describe("formatNotificationMessage", () => {
       "http://runtime:3000",
       toolCapabilities,
     );
-    expect(message).toContain("feat/task-k97abc");
-    expect(message).toContain("only branch");
-    expect(message).toContain("/root/clawd/worktrees/feat-task-k97abc");
-    expect(message).toContain("worktree");
-    expect(message).toContain("git worktree add");
-    expect(message).toContain("git checkout dev");
+    expect(message).toContain("Repository context:");
+    expect(message).toContain("Add a Repository document");
   });
 
-  it("omits task-branch and worktree rule when task is not present", () => {
-    const ctx = buildContext({ task: null });
+  it("shows repository not found when no repository doc", () => {
+    const ctx = buildContext({ task: null, repositoryDoc: null });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
       canModifyTaskStatus: false,
@@ -512,8 +509,8 @@ describe("formatNotificationMessage", () => {
       "http://runtime:3000",
       toolCapabilities,
     );
-    expect(message).not.toContain("feat/task-");
-    expect(message).not.toContain("/root/clawd/worktrees/feat-task-");
+    expect(message).toContain("Repository context: not found");
+    expect(message).toContain("Add a Repository document");
   });
 
   it("includes workflow rules: human dependency -> blocked and move back to in_progress when resolved", () => {
@@ -830,62 +827,23 @@ describe("orchestrator no-reply acknowledgment policy", () => {
 });
 
 describe("canAgentMarkDone", () => {
-  it("allows QA to mark done when QA exists and task is in review", () => {
+  it("returns true when task is review and canMarkDone is true", () => {
     expect(
-      canAgentMarkDone({
-        taskStatus: "review",
-        agentRole: "QA / Reviewer",
-        agentSlug: "engineer",
-        isOrchestrator: false,
-        hasQaAgent: true,
-      }),
+      canAgentMarkDone({ taskStatus: "review", canMarkDone: true }),
     ).toBe(true);
   });
 
-  it("allows slug-based QA when role is not QA", () => {
+  it("returns false when canMarkDone is false even if task is review", () => {
     expect(
-      canAgentMarkDone({
-        taskStatus: "review",
-        agentRole: "Developer",
-        agentSlug: "qa",
-        isOrchestrator: false,
-        hasQaAgent: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("blocks non-QA when QA exists", () => {
-    expect(
-      canAgentMarkDone({
-        taskStatus: "review",
-        agentRole: "Squad Lead",
-        agentSlug: "lead",
-        isOrchestrator: true,
-        hasQaAgent: true,
-      }),
+      canAgentMarkDone({ taskStatus: "review", canMarkDone: false }),
     ).toBe(false);
   });
 
-  it("allows orchestrator when no QA exists", () => {
-    expect(
-      canAgentMarkDone({
-        taskStatus: "review",
-        agentRole: "Squad Lead",
-        agentSlug: "lead",
-        isOrchestrator: true,
-        hasQaAgent: false,
-      }),
-    ).toBe(true);
-  });
-
-  it("blocks when task is not in review", () => {
+  it("returns false when task is not in review", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "in_progress",
-        agentRole: "QA / Reviewer",
-        agentSlug: "qa",
-        isOrchestrator: false,
-        hasQaAgent: true,
+        canMarkDone: true,
       }),
     ).toBe(false);
   });

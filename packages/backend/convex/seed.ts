@@ -2,6 +2,10 @@ import { mutation, internalMutation } from "./_generated/server";
 import { contentBySlug } from "./seed_skills_content.generated";
 import { requireAuth } from "./lib/auth";
 import { validateContentMarkdown } from "./lib/skills_validation";
+import {
+  buildDefaultUserContent,
+  buildDefaultIdentityContent,
+} from "./lib/user_identity_fallback";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
@@ -791,7 +795,11 @@ const seedDocs = [
 /** Minimal OpenClaw config for seed agents (matches schema). */
 function defaultOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: { canCreateTasks: boolean },
+  behaviorFlags: {
+    canCreateTasks: boolean;
+    canReviewTasks?: boolean;
+    canMarkDone?: boolean;
+  },
 ) {
   return {
     ...DEFAULT_OPENCLAW_CONFIG,
@@ -800,6 +808,8 @@ function defaultOpenclawConfig(
     behaviorFlags: {
       ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
+      canReviewTasks: behaviorFlags.canReviewTasks ?? false,
+      canMarkDone: behaviorFlags.canMarkDone ?? false,
     },
   };
 }
@@ -809,7 +819,11 @@ function defaultOpenclawConfig(
  */
 function buildSeedOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: { canCreateTasks: boolean },
+  behaviorFlags: {
+    canCreateTasks: boolean;
+    canReviewTasks?: boolean;
+    canMarkDone?: boolean;
+  },
   existingConfig?: {
     systemPromptPrefix?: string;
     rateLimits?: {
@@ -1231,10 +1245,8 @@ async function ensureDocs(
     const existingDoc = existingByTitle.get(d.title);
     if (existingDoc) {
       existing += 1;
-      if (
-        d.title === "AGENTS.md — Operating Manual" &&
-        existingDoc.content !== d.content
-      ) {
+      // Keep all prompt-critical managed docs in sync when seed content changes.
+      if (existingDoc.content !== d.content) {
         const now = Date.now();
         const nextVersion =
           typeof existingDoc.version === "number" ? existingDoc.version + 1 : 1;
@@ -1357,6 +1369,18 @@ async function runSeedWithOwner(
     options.createDemoIfNone,
   );
 
+  // Ensure account has USER.md scaffold (seed-owned default).
+  const currentAccount = await ctx.db.get(accountId);
+  const settings = (currentAccount?.settings ?? {}) as { userMd?: string };
+  if (settings.userMd === undefined || settings.userMd === null) {
+    await ctx.db.patch(accountId, {
+      settings: {
+        ...currentAccount?.settings,
+        userMd: buildDefaultUserContent(),
+      },
+    });
+  }
+
   const {
     slugToId,
     created: skillsCreated,
@@ -1385,9 +1409,14 @@ async function runSeedWithOwner(
       .map((slug) => slugToId[slug])
       .filter((id): id is Id<"skills"> => id !== undefined);
     const soulContent = buildSoulContent(a.name, a.role, a.agentRole);
+    const identityContent = buildDefaultIdentityContent(a.name, a.role);
     const openclawConfig = buildSeedOpenclawConfig(
       skillIds,
-      { canCreateTasks: a.canCreateTasks },
+      {
+        canCreateTasks: a.canCreateTasks,
+        canReviewTasks: a.slug === "qa",
+        canMarkDone: a.slug === "qa" || a.slug === "squad-lead",
+      },
       existingAgent?.openclawConfig,
     );
     const sessionKey = `agent:${a.slug}:${accountId}`;
@@ -1400,6 +1429,7 @@ async function runSeedWithOwner(
         sessionKey,
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
+        identityContent,
         openclawConfig,
         icon: a.icon,
       });
@@ -1418,6 +1448,7 @@ async function runSeedWithOwner(
       heartbeatInterval: a.heartbeatInterval,
       icon: a.icon,
       soulContent,
+      identityContent,
       openclawConfig,
       createdAt: now,
     });

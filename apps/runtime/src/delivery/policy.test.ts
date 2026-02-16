@@ -5,11 +5,10 @@
 import { describe, it, expect } from "vitest";
 import type { DeliveryContext } from "./types";
 import {
+  agentCanReview,
   canAgentMarkDone,
   isOrchestratorChatTask,
-  isQaAgentProfile,
   isRecipientInMultiAssigneeTask,
-  isReviewerRole,
   shouldDeliverToAgent,
   shouldPersistNoResponseFallback,
   shouldPersistOrchestratorThreadAck,
@@ -218,26 +217,21 @@ describe("isOrchestratorChatTask", () => {
   });
 });
 
-describe("isReviewerRole", () => {
-  it("returns true for Squad Lead and QA", () => {
-    expect(isReviewerRole("Squad Lead")).toBe(true);
-    expect(isReviewerRole("QA")).toBe(true);
-    expect(isReviewerRole("review")).toBe(true);
+describe("agentCanReview", () => {
+  it("returns true when effectiveBehaviorFlags.canReviewTasks is true", () => {
+    expect(
+      agentCanReview(
+        buildContext({ effectiveBehaviorFlags: { canReviewTasks: true } }),
+      ),
+    ).toBe(true);
   });
-  it("returns false for Developer", () => {
-    expect(isReviewerRole("Developer")).toBe(false);
-  });
-});
-
-describe("isQaAgentProfile", () => {
-  it("returns true when slug is qa", () => {
-    expect(isQaAgentProfile({ slug: "qa", role: "Developer" })).toBe(true);
-  });
-  it("returns true when role contains QA", () => {
-    expect(isQaAgentProfile({ role: "Quality Assurance" })).toBe(true);
-  });
-  it("returns false for other roles", () => {
-    expect(isQaAgentProfile({ role: "Developer", slug: "engineer" })).toBe(
+  it("returns false when canReviewTasks is false or missing", () => {
+    expect(
+      agentCanReview(
+        buildContext({ effectiveBehaviorFlags: { canReviewTasks: false } }),
+      ),
+    ).toBe(false);
+    expect(agentCanReview(buildContext({ effectiveBehaviorFlags: {} }))).toBe(
       false,
     );
   });
@@ -248,28 +242,23 @@ describe("canAgentMarkDone", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "in_progress",
-        isOrchestrator: true,
-        hasQaAgent: false,
+        canMarkDone: true,
       }),
     ).toBe(false);
   });
-  it("returns true for orchestrator when no QA and status is review", () => {
+  it("returns false when canMarkDone is false even if status is review", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "review",
-        isOrchestrator: true,
-        hasQaAgent: false,
+        canMarkDone: false,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
-  it("returns true for QA agent when hasQaAgent and role is QA", () => {
+  it("returns true when task is review and canMarkDone is true", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "review",
-        agentRole: "QA",
-        agentSlug: "qa",
-        isOrchestrator: false,
-        hasQaAgent: true,
+        canMarkDone: true,
       }),
     ).toBe(true);
   });

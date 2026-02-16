@@ -96,6 +96,8 @@ export default defineSchema({
             memberUpdates: v.boolean(),
           }),
         ),
+        /** Account-shared USER.md content (editable in Settings by admin). */
+        userMd: v.optional(v.string()),
         /** Default OpenClaw config for new agents (admin-editable). */
         agentDefaults: v.optional(
           v.object({
@@ -109,6 +111,8 @@ export default defineSchema({
                 canModifyTaskStatus: v.boolean(),
                 canCreateDocuments: v.boolean(),
                 canMentionAgents: v.boolean(),
+                canReviewTasks: v.boolean(),
+                canMarkDone: v.boolean(),
               }),
             ),
             rateLimits: v.optional(
@@ -278,6 +282,12 @@ export default defineSchema({
     soulContent: v.optional(v.string()),
 
     /**
+     * IDENTITY file content (per-agent persona/role).
+     * Materialized as IDENTITY.md in the agent workspace.
+     */
+    identityContent: v.optional(v.string()),
+
+    /**
      * OpenClaw runtime configuration.
      * Controls LLM settings, skills, and behavior.
      */
@@ -333,6 +343,10 @@ export default defineSchema({
             canCreateDocuments: v.boolean(),
             /** Can agent mention other agents? */
             canMentionAgents: v.boolean(),
+            /** Can agent receive review notifications and perform review? */
+            canReviewTasks: v.boolean(),
+            /** Can agent mark tasks done (e.g. close)? */
+            canMarkDone: v.boolean(),
             /** Requires human approval for certain actions? */
             requiresApprovalForActions: v.optional(v.array(v.string())),
           }),

@@ -65,6 +65,8 @@ export interface DeliveryContext {
     canModifyTaskStatus?: boolean;
     canCreateDocuments?: boolean;
     canMentionAgents?: boolean;
+    canReviewTasks?: boolean;
+    canMarkDone?: boolean;
   };
   repositoryDoc: { title: string; content: string } | null;
   globalBriefingDoc: { title: string; content: string } | null;

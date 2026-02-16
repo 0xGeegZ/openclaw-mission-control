@@ -17,7 +17,6 @@ import {
 } from "./delivery/no-response";
 import {
   canAgentMarkDone,
-  isQaAgentProfile,
   shouldDeliverToAgent,
   shouldPersistNoResponseFallback,
   shouldRetryNoResponseForNotification,
@@ -209,27 +208,19 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 msg,
               );
             }
-            const flags = context.effectiveBehaviorFlags ?? {};
+            const flags: DeliveryContext["effectiveBehaviorFlags"] =
+              context.effectiveBehaviorFlags ?? {};
             const hasTask = !!context?.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
             const canCreateTasks = flags.canCreateTasks === true;
             const canCreateDocuments = flags.canCreateDocuments === true;
             const canMentionAgents = flags.canMentionAgents === true;
-            const hasQaAgent = context.mentionableAgents.some((agent) =>
-              isQaAgentProfile(agent),
-            );
-            const currentAgentProfile = context.mentionableAgents.find(
-              (agent) => agent.id === context.agent?._id,
-            );
             const isOrchestrator =
               context.orchestratorAgentId != null &&
               context.agent._id === context.orchestratorAgentId;
             const canMarkDone = canAgentMarkDone({
               taskStatus: context.task?.status,
-              agentRole: currentAgentProfile?.role ?? context.agent?.role,
-              agentSlug: currentAgentProfile?.slug,
-              isOrchestrator,
-              hasQaAgent,
+              canMarkDone: flags.canMarkDone === true,
             });
             const rawToolCapabilities = getToolCapabilitiesAndSchemas({
               canCreateTasks,

@@ -81,6 +81,9 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
   const migrateAgentsToDefaultModel = useMutation(
     api.agents.migrateAgentsToDefaultModel,
   );
+  const migratePromptScaffold = useMutation(
+    api.agents.migratePromptScaffold,
+  );
   const provisionServiceToken = useAction(
     api.service.actions.provisionServiceToken,
   );
@@ -101,6 +104,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
             canModifyTaskStatus?: boolean;
             canCreateDocuments?: boolean;
             canMentionAgents?: boolean;
+            canReviewTasks?: boolean;
+            canMarkDone?: boolean;
           };
           rateLimits?: { requestsPerMinute?: number; tokensPerDay?: number };
         };
@@ -120,6 +125,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
     canModifyTaskStatus: true,
     canCreateDocuments: true,
     canMentionAgents: true,
+    canReviewTasks: false,
+    canMarkDone: false,
   });
   const [rateRpm, setRateRpm] = useState("20");
   const [rateTpd, setRateTpd] = useState("100000");
@@ -481,6 +488,51 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           Migrate agents to default model
                         </Button>
                       </div>
+
+                      <div className="space-y-2 rounded-xl border border-amber-200/50 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
+                        <Label>Scaffold USER.md & IDENTITY.md</Label>
+                        <p className="text-xs text-muted-foreground">
+                          One-time migration: set account USER profile and each
+                          agent’s IDENTITY content and review/done behavior
+                          flags if missing. Run once per account after upgrade.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          disabled={isSaving || !accountId}
+                          onClick={async () => {
+                            if (!accountId) return;
+                            try {
+                              const result = await migratePromptScaffold({
+                                accountId,
+                              });
+                              const parts: string[] = [];
+                              if (result.accountsUpdated > 0)
+                                parts.push("account USER profile set");
+                              if (result.agentsUpdated > 0)
+                                parts.push(
+                                  `${result.agentsUpdated} agent(s) updated`,
+                                );
+                              toast.success(
+                                parts.length > 0
+                                  ? parts.join("; ")
+                                  : "No updates needed",
+                              );
+                            } catch (e) {
+                              toast.error("Migration failed", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
+                            }
+                          }}
+                        >
+                          Run prompt scaffold migration
+                        </Button>
+                      </div>
                     </div>
 
                     <Separator />
@@ -575,6 +627,20 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           key: "canMentionAgents" as const,
                           label: "Can Mention Agents",
                           description: "Allow agents to mention other agents",
+                        },
+                        {
+                          id: "review-tasks",
+                          key: "canReviewTasks" as const,
+                          label: "Can Review Tasks",
+                          description:
+                            "Receive review notifications and act as reviewer",
+                        },
+                        {
+                          id: "mark-done",
+                          key: "canMarkDone" as const,
+                          label: "Can Mark Done",
+                          description:
+                            "Allow agent to mark tasks done (e.g. after QA)",
                         },
                       ].map((flag) => (
                         <div

@@ -69,10 +69,16 @@ import {
   ArrowRightLeft,
   AlertTriangle,
   Loader2,
+  Bot,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
-import { isValidSlug, validateAccountName } from "@/lib/settings-validation";
+import {
+  isValidSlug,
+  validateAccountName,
+  validateUserMd,
+  USER_MD_MAX_LENGTH,
+} from "@/lib/settings-validation";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -119,6 +125,9 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     "system",
   );
   const [themeSaving, setThemeSaving] = useState(false);
+
+  const [userMd, setUserMd] = useState("");
+  const [userMdSaving, setUserMdSaving] = useState(false);
 
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
@@ -190,6 +199,11 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     ) {
       setThemeState(accountTheme);
     }
+    const accountUserMd = (account as { settings?: { userMd?: string } })
+      ?.settings?.userMd;
+    if (accountUserMd !== undefined) {
+      setUserMd(accountUserMd ?? "");
+    }
   }, [account]);
 
   const handleSaveGeneral = async () => {
@@ -254,6 +268,28 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setNotifSaving(false);
+    }
+  };
+
+  const handleSaveUserMd = async () => {
+    if (!accountId || !isAdmin) return;
+    const trimmed = userMd.trim();
+    const validation = validateUserMd(trimmed);
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+    setUserMdSaving(true);
+    try {
+      await updateAccount({
+        accountId,
+        settings: { userMd: trimmed },
+      });
+      toast.success("Agent profile saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setUserMdSaving(false);
     }
   };
 
@@ -442,6 +478,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
             <TabsTrigger value="notifications" className="gap-2">
               <Bell className="h-4 w-4 hidden sm:inline" />
               Notifications
+            </TabsTrigger>
+            <TabsTrigger value="agent-profile" className="gap-2">
+              <Bot className="h-4 w-4 hidden sm:inline" />
+              Agent Profile
             </TabsTrigger>
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="h-4 w-4 hidden sm:inline" />
@@ -847,6 +887,53 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                 >
                   {notifSaving ? "Saving…" : "Save preferences"}
                 </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="agent-profile" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  Agent Profile (USER.md)
+                </CardTitle>
+                <CardDescription>
+                  Account-shared context for all agents: team, repo, and workflow. Materialized as USER.md in each agent workspace. Only admins can edit.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <Skeleton className="h-48 w-full" />
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="user-md">
+                      Markdown content ({userMd.length.toLocaleString()} / {USER_MD_MAX_LENGTH.toLocaleString()} chars)
+                    </Label>
+                    <textarea
+                      id="user-md"
+                      className="flex min-h-[200px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={userMd}
+                      onChange={(e) => setUserMd(e.target.value)}
+                      placeholder="# User\n\nDescribe your team, repo, and workflow for agents."
+                      disabled={!isAdmin}
+                      rows={12}
+                    />
+                    {isAdmin ? (
+                      <Button
+                        className="mt-2"
+                        onClick={handleSaveUserMd}
+                        disabled={userMdSaving}
+                      >
+                        {userMdSaving ? "Saving…" : "Save"}
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Only admins can edit the agent profile.
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

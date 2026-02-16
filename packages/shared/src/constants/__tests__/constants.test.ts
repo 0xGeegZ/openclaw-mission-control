@@ -430,6 +430,12 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
       "canMentionAgents",
     );
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
+      "canReviewTasks",
+    );
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
+      "canMarkDone",
+    );
   });
 
   it("behaviorFlags are all boolean values", () => {
@@ -445,6 +451,12 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMentionAgents).toBe(
       "boolean",
     );
+    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canReviewTasks).toBe(
+      "boolean",
+    );
+    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMarkDone).toBe(
+      "boolean",
+    );
   });
 
   it("canModifyTaskStatus is enabled by default for agents", () => {
@@ -455,6 +467,11 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("canCreateTasks is disabled by default for security", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(false);
+  });
+
+  it("behaviorFlags canReviewTasks and canMarkDone default to false", () => {
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canReviewTasks).toBe(false);
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMarkDone).toBe(false);
   });
 });
 

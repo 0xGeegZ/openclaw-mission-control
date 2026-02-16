@@ -24,11 +24,15 @@ type BehaviorFlags = {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   canMentionAgents: boolean;
+  canReviewTasks: boolean;
+  canMarkDone: boolean;
 };
 
 /** Default behavior flags; single source from shared config. */
 const DEFAULT_FLAGS: BehaviorFlags = {
   ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
+  canReviewTasks: false,
+  canMarkDone: false,
 };
 
 interface AgentBehaviorFlagsCardProps {
@@ -101,9 +105,17 @@ export function AgentBehaviorFlagsCard({
         contextConfig: current.contextConfig,
         rateLimits: current.rateLimits,
       };
+      const behaviorFlagsToSave = {
+        canCreateTasks: flags.canCreateTasks,
+        canModifyTaskStatus: flags.canModifyTaskStatus,
+        canCreateDocuments: flags.canCreateDocuments,
+        canMentionAgents: flags.canMentionAgents,
+        canReviewTasks: flags.canReviewTasks,
+        canMarkDone: flags.canMarkDone,
+      };
       const config = useAccountDefaults
         ? { ...base }
-        : { ...base, behaviorFlags: flags };
+        : { ...base, behaviorFlags: behaviorFlagsToSave };
       await updateOpenclawConfig({
         agentId: agent._id,
         config,
@@ -213,6 +225,38 @@ export function AgentBehaviorFlagsCard({
               disabled={useAccountDefaults}
               onCheckedChange={(c) =>
                 handleFlagChange("canMentionAgents", c === true)
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Label
+              htmlFor="bf-review-tasks"
+              className="text-sm cursor-pointer shrink-0"
+            >
+              Review tasks
+            </Label>
+            <Checkbox
+              id="bf-review-tasks"
+              checked={displayFlags.canReviewTasks}
+              disabled={useAccountDefaults}
+              onCheckedChange={(c) =>
+                handleFlagChange("canReviewTasks", c === true)
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Label
+              htmlFor="bf-mark-done"
+              className="text-sm cursor-pointer shrink-0"
+            >
+              Mark done
+            </Label>
+            <Checkbox
+              id="bf-mark-done"
+              checked={displayFlags.canMarkDone}
+              disabled={useAccountDefaults}
+              onCheckedChange={(c) =>
+                handleFlagChange("canMarkDone", c === true)
               }
             />
           </div>

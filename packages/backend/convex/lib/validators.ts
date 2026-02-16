@@ -430,6 +430,12 @@ export const ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 /** Maximum message content length (characters) to prevent DoS and abuse. */
 export const MESSAGE_CONTENT_MAX_LENGTH = 100_000;
 
+/** Maximum account-shared USER.md content length (characters). */
+export const USER_MD_MAX_LENGTH = 50_000;
+
+/** Maximum per-agent IDENTITY.md content length (characters). */
+export const IDENTITY_CONTENT_MAX_LENGTH = 50_000;
+
 /** Allowed MIME type prefixes/values for attachments (matches UI accept). */
 export const ATTACHMENT_ALLOWED_TYPES = [
   "image/",

@@ -99,7 +99,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
           accountId: config.accountId,
           serviceToken: config.serviceToken,
         },
-      )) as AgentForProfile[];
+      )) as unknown as AgentForProfile[];
 
       const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
@@ -158,7 +158,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
       },
-    )) as AgentForProfile[];
+    )) as unknown as AgentForProfile[];
     syncOpenClawProfiles(profileAgents, {
       workspaceRoot: config.openclawWorkspaceRoot,
       configWorkspaceRoot: config.openclawConfigWorkspaceRoot,
