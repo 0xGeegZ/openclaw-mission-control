@@ -493,6 +493,12 @@ export default defineSchema({
 
     /** Idempotency: notification that triggered this agent message (prevents duplicate write-back). */
     sourceNotificationId: v.optional(v.id("notifications")),
+
+    /**
+     * Part index when multiple messages are created from one notification (0-based).
+     * Enables idempotent retries per part.
+     */
+    sourceNotificationPartIndex: v.optional(v.number()),
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
@@ -505,7 +511,11 @@ export default defineSchema({
     .index("by_account", ["accountId"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_author", ["authorType", "authorId"])
-    .index("by_source_notification", ["sourceNotificationId"]),
+    .index("by_source_notification", ["sourceNotificationId"])
+    .index("by_source_notification_part", [
+      "sourceNotificationId",
+      "sourceNotificationPartIndex",
+    ]),
 
   // ==========================================================================
   // MESSAGE UPLOADS

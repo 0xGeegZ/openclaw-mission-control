@@ -275,15 +275,19 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               sendOptions,
             );
 
-            let textToPost: string | null = result.text?.trim() ?? null;
+            let textsToPost: string[] = result.texts
+              .map((t) => t.trim())
+              .filter((t) => t.length > 0);
             let suppressAgentNotifications = false;
             let skipMessageReason: string | null = null;
             const taskId = context.notification?.taskId;
-            const noResponsePlaceholder = textToPost
-              ? parseNoResponsePlaceholder(textToPost)
+            // Use first part for retry/HEARTBEAT decision; all parts must be valid to avoid retry.
+            const firstPart = textsToPost[0] ?? "";
+            const noResponsePlaceholder = firstPart
+              ? parseNoResponsePlaceholder(firstPart)
               : null;
-            const isNoReply = textToPost ? isNoReplySignal(textToPost) : false;
-            const isHeartbeatOk = isHeartbeatOkResponse(textToPost);
+            const isNoReply = firstPart ? isNoReplySignal(firstPart) : false;
+            const isHeartbeatOk = isHeartbeatOkResponse(firstPart);
             if (isHeartbeatOk && result.toolCalls.length === 0) {
               log.info(
                 "OpenClaw returned HEARTBEAT_OK; skipping notification",
@@ -303,15 +307,20 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.debug("Delivered notification (no reply)", notification._id);
               continue;
             }
+            const allPlaceholderOrNoReply =
+              textsToPost.length > 0 &&
+              textsToPost.every(
+                (t) =>
+                  parseNoResponsePlaceholder(t).isPlaceholder ||
+                  isNoReplySignal(t),
+              );
             const needsRetry =
               result.toolCalls.length === 0 &&
-              (isNoReply ||
-                !textToPost ||
-                noResponsePlaceholder?.isPlaceholder);
+              (textsToPost.length === 0 || allPlaceholderOrNoReply);
             if (needsRetry) {
               const reason = isNoReply
-                ? `no-reply signal (${textToPost})`
-                : !textToPost
+                ? `no-reply signal (${firstPart})`
+                : textsToPost.length === 0
                   ? "empty response"
                   : "placeholder response";
               const shouldPersistFallback = shouldPersistNoResponseFallback({
@@ -341,17 +350,19 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 state.requiredNotificationRetryExhaustedCount++;
                 if (taskId) {
                   if (shouldPersistFallback) {
-                    textToPost = buildNoResponseFallbackMessage(
-                      noResponsePlaceholder?.mentionPrefix,
-                    );
+                    textsToPost = [
+                      buildNoResponseFallbackMessage(
+                        noResponsePlaceholder?.mentionPrefix,
+                      ),
+                    ];
                     suppressAgentNotifications = true;
                     skipMessageReason = reason;
                   } else {
-                    textToPost = null;
+                    textsToPost = [];
                     skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
                   }
                 } else {
-                  textToPost = null;
+                  textsToPost = [];
                 }
               } else {
                 state.noResponseTerminalSkipCount++;
@@ -361,7 +372,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   context.agent.name,
                   reason,
                 );
-                textToPost = null;
+                textsToPost = [];
               }
               clearNoResponseRetry(notification._id);
             } else {
@@ -396,11 +407,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               }
               if (outputs.length > 0) {
                 try {
-                  const finalText = await sendOpenClawToolResults(
+                  const finalTexts = await sendOpenClawToolResults(
                     context.agent.sessionKey,
                     outputs,
                   );
-                  textToPost = finalText?.trim() ?? textToPost;
+                  textsToPost = finalTexts
+                    .map((t) => t.trim())
+                    .filter((t) => t.length > 0);
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err);
                   log.warn("Failed to send tool results to OpenClaw", msg);
@@ -408,8 +421,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               }
             }
 
-            if (textToPost) {
-              const placeholder = parseNoResponsePlaceholder(textToPost);
+            /** Per-part content and suppress flag for persistence. */
+            const partsToPost: { content: string; suppress: boolean }[] = [];
+            for (const part of textsToPost) {
+              const placeholder = parseNoResponsePlaceholder(part);
               if (placeholder.isPlaceholder) {
                 const shouldPersistFallback = shouldPersistNoResponseFallback({
                   notificationType: context.notification.type,
@@ -420,24 +435,30 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                     notification._id,
                     context.agent.name,
                   );
-                  textToPost = buildNoResponseFallbackMessage(
-                    placeholder.mentionPrefix,
-                  );
-                  suppressAgentNotifications = true;
-                  skipMessageReason = "placeholder fallback";
-                } else {
-                  textToPost = null;
-                  skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                  partsToPost.push({
+                    content: buildNoResponseFallbackMessage(
+                      placeholder.mentionPrefix,
+                    ),
+                    suppress: true,
+                  });
                 }
+              } else {
+                partsToPost.push({ content: part.trim(), suppress: false });
               }
             }
-            if (taskId && !textToPost && result.toolCalls.length > 0) {
+            if (
+              taskId &&
+              partsToPost.length === 0 &&
+              result.toolCalls.length > 0
+            ) {
               const shouldPersistFallback = shouldPersistNoResponseFallback({
                 notificationType: context.notification.type,
               });
               if (shouldPersistFallback) {
-                textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
-                suppressAgentNotifications = true;
+                partsToPost.push({
+                  content: FALLBACK_NO_REPLY_AFTER_TOOLS,
+                  suppress: true,
+                });
                 skipMessageReason = "no final reply after tool execution";
                 log.warn(
                   "No reply after tool execution; posting fallback message",
@@ -447,43 +468,59 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
               }
             }
-            if (taskId && textToPost) {
-              await client.action(api.service.actions.createMessageFromAgent, {
-                agentId: context.agent._id,
-                taskId,
-                content: textToPost.trim(),
-                serviceToken: config.serviceToken,
-                accountId: config.accountId,
-                sourceNotificationId: notification._id,
-                suppressAgentNotifications,
-              });
-              log.info(
-                "Persisted agent message to Convex",
-                notification._id,
-                taskId,
-                context.agent.name,
-              );
-              if (
-                canModifyTaskStatus &&
-                context.task?.status === "assigned" &&
-                context.notification?.type === "assignment"
-              ) {
-                try {
-                  await client.action(
-                    api.service.actions.updateTaskStatusFromAgent,
-                    {
-                      agentId: context.agent._id,
-                      taskId,
-                      status: "in_progress",
-                      expectedStatus: "assigned",
-                      serviceToken: config.serviceToken,
-                      accountId: config.accountId,
-                    },
+            // Persist parts in order; on failure we throw and do not mark delivered, so retry is idempotent per part.
+            if (taskId && partsToPost.length > 0) {
+              for (let partIndex = 0; partIndex < partsToPost.length; partIndex++) {
+                const { content, suppress } = partsToPost[partIndex];
+                await client.action(api.service.actions.createMessageFromAgent, {
+                  agentId: context.agent._id,
+                  taskId,
+                  content,
+                  serviceToken: config.serviceToken,
+                  accountId: config.accountId,
+                  sourceNotificationId: notification._id,
+                  // @ts-expect-error Backend createMessageFromAgent has sourceNotificationPartIndex; API types align after `npx convex codegen`
+                  sourceNotificationPartIndex: partIndex,
+                  suppressAgentNotifications: suppress,
+                });
+                if (partIndex === 0) {
+                  log.info(
+                    "Persisted agent message(s) to Convex",
+                    notification._id,
+                    taskId,
+                    context.agent.name,
+                    partsToPost.length,
                   );
-                } catch (error) {
-                  const message =
-                    error instanceof Error ? error.message : String(error);
-                  log.warn("Failed to auto-advance task status:", message);
+                }
+                log.debug(
+                  "Persisted message part",
+                  notification._id,
+                  taskId,
+                  partIndex,
+                );
+                if (
+                  partIndex === 0 &&
+                  canModifyTaskStatus &&
+                  context.task?.status === "assigned" &&
+                  context.notification?.type === "assignment"
+                ) {
+                  try {
+                    await client.action(
+                      api.service.actions.updateTaskStatusFromAgent,
+                      {
+                        agentId: context.agent._id,
+                        taskId,
+                        status: "in_progress",
+                        expectedStatus: "assigned",
+                        serviceToken: config.serviceToken,
+                        accountId: config.accountId,
+                      },
+                    );
+                  } catch (error) {
+                    const message =
+                      error instanceof Error ? error.message : String(error);
+                    log.warn("Failed to auto-advance task status:", message);
+                  }
                 }
               }
             } else if (taskId) {

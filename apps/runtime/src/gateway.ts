@@ -14,9 +14,9 @@ export interface OpenClawToolCall {
   arguments: string;
 }
 
-/** Result of sendToOpenClaw: text reply and/or tool calls to execute */
+/** Result of sendToOpenClaw: ordered message parts and/or tool calls to execute */
 export interface SendToOpenClawResult {
-  text: string | null;
+  texts: string[];
   toolCalls: OpenClawToolCall[];
 }
 
@@ -59,27 +59,27 @@ function isLikelyJsonPayload(value: string): boolean {
 }
 
 /**
- * Parse OpenClaw /v1/responses JSON body into text and function_call items.
- * Handles output_text, output[] (message + function_call), and fallbacks.
+ * Parse OpenClaw /v1/responses JSON body into ordered message parts and function_call items.
+ * Handles output[] (multiple message + function_call items), output_text, and fallbacks.
+ * Non-JSON or parse errors return the raw body as a single part.
+ *
+ * @param body - Raw response body from POST /v1/responses
+ * @returns Ordered texts and toolCalls; texts may be empty if response has only function_call items
  */
-function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
-  const empty: SendToOpenClawResult = { text: null, toolCalls: [] };
+export function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
+  const empty: SendToOpenClawResult = { texts: [], toolCalls: [] };
   const trimmed = body?.trim();
   if (!trimmed) return empty;
   if (!isLikelyJsonPayload(trimmed)) {
-    return { text: trimmed, toolCalls: [] };
+    return { texts: [trimmed], toolCalls: [] };
   }
   try {
     const data = JSON.parse(trimmed) as Record<string, unknown>;
     const toolCalls: OpenClawToolCall[] = [];
-    let text: string | null = null;
+    const texts: string[] = [];
 
-    if (typeof data.output_text === "string" && data.output_text.trim()) {
-      text = data.output_text.trim();
-    }
     const output = data.output;
     if (Array.isArray(output)) {
-      const parts: string[] = [];
       for (const item of output) {
         if (item && typeof item === "object") {
           const obj = item as Record<string, unknown>;
@@ -98,30 +98,38 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
             }
             continue;
           }
+          const partParts: string[] = [];
           if (typeof obj.content !== "undefined") {
-            collectOpenClawContentText(obj.content, parts);
+            collectOpenClawContentText(obj.content, partParts);
           }
           if (typeof obj.text === "string") {
             const t = (obj.text as string).trim();
-            if (t) parts.push(t);
+            if (t) partParts.push(t);
+          }
+          if (partParts.length > 0) {
+            texts.push(partParts.join("\n").trim());
           }
         }
       }
-      if (parts.length > 0 && text === null) {
-        text = parts.join("\n").trim();
+    }
+    if (texts.length === 0) {
+      if (typeof data.output_text === "string" && data.output_text.trim()) {
+        texts.push(data.output_text.trim());
+      }
+      if (texts.length === 0 && typeof data.text === "string" && data.text.trim()) {
+        texts.push((data.text as string).trim());
+      }
+      if (texts.length === 0 && typeof data.content !== "undefined") {
+        const fallbackParts: string[] = [];
+        collectOpenClawContentText(data.content, fallbackParts);
+        if (fallbackParts.length > 0) {
+          texts.push(fallbackParts.join("\n").trim());
+        }
       }
     }
-    if (text === null && typeof data.text === "string" && data.text.trim()) {
-      text = (data.text as string).trim();
-    }
-    if (text === null && typeof data.content !== "undefined") {
-      const parts: string[] = [];
-      collectOpenClawContentText(data.content, parts);
-      if (parts.length > 0) text = parts.join("\n").trim();
-    }
-    return { text, toolCalls };
+    return { texts, toolCalls };
   } catch {
-    return { text: trimmed, toolCalls: [] };
+    return { texts: [trimmed], toolCalls: [] };
   }
 }
 
@@ -390,7 +398,7 @@ export interface SendToOpenClawOptions {
  * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
  * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
  *
- * @returns Structured result with extracted text and any function_call items.
+ * @returns Structured result with ordered message parts (texts) and any function_call items.
  */
 export async function sendToOpenClaw(
   sessionKey: string,
@@ -482,13 +490,15 @@ export async function sendToOpenClaw(
 }
 
 /**
- * Send function_call_output back to OpenClaw and return the final agent reply.
- * Used after executing a tool (e.g. task_status) so the agent can emit its closing message.
+ * Send function_call_output back to OpenClaw and return the final agent reply parts.
+ * Used after executing a tool (e.g. task_status) so the agent can emit its closing message(s).
+ *
+ * @returns Ordered message parts (may be empty if the agent sent no text after the tool).
  */
 export async function sendOpenClawToolResults(
   sessionKey: string,
   outputs: { call_id: string; output: string }[],
-): Promise<string | null> {
+): Promise<string[]> {
   const session = state.sessions.get(sessionKey);
   if (!session) {
     throw new Error(`Unknown session: ${sessionKey}`);
@@ -542,7 +552,7 @@ export async function sendOpenClawToolResults(
 
   const responseBody = await res.text();
   const parsed = parseOpenClawResponseBody(responseBody);
-  return parsed.text;
+  return parsed.texts;
 }
 
 /**
