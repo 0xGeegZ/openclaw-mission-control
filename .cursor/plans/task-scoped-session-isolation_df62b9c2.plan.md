@@ -240,7 +240,7 @@ flowchart LR
 - Add `messages.by_account_task_created` index.
 - Done when: schema validates and generated API types compile.
 
-2. Implement session resolver internals (single commit).
+1. Implement session resolver internals (single commit).
 
 - Files: `packages/backend/convex/service/notifications.ts` (or dedicated `service/agentTaskSessions.ts` + imports)
 - Add helpers:
@@ -250,21 +250,21 @@ flowchart LR
   - `closeTaskSessionsForTask(...)`
 - Done when: unit tests cover create/reuse/new-generation behavior.
 
-3. Wire delivery session resolution (single commit).
+1. Wire delivery session resolution (single commit).
 
 - Files: `packages/backend/convex/service/actions.ts`, `packages/backend/convex/service/notifications.ts`
 - Extend `getNotificationForDelivery` response with `deliverySessionKey`.
 - Keep fallback behavior for missing `taskId`.
 - Done when: runtime receives session key for task notifications and base key for non-task notifications.
 
-4. Harden context isolation checks (single commit).
+1. Harden context isolation checks (single commit).
 
 - Files: `packages/backend/convex/service/notifications.ts`
 - Enforce account consistency for notification/task/message relationships.
 - Use account+task-safe thread query path.
 - Done when: cross-account mismatch returns safe behavior (no leakage / explicit error path).
 
-5. Add task history backend path (single commit).
+1. Add task history backend path (single commit).
 
 - Files: `packages/backend/convex/service/actions.ts`, `packages/backend/convex/service/messages.ts`, `packages/backend/convex/service/activities.ts` (new)
 - Implement `getTaskHistoryForAgentTool`.
@@ -272,14 +272,14 @@ flowchart LR
 - Add activities query constrained by account + `targetType=task` + `targetId`.
 - Done when: returns combined payload and enforces auth/account checks.
 
-6. Add runtime tool contract for `task_history` (single commit).
+1. Add runtime tool contract for `task_history` (single commit).
 
 - Files: `apps/runtime/src/tooling/agentTools.ts`, `apps/runtime/src/tooling/agentTools.test.ts`
 - Add schema + capability label + execute branch.
 - Keep `task_load` available for compatibility.
 - Done when: tool validation + happy path tests pass.
 
-7. Refactor prompt layering to instruction contract (single commit).
+1. Refactor prompt layering to instruction contract (single commit).
 
 - Files: `apps/runtime/src/delivery/prompt.ts`, `apps/runtime/src/delivery.test.ts`
 - Introduce `buildDeliveryInstructions` and `buildNotificationInput`.
@@ -287,27 +287,27 @@ flowchart LR
 - Reduce raw thread injection in input to compact transitional summary.
 - Done when: tests assert key policy phrases remain enforced.
 
-8. Pass OpenResponses `instructions` in gateway send path (single commit).
+1. Pass OpenResponses `instructions` in gateway send path (single commit).
 
 - Files: `apps/runtime/src/gateway.ts`, `apps/runtime/src/delivery.ts`, `apps/runtime/src/delivery/types.ts`
 - Extend send options with `instructions`.
 - Always use `deliverySessionKey ?? agent.sessionKey` for both initial send and tool-result continuation.
 - Done when: payload includes `instructions` and uses resolved task-scoped session key.
 
-9. Update runtime session registry + endpoint compatibility (single commit).
+1. Update runtime session registry + endpoint compatibility (single commit).
 
 - Files: `apps/runtime/src/gateway.ts`, `apps/runtime/src/agent-sync.ts`, `apps/runtime/src/health.ts`, `apps/runtime/src/__tests__/health-agent-endpoints.test.ts`
 - Support many session keys per agent; remove all on cleanup.
-- Ensure `/agent/`\* accepts new task-scoped keys.
+- Ensure `/agent/` accepts new task-scoped keys.
 - Done when: endpoint tests pass for both legacy and task-scoped keys.
 
-10. Close sessions on `done` transition (single commit).
+1. Close sessions on `done` transition (single commit).
 
 - Files: `packages/backend/convex/tasks.ts`, `packages/backend/convex/service/tasks.ts`
   - Call close helper only when transitioning into `done`.
   - Done when: close behavior works for both user and agent status updates.
 
-11. Add rollout controls + docs (single commit).
+1. Add rollout controls + docs (single commit).
 
 - Files: `apps/runtime/README.md`, `docs/runtime/TOOLS_AUDIT.md`, config docs if needed
   - Add flags:
@@ -316,7 +316,7 @@ flowchart LR
   - Document fallback/rollback behavior.
   - Done when: operator can disable either feature independently.
 
-12. Run explicit orchestrator-chat regression pass (single commit or release gate).
+1. Run explicit orchestrator-chat regression pass (single commit or release gate).
 
 - Files: `apps/runtime/src/delivery.test.ts`, `packages/backend/convex/lib/notifications.test.ts`, manual QA checklist evidence.
 - Validate orchestrator chat still gets expected coordination semantics after all changes.
@@ -349,7 +349,7 @@ Integration/runtime tests:
 
 - Delivery loop sends with task-scoped session and tool-result follow-up uses same key.
 - Delivery loop sends OpenResponses `instructions` and compact `input` correctly.
-- `/agent/`\* endpoints accept task-scoped key.
+- `/agent/` endpoints accept task-scoped key.
 - Reopen flow creates next generation key and does not reuse closed session.
 - `task_history` returns both recent messages and activities for the same task/account.
 - Orchestrator chat still receives account-level context when `taskId == orchestratorChatTaskId`.
