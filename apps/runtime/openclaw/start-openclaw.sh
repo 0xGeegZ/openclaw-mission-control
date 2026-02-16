@@ -131,13 +131,40 @@ config.gateway.controlUi = config.gateway.controlUi || {};
 config.gateway.controlUi.allowInsecureAuth = true;
 config.browser = config.browser || {};
 config.browser.enabled = true;
-config.browser.executablePath = '/usr/bin/chromium';
 config.browser.headless = true;
 config.browser.noSandbox = true;
-config.browser.defaultProfile = 'clawd';
-// Profile "clawd" must set cdpPort so the gateway can attach to the pre-launched Chromium (docs: getopenclaw.ai/help/configuration-guide, docs.openclaw.ai/tools/browser).
+config.browser.defaultProfile = 'openclaw';
 config.browser.profiles = config.browser.profiles || {};
-config.browser.profiles.clawd = Object.assign(config.browser.profiles.clawd || {}, { cdpPort: 18800 });
+// Keep legacy custom profile valid if present in persisted config.
+if (config.browser.profiles.clawd) {
+  config.browser.profiles.clawd = Object.assign(
+    { cdpPort: 18800, color: '#FF4500' },
+    config.browser.profiles.clawd,
+  );
+}
+// Ensure the documented managed profile is present and valid.
+config.browser.profiles.openclaw = Object.assign(
+  { cdpPort: 18800, color: '#FF4500' },
+  config.browser.profiles.openclaw || {},
+);
+const configuredBrowserPath =
+  (process.env.OPENCLAW_BROWSER_EXECUTABLE_PATH || '').trim();
+const browserCandidates = [
+  configuredBrowserPath,
+  '/usr/bin/brave-browser',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean);
+const detectedBrowserPath = browserCandidates.find((candidate) => {
+  try {
+    return fs.existsSync(candidate);
+  } catch {
+    return false;
+  }
+});
+if (detectedBrowserPath) {
+  config.browser.executablePath = detectedBrowserPath;
+}
 // We start Chromium in this script; gateway should attach only, not launch (avoids "Failed to start Chrome CDP" / profile errors).
 config.browser.attachOnly = true;
 
@@ -591,13 +618,28 @@ echo "============================================================"
 echo ""
 
 # Ensure browser profile dir exists so Chromium can use it (avoids profile init errors).
-mkdir -p /root/.openclaw/browser/clawd/user-data
+mkdir -p /root/.openclaw/browser/openclaw/user-data
 
-echo "Starting Chromium (headless, CDP on port 18800)..."
-chromium \
+BROWSER_BIN="${OPENCLAW_BROWSER_EXECUTABLE_PATH:-}"
+if [ -z "$BROWSER_BIN" ]; then
+  if command -v brave-browser >/dev/null 2>&1; then
+    BROWSER_BIN="brave-browser"
+  elif command -v chromium >/dev/null 2>&1; then
+    BROWSER_BIN="chromium"
+  elif command -v chromium-browser >/dev/null 2>&1; then
+    BROWSER_BIN="chromium-browser"
+  fi
+fi
+
+if [ -z "$BROWSER_BIN" ]; then
+  BROWSER_BIN="chromium"
+fi
+
+echo "Starting browser ($BROWSER_BIN, headless, CDP on port 18800)..."
+"$BROWSER_BIN" \
   --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
   --remote-debugging-port=18800 --remote-debugging-address=127.0.0.1 \
-  --user-data-dir=/root/.openclaw/browser/clawd/user-data \
+  --user-data-dir=/root/.openclaw/browser/openclaw/user-data \
   about:blank 2>/dev/null &
 CHROMIUM_PID=$!
 sleep 2
