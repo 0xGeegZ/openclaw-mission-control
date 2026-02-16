@@ -1,5 +1,13 @@
 # runtime-service
 
+## 1.0.1
+
+### Patch Changes
+
+- c1f3ffd: Fix runtime to use a single workspace path for OpenClaw/agent operations.
+- Updated dependencies [6351a13]
+  - @packages/backend@1.0.3
+
 ## 1.0.0
 
 ### Major Changes
