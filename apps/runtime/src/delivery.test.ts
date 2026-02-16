@@ -472,7 +472,7 @@ describe("formatNotificationMessage", () => {
     expect(message).toContain(expectedTruncated);
   });
 
-  it("includes one-branch-per-task rule and task worktree path when task is present", () => {
+  it("includes repository guidance when task is present and repository doc is missing", () => {
     const ctx = buildContext({
       task: {
         _id: "k97abc",
@@ -493,7 +493,7 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).toContain("Repository context:");
-    expect(message).toContain("Add a Repository document");
+    expect(message).toContain("Ask the orchestrator or account owner");
   });
 
   it("shows repository not found when no repository doc", () => {
@@ -510,10 +510,10 @@ describe("formatNotificationMessage", () => {
       toolCapabilities,
     );
     expect(message).toContain("Repository context: not found");
-    expect(message).toContain("Add a Repository document");
+    expect(message).toContain("add a Repository document");
   });
 
-  it("includes workflow rules: human dependency -> blocked and move back to in_progress when resolved", () => {
+  it("includes concise workflow rules for blocked and resume transitions", () => {
     const ctx = buildContext({
       task: {
         _id: "t1",
@@ -534,14 +534,14 @@ describe("formatNotificationMessage", () => {
       "http://runtime:3000",
       toolCapabilities,
     );
-    expect(message).toContain("human input");
-    expect(message).toContain("blocked");
-    expect(message).toContain("blockedReason");
-    expect(message).toContain("move the task back to in_progress");
+    expect(message).toContain(
+      "When waiting on human input/approval, move task to blocked",
+    );
+    expect(message).toContain("move back to in_progress once unblocked");
     expect(message).toContain("blocked -> in_progress");
   });
 
-  it("includes orchestrator rule: move to review before requesting QA and use response_request", () => {
+  it("includes concise orchestrator rule for review and response_request", () => {
     const ctx = buildContext({
       notification: {
         _id: "n1",
@@ -583,12 +583,9 @@ describe("formatNotificationMessage", () => {
       "http://runtime:3000",
       toolCapabilities,
     );
-    expect(message).toContain("task MUST be in REVIEW");
-    expect(message).toContain("Move the task to review first");
+    expect(message).toContain("move task to REVIEW");
     expect(message).toContain("response_request");
-    expect(message).toContain(
-      "Do not request QA approval while the task is still in_progress",
-    );
+    expect(message).toContain("Do not rely on thread mentions alone");
   });
 
   it("includes blocked-task reminder to move back to in_progress when resolved", () => {
@@ -828,15 +825,15 @@ describe("orchestrator no-reply acknowledgment policy", () => {
 
 describe("canAgentMarkDone", () => {
   it("returns true when task is review and canMarkDone is true", () => {
-    expect(
-      canAgentMarkDone({ taskStatus: "review", canMarkDone: true }),
-    ).toBe(true);
+    expect(canAgentMarkDone({ taskStatus: "review", canMarkDone: true })).toBe(
+      true,
+    );
   });
 
   it("returns false when canMarkDone is false even if task is review", () => {
-    expect(
-      canAgentMarkDone({ taskStatus: "review", canMarkDone: false }),
-    ).toBe(false);
+    expect(canAgentMarkDone({ taskStatus: "review", canMarkDone: false })).toBe(
+      false,
+    );
   });
 
   it("returns false when task is not in review", () => {
