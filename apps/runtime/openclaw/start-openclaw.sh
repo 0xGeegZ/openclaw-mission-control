@@ -135,6 +135,11 @@ config.browser.executablePath = '/usr/bin/chromium';
 config.browser.headless = true;
 config.browser.noSandbox = true;
 config.browser.defaultProfile = 'clawd';
+// Profile "clawd" must set cdpPort so the gateway can attach to the pre-launched Chromium (docs: getopenclaw.ai/help/configuration-guide, docs.openclaw.ai/tools/browser).
+config.browser.profiles = config.browser.profiles || {};
+config.browser.profiles.clawd = Object.assign(config.browser.profiles.clawd || {}, { cdpPort: 18800 });
+// We start Chromium in this script; gateway should attach only, not launch (avoids "Failed to start Chrome CDP" / profile errors).
+config.browser.attachOnly = true;
 
 if (process.env.OPENCLAW_GATEWAY_TOKEN) {
   config.gateway.auth = config.gateway.auth || {};
@@ -584,6 +589,9 @@ else
 fi
 echo "============================================================"
 echo ""
+
+# Ensure browser profile dir exists so Chromium can use it (avoids profile init errors).
+mkdir -p /root/.openclaw/browser/clawd/user-data
 
 echo "Starting Chromium (headless, CDP on port 18800)..."
 chromium \

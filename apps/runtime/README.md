@@ -114,6 +114,8 @@ npm run docker:up:openclaw
 
 For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
+**Browser (Chromium):** The startup script pre-launches Chromium with CDP on port 18800 and configures the `clawd` profile with `cdpPort: 18800` and `attachOnly: true` so the gateway attaches to it (see [OpenClaw browser docs](https://docs.openclaw.ai/tools/browser), [configuration guide](https://www.getopenclaw.ai/help/configuration-guide)). To use Brave instead, install Brave in the image, set `browser.executablePath` to Brave’s path, and ensure the same profile/CDP port layout.
+
 If you prefer direct Compose commands, run them from the repo root:
 
 ```bash
