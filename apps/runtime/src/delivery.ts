@@ -1,7 +1,11 @@
 import { getConvexClient, api } from "./convex-client";
 import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
-import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
+import {
+  sendOpenClawToolResults,
+  sendToOpenClaw,
+  registerSession,
+} from "./gateway";
 import { createLogger } from "./logger";
 import {
   getToolCapabilitiesAndSchemas,
@@ -29,12 +33,17 @@ export {
 } from "./delivery/policy";
 import {
   buildHttpCapabilityLabels,
-  formatNotificationMessage,
+  buildDeliveryInstructions,
+  buildNotificationInput,
 } from "./delivery/prompt";
 import type { DeliveryContext } from "./delivery/types";
 
 export type { DeliveryContext } from "./delivery/types";
-export { formatNotificationMessage } from "./delivery/prompt";
+export {
+  buildDeliveryInstructions,
+  buildNotificationInput,
+  formatNotificationMessage,
+} from "./delivery/prompt";
 
 const log = createLogger("[Delivery]");
 
@@ -245,26 +254,41 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   }),
                   schemas: [],
                 };
+            const sessionKey = (context as DeliveryContext).deliverySessionKey;
+            if (!sessionKey) {
+              throw new Error(
+                "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
+              );
+            }
+            registerSession(
+              sessionKey,
+              context.agent
+                ._id as import("@packages/backend/convex/_generated/dataModel").Id<"agents">,
+            );
+
+            const instructions = buildDeliveryInstructions(
+              context as DeliveryContext,
+              config.taskStatusBaseUrl,
+              toolCapabilities,
+            );
+            const input = buildNotificationInput(
+              context as DeliveryContext,
+              config.taskStatusBaseUrl,
+              toolCapabilities,
+            );
             const sendOptions =
               toolCapabilities.schemas.length > 0
                 ? {
                     tools: toolCapabilities.schemas,
                     toolChoice: "auto" as const,
+                    instructions,
                   }
-                : undefined;
-            if (sendOptions) {
+                : { instructions };
+            if (sendOptions.tools) {
               log.debug("Sending with tools", sendOptions.tools.length);
             }
 
-            const result = await sendToOpenClaw(
-              context.agent.sessionKey,
-              formatNotificationMessage(
-                context as DeliveryContext,
-                config.taskStatusBaseUrl,
-                toolCapabilities,
-              ),
-              sendOptions,
-            );
+            const result = await sendToOpenClaw(sessionKey, input, sendOptions);
 
             let textToPost: string | null = result.text?.trim() ?? null;
             let suppressAgentNotifications = false;
@@ -387,8 +411,15 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               }
               if (outputs.length > 0) {
                 try {
+                  const sessionKeyForTool = (context as DeliveryContext)
+                    .deliverySessionKey;
+                  if (!sessionKeyForTool) {
+                    throw new Error(
+                      "Missing deliverySessionKey for tool results",
+                    );
+                  }
                   const finalText = await sendOpenClawToolResults(
-                    context.agent.sessionKey,
+                    sessionKeyForTool,
                     outputs,
                   );
                   textToPost = finalText?.trim() ?? textToPost;
@@ -576,12 +607,17 @@ export function stopDeliveryLoop(): void {
 }
 
 /**
- * Get current delivery state (running flag, last delivery time, counts). Snapshot; safe to call from health or metrics.
+ * Get current delivery state (running flag, last delivery time, counts).
+ * Returns a snapshot safe to read from health or metrics; mutating the returned object
+ * (including noResponseFailures) does not affect the live delivery loop state.
  *
- * @returns Shallow copy of delivery state.
+ * @returns Snapshot of delivery state with noResponseFailures copied.
  */
 export function getDeliveryState(): DeliveryState {
-  return { ...state };
+  return {
+    ...state,
+    noResponseFailures: new Map(state.noResponseFailures),
+  };
 }
 
 /**

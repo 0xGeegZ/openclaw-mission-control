@@ -43,6 +43,8 @@ export interface GetForDeliveryResult {
     role: string;
   }>;
   effectiveBehaviorFlags: BehaviorFlags;
+  /** Resolved runtime session key (task or system); set by getNotificationForDelivery. */
+  deliverySessionKey?: string;
   repositoryDoc: { title: string; content: string } | null;
   globalBriefingDoc: { title: string; content: string } | null;
   taskOverview: {
@@ -287,16 +289,26 @@ export const getForDelivery = internalQuery({
       agent = await ctx.db.get(notification.recipientId as Id<"agents">);
     }
 
-    // Get task details if present
+    // Get task details if present; enforce account consistency
     let task = null;
     if (notification.taskId) {
-      task = await ctx.db.get(notification.taskId);
+      const taskDoc = await ctx.db.get(notification.taskId);
+      if (taskDoc && taskDoc.accountId === notification.accountId) {
+        task = taskDoc;
+      }
     }
 
-    // Get message details if present
+    // Get message details if present; enforce account consistency
     let message = null;
     if (notification.messageId) {
-      message = await ctx.db.get(notification.messageId);
+      const messageDoc = await ctx.db.get(notification.messageId);
+      if (
+        messageDoc &&
+        messageDoc.accountId === notification.accountId &&
+        (!task || messageDoc.taskId === task._id)
+      ) {
+        message = messageDoc;
+      }
     }
     let sourceNotificationType: string | null = null;
     if (message?.sourceNotificationId) {
@@ -317,10 +329,12 @@ export const getForDelivery = internalQuery({
       createdAt: number;
     }[] = [];
     const taskId = notification.taskId;
-    if (taskId) {
+    if (taskId && task && task.accountId === notification.accountId) {
       const threadMessages = await ctx.db
         .query("messages")
-        .withIndex("by_task_created", (q) => q.eq("taskId", taskId))
+        .withIndex("by_account_task_created", (q) =>
+          q.eq("accountId", notification.accountId).eq("taskId", taskId),
+        )
         .order("asc")
         .collect();
 

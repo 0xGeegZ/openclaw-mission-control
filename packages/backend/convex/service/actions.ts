@@ -349,6 +349,27 @@ export const getNotificationForDelivery = action({
       throw new Error("Forbidden: Notification belongs to different account");
     }
 
+    if (!result) return null;
+
+    const notif = result.notification;
+    const agent = result.agent;
+    if (
+      notif.recipientType === "agent" &&
+      agent &&
+      notif.recipientId === agent._id
+    ) {
+      const sessionResult = await ctx.runMutation(
+        internal.service.agentRuntimeSessions.ensureRuntimeSession,
+        {
+          accountId: notif.accountId,
+          agentId: agent._id,
+          agentSlug: agent.slug,
+          taskId: notif.taskId ?? undefined,
+        },
+      );
+      return { ...result, deliverySessionKey: sessionResult.sessionKey };
+    }
+
     return result;
   },
 });
@@ -1919,6 +1940,130 @@ export const loadTaskDetailsForAgentTool = action({
     );
 
     return { task, thread };
+  },
+});
+
+/** Default and max limits for task_history tool (must match service/activities). */
+const TASK_HISTORY_MESSAGE_LIMIT_DEFAULT = 25;
+const TASK_HISTORY_MESSAGE_LIMIT_MAX = 200;
+const TASK_HISTORY_ACTIVITY_LIMIT_DEFAULT = 30;
+const TASK_HISTORY_ACTIVITY_LIMIT_MAX = 200;
+
+/**
+ * Load task snapshot plus message and activity history for task_history tool.
+ * Service auth + account/agent/task checks; returns task, messages (oldest→newest), activities (newest→oldest), meta.
+ */
+export const getTaskHistoryForAgentTool = action({
+  args: {
+    accountId: v.id("accounts"),
+    serviceToken: v.string(),
+    agentId: v.id("agents"),
+    taskId: v.id("tasks"),
+    messageLimit: v.optional(v.number()),
+    activityLimit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    task: Doc<"tasks">;
+    messages: Array<{
+      messageId: Id<"messages">;
+      authorType: RecipientType;
+      authorId: string;
+      authorName: string | null;
+      content: string;
+      createdAt: number;
+    }>;
+    activities: Array<{
+      type: string;
+      actorType: string;
+      actorId: string;
+      actorName: string;
+      targetType: string;
+      targetId: string;
+      targetName?: string;
+      meta?: unknown;
+      createdAt: number;
+    }>;
+    meta: { messageLimitApplied: number; activityLimitApplied: number };
+  }> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const agent = await ctx.runQuery(internal.service.agents.getInternal, {
+      agentId: args.agentId,
+    });
+    if (!agent) throw new Error("Not found: Agent does not exist");
+    if (agent.accountId !== args.accountId) {
+      throw new Error("Forbidden: Agent belongs to different account");
+    }
+
+    const task = await ctx.runQuery(internal.service.tasks.getInternal, {
+      taskId: args.taskId,
+    });
+    if (!task) throw new Error("Not found: Task does not exist");
+    if (task.accountId !== args.accountId) {
+      throw new Error("Forbidden: Task belongs to different account");
+    }
+
+    const messageLimitApplied = Math.min(
+      Math.max(1, args.messageLimit ?? TASK_HISTORY_MESSAGE_LIMIT_DEFAULT),
+      TASK_HISTORY_MESSAGE_LIMIT_MAX,
+    );
+    const activityLimitApplied = Math.min(
+      Math.max(0, args.activityLimit ?? TASK_HISTORY_ACTIVITY_LIMIT_DEFAULT),
+      TASK_HISTORY_ACTIVITY_LIMIT_MAX,
+    );
+
+    const [messages, activityDocs] = await Promise.all([
+      ctx.runQuery(internal.service.messages.listThreadForTool, {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: messageLimitApplied,
+      }),
+      ctx.runQuery(internal.service.messages.listTaskActivitiesForTool, {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        limit: activityLimitApplied,
+      }),
+    ]);
+
+    const activities = activityDocs.map(
+      (a: {
+        type: string;
+        actorType: string;
+        actorId: string;
+        actorName: string;
+        targetType: string;
+        targetId: string;
+        targetName?: string;
+        meta?: unknown;
+        createdAt: number;
+      }) => ({
+        type: a.type,
+        actorType: a.actorType,
+        actorId: a.actorId,
+        actorName: a.actorName,
+        targetType: a.targetType,
+        targetId: a.targetId,
+        targetName: a.targetName,
+        meta: a.meta,
+        createdAt: a.createdAt,
+      }),
+    );
+
+    return {
+      task,
+      messages,
+      activities,
+      meta: {
+        messageLimitApplied,
+        activityLimitApplied,
+      },
+    };
   },
 });
 

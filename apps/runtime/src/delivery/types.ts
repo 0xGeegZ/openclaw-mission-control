@@ -5,6 +5,10 @@
 
 import type { RecipientType } from "@packages/shared";
 
+/**
+ * Full context for a single notification delivery: notification, task, thread, agent, docs, and behavior flags.
+ * Populated by Convex service action getNotificationForDelivery; runtime uses it for policy and prompt building.
+ */
 export interface DeliveryContext {
   notification: {
     _id: string;
@@ -68,6 +72,8 @@ export interface DeliveryContext {
     canReviewTasks?: boolean;
     canMarkDone?: boolean;
   };
+  /** Resolved runtime session key (task or system); used for send and tool-result. */
+  deliverySessionKey?: string;
   repositoryDoc: { title: string; content: string } | null;
   globalBriefingDoc: { title: string; content: string } | null;
   taskOverview: {

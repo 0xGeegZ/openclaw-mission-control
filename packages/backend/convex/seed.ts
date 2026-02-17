@@ -674,7 +674,7 @@ When creating a doc, always include:
 - Open questions (if any)
 - "How to verify" (when relevant)
 - Last updated timestamp
-- Create/share docs only via \`document_upsert\`; then include \`documentId\` and \`[Document](/document/<documentId>)\` in your reply.
+- Create/share docs only via \`document_upsert\`; then include \`documentId\` and \`[Document](/document/<documentId>)\` in your reply. Do not use share/send to channel or webchat — delivery is only via document_upsert and the thread.
 - If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths (e.g. /deliverables/..., /root/clawd/deliverables/...) as if they were shared deliverables — the primary user cannot open them; use document_upsert and [Document](/document/<documentId>) for docs.
 
 ## Safety / secrets

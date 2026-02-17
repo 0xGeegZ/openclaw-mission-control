@@ -12,6 +12,8 @@ import {
   canAgentMarkDone,
   shouldDeliverToAgent,
   formatNotificationMessage,
+  buildDeliveryInstructions,
+  buildNotificationInput,
   type DeliveryContext,
 } from "./delivery";
 import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
@@ -332,6 +334,60 @@ describe("shouldDeliverToAgent", () => {
       notification: { ...buildContext().notification, type: "assignment" },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
+  });
+});
+
+describe("buildDeliveryInstructions", () => {
+  it("includes strict current-task-only scope constraints", () => {
+    const ctx = buildContext({
+      task: {
+        _id: "task1",
+        status: "in_progress",
+        title: "My Task",
+        assignedAgentIds: ["agent-a"],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const instructions = buildDeliveryInstructions(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(instructions).toContain("Respond only to this notification.");
+    expect(instructions).toContain(
+      "Use only the thread history shown above for this task",
+    );
+  });
+});
+
+describe("buildNotificationInput", () => {
+  it("includes notification id anchor", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: "notif-123",
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        accountId: "acc1",
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const input = buildNotificationInput(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(input).toContain("Notification ID: notif-123");
   });
 });
 

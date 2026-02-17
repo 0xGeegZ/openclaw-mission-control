@@ -160,11 +160,13 @@ function resolveGatewayAddress(baseUrl: string): GatewayAddress | null {
 
 /**
  * Resolve the OpenClaw agent id from a session key.
- * Falls back to "main" when the key is not in agent:<id>:<...> form.
+ * Uses registered session map first; then parses agent:slug:accountId legacy form; otherwise "main".
  */
 function resolveAgentIdFromSessionKey(sessionKey: string): string {
   const trimmed = sessionKey?.trim();
   if (!trimmed) return "main";
+  const session = state.sessions.get(trimmed);
+  if (session) return session.agentId;
   const parts = trimmed.split(":");
   if (parts.length >= 2 && parts[0] === "agent" && parts[1]) {
     return parts[1];
@@ -347,16 +349,17 @@ export function registerAgentSession(agent: AgentForSession): void {
 }
 
 /**
- * Remove a session by agent id.
+ * Remove all sessions for an agent (task-scoped and system keys).
  * Used by agent sync when an agent is deleted in Convex.
  */
 export function removeAgentSession(agentId: Id<"agents">): void {
+  const toDelete: string[] = [];
   for (const [key, info] of state.sessions.entries()) {
-    if (info.agentId === agentId) {
-      state.sessions.delete(key);
-      log.debug("Removed session:", key);
-      return;
-    }
+    if (info.agentId === agentId) toDelete.push(key);
+  }
+  for (const key of toDelete) {
+    state.sessions.delete(key);
+    log.debug("Removed session:", key);
   }
 }
 
@@ -376,6 +379,27 @@ export interface SendToOpenClawOptions {
   tools?: unknown[];
   /** tool_choice: "auto" | "required" | { type: "function", name: string } */
   toolChoice?: "auto" | "required" | { type: "function"; name: string };
+  /** System instructions (OpenResponses instructions) merged into system prompt for this request. */
+  instructions?: string;
+}
+
+/**
+ * Register a session key for an agent so send/receive can use it.
+ * Call before send when using resolver-generated keys (task or system) that may not be in initGateway.
+ */
+export function registerSession(
+  sessionKey: string,
+  agentId: Id<"agents">,
+): void {
+  if (!sessionKey?.trim()) return;
+  const existing = state.sessions.get(sessionKey);
+  if (existing && existing.agentId === agentId) return;
+  state.sessions.set(sessionKey, {
+    sessionKey,
+    agentId,
+    lastMessage: null,
+  });
+  log.debug("Registered session:", sessionKey);
 }
 
 /**
@@ -431,6 +455,12 @@ export async function sendToOpenClaw(
     // endpoint is stateless per request and generates a new session (e.g. openresponses:uuid).
     user: sessionKey,
   };
+  if (
+    typeof options?.instructions === "string" &&
+    options.instructions.trim()
+  ) {
+    payload.instructions = options.instructions.trim();
+  }
   if (
     options?.tools &&
     Array.isArray(options.tools) &&

@@ -443,6 +443,57 @@ export default defineSchema({
     .index("by_account_created", ["accountId", "createdAt"]),
 
   // ==========================================================================
+  // AGENT RUNTIME SESSIONS
+  // Unified per-agent runtime sessions: task-scoped or system (non-task).
+  // ==========================================================================
+  agentRuntimeSessions: defineTable({
+    /** Account (tenant isolation) */
+    accountId: v.id("accounts"),
+
+    /** Agent this session belongs to */
+    agentId: v.id("agents"),
+
+    /** task = per-(task,agent) with generation; system = non-task/heartbeat */
+    sessionType: v.union(v.literal("task"), v.literal("system")),
+
+    /** Set when sessionType is "task" */
+    taskId: v.optional(v.id("tasks")),
+
+    /** Agent slug at session creation (for sessionKey format) */
+    agentSlug: v.string(),
+
+    /** Generation number (v1, v2, ...); for task, incremented on reopen. */
+    generation: v.number(),
+
+    /** OpenClaw session key (task or system format). */
+    sessionKey: v.string(),
+
+    /** When this session was opened */
+    openedAt: v.number(),
+
+    /** When this session was closed (undefined = active) */
+    closedAt: v.optional(v.number()),
+
+    /** Why closed (e.g. "task_done", "task_archived") */
+    closedReason: v.optional(v.string()),
+  })
+    .index("by_account_type_task_agent_closed", [
+      "accountId",
+      "sessionType",
+      "taskId",
+      "agentId",
+      "closedAt",
+    ])
+    .index("by_account_type_agent_closed", [
+      "accountId",
+      "sessionType",
+      "agentId",
+      "closedAt",
+    ])
+    .index("by_session_key", ["sessionKey"])
+    .index("by_account_task", ["accountId", "taskId"]),
+
+  // ==========================================================================
   // MESSAGES
   // Comments/messages in task threads.
   // ==========================================================================
@@ -510,6 +561,7 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_account_task_created", ["accountId", "taskId", "createdAt"])
     .index("by_task_author_created", [
       "taskId",
       "authorType",

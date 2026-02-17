@@ -38,6 +38,7 @@ import type * as runtimes from "../runtimes.js";
 import type * as search from "../search.js";
 import type * as seed from "../seed.js";
 import type * as service_actions from "../service/actions.js";
+import type * as service_agentRuntimeSessions from "../service/agentRuntimeSessions.js";
 import type * as service_agents from "../service/agents.js";
 import type * as service_documents from "../service/documents.js";
 import type * as service_messages from "../service/messages.js";
@@ -86,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   search: typeof search;
   seed: typeof seed;
   "service/actions": typeof service_actions;
+  "service/agentRuntimeSessions": typeof service_agentRuntimeSessions;
   "service/agents": typeof service_agents;
   "service/documents": typeof service_documents;
   "service/messages": typeof service_messages;
