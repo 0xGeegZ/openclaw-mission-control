@@ -130,7 +130,6 @@ const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
 import {
   buildNoResponseFallbackMessage,
-  isNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
 } from "./delivery/no-response";
 
@@ -160,17 +159,13 @@ function resolveGatewayAddress(baseUrl: string): GatewayAddress | null {
 
 /**
  * Resolve the OpenClaw agent id from a session key.
- * Uses registered session map first; then parses agent:slug:accountId legacy form; otherwise "main".
+ * Uses registered session map only (task/system keys from backend). No legacy parsing.
  */
 function resolveAgentIdFromSessionKey(sessionKey: string): string {
   const trimmed = sessionKey?.trim();
   if (!trimmed) return "main";
   const session = state.sessions.get(trimmed);
   if (session) return session.agentId;
-  const parts = trimmed.split(":");
-  if (parts.length >= 2 && parts[0] === "agent" && parts[1]) {
-    return parts[1];
-  }
   return "main";
 }
 
@@ -247,7 +242,8 @@ export {
 
 /**
  * Initialize the OpenClaw gateway.
- * Fetches agents and registers their sessions; stores gateway URL/token for send.
+ * Fetches agents (with backend-resolved systemSessionKey), registers each in the session map,
+ * and stores gateway URL/token. Throws if any agent is missing systemSessionKey.
  */
 export async function initGateway(config: RuntimeConfig): Promise<void> {
   log.info("Initializing OpenClaw gateway...");
@@ -263,12 +259,22 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   })) as ListAgentsItem[];
 
   for (const agent of agents) {
-    state.sessions.set(agent.sessionKey, {
-      sessionKey: agent.sessionKey,
+    const key = agent.systemSessionKey;
+    if (typeof key !== "string" || !key.trim()) {
+      log.error("Agent missing systemSessionKey; cannot register", {
+        agentId: agent._id,
+        slug: agent.slug,
+      });
+      throw new Error(
+        `Cannot init gateway: agent ${agent._id} has no systemSessionKey (backend must return systemSessionKey for every agent)`,
+      );
+    }
+    state.sessions.set(key, {
+      sessionKey: key,
       agentId: agent._id,
       lastMessage: null,
     });
-    log.debug("Registered session:", agent.sessionKey);
+    log.debug("Registered session:", key);
   }
 
   state.isRunning = true;
@@ -329,23 +335,34 @@ export async function waitForOpenClawGatewayReady(
   return false;
 }
 
-/** Agent shape from listAgents (minimal for registration). */
+/** Agent shape for registration (system session key from listAgents). */
 export interface AgentForSession {
   _id: Id<"agents">;
-  sessionKey: string;
+  systemSessionKey: string;
 }
 
 /**
  * Register or update a single agent session (idempotent).
- * Used by agent sync to add new agents without restart.
+ * Used by agent sync when agents are added; accepts system session key only (from listAgents).
+ * Skips registration when systemSessionKey is missing or empty (logs warning).
  */
 export function registerAgentSession(agent: AgentForSession): void {
-  state.sessions.set(agent.sessionKey, {
-    sessionKey: agent.sessionKey,
+  const key = agent.systemSessionKey?.trim();
+  if (!key) {
+    log.warn(
+      "registerAgentSession: skipping agent with empty systemSessionKey",
+      {
+        agentId: agent._id,
+      },
+    );
+    return;
+  }
+  state.sessions.set(key, {
+    sessionKey: key,
     agentId: agent._id,
     lastMessage: null,
   });
-  log.debug("Registered session:", agent.sessionKey);
+  log.debug("Registered session:", key);
 }
 
 /**

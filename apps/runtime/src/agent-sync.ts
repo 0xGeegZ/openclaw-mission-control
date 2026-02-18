@@ -85,7 +85,10 @@ async function runSync(config: RuntimeConfig): Promise<void> {
 
     for (const agent of agents) {
       removeAgentSession(agent._id);
-      registerAgentSession({ _id: agent._id, sessionKey: agent.sessionKey });
+      registerAgentSession({
+        _id: agent._id,
+        systemSessionKey: agent.systemSessionKey,
+      });
       ensureHeartbeatScheduled(agent, config);
       if (!currentAgentIds.has(agent._id)) {
         added++;

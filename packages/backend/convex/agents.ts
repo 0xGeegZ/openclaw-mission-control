@@ -137,26 +137,25 @@ export const getBySlug = query({
 
 /**
  * Get an agent by session key.
- * Used by runtime to look up agent from OpenClaw session.
+ * Supports legacy format (agents.by_session_key) and new task/system format (agentRuntimeSessions.by_session_key).
  */
 export const getBySessionKey = query({
   args: {
     sessionKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const agent = await ctx.db
+    const legacyAgent = await ctx.db
       .query("agents")
       .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
       .unique();
+    if (legacyAgent) return legacyAgent;
 
-    if (!agent) {
-      return null;
-    }
-
-    // Note: This query may be called by service without user auth
-    // The session key itself acts as authentication
-
-    return agent;
+    const sessionRow = await ctx.db
+      .query("agentRuntimeSessions")
+      .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+    if (!sessionRow) return null;
+    return await ctx.db.get(sessionRow.agentId);
   },
 });
 

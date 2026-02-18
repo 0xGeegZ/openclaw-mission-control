@@ -77,7 +77,7 @@ Agents read USER.md, IDENTITY.md, AGENTS.md, and HEARTBEAT.md from their workspa
 
 ### Session model and rollout
 
-Delivery uses backend-resolved session keys only (no legacy `agent.sessionKey` fallback): task notifications use a task-scoped key, non-task notifications use a system key. Rollback is by deploying a previous runtime version; there is no runtime-level fallback to the old session model.
+All runtime session routing uses backend-resolved task/system keys only. The legacy `agents.sessionKey` field is not used for routing: initGateway and agent-sync register system session keys from `listAgents`; heartbeat uses the same system key; delivery uses `deliverySessionKey` (task or system) from `getNotificationForDelivery`. Rollback is by deploying a previous runtime version; there is no runtime-level fallback to the old session model.
 
 ### Repo and worktrees
 

@@ -250,8 +250,12 @@ export function buildDeliveryInstructions(
     hasRuntimeTools &&
     hasToolSchema(toolCapabilities.schemas, "response_request");
   const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
+  /** Session key for HTTP fallback instructions; never interpolate undefined into prompt. */
   const sessionKey =
-    context.deliverySessionKey ?? context.agent?.sessionKey ?? "<session-key>";
+    typeof context.deliverySessionKey === "string" &&
+    context.deliverySessionKey.trim()
+      ? context.deliverySessionKey.trim()
+      : "<session-key>";
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   const capabilitiesBlock =

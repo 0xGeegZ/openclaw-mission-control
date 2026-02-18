@@ -11,7 +11,6 @@ export interface AgentForProfile {
   name: string;
   slug: string;
   role: string;
-  sessionKey: string;
   openclawConfig?: {
     model?: string;
     temperature?: number;

@@ -505,19 +505,37 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const [agents, account] = await Promise.all([
+    const [agents, account, sessionResults] = await Promise.all([
       ctx.runQuery(internal.service.agents.listInternal, {
         accountId: args.accountId,
       }),
       ctx.runQuery(internal.accounts.getInternal, {
         accountId: args.accountId,
       }),
+      ctx.runMutation(
+        internal.service.agentRuntimeSessions.ensureSystemSessionsForAccount,
+        { accountId: args.accountId },
+      ),
     ]);
 
-    return agents.map((agent) => ({
-      ...agent,
-      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
-    }));
+    const systemSessionKeyByAgentId = new Map(
+      sessionResults.map((r) => [r.agentId, r.sessionKey]),
+    );
+
+    return agents.map((agent) => {
+      const systemSessionKey = systemSessionKeyByAgentId.get(agent._id);
+      if (typeof systemSessionKey !== "string" || !systemSessionKey.trim()) {
+        throw new Error(
+          `Missing systemSessionKey for agent ${agent._id} (${agent.slug}); ensureSystemSessionsForAccount must return a key per agent`,
+        );
+      }
+      const { sessionKey: _legacy, ...agentRest } = agent;
+      return {
+        ...agentRest,
+        systemSessionKey,
+        effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+      };
+    });
   },
 });
 
@@ -549,13 +567,12 @@ export const getOrchestratorAgentId = action({
   },
 });
 
-/** One agent from listForRuntime (for profile sync). */
+/** One agent from listForRuntime (for profile sync). No sessionKey; runtime uses backend-resolved task/system keys only. */
 interface AgentForRuntimePayload {
   _id: Id<"agents">;
   name: string;
   slug: string;
   role: string;
-  sessionKey: string;
   openclawConfig: Doc<"agents">["openclawConfig"];
   effectiveSoulContent: string;
   effectiveUserMd: string;

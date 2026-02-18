@@ -165,7 +165,7 @@ Agent @mentions do **not** notify other agents. To request a follow-up, you must
 Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), `http://127.0.0.1:3000` points at the gateway container and will fail — use `http://runtime:3000` instead.
 
 - Endpoint: `POST {TASK_STATUS_BASE_URL}/agent/task-status`
-- Header: `x-openclaw-session-key: agent:{slug}:{accountId}`
+- Header: `x-openclaw-session-key` — use the session key from your notification prompt (backend-resolved task or system key). Runtime does not use legacy `agent:{slug}:{accountId}` for routing.
 - Body: `{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }`
 
 Rules:
@@ -182,7 +182,7 @@ Example (HTTP fallback):
 BASE_URL="http://runtime:3000"
 curl -X POST "${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
-  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -H "x-openclaw-session-key: <session-key-from-prompt>" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
@@ -201,7 +201,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
 - **Document:** `POST {TASK_STATUS_BASE_URL}/agent/document` with body `{ "title", "content", "type", "documentId?", "taskId?" }`.
 - **Response request:** `POST {TASK_STATUS_BASE_URL}/agent/response-request` with body `{ "taskId", "recipientSlugs", "message" }`.
 
-All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are local-only.
+All require header `x-openclaw-session-key` (backend-resolved task or system key; see notification prompt). Local-only.
 
 ## Orchestrator (squad lead)
 

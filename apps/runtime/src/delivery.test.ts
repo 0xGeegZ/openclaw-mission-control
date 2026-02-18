@@ -51,6 +51,7 @@ function buildContext(
     mentionableAgents: [],
     assignedAgents: [],
     effectiveBehaviorFlags: {},
+    deliverySessionKey: "system:agent:engineer:acc1:v1",
     repositoryDoc: null,
     globalBriefingDoc: null,
     taskOverview: null,
@@ -424,7 +425,8 @@ describe("formatNotificationMessage", () => {
 
   it("uses fallbacks when agent name or role is missing", () => {
     const ctx = buildContext({
-      agent: { _id: "agent-a", sessionKey: "agent:x:acc1" },
+      agent: { _id: "agent-a" },
+      deliverySessionKey: "system:agent:x:acc1:v1",
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,

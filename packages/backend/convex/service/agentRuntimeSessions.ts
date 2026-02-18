@@ -196,6 +196,74 @@ export const ensureRuntimeSession = internalMutation({
 });
 
 /**
+ * Ensures one active system session per agent for the account.
+ * Used by listAgents so the runtime gets systemSessionKey for every agent in one mutation.
+ * Reuses existing open system session or creates a new generation; returns one entry per agent.
+ *
+ * @returns Array of { agentId, sessionKey } in same order as account agents.
+ */
+export const ensureSystemSessionsForAccount = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx: MutationCtx,
+    args,
+  ): Promise<Array<{ agentId: Id<"agents">; sessionKey: string }>> => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+    const result: Array<{ agentId: Id<"agents">; sessionKey: string }> = [];
+    for (const agent of agents) {
+      const existing = await ctx.db
+        .query("agentRuntimeSessions")
+        .withIndex("by_account_type_agent_closed", (q) =>
+          q
+            .eq("accountId", args.accountId)
+            .eq("sessionType", "system")
+            .eq("agentId", agent._id)
+            .eq("closedAt", undefined),
+        )
+        .first();
+      if (existing) {
+        result.push({ agentId: agent._id, sessionKey: existing.sessionKey });
+        continue;
+      }
+      const systemSessions = await ctx.db
+        .query("agentRuntimeSessions")
+        .withIndex("by_account_type_agent_closed", (q) =>
+          q
+            .eq("accountId", args.accountId)
+            .eq("sessionType", "system")
+            .eq("agentId", agent._id),
+        )
+        .collect();
+      const maxGen = systemSessions.length
+        ? Math.max(...systemSessions.map((r) => r.generation))
+        : 0;
+      const generation = maxGen + 1;
+      const sessionKey = buildSystemSessionKey(
+        args.accountId,
+        agent.slug,
+        generation,
+      );
+      await ctx.db.insert("agentRuntimeSessions", {
+        accountId: args.accountId,
+        agentId: agent._id,
+        sessionType: "system",
+        agentSlug: agent.slug,
+        generation,
+        sessionKey,
+        openedAt: Date.now(),
+      });
+      result.push({ agentId: agent._id, sessionKey });
+    }
+    return result;
+  },
+});
+
+/**
  * Closes all active task-scoped sessions for the given task (e.g. when status → done).
  */
 export const closeTaskSessionsForTask = internalMutation({

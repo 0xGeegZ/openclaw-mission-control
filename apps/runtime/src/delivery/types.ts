@@ -23,7 +23,6 @@ export interface DeliveryContext {
   };
   agent: {
     _id: string;
-    sessionKey?: string;
     role?: string;
     name?: string;
   } | null;
@@ -72,7 +71,7 @@ export interface DeliveryContext {
     canReviewTasks?: boolean;
     canMarkDone?: boolean;
   };
-  /** Resolved runtime session key (task or system); used for send and tool-result. */
+  /** Resolved runtime session key (task or system). Required for agent notifications; used for send and prompt. */
   deliverySessionKey?: string;
   repositoryDoc: { title: string; content: string } | null;
   globalBriefingDoc: { title: string; content: string } | null;

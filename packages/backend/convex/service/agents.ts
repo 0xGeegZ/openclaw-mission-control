@@ -174,7 +174,6 @@ export const listForRuntime = internalQuery({
           name: agent.name,
           slug: agent.slug,
           role: agent.role,
-          sessionKey: agent.sessionKey,
           openclawConfig: agent.openclawConfig,
           effectiveSoulContent,
           effectiveUserMd,
