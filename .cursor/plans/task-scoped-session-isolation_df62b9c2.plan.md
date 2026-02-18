@@ -247,7 +247,7 @@ flowchart LR
 - Add `messages.by_account_task_created` index.
 - Done when: schema validates and generated API types compile.
 
-2. Implement unified session resolver internals (single commit).
+1. Implement unified session resolver internals (single commit).
 
 - Files: `packages/backend/convex/service/notifications.ts` (or dedicated `service/agentRuntimeSessions.ts` + imports)
 - Add helpers:
@@ -258,14 +258,14 @@ flowchart LR
   - `closeTaskSessionsForTask(...)`
 - Done when: unit tests cover create/reuse/new-generation behavior.
 
-3. Wire delivery session resolution (single commit).
+1. Wire delivery session resolution (single commit).
 
 - Files: `packages/backend/convex/service/actions.ts`, `packages/backend/convex/service/notifications.ts`
 - Extend `getNotificationForDelivery` response with `deliverySessionKey`.
 - Resolve both task and non-task notifications through unified resolver.
 - Done when: runtime receives resolver-generated key for all notification types.
 
-4. Harden context isolation checks (single commit).
+1. Harden context isolation checks (single commit).
 
 - Files: `packages/backend/convex/service/notifications.ts`
 - Enforce account consistency for notification/task/message relationships.
@@ -273,7 +273,7 @@ flowchart LR
 - Keep `orchestratorChatTaskId` context gating unchanged.
 - Done when: cross-account mismatch returns safe behavior (no leakage / explicit error path).
 
-5. Add task history backend path (single commit).
+1. Add task history backend path (single commit).
 
 - Files: `packages/backend/convex/service/actions.ts`, `packages/backend/convex/service/messages.ts`, `packages/backend/convex/service/activities.ts` (new)
 - Implement `getTaskHistoryForAgentTool`.
@@ -281,14 +281,14 @@ flowchart LR
 - Add activities query constrained by account + `targetType=task` + `targetId`.
 - Done when: returns combined payload and enforces auth/account checks.
 
-6. Add runtime tool contract for `task_history` (single commit).
+1. Add runtime tool contract for `task_history` (single commit).
 
 - Files: `apps/runtime/src/tooling/agentTools.ts`, `apps/runtime/src/tooling/agentTools.test.ts`
 - Add schema + capability label + execute branch.
 - Deprecate direct `task_load` usage in prompts/instructions; if retained briefly, make it an alias to the same `task_history` backend payload.
 - Done when: tool validation + happy path tests pass.
 
-7. Refactor prompt layering to instruction contract (single commit).
+1. Refactor prompt layering to instruction contract (single commit).
 
 - Files: `apps/runtime/src/delivery/prompt.ts`, `apps/runtime/src/delivery.test.ts`
 - Introduce `buildDeliveryInstructions` and `buildNotificationInput`.
@@ -297,33 +297,33 @@ flowchart LR
 - Reduce raw thread injection in input to compact transitional summary.
 - Done when: tests assert key policy phrases remain enforced.
 
-8. Pass OpenResponses `instructions` in gateway send path (single commit).
+1. Pass OpenResponses `instructions` in gateway send path (single commit).
 
 - Files: `apps/runtime/src/gateway.ts`, `apps/runtime/src/delivery.ts`, `apps/runtime/src/delivery/types.ts`
 - Extend send options with `instructions`.
 - Always use `deliverySessionKey` for both initial send and tool-result continuation (no legacy fallback).
 - Done when: payload includes `instructions` and uses resolver key in all paths.
 
-9. Update runtime session registry + endpoint validation (single commit).
+1. Update runtime session registry + endpoint validation (single commit).
 
 - Files: `apps/runtime/src/gateway.ts`, `apps/runtime/src/agent-sync.ts`, `apps/runtime/src/health.ts`, `apps/runtime/src/__tests__/health-agent-endpoints.test.ts`
 - Support many session keys per agent; remove all on cleanup.
 - Ensure `/agent/` accepts unified resolver keys (task + system).
 - Done when: endpoint tests pass for the new key model only.
 
-10. Close task sessions on `done` transition (single commit).
+1. Close task sessions on `done` transition (single commit).
 
 - Files: `packages/backend/convex/tasks.ts`, `packages/backend/convex/service/tasks.ts`
   - Call close helper only when transitioning into `done`.
   - Done when: close behavior works for both user and agent status updates.
 
-11. Remove legacy runtime routing implementation (single commit).
+1. Remove legacy runtime routing implementation (single commit).
 
 - Files: `apps/runtime/src/delivery.ts`, `apps/runtime/src/gateway.ts`, `apps/runtime/src/agent-sync.ts`, `packages/backend/convex/agents.ts` (if referenced)
   - Delete old `agent.sessionKey` delivery fallback and related dead code paths.
   - Done when: runtime-delivery path no longer depends on legacy session routing.
 
-12. Add rollout controls + docs (single commit).
+1. Add rollout controls + docs (single commit).
 
 - Files: `apps/runtime/README.md`, `docs/runtime/TOOLS_AUDIT.md`, config docs if needed
   - Add flags:
@@ -332,7 +332,7 @@ flowchart LR
   - Document cutover and migration behavior (no legacy fallback wording).
   - Done when: operator docs describe only the new model.
 
-13. Run explicit orchestrator-chat regression pass (single commit or release gate).
+1. Run explicit orchestrator-chat regression pass (single commit or release gate).
 
 - Files: `apps/runtime/src/delivery.test.ts`, `packages/backend/convex/lib/notifications.test.ts`, manual QA checklist evidence.
   - Validate orchestrator chat still gets expected coordination semantics after all changes.
