@@ -1,5 +1,11 @@
 # @packages/backend
 
+## 1.0.3
+
+### Patch Changes
+
+- 6351a13: Security audit remediations: message content max length (100k), user message attachment validation from storage metadata, Next.js security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy), and root npm override for esbuild (>=0.25.0).
+
 ## 1.0.2
 
 ### Patch Changes
