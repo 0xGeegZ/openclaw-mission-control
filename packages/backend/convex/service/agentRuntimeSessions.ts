@@ -5,7 +5,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 
 const TASK_PREFIX = "task:";
 const SYSTEM_PREFIX = "system:";
@@ -92,6 +92,55 @@ export const getActiveSystemSession = internalQuery({
 });
 
 /**
+ * Ensure one active system session for an agent and return the session key.
+ * Reuses an open session when present; otherwise creates the next generation.
+ */
+async function ensureSystemSessionForAgent(params: {
+  ctx: MutationCtx;
+  accountId: Id<"accounts">;
+  agentId: Id<"agents">;
+  agentSlug: string;
+}): Promise<string> {
+  const { ctx, accountId, agentId, agentSlug } = params;
+  const existing = await ctx.db
+    .query("agentRuntimeSessions")
+    .withIndex("by_account_type_agent_closed", (q) =>
+      q
+        .eq("accountId", accountId)
+        .eq("sessionType", "system")
+        .eq("agentId", agentId)
+        .eq("closedAt", undefined),
+    )
+    .first();
+  if (existing) return existing.sessionKey;
+
+  const systemSessions = await ctx.db
+    .query("agentRuntimeSessions")
+    .withIndex("by_account_type_agent_closed", (q) =>
+      q
+        .eq("accountId", accountId)
+        .eq("sessionType", "system")
+        .eq("agentId", agentId),
+    )
+    .collect();
+  const maxGen = systemSessions.length
+    ? Math.max(...systemSessions.map((r) => r.generation))
+    : 0;
+  const generation = maxGen + 1;
+  const sessionKey = buildSystemSessionKey(accountId, agentSlug, generation);
+  await ctx.db.insert("agentRuntimeSessions", {
+    accountId,
+    agentId,
+    sessionType: "system",
+    agentSlug,
+    generation,
+    sessionKey,
+    openedAt: Date.now(),
+  });
+  return sessionKey;
+}
+
+/**
  * Ensures a runtime session exists: task session when taskId provided, otherwise system session.
  * Reuses active session or creates new generation. Returns sessionKey and whether a new row was created.
  */
@@ -152,7 +201,7 @@ export const ensureRuntimeSession = internalMutation({
       return { sessionKey, isNew: true };
     }
 
-    const existing = await ctx.db
+    const before = await ctx.db
       .query("agentRuntimeSessions")
       .withIndex("by_account_type_agent_closed", (q) =>
         q
@@ -162,42 +211,19 @@ export const ensureRuntimeSession = internalMutation({
           .eq("closedAt", undefined),
       )
       .first();
-    if (existing) return { sessionKey: existing.sessionKey, isNew: false };
-
-    const systemSessions = await ctx.db
-      .query("agentRuntimeSessions")
-      .withIndex("by_account_type_agent_closed", (q) =>
-        q
-          .eq("accountId", args.accountId)
-          .eq("sessionType", "system")
-          .eq("agentId", args.agentId),
-      )
-      .collect();
-    const maxGen = systemSessions.length
-      ? Math.max(...systemSessions.map((r) => r.generation))
-      : 0;
-    const generation = maxGen + 1;
-    const sessionKey = buildSystemSessionKey(
-      args.accountId,
-      args.agentSlug,
-      generation,
-    );
-    await ctx.db.insert("agentRuntimeSessions", {
+    const sessionKey = await ensureSystemSessionForAgent({
+      ctx,
       accountId: args.accountId,
       agentId: args.agentId,
-      sessionType: "system",
       agentSlug: args.agentSlug,
-      generation,
-      sessionKey,
-      openedAt: Date.now(),
     });
-    return { sessionKey, isNew: true };
+    return { sessionKey, isNew: !before };
   },
 });
 
 /**
  * Ensures one active system session per agent for the account.
- * Used by listAgents so the runtime gets systemSessionKey for every agent in one mutation.
+ * Retained as a batch helper for maintenance flows.
  * Reuses existing open system session or creates a new generation; returns one entry per agent.
  *
  * @returns Array of { agentId, sessionKey } in same order as account agents.
@@ -216,46 +242,11 @@ export const ensureSystemSessionsForAccount = internalMutation({
       .collect();
     const result: Array<{ agentId: Id<"agents">; sessionKey: string }> = [];
     for (const agent of agents) {
-      const existing = await ctx.db
-        .query("agentRuntimeSessions")
-        .withIndex("by_account_type_agent_closed", (q) =>
-          q
-            .eq("accountId", args.accountId)
-            .eq("sessionType", "system")
-            .eq("agentId", agent._id)
-            .eq("closedAt", undefined),
-        )
-        .first();
-      if (existing) {
-        result.push({ agentId: agent._id, sessionKey: existing.sessionKey });
-        continue;
-      }
-      const systemSessions = await ctx.db
-        .query("agentRuntimeSessions")
-        .withIndex("by_account_type_agent_closed", (q) =>
-          q
-            .eq("accountId", args.accountId)
-            .eq("sessionType", "system")
-            .eq("agentId", agent._id),
-        )
-        .collect();
-      const maxGen = systemSessions.length
-        ? Math.max(...systemSessions.map((r) => r.generation))
-        : 0;
-      const generation = maxGen + 1;
-      const sessionKey = buildSystemSessionKey(
-        args.accountId,
-        agent.slug,
-        generation,
-      );
-      await ctx.db.insert("agentRuntimeSessions", {
+      const sessionKey = await ensureSystemSessionForAgent({
+        ctx,
         accountId: args.accountId,
         agentId: agent._id,
-        sessionType: "system",
         agentSlug: agent.slug,
-        generation,
-        sessionKey,
-        openedAt: Date.now(),
       });
       result.push({ agentId: agent._id, sessionKey });
     }
@@ -264,7 +255,38 @@ export const ensureSystemSessionsForAccount = internalMutation({
 });
 
 /**
- * Closes all active task-scoped sessions for the given task (e.g. when status → done).
+ * Atomically list account agents and ensure each has a system session key.
+ * Returns the same agent set used for session ensure, avoiding cross-call race windows.
+ */
+export const listAgentsWithSystemSessions = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx: MutationCtx,
+    args,
+  ): Promise<Array<{ agent: Doc<"agents">; systemSessionKey: string }>> => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+    const result: Array<{ agent: Doc<"agents">; systemSessionKey: string }> =
+      [];
+    for (const agent of agents) {
+      const systemSessionKey = await ensureSystemSessionForAgent({
+        ctx,
+        accountId: args.accountId,
+        agentId: agent._id,
+        agentSlug: agent.slug,
+      });
+      result.push({ agent, systemSessionKey });
+    }
+    return result;
+  },
+});
+
+/**
+ * Closes all active task-scoped sessions for the given task (e.g. when status → archived).
  */
 export const closeTaskSessionsForTask = internalMutation({
   args: {
@@ -273,7 +295,7 @@ export const closeTaskSessionsForTask = internalMutation({
     closedReason: v.optional(v.string()),
   },
   handler: async (ctx: MutationCtx, args): Promise<{ closed: number }> => {
-    const reason = args.closedReason ?? "task_done";
+    const reason = args.closedReason ?? "task_archived";
     const now = Date.now();
     const active = await ctx.db
       .query("agentRuntimeSessions")

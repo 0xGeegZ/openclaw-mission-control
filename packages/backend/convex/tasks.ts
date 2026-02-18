@@ -443,11 +443,15 @@ export const updateStatus = mutation({
 
     await ctx.db.patch(args.taskId, updates);
 
-    if (nextStatus === TASK_STATUS.DONE) {
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
       await ctx.scheduler.runAfter(
         0,
         internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
-        { accountId: task.accountId, taskId: args.taskId },
+        {
+          accountId: task.accountId,
+          taskId: args.taskId,
+          closedReason: "task_archived",
+        },
       );
     }
 

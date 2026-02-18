@@ -505,28 +505,19 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const [agents, account, sessionResults] = await Promise.all([
-      ctx.runQuery(internal.service.agents.listInternal, {
-        accountId: args.accountId,
-      }),
+    const [agentRows, account] = await Promise.all([
+      ctx.runMutation(
+        internal.service.agentRuntimeSessions.listAgentsWithSystemSessions,
+        { accountId: args.accountId },
+      ),
       ctx.runQuery(internal.accounts.getInternal, {
         accountId: args.accountId,
       }),
-      ctx.runMutation(
-        internal.service.agentRuntimeSessions.ensureSystemSessionsForAccount,
-        { accountId: args.accountId },
-      ),
     ]);
-
-    const systemSessionKeyByAgentId = new Map(
-      sessionResults.map((r) => [r.agentId, r.sessionKey]),
-    );
-
-    return agents.map((agent) => {
-      const systemSessionKey = systemSessionKeyByAgentId.get(agent._id);
+    return agentRows.map(({ agent, systemSessionKey }) => {
       if (typeof systemSessionKey !== "string" || !systemSessionKey.trim()) {
         throw new Error(
-          `Missing systemSessionKey for agent ${agent._id} (${agent.slug}); ensureSystemSessionsForAccount must return a key per agent`,
+          `Missing systemSessionKey for agent ${agent._id} (${agent.slug}); listAgentsWithSystemSessions must return a key per agent`,
         );
       }
       const { sessionKey: _legacy, ...agentRest } = agent;

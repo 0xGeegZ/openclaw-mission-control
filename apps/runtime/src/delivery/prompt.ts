@@ -250,12 +250,13 @@ export function buildDeliveryInstructions(
     hasRuntimeTools &&
     hasToolSchema(toolCapabilities.schemas, "response_request");
   const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
-  /** Session key for HTTP fallback instructions; never interpolate undefined into prompt. */
-  const sessionKey =
-    typeof context.deliverySessionKey === "string" &&
-    context.deliverySessionKey.trim()
-      ? context.deliverySessionKey.trim()
-      : "<session-key>";
+  /** Session key for HTTP fallback instructions; deliverySessionKey is required for agent notifications. */
+  const sessionKey = context.deliverySessionKey?.trim();
+  if (!sessionKey) {
+    throw new Error(
+      "Missing deliverySessionKey; buildDeliveryInstructions requires backend-resolved session key",
+    );
+  }
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   const capabilitiesBlock =

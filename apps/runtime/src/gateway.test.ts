@@ -1,10 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
   buildNoResponseFallbackMessage,
+  getGatewayState,
   isNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
+  refreshAgentSystemSession,
+  registerSession,
+  removeAgentSession,
 } from "./gateway";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
+
+beforeEach(() => {
+  const agentIds = new Set(
+    Array.from(getGatewayState().sessions.values()).map((s) => s.agentId),
+  );
+  for (const agentId of agentIds) {
+    removeAgentSession(agentId);
+  }
+});
 
 describe("parseNoResponsePlaceholder", () => {
   it("detects the plain placeholder", () => {
@@ -89,5 +103,27 @@ describe("isHeartbeatOkResponse", () => {
         "Loading context for notification...\nHEARTBEAT_OK",
       ),
     ).toBe(false);
+  });
+});
+
+describe("refreshAgentSystemSession", () => {
+  it("replaces only system key and preserves task keys", () => {
+    const agentId = "agent-1" as Id<"agents">;
+    const oldSystem = "system:agent:engineer:acc1:v1";
+    const newSystem = "system:agent:engineer:acc1:v2";
+    const taskKey = "task:task1:agent:engineer:acc1:v1";
+
+    registerSession(taskKey, agentId);
+    registerSession(oldSystem, agentId);
+
+    refreshAgentSystemSession({
+      _id: agentId,
+      systemSessionKey: newSystem,
+    });
+
+    const keys = Array.from(getGatewayState().sessions.keys());
+    expect(keys).toContain(taskKey);
+    expect(keys).toContain(newSystem);
+    expect(keys).not.toContain(oldSystem);
   });
 });

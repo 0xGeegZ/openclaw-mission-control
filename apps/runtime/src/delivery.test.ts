@@ -364,6 +364,21 @@ describe("buildDeliveryInstructions", () => {
       "Use only the thread history shown above for this task",
     );
   });
+
+  it("throws when deliverySessionKey is missing", () => {
+    const ctx = buildContext({
+      deliverySessionKey: undefined,
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    expect(() =>
+      buildDeliveryInstructions(ctx, "http://runtime:3000", toolCapabilities),
+    ).toThrow("Missing deliverySessionKey");
+  });
 });
 
 describe("buildNotificationInput", () => {

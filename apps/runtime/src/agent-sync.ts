@@ -2,7 +2,7 @@ import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
 import {
   getGatewayState,
-  registerAgentSession,
+  refreshAgentSystemSession,
   removeAgentSession,
 } from "./gateway";
 import {
@@ -84,8 +84,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     }
 
     for (const agent of agents) {
-      removeAgentSession(agent._id);
-      registerAgentSession({
+      refreshAgentSystemSession({
         _id: agent._id,
         systemSessionKey: agent.systemSessionKey,
       });

@@ -233,7 +233,7 @@ export default defineSchema({
 
   // ==========================================================================
   // AGENTS
-  // AI agent definitions. Each agent maps to an OpenClaw session.
+  // AI agent definitions.
   // ==========================================================================
   agents: defineTable({
     /** Account this agent belongs to */
@@ -252,8 +252,8 @@ export default defineSchema({
     description: v.optional(v.string()),
 
     /**
-     * OpenClaw session key.
-     * Format: agent:{slug}:{accountId}
+     * Deprecated display-only session key retained for backward-compatible UI/seed shape.
+     * Runtime routing uses agentRuntimeSessions exclusively.
      */
     sessionKey: v.string(),
 

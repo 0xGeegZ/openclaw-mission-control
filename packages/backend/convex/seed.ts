@@ -590,7 +590,7 @@ Agent @mentions do **not** notify other agents. To request a follow-up, you must
 Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), \`http://127.0.0.1:3000\` points at the gateway container and will fail — use \`http://runtime:3000\` instead.
 
 - Endpoint: \`POST {TASK_STATUS_BASE_URL}/agent/task-status\`
-- Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
+- Header: \`x-openclaw-session-key\` (use the session key from the notification prompt)
 - Body: \`{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }\`
 
 Rules:
@@ -607,7 +607,7 @@ Example (HTTP fallback):
 BASE_URL="http://runtime:3000"
 curl -X POST "\${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
-  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -H "x-openclaw-session-key: <session-key-from-prompt>" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
@@ -625,7 +625,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
 - **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.
 
-All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
+All require header \`x-openclaw-session-key\` (backend-resolved task/system key from prompt) and are local-only.
 
 ## Orchestrator (squad lead)
 
@@ -769,7 +769,7 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 - **Convex**: schema + functions in \`packages/backend/convex\`
 - **Clerk** for auth
 - Runtime service: \`apps/runtime\` (OpenClaw gateway, notification delivery, heartbeat)
-- OpenClaw sessions: one per agent, session key \`agent:{slug}:{accountId}\`
+- OpenClaw sessions: backend-resolved task/system keys in \`agentRuntimeSessions\`
 - Multi-tenancy: \`accountId\` on every table; all queries filter by account.
 `;
 

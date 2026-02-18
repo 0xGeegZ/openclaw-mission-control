@@ -128,6 +128,7 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
+const SYSTEM_SESSION_PREFIX = "system:";
 import {
   buildNoResponseFallbackMessage,
   parseNoResponsePlaceholder,
@@ -347,15 +348,33 @@ export interface AgentForSession {
  * Skips registration when systemSessionKey is missing or empty (logs warning).
  */
 export function registerAgentSession(agent: AgentForSession): void {
+  refreshAgentSystemSession(agent);
+}
+
+/**
+ * Replace the active system session key for an agent while preserving task-scoped keys.
+ * Used by agent sync so task sessions remain valid between sync ticks.
+ */
+export function refreshAgentSystemSession(agent: AgentForSession): void {
   const key = agent.systemSessionKey?.trim();
   if (!key) {
     log.warn(
-      "registerAgentSession: skipping agent with empty systemSessionKey",
+      "refreshAgentSystemSession: skipping agent with empty systemSessionKey",
       {
         agentId: agent._id,
       },
     );
     return;
+  }
+  for (const [existingKey, info] of state.sessions.entries()) {
+    if (
+      info.agentId === agent._id &&
+      existingKey !== key &&
+      existingKey.startsWith(SYSTEM_SESSION_PREFIX)
+    ) {
+      state.sessions.delete(existingKey);
+      log.debug("Removed stale system session:", existingKey);
+    }
   }
   state.sessions.set(key, {
     sessionKey: key,
@@ -426,7 +445,7 @@ export function registerSession(
  * Throws on non-2xx or when gateway URL is disabled so delivery loop keeps notification undelivered.
  *
  * Session key and tools: The gateway must run this request in the session identified by
- * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
+ * x-openclaw-session-key (for example task/system resolver keys) so that per-request tools (task_status,
  * task_update, task_create, document_upsert) are applied to that run. If the gateway runs the request under a
  * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
  * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.

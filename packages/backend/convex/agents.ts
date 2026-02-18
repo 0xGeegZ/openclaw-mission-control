@@ -137,19 +137,13 @@ export const getBySlug = query({
 
 /**
  * Get an agent by session key.
- * Supports legacy format (agents.by_session_key) and new task/system format (agentRuntimeSessions.by_session_key).
+ * Runtime lookup by session key is sourced from agentRuntimeSessions only.
  */
 export const getBySessionKey = query({
   args: {
     sessionKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const legacyAgent = await ctx.db
-      .query("agents")
-      .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
-      .unique();
-    if (legacyAgent) return legacyAgent;
-
     const sessionRow = await ctx.db
       .query("agentRuntimeSessions")
       .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
