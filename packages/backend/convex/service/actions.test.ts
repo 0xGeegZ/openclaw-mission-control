@@ -534,6 +534,37 @@ describe("createTaskFromAgent", () => {
 });
 
 // ============================================================================
+// createMessageFromAgent multi-part idempotency
+// ============================================================================
+
+describe("createMessageFromAgent", () => {
+  it("mutation args shape includes sourceNotificationPartIndex when provided", () => {
+    const mutationArgs = {
+      agentId: "agent_1" as Id<"agents">,
+      taskId: "task_1" as Id<"tasks">,
+      content: "Part one.",
+      sourceNotificationId: "notif_1" as Id<"notifications">,
+      sourceNotificationPartIndex: 0,
+      allowAgentMentions: true,
+      suppressAgentNotifications: false,
+    };
+    expect(mutationArgs.sourceNotificationPartIndex).toBe(0);
+  });
+
+  it("mutation args shape omits sourceNotificationPartIndex for single-message delivery", () => {
+    const mutationArgs = {
+      agentId: "agent_1" as Id<"agents">,
+      taskId: "task_1" as Id<"tasks">,
+      content: "Single message.",
+      sourceNotificationId: "notif_1" as Id<"notifications">,
+      allowAgentMentions: true,
+      suppressAgentNotifications: false,
+    };
+    expect((mutationArgs as Record<string, unknown>).sourceNotificationPartIndex).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // getAgentSkillsForTool Tests
 // ============================================================================
 

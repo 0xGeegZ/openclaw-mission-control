@@ -25,6 +25,34 @@ import {
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
 
 /**
+ * Resolve part index for idempotency (0 when omitted).
+ * Used so single-message callers and legacy rows map to part 0.
+ *
+ * @param sourceNotificationPartIndex - Optional 0-based part index from runtime
+ * @returns Part index for idempotency lookup; 0 when undefined
+ */
+export function getPartIndexForIdempotency(
+  sourceNotificationPartIndex: number | undefined,
+): number {
+  return sourceNotificationPartIndex ?? 0;
+}
+
+/**
+ * Validates sourceNotificationPartIndex when provided: must be a non-negative integer.
+ * @throws Error when value is defined and invalid
+ */
+export function validateSourceNotificationPartIndex(
+  value: number | undefined,
+): void {
+  if (value === undefined) return;
+  if (value < 0 || !Number.isInteger(value)) {
+    throw new Error(
+      "sourceNotificationPartIndex must be a non-negative integer",
+    );
+  }
+}
+
+/**
  * Check whether a task is the account's orchestrator chat thread.
  */
 function isOrchestratorChatTask(params: {
@@ -172,6 +200,7 @@ export const listThreadForTool = internalQuery({
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread.
  * When sourceNotificationId is provided, returns existing message id if one already exists (idempotency).
+ * sourceNotificationPartIndex enables multiple messages per notification with per-part idempotency.
  */
 export const createFromAgent = internalMutation({
   args: {
@@ -180,6 +209,8 @@ export const createFromAgent = internalMutation({
     content: v.string(),
     attachments: v.optional(v.array(attachmentValidator)),
     sourceNotificationId: v.optional(v.id("notifications")),
+    /** 0-based part index for multi-message delivery from one notification. */
+    sourceNotificationPartIndex: v.optional(v.number()),
     /** When false, agent mentions are excluded from notifications/subscriptions; message content is unchanged. */
     allowAgentMentions: v.boolean(),
     /** When true, suppress agent notifications for this message (prevents reply loops). */
@@ -215,16 +246,35 @@ export const createFromAgent = internalMutation({
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
 
-    // Idempotency: if we already have a message for this notification, return it
-    if (args.sourceNotificationId) {
-      const existing = await ctx.db
+    // Idempotency: (sourceNotificationId, sourceNotificationPartIndex) with backward-compat for legacy part-0
+    validateSourceNotificationPartIndex(args.sourceNotificationPartIndex);
+    const partIndex = getPartIndexForIdempotency(args.sourceNotificationPartIndex);
+    if (args.sourceNotificationId !== undefined) {
+      const existingByPart = await ctx.db
         .query("messages")
-        .withIndex("by_source_notification", (q) =>
-          q.eq("sourceNotificationId", args.sourceNotificationId!),
+        .withIndex("by_source_notification_part", (q) =>
+          q
+            .eq("sourceNotificationId", args.sourceNotificationId!)
+            .eq("sourceNotificationPartIndex", partIndex),
         )
         .first();
-      if (existing) {
-        return existing._id;
+      if (existingByPart) {
+        return existingByPart._id;
+      }
+      // Legacy: messages created before part index exist with undefined partIndex; treat as part 0
+      if (partIndex === 0) {
+        const legacyExisting = await ctx.db
+          .query("messages")
+          .withIndex("by_source_notification", (q) =>
+            q.eq("sourceNotificationId", args.sourceNotificationId!),
+          )
+          .first();
+        if (
+          legacyExisting &&
+          legacyExisting.sourceNotificationPartIndex === undefined
+        ) {
+          return legacyExisting._id;
+        }
       }
     }
 
@@ -313,6 +363,8 @@ export const createFromAgent = internalMutation({
       attachments: resolvedAttachments,
       createdAt: now,
       sourceNotificationId: args.sourceNotificationId,
+      sourceNotificationPartIndex:
+        args.sourceNotificationId !== undefined ? partIndex : undefined,
     });
 
     await ctx.db.patch(args.taskId, {

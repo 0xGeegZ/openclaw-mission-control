@@ -885,7 +885,10 @@ function runHeartbeatCycle(
         heartbeatMessage,
         sendOptions,
       );
-      let responseText = result.text?.trim() ?? "";
+      let responseText =
+        result.texts.length > 0
+          ? result.texts.map((t) => t.trim()).filter(Boolean).join("\n")
+          : "";
       let successfulResponseRequestToolCallCount = 0;
 
       if (result.toolCalls.length > 0) {
@@ -917,12 +920,18 @@ function runHeartbeatCycle(
         }
         if (outputs.length > 0) {
           try {
-            const finalText = await sendOpenClawToolResults(
+            const finalTexts = await sendOpenClawToolResults(
               agent.sessionKey,
               outputs,
             );
-            if (finalText?.trim()) {
-              responseText = finalText.trim();
+            if (
+              finalTexts?.length > 0 &&
+              finalTexts.some((t) => t.trim())
+            ) {
+              responseText = finalTexts
+                .map((t) => t.trim())
+                .filter(Boolean)
+                .join("\n");
             }
           } catch (error) {
             const message =

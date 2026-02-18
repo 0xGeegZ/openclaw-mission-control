@@ -1667,6 +1667,8 @@ export const createMessageFromAgent = action({
       ),
     ),
     sourceNotificationId: v.optional(v.id("notifications")),
+    /** 0-based part index for multi-message delivery from one notification. */
+    sourceNotificationPartIndex: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ messageId: Id<"messages"> }> => {
     // Validate service token
@@ -1718,6 +1720,7 @@ export const createMessageFromAgent = action({
         content: args.content,
         attachments: args.attachments,
         sourceNotificationId: args.sourceNotificationId,
+        sourceNotificationPartIndex: args.sourceNotificationPartIndex,
         allowAgentMentions,
         suppressAgentNotifications,
       },

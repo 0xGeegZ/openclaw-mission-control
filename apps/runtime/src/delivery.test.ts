@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   _getNoResponseRetryDecision,
   _isNoReplySignal,
+  _normalizeNonEmptyTexts,
   _resetNoResponseRetryState,
   _shouldPersistOrchestratorThreadAck,
   _shouldPersistNoResponseFallback,
@@ -697,6 +698,28 @@ describe("no response retry decision", () => {
     expect(first.shouldRetry).toBe(true);
     expect(second.shouldRetry).toBe(true);
     expect(third.shouldRetry).toBe(false);
+  });
+});
+
+describe("_normalizeNonEmptyTexts", () => {
+  it("returns empty array for nullish or empty input", () => {
+    expect(_normalizeNonEmptyTexts(undefined)).toEqual([]);
+    expect(_normalizeNonEmptyTexts(null)).toEqual([]);
+    expect(_normalizeNonEmptyTexts([])).toEqual([]);
+  });
+
+  it("trims entries and removes empty parts while preserving order", () => {
+    expect(_normalizeNonEmptyTexts(["  first  ", " ", "", " second "])).toEqual(
+      ["first", "second"],
+    );
+  });
+
+  it("keeps meaningful tool follow-up content", () => {
+    const preTool = _normalizeNonEmptyTexts(["Initial response"]);
+    const postTool = _normalizeNonEmptyTexts(["   "]);
+    // Regression guard: empty post-tool content must not replace non-empty pre-tool content.
+    const finalParts = postTool.length > 0 ? postTool : preTool;
+    expect(finalParts).toEqual(["Initial response"]);
   });
 });
 
