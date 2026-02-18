@@ -19,20 +19,21 @@ import { toast } from "sonner";
 import { cn } from "@packages/ui/lib/utils";
 import { DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 
-type BehaviorFlags = {
-  canCreateTasks: boolean;
-  canModifyTaskStatus: boolean;
-  canCreateDocuments: boolean;
-  canMentionAgents: boolean;
-  canReviewTasks: boolean;
-  canMarkDone: boolean;
-};
+type BehaviorFlags = Pick<
+  {
+    [K in keyof typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags]: boolean;
+  },
+  | "canCreateTasks"
+  | "canModifyTaskStatus"
+  | "canCreateDocuments"
+  | "canMentionAgents"
+  | "canReviewTasks"
+  | "canMarkDone"
+>;
 
 /** Default behavior flags; single source from shared config. */
 const DEFAULT_FLAGS: BehaviorFlags = {
   ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
-  canReviewTasks: false,
-  canMarkDone: false,
 };
 
 interface AgentBehaviorFlagsCardProps {

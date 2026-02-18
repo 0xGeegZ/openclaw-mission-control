@@ -520,9 +520,8 @@ export const listAgents = action({
           `Missing systemSessionKey for agent ${agent._id} (${agent.slug}); listAgentsWithSystemSessions must return a key per agent`,
         );
       }
-      const { sessionKey: _legacy, ...agentRest } = agent;
       return {
-        ...agentRest,
+        ...agent,
         systemSessionKey,
         effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
       };

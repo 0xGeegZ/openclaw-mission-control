@@ -251,12 +251,6 @@ export default defineSchema({
     /** Detailed description of agent's responsibilities */
     description: v.optional(v.string()),
 
-    /**
-     * Deprecated display-only session key retained for backward-compatible UI/seed shape.
-     * Runtime routing uses agentRuntimeSessions exclusively.
-     */
-    sessionKey: v.string(),
-
     /** Current operational status */
     status: agentStatusValidator,
 
@@ -359,8 +353,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
-    .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]),
+    .index("by_account_slug", ["accountId", "slug"]),
 
   // ==========================================================================
   // TASKS

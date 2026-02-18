@@ -131,6 +131,8 @@ export class AgentFactory {
           canModifyTaskStatus: true,
           canCreateDocuments: true,
           canMentionAgents: true,
+          canReviewTasks: false,
+          canMarkDone: false,
         },
       },
       createdAt: now,

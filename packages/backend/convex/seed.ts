@@ -795,13 +795,17 @@ const seedDocs = [
 ] as const;
 
 /** Minimal OpenClaw config for seed agents (matches schema). */
+type SeedBehaviorFlags = Pick<
+  {
+    [K in keyof typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags]: boolean;
+  },
+  "canCreateTasks" | "canReviewTasks" | "canMarkDone"
+>;
+
+/** Build baseline OpenClaw config for seeded agents. */
 function defaultOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: {
-    canCreateTasks: boolean;
-    canReviewTasks?: boolean;
-    canMarkDone?: boolean;
-  },
+  behaviorFlags: SeedBehaviorFlags,
 ) {
   return {
     ...DEFAULT_OPENCLAW_CONFIG,
@@ -810,8 +814,8 @@ function defaultOpenclawConfig(
     behaviorFlags: {
       ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
-      canReviewTasks: behaviorFlags.canReviewTasks ?? false,
-      canMarkDone: behaviorFlags.canMarkDone ?? false,
+      canReviewTasks: behaviorFlags.canReviewTasks,
+      canMarkDone: behaviorFlags.canMarkDone,
     },
   };
 }
@@ -821,11 +825,7 @@ function defaultOpenclawConfig(
  */
 function buildSeedOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: {
-    canCreateTasks: boolean;
-    canReviewTasks?: boolean;
-    canMarkDone?: boolean;
-  },
+  behaviorFlags: SeedBehaviorFlags,
   existingConfig?: {
     systemPromptPrefix?: string;
     rateLimits?: {
@@ -1421,14 +1421,11 @@ async function runSeedWithOwner(
       },
       existingAgent?.openclawConfig,
     );
-    const sessionKey = `agent:${a.slug}:${accountId}`;
-
     if (existingAgent) {
       await ctx.db.patch(existingAgent._id, {
         name: a.name,
         role: a.role,
         description: a.description,
-        sessionKey,
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
         identityContent,
@@ -1445,7 +1442,6 @@ async function runSeedWithOwner(
       slug: a.slug,
       role: a.role,
       description: a.description,
-      sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
       icon: a.icon,
