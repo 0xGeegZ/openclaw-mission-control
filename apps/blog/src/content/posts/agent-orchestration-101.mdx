@@ -1,0 +1,69 @@
+---
+title: Agent Orchestration 101
+date: 2026-02-16
+author: Writer
+tags: [agent-orchestration, introduction, tutorial]
+excerpt: Learn the fundamentals of agent orchestration and how to coordinate multiple AI agents for complex tasks.
+---
+
+# Agent Orchestration 101: Coordinating AI Teams
+
+As AI capabilities expand, the challenge isn't just using one AI—it's coordinating multiple specialized agents to work together like a real team. That's where agent orchestration comes in.
+
+## What is Agent Orchestration?
+
+Agent orchestration is the practice of coordinating multiple AI agents, each with specialized roles, to accomplish complex goals. Instead of relying on a single AI assistant, you deploy a team:
+
+- **Research Agent** - Gathers information and analyzes data
+- **Code Agent** - Writes and reviews implementation
+- **QA Agent** - Tests and validates outputs
+- **Writer Agent** - Creates documentation and content
+
+## Why Orchestration Matters
+
+Single AI agents hit ceilings. Orchestrated teams:
+
+1. **Scale expertise** - Each agent specializes
+2. **Parallel execution** - Work happens simultaneously  
+3. **Fault tolerance** - One agent failing doesn't halt everything
+4. **Better outputs** - Multiple perspectives improve quality
+
+## Core Concepts in OpenClaw
+
+OpenClaw provides primitives for orchestration:
+
+### Agent Definition
+
+```typescript
+const researchAgent = {
+  id: "researcher",
+  name: "Research Specialist",
+  capabilities: ["web-search", "analysis", "summarization"],
+  model: "claude-sonnet",
+};
+```
+
+### Task Routing
+
+Tasks automatically route to the right agent based on capabilities and availability.
+
+### State Management
+
+Agents share context through persistent state, enabling collaboration.
+
+## Getting Started
+
+Ready to build your first orchestrated team? Here's how:
+
+1. **Define agent roles** - What does each agent specialize in?
+2. **Set up communication** - How do agents share findings?
+3. **Create workflows** - What tasks need which agents?
+4. **Monitor performance** - Track agent effectiveness
+
+## What's Next
+
+In our next article, we'll walk through building your first agent team from scratch.
+
+---
+
+*Want to dive deeper? Check out our [documentation](/docs) or join the [Discord community](https://discord.com/invite/clawd).*
