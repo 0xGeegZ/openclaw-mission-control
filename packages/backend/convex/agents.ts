@@ -5,11 +5,18 @@ import {
   requireAccountMember,
   requireAccountAdmin,
 } from "./lib/auth";
-import { agentStatusValidator } from "./lib/validators";
+import {
+  agentStatusValidator,
+  IDENTITY_CONTENT_MAX_LENGTH,
+} from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
 import { Id, Doc } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
+import {
+  buildDefaultUserContent,
+  buildDefaultIdentityContent,
+} from "./lib/user_identity_fallback";
 
 /**
  * Generate a session key for an agent.
@@ -27,7 +34,11 @@ function getDefaultOpenclawConfig() {
     ...DEFAULT_OPENCLAW_CONFIG,
     skillIds: [],
     contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
-    behaviorFlags: { ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags },
+    behaviorFlags: {
+      ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
+      canReviewTasks: false,
+      canMarkDone: false,
+    },
   };
 }
 
@@ -230,6 +241,7 @@ export const create = mutation({
     avatarUrl: v.optional(v.string()),
     icon: v.optional(v.string()),
     soulContent: v.optional(v.string()),
+    identityContent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountAdmin(ctx, args.accountId);
@@ -262,6 +274,15 @@ export const create = mutation({
     const soulContent =
       args.soulContent ?? generateDefaultSoul(args.name, args.role);
 
+    if (args.identityContent !== undefined) {
+      const trimmed = args.identityContent.trim();
+      if (trimmed.length > IDENTITY_CONTENT_MAX_LENGTH) {
+        throw new Error(
+          `identityContent exceeds maximum length (${IDENTITY_CONTENT_MAX_LENGTH} characters). Got ${trimmed.length}.`,
+        );
+      }
+    }
+
     const agentId = await ctx.db.insert("agents", {
       accountId: args.accountId,
       name: args.name,
@@ -274,6 +295,10 @@ export const create = mutation({
       avatarUrl: args.avatarUrl,
       icon: args.icon,
       soulContent,
+      identityContent:
+        args.identityContent !== undefined
+          ? (args.identityContent ?? "").trim()
+          : undefined,
       openclawConfig,
       createdAt: Date.now(),
     });
@@ -310,6 +335,7 @@ export const update = mutation({
     avatarUrl: v.optional(v.string()),
     icon: v.optional(v.string()),
     soulContent: v.optional(v.string()),
+    identityContent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
@@ -322,6 +348,15 @@ export const update = mutation({
       agent.accountId,
     );
 
+    if (args.identityContent !== undefined) {
+      const trimmed = (args.identityContent ?? "").trim();
+      if (trimmed.length > IDENTITY_CONTENT_MAX_LENGTH) {
+        throw new Error(
+          `identityContent exceeds maximum length (${IDENTITY_CONTENT_MAX_LENGTH} characters). Got ${trimmed.length}.`,
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = {};
 
     if (args.name !== undefined) updates.name = args.name;
@@ -332,6 +367,8 @@ export const update = mutation({
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
     if (args.icon !== undefined) updates.icon = args.icon;
     if (args.soulContent !== undefined) updates.soulContent = args.soulContent;
+    if (args.identityContent !== undefined)
+      updates.identityContent = (args.identityContent ?? "").trim();
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.agentId, updates);
@@ -539,6 +576,8 @@ export const updateOpenclawConfig = mutation({
           canModifyTaskStatus: v.boolean(),
           canCreateDocuments: v.boolean(),
           canMentionAgents: v.boolean(),
+          canReviewTasks: v.boolean(),
+          canMarkDone: v.boolean(),
           requiresApprovalForActions: v.optional(v.array(v.string())),
         }),
       ),
@@ -727,5 +766,127 @@ export const migrateAgentsToDefaultModel = mutation({
     }
 
     return { agentsUpdated, accountsUpdated };
+  },
+});
+
+/**
+ * One-time migration: scaffold USER.md and IDENTITY.md fields and explicit review/done behavior flags.
+ * Call per account (admin-only). Sets account.settings.userMd if missing; sets each agent's
+ * identityContent if missing and ensures behaviorFlags.canReviewTasks/canMarkDone exist.
+ * For backward compatibility, agents with slug "qa" get canReviewTasks and canMarkDone true;
+ * "squad-lead" gets canMarkDone true.
+ *
+ * @returns { accountsUpdated, agentsUpdated }. Managed doc updates (docsUpdated) are out of scope for this mutation.
+ */
+export const migratePromptScaffold = mutation({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    await requireAccountAdmin(ctx, args.accountId);
+
+    const account = await ctx.db.get(args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+
+    let accountsUpdated = 0;
+    let agentsUpdated = 0;
+
+    const settings = (account.settings ?? {}) as {
+      userMd?: string;
+      agentDefaults?: { behaviorFlags?: Record<string, unknown> };
+      [key: string]: unknown;
+    };
+
+    const settingsBehaviorFlags =
+      typeof settings.agentDefaults?.behaviorFlags === "object" &&
+      settings.agentDefaults?.behaviorFlags !== null
+        ? (settings.agentDefaults.behaviorFlags as Record<string, unknown>)
+        : undefined;
+    const needsAccountDefaultsBackfill =
+      settingsBehaviorFlags !== undefined &&
+      (typeof settingsBehaviorFlags.canReviewTasks !== "boolean" ||
+        typeof settingsBehaviorFlags.canMarkDone !== "boolean");
+    const needsUserMdBackfill =
+      settings.userMd === undefined || settings.userMd === null;
+    if (needsUserMdBackfill || needsAccountDefaultsBackfill) {
+      await ctx.db.patch(args.accountId, {
+        settings: {
+          ...account.settings,
+          ...(needsUserMdBackfill && { userMd: buildDefaultUserContent() }),
+          ...(needsAccountDefaultsBackfill && {
+            agentDefaults: {
+              ...(settings.agentDefaults ?? {}),
+              behaviorFlags: {
+                ...getDefaultOpenclawConfig().behaviorFlags,
+                ...settingsBehaviorFlags,
+                canReviewTasks:
+                  typeof settingsBehaviorFlags?.canReviewTasks === "boolean"
+                    ? settingsBehaviorFlags.canReviewTasks
+                    : false,
+                canMarkDone:
+                  typeof settingsBehaviorFlags?.canMarkDone === "boolean"
+                    ? settingsBehaviorFlags.canMarkDone
+                    : false,
+              },
+            },
+          }),
+        },
+      });
+      accountsUpdated = 1;
+    }
+
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
+      .collect();
+
+    const defaultFlags = getDefaultOpenclawConfig().behaviorFlags;
+
+    for (const agent of agents) {
+      const updates: Record<string, unknown> = {};
+      if (
+        agent.identityContent === undefined ||
+        agent.identityContent === null
+      ) {
+        updates.identityContent = buildDefaultIdentityContent(
+          agent.name,
+          agent.role,
+        );
+      }
+
+      const flags = agent.openclawConfig?.behaviorFlags as
+        | Record<string, unknown>
+        | undefined;
+      const needReview =
+        typeof flags?.canReviewTasks !== "boolean" ||
+        typeof flags?.canMarkDone !== "boolean";
+      if (needReview && agent.openclawConfig) {
+        const nextFlags = {
+          ...defaultFlags,
+          ...flags,
+          canReviewTasks:
+            typeof flags?.canReviewTasks === "boolean"
+              ? flags.canReviewTasks
+              : agent.slug === "qa",
+          canMarkDone:
+            typeof flags?.canMarkDone === "boolean"
+              ? flags.canMarkDone
+              : agent.slug === "qa" || agent.slug === "squad-lead",
+        };
+        updates.openclawConfig = {
+          ...agent.openclawConfig,
+          behaviorFlags: nextFlags,
+        };
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(agent._id, updates);
+        agentsUpdated += 1;
+      }
+    }
+
+    return { accountsUpdated, agentsUpdated };
   },
 });

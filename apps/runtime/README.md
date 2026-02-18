@@ -50,7 +50,7 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error).                                                                                                                   |
 | `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                                                                                                                                       |
 | `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `300000`). Clamped to 5000–600000. Use 600000 (10 min) if agents often run long (e.g. many tool calls); otherwise the reply may time out and not appear in the UI.                                                                                                                                   |
-| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled. Other profile-sync paths are derived internally from this folder.                                                                                                                |
+| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `USER.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled. Other profile-sync paths are derived internally from this folder.                                                                                                                |
 | `OPENCLAW_PROFILE_SYNC`                               | No       | Set to `true` to enable profile sync (workspaces and openclaw.json); default is disabled.                                                                                                                                                                                                                                                                |
 | `OPENCLAW_CLIENT_TOOLS_ENABLED`                       | No       | When `false`, disable client-side tools and rely on HTTP fallbacks.                                                                                                                                                                                                                                                                                      |
 | `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                                                                                                                                              |
@@ -59,17 +59,19 @@ Copy [.env.example](./.env.example) to `.env` and set:
 | `OPENCLAW_BROWSER_EXECUTABLE_PATH`                    | No       | Optional managed-browser executable override used by the gateway startup script. If unset, startup auto-detects in this order: `brave-browser`, `chromium`, `chromium-browser`.                                                                                                                                                                          |
 | `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                                                                                                                                              |
 
-### Applying updates to agent prompts (AGENTS.md, HEARTBEAT.md)
+### Applying updates to agent prompts (USER.md, IDENTITY.md, AGENTS.md, HEARTBEAT.md)
 
-Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
+Agents read USER.md, IDENTITY.md, AGENTS.md, and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
 
-1. **Restart the runtime** so profile sync runs again. Sync writes the current AGENTS.md and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
+1. **Restart the runtime** so profile sync runs again. Sync writes USER.md (from account settings), IDENTITY.md (from agent identityContent or default), SOUL.md, AGENTS.md, and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
 
 2. **Where does the content come from?**
-   - Runtime prefers repo docs when available (`docs/runtime/AGENTS.md`, `docs/runtime/HEARTBEAT.md`) and falls back to embedded defaults when those files are unavailable.
+   - USER.md: account `settings.userMd` (editable in Settings > Agent Profile) or default.
+   - IDENTITY.md: agent `identityContent` or default from name/role.
+   - AGENTS.md / HEARTBEAT.md: runtime prefers repo docs when available (`docs/runtime/AGENTS.md`, `docs/runtime/HEARTBEAT.md`) and falls back to embedded defaults when those files are unavailable.
    - After updating docs or runtime code, restart runtime so profile sync rewrites agent workspace files.
 
-3. **Optional:** Re-run seed so the Convex reference document “AGENTS.md — Operating Manual” stays in sync for the dashboard; agents themselves are driven by the runtime workspace files, not by that document.
+3. **Optional:** Re-run seed so the Convex reference document “AGENTS.md — Operating Manual” stays in sync for the dashboard; agents themselves are driven by the runtime workspace files, not by that document. See [PROMPT_LAYERING_AUDIT.md](../../docs/runtime/PROMPT_LAYERING_AUDIT.md) for ownership rules.
 
 ### Repo and worktrees
 

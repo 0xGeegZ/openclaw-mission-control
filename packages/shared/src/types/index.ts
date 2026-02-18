@@ -253,6 +253,8 @@ export interface OpenClawConfig {
     canModifyTaskStatus: boolean;
     canCreateDocuments: boolean;
     canMentionAgents: boolean;
+    canReviewTasks?: boolean;
+    canMarkDone?: boolean;
     requiresApprovalForActions?: string[];
   };
 }

@@ -5,7 +5,7 @@ import { MODEL_TO_OPENCLAW, type LLMModel } from "@packages/shared";
 
 const log = createLogger("[OpenClawProfiles]");
 
-/** Agent payload from listAgentsForRuntime (effectiveSoulContent, resolvedSkills). */
+/** Agent payload from listAgentsForRuntime (effectiveSoulContent, effectiveUserMd, effectiveIdentityContent, resolvedSkills). */
 export interface AgentForProfile {
   _id: string;
   name: string;
@@ -20,6 +20,8 @@ export interface AgentForProfile {
     [key: string]: unknown;
   };
   effectiveSoulContent: string;
+  effectiveUserMd: string;
+  effectiveIdentityContent: string;
   resolvedSkills: Array<{
     _id: string;
     name: string;
@@ -59,19 +61,12 @@ export interface ProfileSyncOptions {
   heartbeatMdPath?: string;
 }
 
-/** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). */
+/** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). Platform-only; repo/worktree details come from seed-owned Repository document. */
 const DEFAULT_AGENTS_MD = `# AGENTS.md - OpenClaw Mission Control Operating Manual
 
 ## What you are
 
 You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
-
-## Primary repository
-
-- Main clone (fetch, pull, worktree management only): /root/clawd/repos/openclaw-mission-control. In the main clone run only git fetch, git pull, and git worktree add/remove. Do not perform code edits, commits, or PR creation in the main clone.
-- Task worktree (required): all code work must happen in /root/clawd/worktrees/feat-task-<taskId>. From the main clone: git fetch origin, git checkout dev, git pull, then create worktree: git worktree add /root/clawd/worktrees/feat-task-<taskId> -b feat/task-<taskId> (or omit -b if the branch exists). All file edits, commit, push, and gh pr create must be run from the worktree directory.
-- Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
-- One branch per task: use branch feat/task-<taskId> (from your notification); work only in that branch's worktree and push/PR only from the worktree.
 
 ## Non-negotiable rules
 
@@ -97,13 +92,13 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Prefer memory tools first: use memory_get / memory_set when available.
 - Use read only for explicit file paths, never for directories.
 - Read arguments must include a JSON object with path, for example: {"path":"memory/WORKING.md"}.
-- Only use read with paths under /root/clawd; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
+- Only use read with paths under your workspace; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
 - If memory/YYYY-MM-DD.md is missing, create it before reading it.
 
 ## Document sharing (critical)
 
 - When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
-- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md, /root/clawd/deliverables/...) — the primary user cannot open them.
+- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths — the primary user cannot open them.
 
 ## Working with multiple assignees
 
@@ -649,6 +644,15 @@ export function syncOpenClawProfiles(
     ensureDir(agentDir);
 
     writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
+    writeIfChanged(
+      path.join(agentDir, "USER.md"),
+      agent.effectiveUserMd?.trim() || "# User\n\nAccount context (edit in Settings > Agent Profile).",
+    );
+    writeIfChanged(
+      path.join(agentDir, "IDENTITY.md"),
+      agent.effectiveIdentityContent?.trim() ||
+        `# IDENTITY — ${agent.name}\n\nRole: ${agent.role}\n\nYou are **${agent.name}**, a specialist agent.`,
+    );
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
     writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(

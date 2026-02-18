@@ -537,6 +537,8 @@ interface AgentForRuntimePayload {
   sessionKey: string;
   openclawConfig: Doc<"agents">["openclawConfig"];
   effectiveSoulContent: string;
+  effectiveUserMd: string;
+  effectiveIdentityContent: string;
   resolvedSkills: Array<{
     _id: Id<"skills">;
     name: string;

@@ -4,6 +4,8 @@ import { DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
 /** Default behavior flags; single source from shared config. Re-exported for callers that need the constant. */
 export const DEFAULT_BEHAVIOR_FLAGS: BehaviorFlags = {
   ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
+  canReviewTasks: false,
+  canMarkDone: false,
 };
 
 export type BehaviorFlags = {
@@ -11,6 +13,8 @@ export type BehaviorFlags = {
   canModifyTaskStatus: boolean;
   canCreateDocuments: boolean;
   canMentionAgents: boolean;
+  canReviewTasks: boolean;
+  canMarkDone: boolean;
 };
 
 /**

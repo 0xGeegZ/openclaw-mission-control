@@ -292,5 +292,7 @@ export const DEFAULT_OPENCLAW_CONFIG = {
     canModifyTaskStatus: true,
     canCreateDocuments: true,
     canMentionAgents: true,
+    canReviewTasks: false,
+    canMarkDone: false,
   },
 } as const;

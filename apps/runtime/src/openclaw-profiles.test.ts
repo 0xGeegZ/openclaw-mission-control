@@ -202,8 +202,10 @@ describe("syncOpenClawProfiles", () => {
         slug: "engineer",
         role: "Engineer",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL\n",
-        resolvedSkills: [],
+effectiveSoulContent: "# SOUL\n",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [],
       },
     ];
     const result = syncOpenClawProfiles(agents, {
@@ -236,6 +238,8 @@ describe("syncOpenClawProfiles", () => {
         role: "Engineer",
         sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL\n",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -274,8 +278,10 @@ describe("syncOpenClawProfiles", () => {
         slug: "..",
         role: "Role",
         sessionKey: "agent:..:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [],
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [],
       },
       {
         _id: "a2",
@@ -283,8 +289,10 @@ describe("syncOpenClawProfiles", () => {
         slug: "good",
         role: "Role",
         sessionKey: "agent:good:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [],
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [],
       },
     ];
     syncOpenClawProfiles(agents, {
@@ -317,8 +325,10 @@ describe("syncOpenClawProfiles", () => {
             role: "R",
             sessionKey: "agent:gpt-5-nano:acc1",
             openclawConfig: { model: "gpt-5-nano" },
-            effectiveSoulContent: "# SOUL",
-            resolvedSkills: [],
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [],
           },
         ];
         syncOpenClawProfiles(agents, {
@@ -344,8 +354,10 @@ describe("syncOpenClawProfiles", () => {
         slug: "engineer",
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [
           {
             _id: "s1",
             name: "Test Skill",
@@ -395,8 +407,10 @@ disable-model-invocation: true
         slug: "engineer",
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [
           {
             _id: "s1",
             name: "Test Skill",
@@ -442,8 +456,10 @@ disable-model-invocation: true
         slug: "engineer",
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [
           {
             _id: "s1",
             name: "Web Search",
@@ -485,8 +501,10 @@ description: Custom name in frontmatter
         slug: "engineer",
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [
           {
             _id: "s1",
             name: "Display Name",
@@ -531,6 +549,8 @@ description: Custom name in frontmatter
           role: "Engineer",
           sessionKey: "agent:engineer:acc1",
           effectiveSoulContent: "# SOUL\n",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
           resolvedSkills: [],
         },
       ];
@@ -546,8 +566,6 @@ description: Custom name in frontmatter
       expect(content).toContain("Before requesting QA");
       expect(content).toContain("move the task to REVIEW first");
       expect(content).not.toContain("If you need human review: move to REVIEW");
-      expect(content).toContain("worktree");
-      expect(content).toContain("/root/clawd/worktrees");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -564,8 +582,10 @@ description: Custom name in frontmatter
         slug: "engineer",
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [
           {
             _id: "s1",
             name: "No Content",
@@ -620,8 +640,10 @@ description: Custom name in frontmatter
         slug: agentSlug,
         role: "R",
         sessionKey: "agent:engineer:acc1",
-        effectiveSoulContent: "# SOUL",
-        resolvedSkills: [],
+effectiveSoulContent: "# SOUL",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
+          resolvedSkills: [],
       },
     ];
 
