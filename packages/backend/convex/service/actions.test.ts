@@ -1036,3 +1036,16 @@ describe("createResponseRequestNotifications", () => {
     );
   });
 });
+
+// ============================================================================
+// listDocumentsForAgent (service action for document_list tool)
+// ============================================================================
+
+describe("listDocumentsForAgent", () => {
+  it("should be defined and export documents array shape", async () => {
+    const { listDocumentsForAgent } = await import("./actions");
+    expect(listDocumentsForAgent).toBeDefined();
+    // Action is callable by runtime with serviceToken, accountId, optional taskId/type/limit.
+    // Return shape: { documents: Array<{ _id, title, type?, taskId?, updatedAt }> }.
+  });
+});

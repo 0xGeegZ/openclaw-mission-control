@@ -1,11 +1,84 @@
 import { v } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import {
   documentTypeValidator,
   DOCUMENT_TITLE_MAX_LENGTH,
   DOCUMENT_CONTENT_MAX_LENGTH,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
+
+/** Display name for list: name ?? title ?? "Untitled". */
+function documentDisplayTitle(doc: {
+  name?: string | null;
+  title?: string | null;
+}): string {
+  return doc.name ?? doc.title ?? "Untitled";
+}
+
+/**
+ * List documents for agent tools (internal, service-only).
+ * Uses by_account_updated when no taskId; by_task when taskId provided.
+ * Excludes soft-deleted; returns minimal shape (no content).
+ */
+export const listForAgentTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    taskId: v.optional(v.id("tasks")),
+    type: v.optional(documentTypeValidator),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 50, 100);
+    const accountId = args.accountId;
+    const typeFilter = args.type;
+
+    if (args.taskId) {
+      const task = await ctx.db.get(args.taskId);
+      if (!task || task.accountId !== accountId) {
+        return [];
+      }
+      const docs = await ctx.db
+        .query("documents")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId!))
+        .collect();
+      let filtered = docs.filter(
+        (d) => !d.deletedAt && d.accountId === accountId,
+      );
+      if (typeFilter) {
+        filtered = filtered.filter((d) => d.type === typeFilter);
+      }
+      return filtered
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, limit)
+        .map((d) => ({
+          _id: d._id,
+          title: documentDisplayTitle(d),
+          type: d.type,
+          taskId: d.taskId,
+          updatedAt: d.updatedAt,
+        }));
+    }
+
+    const fetchLimit = Math.min(limit * 2, 100);
+    const docs = await ctx.db
+      .query("documents")
+      .withIndex("by_account_updated", (q) => q.eq("accountId", accountId))
+      .order("desc")
+      .take(fetchLimit);
+    const filtered = docs.filter((d) => !d.deletedAt);
+    const byType = typeFilter
+      ? filtered.filter((d) => d.type === typeFilter)
+      : filtered;
+    return byType.slice(0, limit).map((d) => ({
+      _id: d._id,
+      title: documentDisplayTitle(d),
+      type: d.type,
+      taskId: d.taskId,
+      updatedAt: d.updatedAt,
+    }));
+  },
+});
 
 /**
  * Service-only document functions.

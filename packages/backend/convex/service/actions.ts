@@ -1676,6 +1676,64 @@ export const createDocumentFromAgent = action({
 });
 
 /**
+ * Result shape for listDocumentsForAgent (minimal list, no content).
+ */
+export interface ListDocumentsForAgentResult {
+  documents: Array<{
+    _id: Id<"documents">;
+    title: string;
+    type?: string;
+    taskId?: Id<"tasks">;
+    updatedAt: number;
+  }>;
+}
+
+const listDocumentsForAgentReturns = v.object({
+  documents: v.array(
+    v.object({
+      _id: v.id("documents"),
+      title: v.string(),
+      type: v.optional(v.string()),
+      taskId: v.optional(v.id("tasks")),
+      updatedAt: v.number(),
+    }),
+  ),
+});
+
+/**
+ * List documents for agent tools (service-only).
+ * Used by document_list tool for discovery; excludes soft-deleted.
+ */
+export const listDocumentsForAgent = action({
+  args: {
+    serviceToken: v.string(),
+    accountId: v.id("accounts"),
+    taskId: v.optional(v.id("tasks")),
+    type: v.optional(documentTypeValidator),
+    limit: v.optional(v.number()),
+  },
+  returns: listDocumentsForAgentReturns,
+  handler: async (ctx, args): Promise<ListDocumentsForAgentResult> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    const limit = Math.min(args.limit ?? 50, 100);
+    const documents = await ctx.runQuery(
+      internal.service.documents.listForAgentTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        type: args.type,
+        limit,
+      },
+    );
+    return { documents };
+  },
+});
+
+/**
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread (e.g. after OpenClaw response write-back).
  * Optional sourceNotificationId enables idempotent delivery (no duplicate messages on retry).
