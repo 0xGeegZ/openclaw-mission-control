@@ -594,9 +594,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         // Null or missing context: notification stays undelivered and will be retried on next poll.
         const deliveryContext = context as GetForDeliveryResult | null;
         if (deliveryContext?.agent) {
-          /** Backend returns GetForDeliveryResult (id as string); runtime uses DeliveryContext (Id<"agents">). Structurally compatible for policy/prompt. */
-          const ctx: DeliveryContext =
-            deliveryContext as unknown as DeliveryContext;
+          const ctx: DeliveryContext = deliveryContext;
           if (!ctx.agent) continue;
           if (ctx.notification?.taskId && !ctx.task) {
             await markDeliveredAndLog(
