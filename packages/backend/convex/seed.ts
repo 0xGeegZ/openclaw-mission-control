@@ -6,6 +6,10 @@ import {
   buildDefaultUserContent,
   buildDefaultIdentityContent,
 } from "./lib/user_identity_fallback";
+import {
+  SOUL_UNIVERSAL_OPERATING_RULES,
+  SOUL_UNIVERSAL_NEVER_DO,
+} from "./lib/agent_soul";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
@@ -899,6 +903,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -939,6 +944,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "engineer":
       return `# SOUL — ${name}
@@ -962,6 +968,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - When the task has other agent assignees, declare your sub-scope in your first reply, ask dependency questions in-thread, and record agreed decisions before implementation; use response_request for any dependency on co-assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -989,6 +996,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "qa":
       return `# SOUL — ${name}
@@ -1014,6 +1022,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - When the task has multiple assignees, verify cross-assignee integration and call out missing handoffs, unanswered dependency questions, or missing agreement summaries in the thread.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1047,6 +1056,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "designer":
       return `# SOUL — ${name}
@@ -1067,6 +1077,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Keep feedback actionable and scoped.
 - When co-assigned with other agents, state your design scope in your first reply, ask dependency questions in-thread, and use response_request if you need input from another assignee.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1094,6 +1105,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Change established design decisions without documenting rationale.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "writer":
       return `# SOUL — ${name}
@@ -1114,6 +1126,7 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Provide multiple headline or CTA options when relevant.
 - When co-assigned with other agents, declare your content scope, ask dependency questions in-thread, and use response_request for dependencies on other assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1141,9 +1154,10 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Fabricate stats or testimonials.
 - Change brand voice without approval.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     default:
-      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n`;
+      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n${SOUL_UNIVERSAL_OPERATING_RULES}\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n${SOUL_UNIVERSAL_NEVER_DO}\n`;
   }
 }
 

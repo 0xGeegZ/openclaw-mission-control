@@ -389,6 +389,15 @@ export const createFromAgent = internalMutation({
     await ensureOrchestratorSubscribed(ctx, accountId, taskId);
     for (const assignedAgentId of assignedAgentIds) {
       await ensureSubscribed(ctx, accountId, taskId, "agent", assignedAgentId);
+      await createAssignmentNotification(
+        ctx,
+        accountId,
+        taskId,
+        "agent",
+        assignedAgentId,
+        agent.name,
+        args.title,
+      );
     }
 
     return taskId;

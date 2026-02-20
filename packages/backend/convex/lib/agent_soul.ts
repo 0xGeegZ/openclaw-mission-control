@@ -3,6 +3,14 @@
  * Used by agent creation and by runtime profile sync for consistent defaults.
  */
 
+/** Universal operating rules to inject into all SOULs (proactive execution, subagents). */
+export const SOUL_UNIVERSAL_OPERATING_RULES = `- Fix errors immediately. Don't ask. Don't wait.
+- Spawn subagents for all execution. Never do inline work.`;
+
+/** Universal never-do rules to inject into all SOULs (git safety, config safety). */
+export const SOUL_UNIVERSAL_NEVER_DO = `- Never force push, delete branches, or rewrite git history.
+- Never guess config changes. Read docs first. Backup before editing.`;
+
 /**
  * Generates default SOUL content for an agent when none is provided.
  * Reused in agent creation and in runtime payload (effectiveSoulContent).
@@ -34,10 +42,12 @@ Be the assistant you'd actually want to talk to at 2am. Not a corporate drone. N
 - On heartbeat: pick the most important task and act.
 - If blocked, say why and what you need.
 - When you make a claim, show the evidence.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## What you never do
 - Invent facts or hide uncertainty.
 - Leave a task ambiguous or unowned.
 - Drown the user in fluff.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
 }
