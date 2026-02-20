@@ -96,6 +96,23 @@ export const get = query({
 });
 
 /**
+ * Get account by ID and throw if not found.
+ * Requires membership.
+ */
+export const getByIdOrThrow = query({
+  args: {
+    accountId: v.id("accounts"),
+  },
+  handler: async (ctx, args) => {
+    const { account } = await requireAccountMember(ctx, args.accountId);
+    if (!account) {
+      throw new Error("Not found: Account does not exist");
+    }
+    return account;
+  },
+});
+
+/**
  * Get account by ID (internal query).
  * No auth required - for use in service actions.
  */
@@ -206,7 +223,7 @@ const accountSettingsValidator = v.object({
   agentDefaults: v.optional(agentDefaultsValidator),
   /** Pass null to clear the orchestrator. */
   orchestratorAgentId: v.optional(v.union(v.id("agents"), v.null())),
-  /** Pass null to clear the orchestrator chat task. */
+  /** Task ID for orchestrator chat thread. Pass null to clear. */
   orchestratorChatTaskId: v.optional(v.union(v.id("tasks"), v.null())),
 });
 

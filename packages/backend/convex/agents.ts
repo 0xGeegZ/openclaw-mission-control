@@ -13,6 +13,7 @@ import { logActivity } from "./lib/activity";
 import { generateDefaultSoul } from "./lib/agent_soul";
 import { Id, Doc } from "./_generated/dataModel";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
+import { checkQuota, incrementUsage } from "./lib/quotaHelpers";
 import {
   buildDefaultUserContent,
   buildDefaultIdentityContent,
@@ -242,6 +243,14 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountAdmin(ctx, args.accountId);
 
+    // Check agent quota before proceeding
+    const quotaCheck = await checkQuota(ctx, args.accountId, "agents");
+    if (!quotaCheck.allowed) {
+      throw new Error(
+        `Quota exceeded: ${quotaCheck.message}. Upgrade your plan to create more agents.`,
+      );
+    }
+
     // Check slug uniqueness within account
     const existing = await ctx.db
       .query("agents")
@@ -295,6 +304,9 @@ export const create = mutation({
       openclawConfig,
       createdAt: Date.now(),
     });
+
+    // Increment agent quota usage after successful insert
+    await incrementUsage(ctx, args.accountId, "agents");
 
     // Log activity
     await logActivity({

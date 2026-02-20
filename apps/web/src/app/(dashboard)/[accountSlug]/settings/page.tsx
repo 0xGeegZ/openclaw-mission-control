@@ -73,12 +73,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
-import {
-  isValidSlug,
-  validateAccountName,
-  validateUserMd,
-  USER_MD_MAX_LENGTH,
-} from "@/lib/settings-validation";
+import { isValidSlug, validateAccountName, validateUserMd, USER_MD_MAX_LENGTH } from "@/lib/settings-validation";
+import { BillingTab } from "@/components/billing/BillingTab";
 
 interface SettingsPageProps {
   params: Promise<{ accountSlug: string }>;
@@ -698,6 +694,11 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               </CardContent>
             </Card>
 
+            <TabsContent value="billing" className="mt-6 space-y-6">
+              {accountId && (
+                <BillingTab accountId={accountId} accountSlug={accountSlug} />
+              )}
+
             {/* Pending Invitations - admin only */}
             {isAdmin && pendingInvitations && pendingInvitations.length > 0 && (
               <Card>
@@ -1002,7 +1003,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                   </p>
                 </div>
               </CardContent>
-            </Card>
+            </TabsContent>
           </TabsContent>
         </Tabs>
       </div>

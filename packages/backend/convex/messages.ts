@@ -14,6 +14,45 @@ import {
   createMentionNotifications,
   createThreadNotifications,
 } from "./lib/notifications";
+import type { QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { checkQuota, incrementUsage } from "./lib/quotaHelpers";
+
+const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/**
+ * Check whether a task is the account's orchestrator chat thread.
+ */
+function isOrchestratorChatTask(params: {
+  account: Doc<"accounts"> | null;
+  task: Doc<"tasks">;
+}): boolean {
+  const { account, task } = params;
+  if (task.labels?.includes(ORCHESTRATOR_CHAT_LABEL)) return true;
+  const settings = account?.settings as
+    | { orchestratorChatTaskId?: Id<"tasks"> }
+    | undefined;
+  return settings?.orchestratorChatTaskId === task._id;
+}
+
+/**
+ * Resolve attachment URLs at read time so clients always get fresh URLs
+ * (stored URLs may be time-limited). Legacy attachments with only url are unchanged.
+ */
+async function resolveAttachmentUrls(
+  ctx: QueryCtx,
+  attachments: Doc<"messages">["attachments"],
+): Promise<Doc<"messages">["attachments"]> {
+  if (!attachments?.length) return attachments;
+  return await Promise.all(
+    attachments.map(async (a) => {
+      const url = a.storageId
+        ? await ctx.storage.getUrl(a.storageId)
+        : (a.url ?? undefined);
+      return { ...a, url: url ?? undefined };
+    }),
+  );
+}
 
 /**
  * List messages for a task thread.
@@ -122,6 +161,23 @@ export const create = mutation({
       ctx,
       task.accountId,
     );
+    const account = await ctx.db.get(accountId);
+    if (!account) {
+      throw new Error("Account not found");
+    }
+
+    // Check message quota before proceeding
+    const quotaCheck = await checkQuota(ctx, accountId, "messages");
+    if (!quotaCheck.allowed) {
+      throw new Error(
+        `Quota exceeded: ${quotaCheck.message}. Upgrade your plan to send more messages.`,
+      );
+    }
+
+    const isOrchestratorChat = isOrchestratorChatTask({ account, task });
+    const orchestratorAgentId =
+      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
+        ?.orchestratorAgentId ?? null;
 
     if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
       throw new Error(
@@ -172,6 +228,9 @@ export const create = mutation({
       attachments: args.attachments,
       createdAt: Date.now(),
     });
+
+    // Increment message quota usage after successful insert
+    await incrementUsage(ctx, accountId, "messages");
 
     // Auto-subscribe author to thread
     await ensureSubscribed(ctx, accountId, args.taskId, "user", userId);
