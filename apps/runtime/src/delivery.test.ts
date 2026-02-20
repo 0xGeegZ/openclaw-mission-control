@@ -19,7 +19,7 @@ import {
   buildDeliveryInstructions,
   buildNotificationInput,
 } from "./delivery";
-import type { DeliveryContext } from "./delivery/types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
 import {
   accId,

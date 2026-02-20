@@ -4,7 +4,7 @@
  */
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
-import type { DeliveryContext } from "./types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import {
   isOrchestratorChatTask,
   isRecipientInMultiAssigneeTask,

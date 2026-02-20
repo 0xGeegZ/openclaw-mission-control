@@ -9,7 +9,7 @@
  */
 
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import type { DeliveryContext } from "./types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 
 /** Task statuses for which we skip delivering status_change to agents (avoid ack storms). */
 export const TASK_STATUSES_SKIP_STATUS_CHANGE = new Set<string>([

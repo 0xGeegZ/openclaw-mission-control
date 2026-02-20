@@ -38,11 +38,10 @@ import {
   buildHttpCapabilityLabels,
   buildDeliveryInstructions,
   buildNotificationInput,
+  formatNotificationMessage,
 } from "./delivery/prompt";
-import type { GetForDeliveryResult } from "@packages/backend/convex/service/notifications";
-import type { DeliveryContext } from "./delivery/types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 
-export type { DeliveryContext } from "./delivery/types";
 export {
   buildDeliveryInstructions,
   buildNotificationInput,
@@ -582,7 +581,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
 
     for (const notification of notifications) {
       try {
-        const context = await client.action(
+        const ctx = await client.action(
           api.service.actions.getNotificationForDelivery,
           {
             notificationId: notification._id,
@@ -590,11 +589,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             accountId: config.accountId,
           },
         );
-
-        // Null or missing context: notification stays undelivered and will be retried on next poll.
-        const deliveryContext = context as GetForDeliveryResult | null;
-        if (deliveryContext?.agent) {
-          const ctx: DeliveryContext = deliveryContext;
+        if (ctx?.agent) {
           if (!ctx.agent) continue;
           if (ctx.notification?.taskId && !ctx.task) {
             await markDeliveredAndLog(
@@ -736,7 +731,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             config,
             canModifyTaskStatus,
           );
-        } else if (context?.notification) {
+        } else if (ctx?.notification) {
           await markDeliveredAndLog(
             client,
             config,

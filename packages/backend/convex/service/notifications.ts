@@ -14,7 +14,7 @@ import {
 /**
  * Return type of getForDelivery. Used by service actions and runtime for type-safe delivery context.
  */
-export interface GetForDeliveryResult {
+export interface DeliveryContext {
   notification: Doc<"notifications">;
   agent: Doc<"agents"> | null;
   task: Doc<"tasks"> | null;
@@ -87,7 +87,7 @@ export const LIST_UNDELIVERED_MAX_LIMIT = 500;
 async function buildTaskOverview(
   ctx: { db: DatabaseReader },
   accountId: Id<"accounts">,
-): Promise<NonNullable<GetForDeliveryResult["taskOverview"]>> {
+): Promise<NonNullable<DeliveryContext["taskOverview"]>> {
   const results = await Promise.all(
     TASK_OVERVIEW_STATUSES.map(async (status) => {
       const tasks: Doc<"tasks">[] = await ctx.db
@@ -299,7 +299,7 @@ export const getForDelivery = internalQuery({
     notificationId: v.id("notifications"),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
+  handler: async (ctx, args): Promise<DeliveryContext | null> => {
     const notification = await ctx.db.get(args.notificationId);
     if (!notification || notification.accountId !== args.accountId) {
       return null;

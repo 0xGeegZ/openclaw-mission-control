@@ -388,16 +388,27 @@ export async function loadConfig(): Promise<RuntimeConfig> {
  * Parse OpenClaw gateway URL from env. Defaults to local host when unset;
  * empty string disables the gateway (send will fail with descriptive error).
  */
+/**
+ * Allowed protocols for OPENCLAW_GATEWAY_URL to avoid file:// or other schemes.
+ */
+const ALLOWED_GATEWAY_PROTOCOLS = new Set(["http:", "https:"]);
+
 function parseOpenClawGatewayUrl(): string {
   const raw = normalizeEnvValue(process.env.OPENCLAW_GATEWAY_URL);
   if (raw === undefined || raw === null) return "http://127.0.0.1:18789";
   const trimmed = raw.trim();
   if (!trimmed) return "";
+  let url: URL;
   try {
-    new URL(trimmed);
+    url = new URL(trimmed);
   } catch {
     throw new Error(
       "Invalid OPENCLAW_GATEWAY_URL. Expected a valid URL like http://127.0.0.1:18789.",
+    );
+  }
+  if (!ALLOWED_GATEWAY_PROTOCOLS.has(url.protocol)) {
+    throw new Error(
+      "Invalid OPENCLAW_GATEWAY_URL. Only http and https are allowed.",
     );
   }
   return trimmed;

@@ -11,7 +11,7 @@ import {
   _runOnePollCycle,
   getDeliveryState,
 } from "./delivery";
-import type { DeliveryContext } from "./delivery/types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import {
   accId,
   aid,

@@ -14,7 +14,7 @@ import {
 } from "../lib/validators";
 import { Doc, Id } from "../_generated/dataModel";
 import {
-  type GetForDeliveryResult,
+  type DeliveryContext,
   LIST_UNDELIVERED_MAX_LIMIT,
 } from "./notifications";
 import {
@@ -375,7 +375,7 @@ export const getNotificationForDelivery = action({
     serviceToken: v.string(),
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
+  handler: async (ctx, args): Promise<DeliveryContext | null> => {
     // Validate service token
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
