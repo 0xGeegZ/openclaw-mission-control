@@ -267,3 +267,22 @@ export interface OpenClawConfig {
   };
   behaviorFlags?: BehaviorFlags;
 }
+
+// ============================================================================
+// TASK COMPLEXITY
+// ============================================================================
+
+/**
+ * Task complexity levels for auto-mode agent/model routing.
+ */
+export const TASK_COMPLEXITY = {
+  EASY: "easy",
+  MEDIUM: "medium",
+  COMPLEX: "complex",
+  HARD: "hard",
+} as const;
+
+/**
+ * Task complexity type.
+ */
+export type TaskComplexity = (typeof TASK_COMPLEXITY)[keyof typeof TASK_COMPLEXITY];

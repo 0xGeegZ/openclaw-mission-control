@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@packages/ui/components/select";
 import { toast } from "sonner";
-import { Loader2, Plus, FileText, Sparkles, Zap } from "lucide-react";
+import { Loader2, Plus, FileText, Sparkles, Zap, Users, Bot } from "lucide-react";
 
 interface CreateTaskDialogProps {
   open: boolean;
@@ -45,27 +45,44 @@ export function CreateTaskDialog({
   open,
   onOpenChange,
 }: CreateTaskDialogProps) {
-  const { accountId } = useAccount();
+  const { account, accountId } = useAccount();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [complexity, setComplexity] = useState<string>("");
-  const [autoMode, setAutoMode] = useState(true);
+  const [autoMode, setAutoMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Initialize autoMode and defaultComplexity from account settings
+  useEffect(() => {
+    if (account?.settings) {
+      const settings = account.settings as { autoMode?: boolean; defaultComplexity?: string };
+      setAutoMode(settings.autoMode ?? false);
+      if (settings.defaultComplexity) {
+        setComplexity(settings.defaultComplexity);
+      }
+    }
+  }, [account]);
 
   const createTask = useMutation(api.tasks.create);
   
   // Query to detect complexity if auto mode is on
   const detectedComplexity = useQuery(
     api.tasks.detectComplexity,
-    title.length >= 3 ? { title, description: description || undefined } : null
+    title.length >= 3 && autoMode ? { title, description: description || undefined } : null
+  );
+
+  // Query to get routing info based on complexity
+  const routingInfo = useQuery(
+    api.tasks.getRoutingInfo,
+    complexity ? { complexity: complexity as "easy" | "medium" | "complex" | "hard" } : null
   );
 
   // Update complexity when detected
-  useState(() => {
+  useEffect(() => {
     if (autoMode && detectedComplexity) {
       setComplexity(detectedComplexity);
     }
-  });
+  }, [autoMode, detectedComplexity]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,27 +197,28 @@ export function CreateTaskDialog({
                 </button>
               </div>
 
-              {/* Complexity Selector */}
-              {autoMode && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-                    Complexity
+              {/* Complexity Selector - always visible but shows different label */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                  Complexity
+                  {autoMode && (
                     <span className="text-muted-foreground/60 font-normal text-xs">
                       (auto-detected)
                     </span>
-                  </Label>
-                  <Select value={complexity} onValueChange={setComplexity}>
-                    <SelectTrigger id="complexity">
-                      <SelectValue placeholder="Select complexity level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COMPLEXITY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{opt.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {opt.description}
+                  )}
+                </Label>
+                <Select value={complexity} onValueChange={setComplexity}>
+                  <SelectTrigger id="complexity">
+                    <SelectValue placeholder="Select complexity level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPLEXITY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.description}
                             </span>
                           </div>
                         </SelectItem>
@@ -210,8 +228,23 @@ export function CreateTaskDialog({
                   <p className="text-[11px] text-muted-foreground/60">
                     Determines which agents and models are recommended
                   </p>
+                  
+                  {/* Routing Info Display */}
+                  {routingInfo && (
+                    <div className="mt-3 p-3 rounded-lg bg-muted/50 space-y-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-muted-foreground">Recommended Agents:</span>
+                        <span className="text-foreground">{routingInfo.agents[0]} / {routingInfo.agents[1]}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <Bot className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-muted-foreground">Recommended Models:</span>
+                        <span className="text-foreground">{routingInfo.models[0]} / {routingInfo.models[1]}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
             </div>
           </div>
           <DialogFooter className="shrink-0 gap-2 pt-2 sm:gap-2">
