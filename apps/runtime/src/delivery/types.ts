@@ -1,8 +1,10 @@
 /**
  * Delivery context shape from getNotificationForDelivery (Convex service).
  * Kept in a separate module so policy and prompt can depend on it without circular imports.
+ * IDs match Convex schema so the runtime stays type-safe end-to-end.
  */
 
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { RecipientType } from "@packages/shared";
 
 /**
@@ -11,37 +13,39 @@ import type { RecipientType } from "@packages/shared";
  */
 export interface DeliveryContext {
   notification: {
-    _id: string;
+    _id: Id<"notifications">;
     type: string;
     title: string;
     body: string;
+    /** Clerk user ID or agent document ID depending on recipientType. */
     recipientId?: string;
     recipientType?: RecipientType;
-    taskId?: string;
-    messageId?: string;
-    accountId: string;
+    taskId?: Id<"tasks">;
+    messageId?: Id<"messages">;
+    accountId: Id<"accounts">;
   };
   agent: {
-    _id: string;
+    _id: Id<"agents">;
+    slug?: string;
     role?: string;
     name?: string;
   } | null;
   task: {
-    _id: string;
+    _id: Id<"tasks">;
     status: string;
     title: string;
     description?: string;
-    assignedAgentIds?: string[];
+    assignedAgentIds?: Id<"agents">[];
     labels?: string[];
   } | null;
   message: {
-    _id: string;
+    _id: Id<"messages">;
     authorType: string;
     authorId: string;
     content?: string;
   } | null;
   thread: Array<{
-    messageId: string;
+    messageId: Id<"messages">;
     authorType: string;
     authorId: string;
     authorName: string | null;
@@ -49,16 +53,17 @@ export interface DeliveryContext {
     createdAt: number;
   }>;
   sourceNotificationType: string | null;
-  orchestratorAgentId: string | null;
+  orchestratorAgentId: Id<"agents"> | null;
+  /** Clerk user id and display info (not a Convex document id). */
   primaryUserMention: { id: string; name: string; email: string | null } | null;
   mentionableAgents: Array<{
-    id: string;
+    id: Id<"agents">;
     slug: string;
     name: string;
     role: string;
   }>;
   assignedAgents: Array<{
-    id: string;
+    id: Id<"agents">;
     slug: string;
     name: string;
     role: string;
@@ -80,11 +85,11 @@ export interface DeliveryContext {
     topTasks: Array<{
       status: string;
       tasks: Array<{
-        taskId: string;
+        taskId: Id<"tasks">;
         title: string;
         status: string;
         priority: number;
-        assignedAgentIds: string[];
+        assignedAgentIds: Id<"agents">[];
         assignedUserIds: string[];
       }>;
     }>;

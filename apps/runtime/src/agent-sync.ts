@@ -87,6 +87,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
       refreshAgentSystemSession({
         _id: agent._id,
         systemSessionKey: agent.systemSessionKey,
+        slug: agent.slug,
       });
       ensureHeartbeatScheduled(agent, config);
       if (!currentAgentIds.has(agent._id)) {
@@ -101,7 +102,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
           accountId: config.accountId,
           serviceToken: config.serviceToken,
         },
-      )) as unknown as AgentForProfile[];
+      )) as AgentForProfile[];
 
       const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
@@ -160,7 +161,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
       },
-    )) as unknown as AgentForProfile[];
+    )) as AgentForProfile[];
     syncOpenClawProfiles(profileAgents, {
       workspaceRoot: config.openclawWorkspaceRoot,
       configWorkspaceRoot: config.openclawConfigWorkspaceRoot,

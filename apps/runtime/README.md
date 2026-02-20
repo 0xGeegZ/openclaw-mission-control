@@ -79,6 +79,13 @@ Agents read USER.md, IDENTITY.md, AGENTS.md, and HEARTBEAT.md from their workspa
 
 All runtime session routing uses backend-resolved task/system keys only. The legacy `agents.sessionKey` field is not used for routing: initGateway and agent-sync register system session keys from `listAgents`; heartbeat uses the same system key; delivery uses `deliverySessionKey` (task or system) from `getNotificationForDelivery`. Rollback is by deploying a previous runtime version; there is no runtime-level fallback to the old session model.
 
+### OpenClaw Control UI Chat (http://localhost:18789/chat)
+
+The OpenClaw gateway stores sessions per **agent id** as defined in its config (`openclaw.json`). The runtime-generated config uses **agent slug** as that id (`agents.list[].id`). The runtime therefore sends `x-openclaw-agent-id` and `model: openclaw:<slug>` (not the Convex document id) so that:
+
+1. The gateway routes each request to the correct agent workspace and model.
+2. Sessions appear under the same agent ids the Control UI uses, so **Chat** lists system- and task-scoped sessions per agent (e.g. squad-lead, engineer). If you do not see chats after the session-keys refactor, ensure the runtime sends the agent **slug** to the gateway (this is set from `listAgents` and from the session key format `...:agent:<slug>:...`).
+
 ### Repo and worktrees
 
 Agents do not work in the main clone directly. The start script (or Compose) ensures a main clone at `/root/clawd/repos/openclaw-mission-control` and a `worktrees` directory at `/root/clawd/worktrees`. Each task uses a **per-task worktree** at `/root/clawd/worktrees/feat-task-<taskId>` for branch `feat/task-<taskId>`. All code edits, commits, push, and PR creation happen in that worktree so each PR stays isolated. See AGENTS.md (Task worktree) for the exact workflow.

@@ -171,6 +171,21 @@ function resolveAgentIdFromSessionKey(sessionKey: string): string {
 }
 
 /**
+ * Agent id to send to the OpenClaw gateway (x-openclaw-agent-id, model).
+ * Must match openclaw.json agents.list[].id (slug) so sessions appear in Control UI Chat.
+ * Falls back to slug parsed from session key (system:agent:SLUG:... or task:...:agent:SLUG:...) then Convex agentId.
+ */
+function getOpenClawAgentId(sessionKey: string): string {
+  const trimmed = sessionKey?.trim();
+  if (!trimmed) return "main";
+  const session = state.sessions.get(trimmed);
+  if (session?.agentSlug) return session.agentSlug;
+  const match = trimmed.match(/:agent:([^:]+):/);
+  if (match?.[1]) return match[1];
+  return session ? String(session.agentId) : "main";
+}
+
+/**
  * Sleep for the given duration (ms).
  */
 function sleep(ms: number): Promise<void> {
@@ -221,6 +236,8 @@ interface GatewayState {
 interface SessionInfo {
   sessionKey: string;
   agentId: Id<"agents">;
+  /** Agent slug for OpenClaw gateway routing; must match openclaw.json agents.list[].id so Control UI Chat shows sessions. */
+  agentSlug?: string;
   lastMessage: number | null;
 }
 
@@ -273,6 +290,7 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
     state.sessions.set(key, {
       sessionKey: key,
       agentId: agent._id,
+      agentSlug: typeof agent.slug === "string" ? agent.slug : undefined,
       lastMessage: null,
     });
     log.debug("Registered session:", key);
@@ -340,6 +358,8 @@ export async function waitForOpenClawGatewayReady(
 export interface AgentForSession {
   _id: Id<"agents">;
   systemSessionKey: string;
+  /** Agent slug; used as OpenClaw gateway agent id so Control UI Chat shows sessions. */
+  slug?: string;
 }
 
 /**
@@ -379,6 +399,7 @@ export function refreshAgentSystemSession(agent: AgentForSession): void {
   state.sessions.set(key, {
     sessionKey: key,
     agentId: agent._id,
+    agentSlug: agent.slug,
     lastMessage: null,
   });
   log.debug("Registered session:", key);
@@ -422,17 +443,35 @@ export interface SendToOpenClawOptions {
 /**
  * Register a session key for an agent so send/receive can use it.
  * Call before send when using resolver-generated keys (task or system) that may not be in initGateway.
+ * Pass agentSlug when available so the OpenClaw gateway receives the same agent id as in openclaw.json (Control UI Chat).
  */
 export function registerSession(
   sessionKey: string,
   agentId: Id<"agents">,
+  agentSlug?: string,
 ): void {
   if (!sessionKey?.trim()) return;
   const existing = state.sessions.get(sessionKey);
-  if (existing && existing.agentId === agentId) return;
+  if (existing && existing.agentId === agentId) {
+    if (
+      typeof agentSlug === "string" &&
+      agentSlug.trim() &&
+      existing.agentSlug !== agentSlug
+    ) {
+      state.sessions.set(sessionKey, {
+        ...existing,
+        agentSlug: agentSlug.trim(),
+      });
+    }
+    return;
+  }
   state.sessions.set(sessionKey, {
     sessionKey,
     agentId,
+    agentSlug:
+      typeof agentSlug === "string" && agentSlug.trim()
+        ? agentSlug.trim()
+        : undefined,
     lastMessage: null,
   });
   log.debug("Registered session:", sessionKey);
@@ -472,18 +511,18 @@ export async function sendToOpenClaw(
 
   log.debug("Sending to", sessionKey, ":", message.substring(0, 100));
 
-  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-openclaw-session-key": sessionKey,
-    "x-openclaw-agent-id": agentId,
+    "x-openclaw-agent-id": openclawAgentId,
   };
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
   const payload: Record<string, unknown> = {
-    model: `openclaw:${agentId}`,
+    model: `openclaw:${openclawAgentId}`,
     input: message,
     stream: false,
     // OpenResponses session routing: "user" lets the gateway derive a stable session key
@@ -567,18 +606,18 @@ export async function sendOpenClawToolResults(
     );
   }
 
-  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-openclaw-session-key": sessionKey,
-    "x-openclaw-agent-id": agentId,
+    "x-openclaw-agent-id": openclawAgentId,
   };
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
   const body = JSON.stringify({
-    model: `openclaw:${agentId}`,
+    model: `openclaw:${openclawAgentId}`,
     stream: false,
     user: sessionKey,
     function_call_output: outputs,

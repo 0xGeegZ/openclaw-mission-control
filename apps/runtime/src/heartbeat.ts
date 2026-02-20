@@ -19,7 +19,7 @@ const log = createLogger("[Heartbeat]");
 
 interface HeartbeatState {
   isRunning: boolean;
-  schedules: Map<string, NodeJS.Timeout>;
+  schedules: Map<Id<"agents">, NodeJS.Timeout>;
   /** Track interval (minutes) per agent for reschedule-on-change. */
   intervals: Map<string, number>;
 }
@@ -1102,5 +1102,5 @@ export function getHeartbeatState(): {
  * Used by agent sync to remove orphaned schedules even when gateway sessions are out of sync.
  */
 export function getScheduledAgentIds(): Id<"agents">[] {
-  return Array.from(state.schedules.keys()) as Id<"agents">[];
+  return Array.from(state.schedules.keys());
 }
