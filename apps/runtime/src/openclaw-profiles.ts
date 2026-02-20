@@ -2,6 +2,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { createLogger } from "./logger";
 import { MODEL_TO_OPENCLAW, type LLMModel } from "@packages/shared";
+import {
+  NO_APPLICABLE_SKILL_PHRASE,
+  SKILLS_LOCATION_SENTENCE,
+} from "./prompt-fragments";
 
 const log = createLogger("[OpenClawProfiles]");
 
@@ -78,7 +82,8 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 7. Skill usage is mandatory for in-scope operations:
    - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
    - if one or more skills apply, use them instead of ad-hoc behavior
-   - in your update, name the skill(s) you used; if none apply, explicitly write "No applicable skill"
+   - in your update, name the skill(s) you used; if none apply, explicitly write "${NO_APPLICABLE_SKILL_PHRASE}"
+   - ${SKILLS_LOCATION_SENTENCE}
 8. Replies are single-shot: do not post progress updates. If you spawn sub-agents (via **sessions_spawn**), wait for their results and reply once with the combined outcome.
 
 ## Parallelization (sub-agents)
@@ -190,8 +195,8 @@ Pick one action that can be completed quickly:
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
 
 Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes.
-Before executing the action, check your assigned skills and use every relevant skill.
-If no assigned skill applies, include "No applicable skill" in your task update.
+Before executing the action, check your assigned skills (in TOOLS.md and workspace skills/ directory, not in /root/.openclaw/) and use every relevant skill.
+If no assigned skill applies, include "${NO_APPLICABLE_SKILL_PHRASE}" in your task update.
 
 ## 4) Report + persist memory (always)
 
@@ -248,8 +253,7 @@ export function mapModelToOpenClaw(
 export function buildToolsMd(
   resolvedSkills: AgentForProfile["resolvedSkills"],
 ): string {
-  const header =
-    "# Assigned skills\n\nSkill usage policy: before each operation, check this list and use every relevant skill. If no listed skill applies, explicitly state `No applicable skill` in your task update. Some skills have real SKILL.md files in this workspace.\n\n";
+  const header = `# Assigned skills\n\nSkill usage policy: before each operation, check this list and use every relevant skill. If no listed skill applies, state '${NO_APPLICABLE_SKILL_PHRASE}' in your task update. ${SKILLS_LOCATION_SENTENCE}\n\n`;
   if (!resolvedSkills || resolvedSkills.length === 0) {
     return header + "- No assigned skills\n";
   }

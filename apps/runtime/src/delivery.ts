@@ -16,6 +16,7 @@ import {
 } from "./tooling/agentTools";
 import { recordSuccess, recordFailure } from "./metrics";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
+import { redactForExposure } from "./logger";
 import {
   buildNoResponseFallbackMessage,
   isNoReplySignal,
@@ -37,7 +38,6 @@ import {
   buildHttpCapabilityLabels,
   buildDeliveryInstructions,
   buildNotificationInput,
-  formatNotificationMessage,
 } from "./delivery/prompt";
 import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 
@@ -86,6 +86,180 @@ const state: DeliveryState = {
   noResponseTerminalSkipCount: 0,
   requiredNotificationRetryExhaustedCount: 0,
 };
+
+/**
+ * Result of processing one notification; streams return aggregated deltas.
+ * Used so the main cycle can aggregate outcomes without mutating shared state from inside parallel streams.
+ */
+export interface DeliveryOutcome {
+  delivered: number;
+  failed: number;
+  requiredNotificationRetryExhaustedCount: number;
+  noResponseTerminalSkipCount: number;
+  lastErrorMessage: string | null;
+}
+
+function zeroOutcome(): DeliveryOutcome {
+  return {
+    delivered: 0,
+    failed: 0,
+    requiredNotificationRetryExhaustedCount: 0,
+    noResponseTerminalSkipCount: 0,
+    lastErrorMessage: null,
+  };
+}
+
+/** Returns a DeliveryOutcome representing a single failed delivery (for aggregation). Message is sanitized before storage. */
+function failedOutcome(message: string): DeliveryOutcome {
+  return {
+    ...zeroOutcome(),
+    failed: 1,
+    lastErrorMessage: sanitizeErrorMessage(message),
+  };
+}
+
+/** Extracts a string from an unknown error for logging and lastErrorMessage. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Max length for lastErrorMessage stored and exposed via health to limit leakage. */
+const LAST_ERROR_MESSAGE_MAX_LENGTH = 500;
+
+/** Sanitize and truncate error message before storing or exposing. */
+function sanitizeErrorMessage(msg: string): string {
+  const redacted = redactForExposure(msg);
+  if (redacted.length <= LAST_ERROR_MESSAGE_MAX_LENGTH) return redacted;
+  return redacted.slice(0, LAST_ERROR_MESSAGE_MAX_LENGTH) + "...";
+}
+
+/**
+ * Wraps a promise with a timeout. Rejects with an Error if the promise does not settle within ms.
+ * Clears the timer when the promise settles first to avoid leaks and unhandled rejections.
+ *
+ * @param promise - Promise to race against the timeout
+ * @param ms - Timeout in milliseconds
+ * @param label - Label used in the timeout error message
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+/**
+ * Item that passed skip logic and has a valid deliverySessionKey; grouped by session for parallel streams.
+ */
+type DeliverableItem = {
+  notification: { _id: Id<"notifications"> };
+  ctx: DeliveryContext;
+};
+
+/**
+ * Merges outcome `o` into `agg` in place. Use for aggregating session stream results.
+ */
+function mergeOutcome(agg: DeliveryOutcome, o: DeliveryOutcome): void {
+  agg.delivered += o.delivered;
+  agg.failed += o.failed;
+  agg.requiredNotificationRetryExhaustedCount +=
+    o.requiredNotificationRetryExhaustedCount;
+  agg.noResponseTerminalSkipCount += o.noResponseTerminalSkipCount;
+  if (o.lastErrorMessage && !agg.lastErrorMessage) {
+    agg.lastErrorMessage = o.lastErrorMessage;
+  }
+}
+
+/**
+ * Run one session stream: process items in order, aggregate outcomes, never reject.
+ * On processOneNotification throw: markNotificationDeliveryEnded, merge failed outcome, return immediately.
+ * Top-level try/catch ensures any uncaught exception (e.g. from markNotificationDeliveryEnded) is turned
+ * into a returned outcome so Promise.allSettled only sees fulfilled results.
+ *
+ * @param client - Convex client
+ * @param config - Runtime config
+ * @param items - Deliverable items for this session (same deliverySessionKey), in order
+ * @returns Aggregated DeliveryOutcome for this stream
+ */
+async function runSessionStream(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  items: DeliverableItem[],
+): Promise<DeliveryOutcome> {
+  const agg = zeroOutcome();
+  let currentNotificationId: Id<"notifications"> | null = null;
+  try {
+    for (const { notification, ctx } of items) {
+      currentNotificationId = notification._id;
+      try {
+        const { toolCapabilities, canModifyTaskStatus, isOrchestrator } =
+          buildToolCapabilitiesForContext(ctx, config);
+        const outcome = await processOneNotification(
+          client,
+          config,
+          notification,
+          ctx,
+          toolCapabilities,
+          canModifyTaskStatus,
+          isOrchestrator,
+        );
+        mergeOutcome(agg, outcome);
+      } catch (error) {
+        const msg = messageOf(error);
+        log.warn("Failed to deliver", notification._id, msg.slice(0, 200));
+        try {
+          await client.action(
+            api.service.actions.markNotificationDeliveryEnded,
+            {
+              notificationId: notification._id,
+              serviceToken: config.serviceToken,
+              accountId: config.accountId,
+            },
+          );
+        } catch (markErr) {
+          log.warn(
+            "Failed to mark notification delivery ended",
+            notification._id,
+            messageOf(markErr),
+          );
+        }
+        mergeOutcome(agg, failedOutcome(msg));
+        return agg;
+      }
+    }
+    return agg;
+  } catch (uncaught) {
+    const msg = messageOf(uncaught);
+    if (currentNotificationId) {
+      try {
+        await client.action(api.service.actions.markNotificationDeliveryEnded, {
+          notificationId: currentNotificationId,
+          serviceToken: config.serviceToken,
+          accountId: config.accountId,
+        });
+      } catch {
+        // best-effort; already in error path
+      }
+    }
+    mergeOutcome(agg, failedOutcome(msg));
+    return agg;
+  }
+}
 
 /**
  * Result of no-response handling: either signal retry (throw) or proceed with optional fallback text.
@@ -167,7 +341,7 @@ function handleNoResponseAfterSend(
       skipMessageReason: taskId
         ? shouldPersistFallback
           ? reason
-          : `fallback disabled for notification type ${ctx.notification.type}`
+          : fallbackDisabledReason(ctx.notification.type)
         : null,
       exhausted: true,
       attempt: decision.attempt,
@@ -182,9 +356,27 @@ function handleNoResponseAfterSend(
   };
 }
 
+const NO_RESPONSE_FAILURES_MAP_MAX = 1000;
+
+/**
+ * Prunes oldest entries from state.noResponseFailures when at limit.
+ * Called only from the main poll cycle after streams settle to avoid concurrent prune from multiple session streams.
+ */
+function pruneNoResponseFailuresIfNeeded(): void {
+  if (state.noResponseFailures.size < NO_RESPONSE_FAILURES_MAP_MAX) return;
+  const entries = [...state.noResponseFailures.entries()];
+  entries.sort((a, b) => a[1].lastAt - b[1].lastAt);
+  const toRemove = Math.ceil(NO_RESPONSE_FAILURES_MAP_MAX * 0.2);
+  for (let i = 0; i < toRemove && i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry) state.noResponseFailures.delete(entry[0]);
+  }
+}
+
 /**
  * @internal Track retries for placeholder/empty OpenClaw responses.
  * Mutates state.noResponseFailures. Use for decision only; prefer outcome.attempt for logging when exhausted.
+ * Prune is not done here; call pruneNoResponseFailuresIfNeeded() from the main flow after all session streams settle.
  *
  * @param notificationId - Notification id to look up or create retry entry.
  * @param now - Current time (ms); defaults to Date.now() for production, inject in tests for reset window.
@@ -199,17 +391,6 @@ export function _getNoResponseRetryDecision(
   }
   if (!Number.isFinite(now)) {
     now = Date.now();
-  }
-  /** Cap map size to avoid unbounded growth; prune oldest entries when at limit. */
-  const NO_RESPONSE_FAILURES_MAP_MAX = 1000;
-  if (state.noResponseFailures.size >= NO_RESPONSE_FAILURES_MAP_MAX) {
-    const entries = [...state.noResponseFailures.entries()];
-    entries.sort((a, b) => a[1].lastAt - b[1].lastAt);
-    const toRemove = Math.ceil(NO_RESPONSE_FAILURES_MAP_MAX * 0.2);
-    for (let i = 0; i < toRemove && i < entries.length; i++) {
-      const entry = entries[i];
-      if (entry) state.noResponseFailures.delete(entry[0]);
-    }
   }
 
   const existing = state.noResponseFailures.get(notificationId);
@@ -247,13 +428,22 @@ function clearNoResponseRetry(notificationId: string): void {
   state.noResponseFailures.delete(notificationId);
 }
 
+/** Reason string when fallback message is disabled for a notification type. */
+function fallbackDisabledReason(notificationType: string): string {
+  return `fallback disabled for notification type ${notificationType}`;
+}
+
 /**
- * Build tool capabilities for the current delivery context (flags + openclawClientToolsEnabled).
+ * Build tool capabilities and delivery flags for the current context (single source for canModifyTaskStatus, isOrchestrator).
  */
 function buildToolCapabilitiesForContext(
   ctx: DeliveryContext,
   config: RuntimeConfig,
-): ToolCapabilitiesAndSchemas {
+): {
+  toolCapabilities: ToolCapabilitiesAndSchemas;
+  canModifyTaskStatus: boolean;
+  isOrchestrator: boolean;
+} {
   const flags: DeliveryContext["effectiveBehaviorFlags"] =
     ctx.effectiveBehaviorFlags ?? {};
   const hasTask = !!ctx.task;
@@ -278,7 +468,7 @@ function buildToolCapabilitiesForContext(
     canMarkDone,
     isOrchestrator,
   });
-  return config.openclawClientToolsEnabled
+  const toolCapabilities = config.openclawClientToolsEnabled
     ? rawToolCapabilities
     : {
         ...rawToolCapabilities,
@@ -292,6 +482,7 @@ function buildToolCapabilitiesForContext(
         }),
         schemas: [],
       };
+  return { toolCapabilities, canModifyTaskStatus, isOrchestrator };
 }
 
 /**
@@ -327,7 +518,7 @@ async function sendNotificationToOpenClaw(
         }
       : { instructions };
   if (sendOptions.tools) {
-    log.debug("Sending with tools", sendOptions.tools?.length ?? 0);
+    log.debug("Sending with tools", sendOptions.tools.length);
   }
   return sendToOpenClaw(sessionKey, input, sendOptions);
 }
@@ -379,8 +570,7 @@ async function executeToolCallsAndGetFinalText(
     const finalText = await sendOpenClawToolResults(sessionKeyForTool, outputs);
     return finalText?.trim() ?? currentText;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.warn("Failed to send tool results to OpenClaw", msg);
+    log.warn("Failed to send tool results to OpenClaw", messageOf(err));
     return currentText;
   }
 }
@@ -409,11 +599,11 @@ function resolveFinalTextToPost(
     const placeholder = parseNoResponsePlaceholder(out);
     if (placeholder.isPlaceholder) {
       out = null;
-      skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
+      skipReason = fallbackDisabledReason(ctx.notification.type);
     }
   }
   if (taskId && !out && result.toolCalls.length > 0) {
-    skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
+    skipReason = fallbackDisabledReason(ctx.notification.type);
   }
   return {
     textToPost: out,
@@ -424,6 +614,7 @@ function resolveFinalTextToPost(
 
 /**
  * Persists agent message when present, optionally advances task status, then marks notification delivered.
+ * When skipStateUpdate is true (e.g. from processOneNotification), only Convex is updated; caller applies outcome.delivered to state.
  */
 async function persistMessageAndMaybeAdvanceTask(
   client: ReturnType<typeof getConvexClient>,
@@ -435,6 +626,7 @@ async function persistMessageAndMaybeAdvanceTask(
   skipMessageReason: string | null,
   config: RuntimeConfig,
   canModifyTaskStatus: boolean,
+  skipStateUpdate?: boolean,
 ): Promise<void> {
   if (taskId && textToPost && ctx.agent) {
     await client.action(api.service.actions.createMessageFromAgent, {
@@ -467,8 +659,7 @@ async function persistMessageAndMaybeAdvanceTask(
           accountId: config.accountId,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log.warn("Failed to auto-advance task status:", message);
+        log.warn("Failed to auto-advance task status:", messageOf(error));
       }
     }
   } else if (taskId && ctx.agent) {
@@ -479,7 +670,160 @@ async function persistMessageAndMaybeAdvanceTask(
       skipMessageReason ?? "empty or intentionally suppressed",
     );
   }
-  await markDeliveredAndLog(client, config, notification._id);
+  if (skipStateUpdate) {
+    await markNotificationDeliveredInConvex(client, config, notification._id);
+  } else {
+    await markDeliveredAndLog(client, config, notification._id);
+  }
+}
+
+/**
+ * Process a single notification: mark read, send to OpenClaw, handle no-response, persist message, mark delivered in Convex.
+ * Does not mutate state.deliveredCount, state.failedCount, or other shared counters; only state.noResponseFailures (by notification id).
+ * On retry (no-response) throws; caller catches and returns failed outcome. On success returns DeliveryOutcome for aggregation.
+ *
+ * @param client - Convex client
+ * @param config - Runtime config
+ * @param notification - Notification doc (at least _id)
+ * @param ctx - Delivery context from getNotificationForDelivery
+ * @param toolCapabilities - Precomputed tool capabilities for ctx
+ * @param canModifyTaskStatus - Whether agent can change task status
+ * @param isOrchestrator - Whether ctx.agent is the orchestrator
+ * @returns DeliveryOutcome (delivered 0 or 1, failed 0, exhausted/terminal counts, lastErrorMessage)
+ * @throws On no-response retry or other errors; caller calls markNotificationDeliveryEnded and returns failed outcome
+ */
+async function processOneNotification(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  notification: { _id: Id<"notifications"> },
+  ctx: DeliveryContext,
+  toolCapabilities: ToolCapabilitiesAndSchemas,
+  canModifyTaskStatus: boolean,
+  isOrchestrator: boolean,
+): Promise<DeliveryOutcome> {
+  let requiredNotificationRetryExhaustedCount = 0;
+  let noResponseTerminalSkipCount = 0;
+
+  try {
+    await client.action(api.service.actions.markNotificationRead, {
+      notificationId: notification._id,
+      serviceToken: config.serviceToken,
+      accountId: config.accountId,
+    });
+  } catch (err) {
+    log.warn(
+      "Failed to mark notification read",
+      notification._id,
+      messageOf(err),
+    );
+  }
+
+  const sessionKey = ctx.deliverySessionKey;
+  if (!sessionKey) {
+    throw new Error(
+      "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
+    );
+  }
+
+  const result = await sendNotificationToOpenClaw(
+    sessionKey,
+    ctx,
+    config,
+    toolCapabilities,
+  );
+
+  const taskId = ctx.notification.taskId;
+  const isHeartbeatOk = isHeartbeatOkResponse(result.text?.trim());
+  if (isHeartbeatOk && result.toolCalls.length === 0) {
+    log.info(
+      "OpenClaw returned HEARTBEAT_OK; skipping notification",
+      notification._id,
+      ctx.agent?.name,
+    );
+    clearNoResponseRetry(notification._id);
+    await markNotificationDeliveredInConvex(client, config, notification._id);
+    return {
+      ...zeroOutcome(),
+      delivered: 1,
+    };
+  }
+
+  const noResponseOutcome = handleNoResponseAfterSend(
+    result,
+    ctx,
+    notification._id,
+    taskId,
+  );
+  if (noResponseOutcome.action === "retry") {
+    log.warn(
+      "OpenClaw returned no response; will retry notification",
+      notification._id,
+      ctx.agent?.name,
+      `(attempt ${noResponseOutcome.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+    );
+    throw new Error(noResponseOutcome.reason);
+  }
+  if (noResponseOutcome.exhausted) {
+    requiredNotificationRetryExhaustedCount = 1;
+    const attempt = noResponseOutcome.attempt ?? 0;
+    log.warn(
+      "OpenClaw returned no response; giving up",
+      notification._id,
+      ctx.agent?.name,
+      taskId ? `taskId=${taskId}` : "taskId=none",
+      `(attempt ${attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+    );
+  }
+  if (noResponseOutcome.terminalSkip) {
+    noResponseTerminalSkipCount = 1;
+    log.info(
+      "OpenClaw returned no response for non-actionable notification; skipping",
+      notification._id,
+      ctx.agent?.name,
+      noResponseOutcome.skipMessageReason ?? "no response",
+    );
+  }
+  clearNoResponseRetry(notification._id);
+
+  let textToPost: string | null = noResponseOutcome.textToPost;
+  let suppressAgentNotifications = noResponseOutcome.suppressAgentNotifications;
+  let skipMessageReason: string | null = noResponseOutcome.skipMessageReason;
+  textToPost = await executeToolCallsAndGetFinalText(
+    result.toolCalls,
+    ctx,
+    config,
+    toolCapabilities,
+    isOrchestrator,
+    textToPost,
+  );
+  const resolved = resolveFinalTextToPost(textToPost, result, ctx, taskId, {
+    suppressAgentNotifications,
+    skipMessageReason,
+  });
+  textToPost = resolved.textToPost;
+  suppressAgentNotifications = resolved.suppressAgentNotifications;
+  skipMessageReason = resolved.skipMessageReason;
+
+  await persistMessageAndMaybeAdvanceTask(
+    client,
+    ctx,
+    notification,
+    taskId,
+    textToPost,
+    suppressAgentNotifications,
+    skipMessageReason,
+    config,
+    canModifyTaskStatus,
+    true, // skipStateUpdate: caller will apply outcome.delivered to state
+  );
+
+  return {
+    delivered: 1,
+    failed: 0,
+    requiredNotificationRetryExhaustedCount,
+    noResponseTerminalSkipCount,
+    lastErrorMessage: null,
+  };
 }
 
 /**
@@ -505,6 +849,22 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 }
 
 /**
+ * Mark a notification as delivered in Convex only (no state update).
+ * Used by processOneNotification so the caller can apply outcome.delivered to state.
+ */
+async function markNotificationDeliveredInConvex(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  notificationId: Id<"notifications">,
+): Promise<void> {
+  await client.action(api.service.actions.markNotificationDelivered, {
+    notificationId,
+    serviceToken: config.serviceToken,
+    accountId: config.accountId,
+  });
+}
+
+/**
  * Mark a notification as delivered, increment delivered count, and log.
  * Used by the poll cycle for skip and success paths to avoid duplication.
  */
@@ -514,11 +874,7 @@ async function markDeliveredAndLog(
   notificationId: Id<"notifications">,
   logReason?: string,
 ): Promise<void> {
-  await client.action(api.service.actions.markNotificationDelivered, {
-    notificationId,
-    serviceToken: config.serviceToken,
-    accountId: config.accountId,
-  });
+  await markNotificationDeliveredInConvex(client, config, notificationId);
   state.deliveredCount++;
   if (logReason) {
     log.info(logReason, notificationId);
@@ -528,10 +884,12 @@ async function markDeliveredAndLog(
 }
 
 /**
- * @internal Single test seam for the poll body. Runs one full cycle: list, for each notification
- * get context, skip or send to OpenClaw, persist/mark delivered, then compute next delay.
+ * @internal Single test seam for the poll body. Runs one full cycle: list undelivered, fetch
+ * contexts in batches, apply skip logic, group deliverable by deliverySessionKey, then run
+ * session streams in parallel (up to deliveryMaxConcurrentSessions). Within each session,
+ * notifications are processed in order. Outcomes are aggregated and applied to state once.
  *
- * @param config - Runtime config (accountId, serviceToken, deliveryInterval, backoff).
+ * @param config - Runtime config (accountId, serviceToken, deliveryInterval, backoff, delivery*).
  * @returns Next delay in ms (deliveryInterval when healthy, backoff when consecutiveFailures > 0).
  */
 export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
@@ -543,7 +901,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
       {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
-        limit: 50,
+        limit: config.deliveryListLimit,
       },
     );
 
@@ -552,193 +910,128 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
       log.info("Found", notifications.length, "notifications to deliver");
     }
 
-    for (const notification of notifications) {
-      try {
-        const ctx = await client.action(
-          api.service.actions.getNotificationForDelivery,
-          {
-            notificationId: notification._id,
+    const batchSize = config.deliveryContextFetchBatchSize;
+    const contexts: (DeliveryContext | null)[] = [];
+    for (let i = 0; i < notifications.length; i += batchSize) {
+      const chunk = notifications.slice(i, i + batchSize);
+      const chunkContexts = await Promise.all(
+        chunk.map((n) =>
+          client.action(api.service.actions.getNotificationForDelivery, {
+            notificationId: n._id,
             serviceToken: config.serviceToken,
             accountId: config.accountId,
-          },
-        );
-        if (ctx?.agent) {
-          if (ctx.notification.taskId && !ctx.task) {
-            await markDeliveredAndLog(
-              client,
-              config,
-              notification._id,
-              "Skipped delivery for missing task",
-            );
-            continue;
-          }
-          if (!shouldDeliverToAgent(ctx)) {
-            await markDeliveredAndLog(
-              client,
-              config,
-              notification._id,
-              "Skipped delivery for notification",
-            );
-            continue;
-          }
-          if (_isStaleThreadUpdateNotification(ctx)) {
-            await markDeliveredAndLog(
-              client,
-              config,
-              notification._id,
-              "Skipped stale thread update notification",
-            );
-            continue;
-          }
-          try {
-            await client.action(api.service.actions.markNotificationRead, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log.warn("Failed to mark notification read", notification._id, msg);
-          }
-          const toolCapabilities = buildToolCapabilitiesForContext(ctx, config);
-          const canModifyTaskStatus =
-            ctx.effectiveBehaviorFlags?.canModifyTaskStatus !== false;
-          const isOrchestrator =
-            ctx.orchestratorAgentId != null &&
-            ctx.agent !== null &&
-            ctx.agent._id === ctx.orchestratorAgentId;
-          // Do not log sessionKey; redact if ever needed (see docs/security/OPENCLAW_CONFIG_SECURITY_AUDIT.md).
-          const sessionKey = ctx.deliverySessionKey;
-          if (!sessionKey) {
-            throw new Error(
-              "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
-            );
-          }
-          const result = await sendNotificationToOpenClaw(
-            sessionKey,
-            ctx,
-            config,
-            toolCapabilities,
-          );
+          }),
+        ),
+      );
+      contexts.push(...chunkContexts);
+    }
 
-          const taskId = ctx.notification.taskId;
-          const isHeartbeatOk = isHeartbeatOkResponse(result.text?.trim());
-          if (isHeartbeatOk && result.toolCalls.length === 0) {
-            log.info(
-              "OpenClaw returned HEARTBEAT_OK; skipping notification",
-              notification._id,
-              ctx.agent.name,
-            );
-            clearNoResponseRetry(notification._id);
-            await markDeliveredAndLog(client, config, notification._id);
-            continue;
-          }
-          const noResponseOutcome = handleNoResponseAfterSend(
-            result,
-            ctx,
-            notification._id,
-            taskId,
-          );
-          if (noResponseOutcome.action === "retry") {
-            log.warn(
-              "OpenClaw returned no response; will retry notification",
-              notification._id,
-              ctx.agent.name,
-              `(attempt ${noResponseOutcome.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-            );
-            // Do not clear retry state here so the next poll sees the correct attempt count and can exhaust after NO_RESPONSE_RETRY_LIMIT.
-            throw new Error(noResponseOutcome.reason);
-          }
-          if (noResponseOutcome.exhausted) {
-            state.requiredNotificationRetryExhaustedCount++;
-            const attempt = noResponseOutcome.attempt ?? 0;
-            log.warn(
-              "OpenClaw returned no response; giving up",
-              notification._id,
-              ctx.agent.name,
-              taskId ? `taskId=${taskId}` : "taskId=none",
-              `(attempt ${attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-            );
-          }
-          if (noResponseOutcome.terminalSkip) {
-            state.noResponseTerminalSkipCount++;
-            log.info(
-              "OpenClaw returned no response for non-actionable notification; skipping",
-              notification._id,
-              ctx.agent.name,
-              noResponseOutcome.skipMessageReason ?? "no response",
-            );
-          }
-          clearNoResponseRetry(notification._id);
-          let textToPost: string | null = noResponseOutcome.textToPost;
-          let suppressAgentNotifications =
-            noResponseOutcome.suppressAgentNotifications;
-          let skipMessageReason: string | null =
-            noResponseOutcome.skipMessageReason;
-          textToPost = await executeToolCallsAndGetFinalText(
-            result.toolCalls,
-            ctx,
-            config,
-            toolCapabilities,
-            isOrchestrator,
-            textToPost,
-          );
-          const resolved = resolveFinalTextToPost(
-            textToPost,
-            result,
-            ctx,
-            taskId,
-            { suppressAgentNotifications, skipMessageReason },
-          );
-          textToPost = resolved.textToPost;
-          suppressAgentNotifications = resolved.suppressAgentNotifications;
-          skipMessageReason = resolved.skipMessageReason;
-          await persistMessageAndMaybeAdvanceTask(
-            client,
-            ctx,
-            notification,
-            taskId,
-            textToPost,
-            suppressAgentNotifications,
-            skipMessageReason,
-            config,
-            canModifyTaskStatus,
-          );
-        } else if (ctx?.notification) {
+    const deliverable: DeliverableItem[] = [];
+    for (let i = 0; i < notifications.length; i++) {
+      const notification = notifications[i];
+      const ctx = contexts[i] ?? null;
+      if (!ctx) continue;
+      if (ctx.agent) {
+        if (ctx.notification.taskId && !ctx.task) {
           await markDeliveredAndLog(
             client,
             config,
             notification._id,
-            "Skipped delivery for missing agent",
+            "Skipped delivery for missing task",
           );
+          continue;
         }
-      } catch (error) {
-        state.failedCount++;
-        state.lastErrorAt = Date.now();
-        state.lastErrorMessage =
-          error instanceof Error ? error.message : String(error);
-        const shortMsg = state.lastErrorMessage.slice(0, 200);
-        log.warn("Failed to deliver", notification._id, shortMsg);
-        try {
-          await client.action(
-            api.service.actions.markNotificationDeliveryEnded,
-            {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            },
-          );
-        } catch (markErr) {
-          const msg =
-            markErr instanceof Error ? markErr.message : String(markErr);
-          log.warn(
-            "Failed to mark notification delivery ended; typing may persist until Convex syncs",
+        if (!shouldDeliverToAgent(ctx)) {
+          await markDeliveredAndLog(
+            client,
+            config,
             notification._id,
-            msg,
+            "Skipped delivery for notification",
           );
+          continue;
+        }
+        if (_isStaleThreadUpdateNotification(ctx)) {
+          await markDeliveredAndLog(
+            client,
+            config,
+            notification._id,
+            "Skipped stale thread update notification",
+          );
+          continue;
+        }
+        if (!ctx.deliverySessionKey) {
+          await markDeliveredAndLog(
+            client,
+            config,
+            notification._id,
+            "Skipped delivery for missing session key",
+          );
+          continue;
+        }
+        deliverable.push({ notification, ctx });
+      } else if (ctx.notification) {
+        await markDeliveredAndLog(
+          client,
+          config,
+          notification._id,
+          "Skipped delivery for missing agent",
+        );
+      }
+    }
+
+    const groupBySession = new Map<string, DeliverableItem[]>();
+    for (const item of deliverable) {
+      const key = item.ctx.deliverySessionKey!;
+      const list = groupBySession.get(key);
+      if (list) list.push(item);
+      else groupBySession.set(key, [item]);
+    }
+
+    // Delivery is parallelized by deliverySessionKey so one agent can work on multiple tasks at once;
+    // within a session, notifications are processed in order.
+    const sessionEntries = Array.from(groupBySession.entries());
+    const agg = zeroOutcome();
+    const maxConcurrent = config.deliveryMaxConcurrentSessions;
+    const streamTimeoutMs = config.deliveryStreamTimeoutMs;
+    for (let b = 0; b < sessionEntries.length; b += maxConcurrent) {
+      const batch = sessionEntries.slice(b, b + maxConcurrent);
+      const streamPromises = batch.map(([sessionKey, items]) =>
+        withTimeout(
+          runSessionStream(client, config, items),
+          streamTimeoutMs,
+          "Session stream", // Do not use sessionKey here; it would appear in lastErrorMessage and GET /health
+        ),
+      );
+      const results = await Promise.allSettled(streamPromises);
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "fulfilled") {
+          mergeOutcome(agg, r.value);
+        } else {
+          // Rejections only from withTimeout; runSessionStream never rejects. Each counts as one failed outcome.
+          const sessionKey = batch[i]?.[0] ?? "(unknown)";
+          log.warn(
+            "Session stream timed out or failed",
+            sessionKey,
+            messageOf(r.reason).slice(0, 200),
+          );
+          mergeOutcome(agg, failedOutcome(messageOf(r.reason)));
         }
       }
     }
+
+    state.deliveredCount += agg.delivered;
+    state.failedCount += agg.failed;
+    state.requiredNotificationRetryExhaustedCount +=
+      agg.requiredNotificationRetryExhaustedCount;
+    state.noResponseTerminalSkipCount += agg.noResponseTerminalSkipCount;
+    if (agg.failed > 0) {
+      state.lastErrorAt = Date.now();
+      state.lastErrorMessage = agg.lastErrorMessage ?? null;
+      state.consecutiveFailures += 1;
+    }
+
+    pruneNoResponseFailuresIfNeeded();
 
     state.lastDelivery = Date.now();
     const pollDuration = Date.now() - pollStart;
@@ -748,14 +1041,15 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
   } catch (error) {
     state.consecutiveFailures++;
     state.lastErrorAt = Date.now();
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = messageOf(error);
     const cause =
       error instanceof Error && error.cause instanceof Error
         ? error.cause.message
         : error instanceof Error && error.cause != null
           ? String(error.cause)
           : null;
-    state.lastErrorMessage = cause ? `${msg} (cause: ${cause})` : msg;
+    const rawMessage = cause ? `${msg} (cause: ${cause})` : msg;
+    state.lastErrorMessage = sanitizeErrorMessage(rawMessage);
     const pollDuration = Date.now() - pollStart;
     recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
     log.error("Poll error:", state.lastErrorMessage);

@@ -342,6 +342,15 @@ export function startHealthServer(config: RuntimeConfig): void {
           noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
           requiredNotificationRetryExhaustedCount:
             delivery.requiredNotificationRetryExhaustedCount,
+          config: {
+            maxConcurrentSessions: config.deliveryMaxConcurrentSessions,
+            streamTimeoutMs: config.deliveryStreamTimeoutMs,
+            contextFetchBatchSize: config.deliveryContextFetchBatchSize,
+            listLimit: config.deliveryListLimit,
+            intervalMs: config.deliveryInterval,
+            backoffBaseMs: config.deliveryBackoffBaseMs,
+            backoffMaxMs: config.deliveryBackoffMaxMs,
+          },
         },
         heartbeat: {
           running: heartbeat.isRunning,

@@ -39,6 +39,7 @@ Repo path, task worktree, and base branch are defined in the **Repository** docu
    - before each operation, check your assigned skills (`TOOLS.md` + `skills/*/SKILL.md`)
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write `No applicable skill`
+   - Assigned skills live only in your workspace; do not look for skills in /root/.openclaw/ (config directory).
 
 ## Parallelization (sub-agents)
 

@@ -309,7 +309,7 @@ export const GET_AGENT_SKILLS_TOOL_SCHEMA = {
   function: {
     name: "get_agent_skills",
     description:
-      "Get skills available to agents in the account. Query a specific agent (by ID) or omit agentId to get all agents. Available to all agents.",
+      "Get skills available to agents in the account. Query a specific agent (by ID) or omit agentId to get all agents. Available to all agents. Skill content is read from the workspace (TOOLS.md and skills/<slug>/SKILL.md), not from the config directory (/root/.openclaw/).",
     parameters: {
       type: "object",
       properties: {
