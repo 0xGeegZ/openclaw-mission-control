@@ -76,6 +76,15 @@ const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
 
 /** Max thread messages to load for delivery context (avoids unbounded collect on long threads). */
 const GET_FOR_DELIVERY_THREAD_CAP = 50;
+/** Max chars per doc content in delivery context (bounds payload size). */
+const DELIVERY_CONTEXT_DOC_CONTENT_MAX_CHARS = 50_000;
+/** Max chars per message content in delivery context thread. */
+const DELIVERY_CONTEXT_MESSAGE_CONTENT_MAX_CHARS = 2_000;
+
+function truncateForDelivery(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return value.slice(0, maxChars).trimEnd() + "…";
+}
 const RESPONSE_REQUEST_RETRY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 /** Max limit for listUndeliveredForAccount to avoid large in-memory collect/slice. */
@@ -162,14 +171,16 @@ export const listUndeliveredForAccount = internalQuery({
  * Called by runtime when it starts processing a notification (before sendToOpenClaw).
  * Sets readAt if unset; always clears deliveryEndedAt so typing can show (including on retry).
  * Idempotent for readAt; clearing deliveryEndedAt on retry allows typing indicator to appear again.
+ * Verifies notification belongs to account (single round-trip).
  */
 export const markRead = internalMutation({
   args: {
     notificationId: v.id("notifications"),
+    accountId: v.id("accounts"),
   },
   handler: async (ctx, args) => {
     const notification = await ctx.db.get(args.notificationId);
-    if (!notification) {
+    if (!notification || notification.accountId !== args.accountId) {
       throw new Error("Not found: Notification does not exist");
     }
     const now = Date.now();
@@ -190,14 +201,16 @@ export const markRead = internalMutation({
 /**
  * Mark delivery as ended for this attempt (typing stops; notification stays undelivered for retry).
  * Idempotent: only sets when deliveredAt is null; no-op if already delivered or already ended.
+ * Verifies notification belongs to account (single round-trip).
  */
 export const markDeliveryEnded = internalMutation({
   args: {
     notificationId: v.id("notifications"),
+    accountId: v.id("accounts"),
   },
   handler: async (ctx, args) => {
     const notification = await ctx.db.get(args.notificationId);
-    if (!notification) {
+    if (!notification || notification.accountId !== args.accountId) {
       throw new Error("Not found: Notification does not exist");
     }
     if (notification.deliveredAt != null) return true;
@@ -213,14 +226,16 @@ export const markDeliveryEnded = internalMutation({
 /**
  * Mark a notification as delivered.
  * Called by runtime after successfully delivering to OpenClaw.
+ * Verifies notification belongs to account (single round-trip).
  */
 export const markDelivered = internalMutation({
   args: {
     notificationId: v.id("notifications"),
+    accountId: v.id("accounts"),
   },
   handler: async (ctx, args) => {
     const notification = await ctx.db.get(args.notificationId);
-    if (!notification) {
+    if (!notification || notification.accountId !== args.accountId) {
       throw new Error("Not found: Notification does not exist");
     }
 
@@ -234,11 +249,15 @@ export const markDelivered = internalMutation({
   },
 });
 
+/** Max notifications to clear per call to bound mutation size. */
+const CLEAR_TYPING_STATE_CAP = 500;
+
 /**
  * Clear typing state for an account when runtime goes offline.
  * Resets readAt on all agent notifications that are read but not yet delivered,
  * so they no longer count as "typing" and avoid false positives when runtime comes back.
  * Called from accounts.setRuntimeStatus when status is set to "offline".
+ * Processes at most CLEAR_TYPING_STATE_CAP per call to avoid oversized mutations.
  */
 export const clearTypingStateForAccount = internalMutation({
   args: {
@@ -253,7 +272,7 @@ export const clearTypingStateForAccount = internalMutation({
           .eq("recipientType", "agent")
           .eq("deliveredAt", undefined),
       )
-      .collect();
+      .take(CLEAR_TYPING_STATE_CAP);
 
     let cleared = 0;
     for (const n of notifications) {
@@ -305,33 +324,28 @@ export const getForDelivery = internalQuery({
       return null;
     }
 
-    // Get agent details
-    let agent = null;
-    if (notification.recipientType === "agent") {
-      agent = await ctx.db.get(notification.recipientId as Id<"agents">);
-    }
+    const [agentDoc, taskDoc, messageDoc] = await Promise.all([
+      notification.recipientType === "agent"
+        ? ctx.db.get(notification.recipientId as Id<"agents">)
+        : Promise.resolve(null),
+      notification.taskId
+        ? ctx.db.get(notification.taskId)
+        : Promise.resolve(null),
+      notification.messageId
+        ? ctx.db.get(notification.messageId)
+        : Promise.resolve(null),
+    ]);
 
-    // Get task details if present; enforce account consistency
-    let task = null;
-    if (notification.taskId) {
-      const taskDoc = await ctx.db.get(notification.taskId);
-      if (taskDoc && taskDoc.accountId === notification.accountId) {
-        task = taskDoc;
-      }
-    }
+    const agent = agentDoc;
+    const task =
+      taskDoc && taskDoc.accountId === notification.accountId ? taskDoc : null;
+    const message =
+      messageDoc &&
+      messageDoc.accountId === notification.accountId &&
+      (!task || messageDoc.taskId === task._id)
+        ? messageDoc
+        : null;
 
-    // Get message details if present; enforce account consistency
-    let message = null;
-    if (notification.messageId) {
-      const messageDoc = await ctx.db.get(notification.messageId);
-      if (
-        messageDoc &&
-        messageDoc.accountId === notification.accountId &&
-        (!task || messageDoc.taskId === task._id)
-      ) {
-        message = messageDoc;
-      }
-    }
     let sourceNotificationType: string | null = null;
     if (message?.sourceNotificationId) {
       const sourceNotification = await ctx.db.get(message.sourceNotificationId);
@@ -418,7 +432,10 @@ export const getForDelivery = internalQuery({
           authorType: msg.authorType,
           authorId: msg.authorId,
           authorName,
-          content: msg.content,
+          content: truncateForDelivery(
+            msg.content,
+            DELIVERY_CONTEXT_MESSAGE_CONTENT_MAX_CHARS,
+          ),
           createdAt: msg.createdAt,
         };
       });
@@ -441,15 +458,9 @@ export const getForDelivery = internalQuery({
     );
 
     const account = await ctx.db.get(notification.accountId);
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
+    const orchestratorAgentId = account?.settings?.orchestratorAgentId ?? null;
     const orchestratorChatTaskId =
-      (
-        account?.settings as
-          | { orchestratorChatTaskId?: Id<"tasks"> }
-          | undefined
-      )?.orchestratorChatTaskId ?? null;
+      account?.settings?.orchestratorChatTaskId ?? null;
     const shouldIncludeOrchestratorContext =
       notification.taskId != null &&
       orchestratorChatTaskId != null &&
@@ -461,7 +472,10 @@ export const getForDelivery = internalQuery({
       shouldIncludeOrchestratorContext && briefingDoc
         ? {
             title: briefingDoc.title ?? briefingDoc.name ?? "Account Briefing",
-            content: briefingDoc.content ?? "",
+            content: truncateForDelivery(
+              briefingDoc.content ?? "",
+              DELIVERY_CONTEXT_DOC_CONTENT_MAX_CHARS,
+            ),
           }
         : null;
 
@@ -540,7 +554,10 @@ export const getForDelivery = internalQuery({
               repositoryDoc.title ??
               repositoryDoc.name ??
               "Repository — Primary",
-            content: repositoryDoc.content ?? "",
+            content: truncateForDelivery(
+              repositoryDoc.content ?? "",
+              DELIVERY_CONTEXT_DOC_CONTENT_MAX_CHARS,
+            ),
           }
         : null,
       globalBriefingDoc,

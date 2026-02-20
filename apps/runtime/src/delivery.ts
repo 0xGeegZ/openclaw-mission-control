@@ -18,7 +18,6 @@ import { recordSuccess, recordFailure } from "./metrics";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
 import {
   buildNoResponseFallbackMessage,
-  FALLBACK_NO_REPLY_AFTER_TOOLS,
   isNoReplySignal,
   parseNoResponsePlaceholder,
 } from "./delivery/no-response";
@@ -52,12 +51,6 @@ const log = createLogger("[Delivery]");
 
 /** @internal Exposed for unit tests. */
 export const _isNoReplySignal = isNoReplySignal;
-
-/** @internal Exposed for unit tests. */
-export const _shouldPersistNoResponseFallback = shouldPersistNoResponseFallback;
-
-/** @internal Exposed for unit tests. */
-export { _shouldPersistOrchestratorThreadAck } from "./delivery/policy";
 
 const NO_RESPONSE_RETRY_LIMIT = 3;
 const NO_RESPONSE_RETRY_RESET_MS = 10 * 60 * 1000;
@@ -201,6 +194,12 @@ export function _getNoResponseRetryDecision(
   notificationId: string,
   now: number = Date.now(),
 ): { attempt: number; shouldRetry: boolean } {
+  if (typeof notificationId !== "string" || notificationId.trim() === "") {
+    return { attempt: 0, shouldRetry: false };
+  }
+  if (!Number.isFinite(now)) {
+    now = Date.now();
+  }
   /** Cap map size to avoid unbounded growth; prune oldest entries when at limit. */
   const NO_RESPONSE_FAILURES_MAP_MAX = 1000;
   if (state.noResponseFailures.size >= NO_RESPONSE_FAILURES_MAP_MAX) {
@@ -208,7 +207,8 @@ export function _getNoResponseRetryDecision(
     entries.sort((a, b) => a[1].lastAt - b[1].lastAt);
     const toRemove = Math.ceil(NO_RESPONSE_FAILURES_MAP_MAX * 0.2);
     for (let i = 0; i < toRemove && i < entries.length; i++) {
-      state.noResponseFailures.delete(entries[i]![0]);
+      const entry = entries[i];
+      if (entry) state.noResponseFailures.delete(entry[0]);
     }
   }
 
@@ -327,7 +327,7 @@ async function sendNotificationToOpenClaw(
         }
       : { instructions };
   if (sendOptions.tools) {
-    log.debug("Sending with tools", (sendOptions.tools as unknown[]).length);
+    log.debug("Sending with tools", sendOptions.tools?.length ?? 0);
   }
   return sendToOpenClaw(sessionKey, input, sendOptions);
 }
@@ -353,7 +353,7 @@ async function executeToolCallsAndGetFinalText(
       agentId: ctx.agent._id,
       accountId: config.accountId,
       serviceToken: config.serviceToken,
-      taskId: ctx.notification?.taskId,
+      taskId: ctx.notification.taskId,
       canMarkDone: toolCapabilities.canMarkDone,
       isOrchestrator,
     });
@@ -361,7 +361,7 @@ async function executeToolCallsAndGetFinalText(
       log.warn(
         "Tool execution failed",
         call.name,
-        ctx.notification?._id,
+        ctx.notification._id,
         toolResult.error ?? "unknown",
       );
     }
@@ -403,44 +403,17 @@ function resolveFinalTextToPost(
   skipMessageReason: string | null;
 } {
   let out = textToPost;
-  let suppress = current.suppressAgentNotifications;
+  const suppress = current.suppressAgentNotifications;
   let skipReason = current.skipMessageReason;
   if (out) {
     const placeholder = parseNoResponsePlaceholder(out);
     if (placeholder.isPlaceholder) {
-      const shouldPersistFallback = shouldPersistNoResponseFallback({
-        notificationType: ctx.notification.type,
-      });
-      if (shouldPersistFallback) {
-        log.warn(
-          "OpenClaw placeholder response received; posting fallback message",
-          ctx.notification._id,
-          ctx.agent?.name,
-        );
-        out = buildNoResponseFallbackMessage(placeholder.mentionPrefix);
-        suppress = true;
-        skipReason = "placeholder fallback";
-      } else {
-        out = null;
-        skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
-      }
+      out = null;
+      skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
     }
   }
   if (taskId && !out && result.toolCalls.length > 0) {
-    const shouldPersistFallback = shouldPersistNoResponseFallback({
-      notificationType: ctx.notification.type,
-    });
-    if (shouldPersistFallback) {
-      out = FALLBACK_NO_REPLY_AFTER_TOOLS;
-      suppress = true;
-      skipReason = "no final reply after tool execution";
-      log.warn(
-        "No reply after tool execution; posting fallback message",
-        ctx.notification._id,
-      );
-    } else {
-      skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
-    }
+    skipReason = `fallback disabled for notification type ${ctx.notification.type}`;
   }
   return {
     textToPost: out,
@@ -482,7 +455,7 @@ async function persistMessageAndMaybeAdvanceTask(
     if (
       canModifyTaskStatus &&
       ctx.task?.status === "assigned" &&
-      ctx.notification?.type === "assignment"
+      ctx.notification.type === "assignment"
     ) {
       try {
         await client.action(api.service.actions.updateTaskStatusFromAgent, {
@@ -590,8 +563,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
           },
         );
         if (ctx?.agent) {
-          if (!ctx.agent) continue;
-          if (ctx.notification?.taskId && !ctx.task) {
+          if (ctx.notification.taskId && !ctx.task) {
             await markDeliveredAndLog(
               client,
               config,
@@ -635,6 +607,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             ctx.orchestratorAgentId != null &&
             ctx.agent !== null &&
             ctx.agent._id === ctx.orchestratorAgentId;
+          // Do not log sessionKey; redact if ever needed (see docs/security/OPENCLAW_CONFIG_SECURITY_AUDIT.md).
           const sessionKey = ctx.deliverySessionKey;
           if (!sessionKey) {
             throw new Error(
@@ -648,7 +621,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             toolCapabilities,
           );
 
-          const taskId = ctx.notification?.taskId;
+          const taskId = ctx.notification.taskId;
           const isHeartbeatOk = isHeartbeatOkResponse(result.text?.trim());
           if (isHeartbeatOk && result.toolCalls.length === 0) {
             log.info(

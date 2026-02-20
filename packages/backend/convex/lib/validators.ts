@@ -112,6 +112,19 @@ export const memberRoleValidator = v.union(
 export type MemberRole = Infer<typeof memberRoleValidator>;
 
 // ============================================================================
+// SERVICE TOKEN (runtime / service actions)
+// ============================================================================
+
+/** Max length for service token string (DoS mitigation). */
+export const SERVICE_TOKEN_MAX_LENGTH = 512;
+
+/**
+ * Service token validator for Convex service actions.
+ * Callers should enforce SERVICE_TOKEN_MAX_LENGTH in handlers (Convex v.string() has no maxLength option).
+ */
+export const serviceTokenValidator = v.string();
+
+// ============================================================================
 // RECIPIENT TYPE
 // ============================================================================
 
@@ -447,6 +460,12 @@ export const TASK_TITLE_MAX_LENGTH = 2_000;
 
 /** Maximum task description length (characters) to prevent storage/DoS. */
 export const TASK_DESCRIPTION_MAX_LENGTH = 100_000;
+
+/** Maximum blockedReason length (characters) for task status updates. */
+export const BLOCKED_REASON_MAX_LENGTH = 2_000;
+
+/** Maximum reason length (characters) for task delete/archive. */
+export const REASON_MAX_LENGTH = 2_000;
 
 /** Allowed MIME type prefixes/values for attachments (matches UI accept). */
 export const ATTACHMENT_ALLOWED_TYPES = [

@@ -22,6 +22,7 @@ const AGENT_ENDPOINTS = [
   "/agent/task-assign",
   "/agent/response-request",
   "/agent/document",
+  "/agent/document-list",
   "/agent/task-message",
   "/agent/task-list",
   "/agent/task-get",

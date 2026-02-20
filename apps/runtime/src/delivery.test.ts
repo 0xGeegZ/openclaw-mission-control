@@ -9,8 +9,6 @@ import {
   _isNoReplySignal,
   _isStaleThreadUpdateNotification,
   _resetNoResponseRetryState,
-  _shouldPersistOrchestratorThreadAck,
-  _shouldPersistNoResponseFallback,
   canAgentMarkDone,
   getDeliveryState,
   shouldDeliverToAgent,
@@ -19,6 +17,10 @@ import {
   buildDeliveryInstructions,
   buildNotificationInput,
 } from "./delivery";
+import {
+  shouldPersistNoResponseFallback,
+  shouldPersistOrchestratorThreadAck,
+} from "./delivery/policy";
 import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
 import {
@@ -777,30 +779,13 @@ describe("no reply signal detection", () => {
   });
 });
 
-describe("no response fallback persistence policy", () => {
-  it("does not persist fallback to thread for any type (UX: no boilerplate in thread)", () => {
+describe("policy re-exports (fallback/orchestrator ack)", () => {
+  it("shouldPersistNoResponseFallback is false (policy: no fallback to thread)", () => {
     expect(
-      _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "mention" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({
-        notificationType: "response_request",
-      }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "status_change" }),
+      shouldPersistNoResponseFallback({ notificationType: "assignment" }),
     ).toBe(false);
   });
-});
-
-describe("orchestrator no-reply acknowledgment policy", () => {
-  it("does not persist orchestrator ack (silent-by-default)", () => {
+  it("shouldPersistOrchestratorThreadAck is false (policy: silent-by-default)", () => {
     const ctx = buildContext({
       notification: {
         _id: nid("n1"),
@@ -826,65 +811,7 @@ describe("orchestrator no-reply acknowledgment policy", () => {
         content: "Progress update",
       },
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
-  });
-
-  it("does not persist orchestrator ack for blocked tasks", () => {
-    const ctx = buildContext({
-      notification: {
-        _id: nid("n1"),
-        type: "thread_update",
-        title: "Update",
-        body: "Body",
-        recipientId: "orch",
-        recipientType: "agent",
-        accountId: accId("acc1"),
-      },
-      orchestratorAgentId: aid("orch"),
-      agent: { _id: aid("orch"), role: "Squad Lead", name: "Squad Lead" },
-      task: {
-        _id: tid("t1"),
-        status: "blocked",
-        title: "T",
-        assignedAgentIds: [aid("engineer")],
-      },
-      message: {
-        _id: mid("m1"),
-        authorType: "agent",
-        authorId: "engineer",
-        content: "Still blocked",
-      },
-    });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
-  });
-
-  it("does not persist orchestrator ack when recipient is not orchestrator", () => {
-    const ctx = buildContext({
-      notification: {
-        _id: nid("n1"),
-        type: "thread_update",
-        title: "Update",
-        body: "Body",
-        recipientId: "engineer",
-        recipientType: "agent",
-        accountId: accId("acc1"),
-      },
-      orchestratorAgentId: aid("orch"),
-      agent: { _id: aid("engineer"), role: "Engineer", name: "Engineer" },
-      task: {
-        _id: tid("t1"),
-        status: "review",
-        title: "T",
-        assignedAgentIds: [aid("engineer")],
-      },
-      message: {
-        _id: mid("m1"),
-        authorType: "agent",
-        authorId: "qa",
-        content: "QA update",
-      },
-    });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+    expect(shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
 });
 

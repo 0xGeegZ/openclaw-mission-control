@@ -996,6 +996,55 @@ export function startHealthServer(config: RuntimeConfig): void {
       return;
     }
 
+    if (requestPath === "/agent/document-list") {
+      const session = requireLocalAgentSession(req, res, "document-list");
+      if (!session) return;
+      const { config } = session;
+
+      let body: { taskId?: string; type?: string; limit?: number };
+      try {
+        body = await readJsonBody<typeof body>(req);
+      } catch {
+        sendJson(res, 400, { success: false, error: "Invalid JSON body" });
+        return;
+      }
+      const allowedTypes = ["deliverable", "note", "template", "reference"];
+      if (
+        body?.type != null &&
+        (typeof body.type !== "string" || !allowedTypes.includes(body.type))
+      ) {
+        sendJson(res, 422, {
+          success: false,
+          error:
+            "Invalid type: must be deliverable, note, template, or reference",
+        });
+        return;
+      }
+      try {
+        const client = getConvexClient();
+        const { documents } = await client.action(
+          api.service.actions.listDocumentsForAgent,
+          {
+            accountId: config.accountId,
+            serviceToken: config.serviceToken,
+            taskId: body?.taskId as Id<"tasks"> | undefined,
+            type: body?.type as
+              | "deliverable"
+              | "note"
+              | "template"
+              | "reference"
+              | undefined,
+            limit: body?.limit,
+          },
+        );
+        sendJson(res, 200, { success: true, data: { documents } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendJson(res, 403, { success: false, error: message });
+      }
+      return;
+    }
+
     if (requestPath === "/agent/task-message") {
       const session = requireLocalAgentSession(req, res, "task-message");
       if (!session) return;
