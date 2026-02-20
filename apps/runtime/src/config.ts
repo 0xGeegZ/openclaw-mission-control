@@ -47,6 +47,12 @@ export interface RuntimeConfig {
   openclawGatewayToken: string | undefined;
   /** Timeout for OpenClaw /v1/responses requests (ms); default 300000 for long agent runs */
   openclawRequestTimeoutMs: number;
+  /** Max concurrent session streams per cycle (notifications grouped by deliverySessionKey). Default 10. */
+  deliveryMaxConcurrentSessions: number;
+  /** Per-session-stream timeout (ms); one stuck stream does not block the cycle. Default 2× openclawRequestTimeoutMs. */
+  deliveryStreamTimeoutMs: number;
+  /** Batch size for parallel getNotificationForDelivery fetches. Default 15. */
+  deliveryContextFetchBatchSize: number;
   /** When false, disable client-side tools and rely on HTTP fallbacks. */
   openclawClientToolsEnabled: boolean;
   /**
@@ -326,6 +332,43 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     true,
   );
 
+  const openclawRequestTimeoutMs = (() => {
+    const raw = parseIntOrDefault(
+      process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
+      300000,
+    );
+    const minMs = 5000;
+    const maxMs = 600000;
+    if (raw < minMs || raw > maxMs) {
+      log.warn(`OPENCLAW_REQUEST_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`, {
+        value: raw,
+      });
+      return Math.max(minMs, Math.min(maxMs, raw));
+    }
+    return raw;
+  })();
+
+  const deliveryStreamTimeoutMs = (() => {
+    const fromEnv = process.env.DELIVERY_STREAM_TIMEOUT_MS;
+    const defaultMs = 2 * openclawRequestTimeoutMs;
+    const minMs = 5000;
+    const maxMs = defaultMs;
+    if (fromEnv != null && fromEnv.trim() !== "") {
+      const parsed = parseInt(fromEnv.trim(), 10);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        const clamped = Math.max(minMs, Math.min(maxMs, parsed));
+        if (clamped !== parsed) {
+          log.warn(
+            `DELIVERY_STREAM_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`,
+            { value: parsed },
+          );
+        }
+        return clamped;
+      }
+    }
+    return defaultMs;
+  })();
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
@@ -357,19 +400,37 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     dropletRegion: process.env.DROPLET_REGION || "unknown",
     openclawGatewayUrl,
     openclawGatewayToken,
-    openclawRequestTimeoutMs: (() => {
+    openclawRequestTimeoutMs,
+    deliveryMaxConcurrentSessions: (() => {
       const raw = parseIntOrDefault(
-        process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
-        300000,
+        process.env.DELIVERY_MAX_CONCURRENT_SESSIONS,
+        10,
       );
-      const minMs = 5000;
-      const maxMs = 600000;
-      if (raw < minMs || raw > maxMs) {
+      const min = 1;
+      const max = 100;
+      if (raw < min || raw > max) {
         log.warn(
-          `OPENCLAW_REQUEST_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`,
+          `DELIVERY_MAX_CONCURRENT_SESSIONS clamped to [${min}, ${max}]`,
           { value: raw },
         );
-        return Math.max(minMs, Math.min(maxMs, raw));
+        return Math.max(min, Math.min(max, raw));
+      }
+      return raw;
+    })(),
+    deliveryStreamTimeoutMs,
+    deliveryContextFetchBatchSize: (() => {
+      const raw = parseIntOrDefault(
+        process.env.DELIVERY_CONTEXT_FETCH_BATCH_SIZE,
+        15,
+      );
+      const min = 1;
+      const max = 50;
+      if (raw < min || raw > max) {
+        log.warn(
+          `DELIVERY_CONTEXT_FETCH_BATCH_SIZE clamped to [${min}, ${max}]`,
+          { value: raw },
+        );
+        return Math.max(min, Math.min(max, raw));
       }
       return raw;
     })(),

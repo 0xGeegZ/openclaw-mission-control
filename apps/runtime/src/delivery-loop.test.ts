@@ -74,6 +74,9 @@ function createConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     openclawGatewayUrl: "http://127.0.0.1:18789",
     openclawGatewayToken: undefined,
     openclawRequestTimeoutMs: 30000,
+    deliveryMaxConcurrentSessions: 10,
+    deliveryStreamTimeoutMs: 60000,
+    deliveryContextFetchBatchSize: 15,
     openclawClientToolsEnabled: true,
     taskStatusBaseUrl: "http://runtime:3000",
     openclawWorkspaceRoot: "/tmp",
@@ -93,10 +96,6 @@ describe("_runOnePollCycle", () => {
     mockSendOpenClawToolResults.mockResolvedValue(null);
     mockRegisterSession.mockReturnValue(undefined);
     mockBackoffMs.mockReturnValue(DEFAULT_BACKOFF_MS);
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
   });
 
   it("empty poll: returns deliveryInterval and does not call getNotificationForDelivery or sendToOpenClaw", async () => {
@@ -298,7 +297,7 @@ describe("_runOnePollCycle", () => {
     expect(getDeliveryState().deliveredCount).toBe(before);
   });
 
-  it("error path: missing deliverySessionKey throws, markNotificationDeliveryEnded called and failedCount incremented", async () => {
+  it("skip missing deliverySessionKey: marks delivered and does not call sendToOpenClaw", async () => {
     const notifId = nid("n-no-session");
     const taskId = tid("task-no-session");
     mockAction.mockImplementation(
@@ -330,12 +329,13 @@ describe("_runOnePollCycle", () => {
       },
     );
 
-    const before = getDeliveryState().failedCount;
+    const beforeFailed = getDeliveryState().failedCount;
+    const beforeDelivered = getDeliveryState().deliveredCount;
     await _runOnePollCycle(config);
 
     expect(mockSendToOpenClaw).not.toHaveBeenCalled();
-    expect(getDeliveryState().failedCount).toBe(before + 1);
-    expect(getDeliveryState().lastErrorMessage).toContain("deliverySessionKey");
+    expect(getDeliveryState().failedCount).toBe(beforeFailed);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered + 1);
   });
 
   it("happy path: one notification delivered, message created, markNotificationDelivered called", async () => {
@@ -556,5 +556,229 @@ describe("_runOnePollCycle", () => {
     mockSendToOpenClaw.mockResolvedValue({ text: "OK", toolCalls: [] });
 
     await _runOnePollCycle(config);
+  });
+
+  it("two notifications with different session keys are processed in parallel", async () => {
+    const n1 = nid("n-parallel-1");
+    const n2 = nid("n-parallel-2");
+    const t1 = tid("task-p1");
+    const t2 = tid("task-p2");
+    const session1 = "task:t1:agent:a:acc:v1";
+    const session2 = "task:t2:agent:a:acc:v1";
+
+    mockAction.mockImplementation(
+      async (_actionRef: unknown, args: unknown) => {
+        const a = args as Record<string, unknown> | undefined;
+        if (a && a.limit === 50) return [{ _id: n1 }, { _id: n2 }];
+        if (a && a.notificationId === n1 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n1,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t1,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t1,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: session1,
+          });
+        }
+        if (a && a.notificationId === n2 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n2,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t2,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t2,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: session2,
+          });
+        }
+        return undefined;
+      },
+    );
+
+    const sendStartTimes: number[] = [];
+    mockSendToOpenClaw.mockImplementation(async (sessionKey: string) => {
+      sendStartTimes.push(Date.now());
+      await new Promise((r) => setTimeout(r, 50));
+      return { text: "OK", toolCalls: [] };
+    });
+
+    const beforeDelivered = getDeliveryState().deliveredCount;
+    const cycleStart = Date.now();
+    await _runOnePollCycle(config);
+    const cycleDuration = Date.now() - cycleStart;
+
+    expect(sendStartTimes).toHaveLength(2);
+    expect(cycleDuration).toBeLessThan(120);
+    const overlap = sendStartTimes[1] - sendStartTimes[0] < 40;
+    expect(overlap).toBe(true);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered + 2);
+  });
+
+  it("two notifications with same session key are processed sequentially", async () => {
+    const n1 = nid("n-seq-1");
+    const n2 = nid("n-seq-2");
+    const t1 = tid("task-seq");
+    const sessionKey = "task:seq:agent:a:acc:v1";
+
+    mockAction.mockImplementation(
+      async (_actionRef: unknown, args: unknown) => {
+        const a = args as Record<string, unknown> | undefined;
+        if (a && a.limit === 50) return [{ _id: n1 }, { _id: n2 }];
+        if (a && a.notificationId === n1 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n1,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t1,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t1,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: sessionKey,
+          });
+        }
+        if (a && a.notificationId === n2 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n2,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t1,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t1,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: sessionKey,
+          });
+        }
+        return undefined;
+      },
+    );
+
+    const sendOrder: string[] = [];
+    mockSendToOpenClaw.mockImplementation(async (key: string) => {
+      sendOrder.push(key);
+      return { text: "OK", toolCalls: [] };
+    });
+
+    await _runOnePollCycle(config);
+
+    expect(mockSendToOpenClaw).toHaveBeenCalledTimes(2);
+    expect(sendOrder).toEqual([sessionKey, sessionKey]);
+  });
+
+  it("retry in one stream does not block another stream", async () => {
+    const n1 = nid("n-retry-1");
+    const n2 = nid("n-retry-2");
+    const t1 = tid("task-r1");
+    const t2 = tid("task-r2");
+    const session1 = "task:r1:agent:a:acc:v1";
+    const session2 = "task:r2:agent:a:acc:v1";
+
+    mockAction.mockImplementation(
+      async (_actionRef: unknown, args: unknown) => {
+        const a = args as Record<string, unknown> | undefined;
+        if (a && a.limit === 50) return [{ _id: n1 }, { _id: n2 }];
+        if (a && a.notificationId === n1 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n1,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t1,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t1,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: session1,
+          });
+        }
+        if (a && a.notificationId === n2 && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: n2,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId: t2,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: t2,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+            deliverySessionKey: session2,
+          });
+        }
+        return undefined;
+      },
+    );
+
+    mockSendToOpenClaw.mockImplementation(async (sessionKey: string) => {
+      if (sessionKey === session1) return { text: "", toolCalls: [] };
+      return { text: "OK", toolCalls: [] };
+    });
+
+    const beforeFailed = getDeliveryState().failedCount;
+    const beforeDelivered = getDeliveryState().deliveredCount;
+    await _runOnePollCycle(config);
+
+    expect(getDeliveryState().failedCount).toBe(beforeFailed + 1);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered + 1);
+    const deliveryEndedCalls = mockAction.mock.calls.filter(
+      (c) => (c[1] as Record<string, unknown>)?.notificationId === n1,
+    );
+    const markDeliveredCalls = mockAction.mock.calls.filter(
+      (c) => (c[1] as Record<string, unknown>)?.notificationId === n2,
+    );
+    expect(deliveryEndedCalls.length).toBeGreaterThanOrEqual(1);
+    expect(markDeliveredCalls.length).toBeGreaterThanOrEqual(1);
   });
 });
