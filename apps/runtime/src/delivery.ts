@@ -88,6 +88,28 @@ const state: DeliveryState = {
 };
 
 /**
+ * Result of processing one notification; streams return aggregated deltas.
+ * Used so the main cycle can aggregate outcomes without mutating shared state from inside parallel streams.
+ */
+export interface DeliveryOutcome {
+  delivered: number;
+  failed: number;
+  requiredNotificationRetryExhaustedCount: number;
+  noResponseTerminalSkipCount: number;
+  lastErrorMessage: string | null;
+}
+
+function zeroOutcome(): DeliveryOutcome {
+  return {
+    delivered: 0,
+    failed: 0,
+    requiredNotificationRetryExhaustedCount: 0,
+    noResponseTerminalSkipCount: 0,
+    lastErrorMessage: null,
+  };
+}
+
+/**
  * Result of no-response handling: either signal retry (throw) or proceed with optional fallback text.
  * Loop applies clearNoResponseRetry, state counters, and throws when action is "retry".
  * When retry or exhausted, attempt is set so the loop can log without calling _getNoResponseRetryDecision again.
@@ -424,6 +446,7 @@ function resolveFinalTextToPost(
 
 /**
  * Persists agent message when present, optionally advances task status, then marks notification delivered.
+ * When skipStateUpdate is true (e.g. from processOneNotification), only Convex is updated; caller applies outcome.delivered to state.
  */
 async function persistMessageAndMaybeAdvanceTask(
   client: ReturnType<typeof getConvexClient>,
@@ -435,6 +458,7 @@ async function persistMessageAndMaybeAdvanceTask(
   skipMessageReason: string | null,
   config: RuntimeConfig,
   canModifyTaskStatus: boolean,
+  skipStateUpdate?: boolean,
 ): Promise<void> {
   if (taskId && textToPost && ctx.agent) {
     await client.action(api.service.actions.createMessageFromAgent, {
@@ -479,7 +503,157 @@ async function persistMessageAndMaybeAdvanceTask(
       skipMessageReason ?? "empty or intentionally suppressed",
     );
   }
-  await markDeliveredAndLog(client, config, notification._id);
+  if (skipStateUpdate) {
+    await markNotificationDeliveredInConvex(client, config, notification._id);
+  } else {
+    await markDeliveredAndLog(client, config, notification._id);
+  }
+}
+
+/**
+ * Process a single notification: mark read, send to OpenClaw, handle no-response, persist message, mark delivered in Convex.
+ * Does not mutate state.deliveredCount, state.failedCount, or other shared counters; only state.noResponseFailures (by notification id).
+ * On retry (no-response) throws; caller catches and returns failed outcome. On success returns DeliveryOutcome for aggregation.
+ *
+ * @param client - Convex client
+ * @param config - Runtime config
+ * @param notification - Notification doc (at least _id)
+ * @param ctx - Delivery context from getNotificationForDelivery
+ * @param toolCapabilities - Precomputed tool capabilities for ctx
+ * @param canModifyTaskStatus - Whether agent can change task status
+ * @param isOrchestrator - Whether ctx.agent is the orchestrator
+ * @returns DeliveryOutcome (delivered 0 or 1, failed 0, exhausted/terminal counts, lastErrorMessage)
+ * @throws On no-response retry or other errors; caller calls markNotificationDeliveryEnded and returns failed outcome
+ */
+async function processOneNotification(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  notification: { _id: Id<"notifications"> },
+  ctx: DeliveryContext,
+  toolCapabilities: ToolCapabilitiesAndSchemas,
+  canModifyTaskStatus: boolean,
+  isOrchestrator: boolean,
+): Promise<DeliveryOutcome> {
+  let requiredNotificationRetryExhaustedCount = 0;
+  let noResponseTerminalSkipCount = 0;
+
+  try {
+    await client.action(api.service.actions.markNotificationRead, {
+      notificationId: notification._id,
+      serviceToken: config.serviceToken,
+      accountId: config.accountId,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.warn("Failed to mark notification read", notification._id, msg);
+  }
+
+  const sessionKey = ctx.deliverySessionKey;
+  if (!sessionKey) {
+    throw new Error(
+      "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
+    );
+  }
+
+  const result = await sendNotificationToOpenClaw(
+    sessionKey,
+    ctx,
+    config,
+    toolCapabilities,
+  );
+
+  const taskId = ctx.notification.taskId;
+  const isHeartbeatOk = isHeartbeatOkResponse(result.text?.trim());
+  if (isHeartbeatOk && result.toolCalls.length === 0) {
+    log.info(
+      "OpenClaw returned HEARTBEAT_OK; skipping notification",
+      notification._id,
+      ctx.agent?.name,
+    );
+    clearNoResponseRetry(notification._id);
+    await markNotificationDeliveredInConvex(client, config, notification._id);
+    return {
+      ...zeroOutcome(),
+      delivered: 1,
+    };
+  }
+
+  const noResponseOutcome = handleNoResponseAfterSend(
+    result,
+    ctx,
+    notification._id,
+    taskId,
+  );
+  if (noResponseOutcome.action === "retry") {
+    log.warn(
+      "OpenClaw returned no response; will retry notification",
+      notification._id,
+      ctx.agent?.name,
+      `(attempt ${noResponseOutcome.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+    );
+    throw new Error(noResponseOutcome.reason);
+  }
+  if (noResponseOutcome.exhausted) {
+    requiredNotificationRetryExhaustedCount = 1;
+    const attempt = noResponseOutcome.attempt ?? 0;
+    log.warn(
+      "OpenClaw returned no response; giving up",
+      notification._id,
+      ctx.agent?.name,
+      taskId ? `taskId=${taskId}` : "taskId=none",
+      `(attempt ${attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
+    );
+  }
+  if (noResponseOutcome.terminalSkip) {
+    noResponseTerminalSkipCount = 1;
+    log.info(
+      "OpenClaw returned no response for non-actionable notification; skipping",
+      notification._id,
+      ctx.agent?.name,
+      noResponseOutcome.skipMessageReason ?? "no response",
+    );
+  }
+  clearNoResponseRetry(notification._id);
+
+  let textToPost: string | null = noResponseOutcome.textToPost;
+  let suppressAgentNotifications = noResponseOutcome.suppressAgentNotifications;
+  let skipMessageReason: string | null = noResponseOutcome.skipMessageReason;
+  textToPost = await executeToolCallsAndGetFinalText(
+    result.toolCalls,
+    ctx,
+    config,
+    toolCapabilities,
+    isOrchestrator,
+    textToPost,
+  );
+  const resolved = resolveFinalTextToPost(textToPost, result, ctx, taskId, {
+    suppressAgentNotifications,
+    skipMessageReason,
+  });
+  textToPost = resolved.textToPost;
+  suppressAgentNotifications = resolved.suppressAgentNotifications;
+  skipMessageReason = resolved.skipMessageReason;
+
+  await persistMessageAndMaybeAdvanceTask(
+    client,
+    ctx,
+    notification,
+    taskId,
+    textToPost,
+    suppressAgentNotifications,
+    skipMessageReason,
+    config,
+    canModifyTaskStatus,
+    true, // skipStateUpdate: caller will apply outcome.delivered to state
+  );
+
+  return {
+    delivered: 1,
+    failed: 0,
+    requiredNotificationRetryExhaustedCount,
+    noResponseTerminalSkipCount,
+    lastErrorMessage: null,
+  };
 }
 
 /**
@@ -505,6 +679,22 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
 }
 
 /**
+ * Mark a notification as delivered in Convex only (no state update).
+ * Used by processOneNotification so the caller can apply outcome.delivered to state.
+ */
+async function markNotificationDeliveredInConvex(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  notificationId: Id<"notifications">,
+): Promise<void> {
+  await client.action(api.service.actions.markNotificationDelivered, {
+    notificationId,
+    serviceToken: config.serviceToken,
+    accountId: config.accountId,
+  });
+}
+
+/**
  * Mark a notification as delivered, increment delivered count, and log.
  * Used by the poll cycle for skip and success paths to avoid duplication.
  */
@@ -514,11 +704,7 @@ async function markDeliveredAndLog(
   notificationId: Id<"notifications">,
   logReason?: string,
 ): Promise<void> {
-  await client.action(api.service.actions.markNotificationDelivered, {
-    notificationId,
-    serviceToken: config.serviceToken,
-    accountId: config.accountId,
-  });
+  await markNotificationDeliveredInConvex(client, config, notificationId);
   state.deliveredCount++;
   if (logReason) {
     log.info(logReason, notificationId);
@@ -590,16 +776,6 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             );
             continue;
           }
-          try {
-            await client.action(api.service.actions.markNotificationRead, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log.warn("Failed to mark notification read", notification._id, msg);
-          }
           const toolCapabilities = buildToolCapabilitiesForContext(ctx, config);
           const canModifyTaskStatus =
             ctx.effectiveBehaviorFlags?.canModifyTaskStatus !== false;
@@ -607,103 +783,25 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             ctx.orchestratorAgentId != null &&
             ctx.agent !== null &&
             ctx.agent._id === ctx.orchestratorAgentId;
-          // Do not log sessionKey; redact if ever needed (see docs/security/OPENCLAW_CONFIG_SECURITY_AUDIT.md).
-          const sessionKey = ctx.deliverySessionKey;
-          if (!sessionKey) {
-            throw new Error(
-              "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
-            );
-          }
-          const result = await sendNotificationToOpenClaw(
-            sessionKey,
-            ctx,
-            config,
-            toolCapabilities,
-          );
-
-          const taskId = ctx.notification.taskId;
-          const isHeartbeatOk = isHeartbeatOkResponse(result.text?.trim());
-          if (isHeartbeatOk && result.toolCalls.length === 0) {
-            log.info(
-              "OpenClaw returned HEARTBEAT_OK; skipping notification",
-              notification._id,
-              ctx.agent.name,
-            );
-            clearNoResponseRetry(notification._id);
-            await markDeliveredAndLog(client, config, notification._id);
-            continue;
-          }
-          const noResponseOutcome = handleNoResponseAfterSend(
-            result,
-            ctx,
-            notification._id,
-            taskId,
-          );
-          if (noResponseOutcome.action === "retry") {
-            log.warn(
-              "OpenClaw returned no response; will retry notification",
-              notification._id,
-              ctx.agent.name,
-              `(attempt ${noResponseOutcome.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-            );
-            // Do not clear retry state here so the next poll sees the correct attempt count and can exhaust after NO_RESPONSE_RETRY_LIMIT.
-            throw new Error(noResponseOutcome.reason);
-          }
-          if (noResponseOutcome.exhausted) {
-            state.requiredNotificationRetryExhaustedCount++;
-            const attempt = noResponseOutcome.attempt ?? 0;
-            log.warn(
-              "OpenClaw returned no response; giving up",
-              notification._id,
-              ctx.agent.name,
-              taskId ? `taskId=${taskId}` : "taskId=none",
-              `(attempt ${attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
-            );
-          }
-          if (noResponseOutcome.terminalSkip) {
-            state.noResponseTerminalSkipCount++;
-            log.info(
-              "OpenClaw returned no response for non-actionable notification; skipping",
-              notification._id,
-              ctx.agent.name,
-              noResponseOutcome.skipMessageReason ?? "no response",
-            );
-          }
-          clearNoResponseRetry(notification._id);
-          let textToPost: string | null = noResponseOutcome.textToPost;
-          let suppressAgentNotifications =
-            noResponseOutcome.suppressAgentNotifications;
-          let skipMessageReason: string | null =
-            noResponseOutcome.skipMessageReason;
-          textToPost = await executeToolCallsAndGetFinalText(
-            result.toolCalls,
-            ctx,
-            config,
-            toolCapabilities,
-            isOrchestrator,
-            textToPost,
-          );
-          const resolved = resolveFinalTextToPost(
-            textToPost,
-            result,
-            ctx,
-            taskId,
-            { suppressAgentNotifications, skipMessageReason },
-          );
-          textToPost = resolved.textToPost;
-          suppressAgentNotifications = resolved.suppressAgentNotifications;
-          skipMessageReason = resolved.skipMessageReason;
-          await persistMessageAndMaybeAdvanceTask(
+          const outcome = await processOneNotification(
             client,
-            ctx,
-            notification,
-            taskId,
-            textToPost,
-            suppressAgentNotifications,
-            skipMessageReason,
             config,
+            notification,
+            ctx,
+            toolCapabilities,
             canModifyTaskStatus,
+            isOrchestrator,
           );
+          state.deliveredCount += outcome.delivered;
+          state.failedCount += outcome.failed;
+          state.requiredNotificationRetryExhaustedCount +=
+            outcome.requiredNotificationRetryExhaustedCount;
+          state.noResponseTerminalSkipCount +=
+            outcome.noResponseTerminalSkipCount;
+          if (outcome.lastErrorMessage) {
+            state.lastErrorAt = Date.now();
+            state.lastErrorMessage = outcome.lastErrorMessage;
+          }
         } else if (ctx?.notification) {
           await markDeliveredAndLog(
             client,
