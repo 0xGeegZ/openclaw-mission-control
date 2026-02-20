@@ -4,10 +4,10 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { RuntimeConfig } from "./config";
 import { createLogger } from "./logger";
 
-/** Minimal shape for items returned by service.actions.listAgents (backend returns unknown[]). */
+/** Minimal shape for items returned by service.actions.listAgents (backend returns unknown[]). Runtime uses systemSessionKey only. */
 export interface ListAgentsItem {
   _id: Id<"agents">;
-  sessionKey: string;
+  systemSessionKey: string;
   slug?: string;
 }
 

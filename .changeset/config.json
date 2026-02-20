@@ -4,9 +4,10 @@
   "commit": true,
   "commitMessage": "chore(release): update changelog [skip ci]",
   "fixed": [],
+  "ignore": [],
   "linked": [],
   "access": "public",
-  "baseBranch": "dev",
+  "baseBranch": "master",
   "updateInternalDependencies": "patch",
   "privatePackages": {
     "version": true,

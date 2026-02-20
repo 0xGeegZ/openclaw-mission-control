@@ -23,9 +23,9 @@ fi
 CONFIG_DIR="/root/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 # Runtime-generated agent list (written by mission-control runtime); merged into config at startup and optionally on reload.
-OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-/root/clawd/openclaw.json}"
 # Per-agent workspace root used by OpenClaw sessions. Must exist before first delivery.
 OPENCLAW_WORKSPACE_ROOT="${OPENCLAW_WORKSPACE_ROOT:-/root/clawd/agents}"
+GENERATED_CONFIG_FILE_PATH="$(dirname "$OPENCLAW_WORKSPACE_ROOT")/openclaw.json"
 TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 
@@ -107,6 +107,17 @@ if (githubToken) {
   config.agents.defaults.sandbox.docker.env.GITHUB_TOKEN = githubToken;
 }
 
+/** Brave Search API: enable web_search when BRAVE_API_KEY is set. Key must be in Gateway env (e.g. Docker); not written to config. */
+if (process.env.BRAVE_API_KEY) {
+  config.tools = config.tools || {};
+  config.tools.web = config.tools.web || {};
+  config.tools.web.search = Object.assign(config.tools.web.search || {}, {
+    provider: 'brave',
+    maxResults: 5,
+    timeoutSeconds: 30,
+  });
+}
+
 const hasVercelKey = Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY);
 
 // Gateway and browser (always enforced)
@@ -120,17 +131,49 @@ config.gateway.controlUi = config.gateway.controlUi || {};
 config.gateway.controlUi.allowInsecureAuth = true;
 config.browser = config.browser || {};
 config.browser.enabled = true;
-config.browser.executablePath = '/usr/bin/chromium';
 config.browser.headless = true;
 config.browser.noSandbox = true;
-config.browser.defaultProfile = 'clawd';
+config.browser.defaultProfile = 'openclaw';
+config.browser.profiles = config.browser.profiles || {};
+// Keep legacy custom profile valid if present in persisted config.
+if (config.browser.profiles.clawd) {
+  config.browser.profiles.clawd = Object.assign(
+    { cdpPort: 18800, color: '#FF4500' },
+    config.browser.profiles.clawd,
+  );
+}
+// Ensure the documented managed profile is present and valid.
+config.browser.profiles.openclaw = Object.assign(
+  { cdpPort: 18800, color: '#FF4500' },
+  config.browser.profiles.openclaw || {},
+);
+const configuredBrowserPath =
+  (process.env.OPENCLAW_BROWSER_EXECUTABLE_PATH || '').trim();
+const browserCandidates = [
+  configuredBrowserPath,
+  '/usr/bin/brave-browser',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean);
+const detectedBrowserPath = browserCandidates.find((candidate) => {
+  try {
+    return fs.existsSync(candidate);
+  } catch {
+    return false;
+  }
+});
+if (detectedBrowserPath) {
+  config.browser.executablePath = detectedBrowserPath;
+}
+// We start Chromium in this script; gateway should attach only, not launch (avoids "Failed to start Chrome CDP" / profile errors).
+config.browser.attachOnly = true;
 
 if (process.env.OPENCLAW_GATEWAY_TOKEN) {
   config.gateway.auth = config.gateway.auth || {};
   config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
-// Vercel AI Gateway: auth profile + model defaults (Haiku primary, GPT-5 Nano fallback)
+// Vercel AI Gateway: auth profile + model defaults (Minimax M2.5 primary, Haiku/Kimi/GPT-5 Nano fallbacks)
 if (hasVercelKey) {
   config.auth.profiles['vercel-ai-gateway:default'] = {
     provider: 'vercel-ai-gateway',
@@ -141,14 +184,21 @@ if (hasVercelKey) {
   if (gatewayKey) {
     config.env.AI_GATEWAY_API_KEY = gatewayKey;
   }
-  config.agents.defaults.model.primary = 'vercel-ai-gateway/anthropic/claude-haiku-4.5';
-  config.agents.defaults.model.fallbacks = ['vercel-ai-gateway/openai/gpt-5-nano'];
+  config.agents.defaults.model.primary = 'vercel-ai-gateway/minimax/minimax-m2.5';
+  config.agents.defaults.model.fallbacks = [
+    'vercel-ai-gateway/anthropic/claude-haiku-4.5',
+    'vercel-ai-gateway/moonshotai/kimi-k2.5',
+    'vercel-ai-gateway/openai/gpt-5-nano',
+  ];
+  config.agents.defaults.models['vercel-ai-gateway/minimax/minimax-m2.5'] = { alias: 'Minimax M2.5' };
   config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-haiku-4.5'] = { alias: 'Claude Haiku 4.5' };
+  config.agents.defaults.models['vercel-ai-gateway/moonshotai/kimi-k2.5'] = { alias: 'Moonshot Kimi K2.5' };
   config.agents.defaults.models['vercel-ai-gateway/openai/gpt-5-nano'] = { alias: 'GPT-5 Nano' };
   delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-sonnet-4.5'];
   delete config.agents.defaults.models['vercel-ai-gateway/anthropic/claude-opus-4.5'];
 } else {
-  // Legacy: only if Vercel key not set (Anthropic/OpenAI from env)
+  // Legacy: only if Vercel key not set. Anthropic/OpenAI from env; primary = Haiku, fallback = GPT-5 Nano.
+  // Minimax/Moonshot would require MINIMAX_API_KEY / MOONSHOT_API_KEY and provider blocks (not yet added).
   const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
   if (hasAnthropic) {
@@ -361,7 +411,9 @@ function modelForVercelGateway(model) {
   if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 'vercel-ai-gateway/' + model;
   return model;
 }
-const openclawConfigPath = process.env.OPENCLAW_CONFIG_PATH || '/root/clawd/openclaw.json';
+
+const workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT || '/root/clawd/agents';
+const openclawConfigPath = path.join(path.dirname(workspaceRoot), 'openclaw.json');
 try {
   if (require('fs').existsSync(openclawConfigPath)) {
     const generated = JSON.parse(require('fs').readFileSync(openclawConfigPath, 'utf8'));
@@ -391,7 +443,7 @@ try {
     }
   }
 } catch (e) {
-  console.warn('Could not merge OPENCLAW_CONFIG_PATH:', e.message);
+  console.warn('Could not merge generated OpenClaw config path:', e.message);
 }
 
 // Current clawdbot rejects top-level "load"; remove so config is valid.
@@ -429,8 +481,8 @@ fi
 for id in $(jq -r '.agents.list[]?.id // empty' "$CONFIG_FILE" 2>/dev/null); do
   [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
 done
-if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-  for id in $(jq -r '.agents.list[]?.id // empty' "$OPENCLAW_CONFIG_PATH" 2>/dev/null); do
+if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+  for id in $(jq -r '.agents.list[]?.id // empty' "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null); do
     [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
   done
 fi
@@ -482,6 +534,7 @@ mkdir -p \
   "$WORKSPACE_DIR/memory" \
   "$WORKSPACE_DIR/deliverables" \
   "$WORKSPACE_DIR/repos" \
+  "$WORKSPACE_DIR/worktrees" \
   "$OPENCLAW_WORKSPACE_ROOT"
 # Touch may fail if the shared mount is owned by runtime (UID 10001); non-fatal so gateway can still start.
 touch "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/memory/WORKING.md" 2>/dev/null || true
@@ -564,11 +617,29 @@ fi
 echo "============================================================"
 echo ""
 
-echo "Starting Chromium (headless, CDP on port 18800)..."
-chromium \
+# Ensure browser profile dir exists so Chromium can use it (avoids profile init errors).
+mkdir -p /root/.openclaw/browser/openclaw/user-data
+
+BROWSER_BIN="${OPENCLAW_BROWSER_EXECUTABLE_PATH:-}"
+if [ -z "$BROWSER_BIN" ]; then
+  if command -v brave-browser >/dev/null 2>&1; then
+    BROWSER_BIN="brave-browser"
+  elif command -v chromium >/dev/null 2>&1; then
+    BROWSER_BIN="chromium"
+  elif command -v chromium-browser >/dev/null 2>&1; then
+    BROWSER_BIN="chromium-browser"
+  fi
+fi
+
+if [ -z "$BROWSER_BIN" ]; then
+  BROWSER_BIN="chromium"
+fi
+
+echo "Starting browser ($BROWSER_BIN, headless, CDP on port 18800)..."
+"$BROWSER_BIN" \
   --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
   --remote-debugging-port=18800 --remote-debugging-address=127.0.0.1 \
-  --user-data-dir=/root/.openclaw/browser/clawd/user-data \
+  --user-data-dir=/root/.openclaw/browser/openclaw/user-data \
   about:blank 2>/dev/null &
 CHROMIUM_PID=$!
 sleep 2
@@ -590,13 +661,13 @@ if [ -n "${OPENCLAW_CONFIG_RELOAD:-}" ] && [ "${OPENCLAW_CONFIG_RELOAD}" = "1" ]
   (
     # Set baseline mtime so only changes after startup trigger a restart
     LAST_MTIME=""
-    if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-      LAST_MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+    if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+      LAST_MTIME=$(stat -c %Y "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null || stat -f %m "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null)
     fi
     while kill -0 "$GATEWAY_PID" 2>/dev/null; do
       sleep 30
-      if [ -f "$OPENCLAW_CONFIG_PATH" ]; then
-        MTIME=$(stat -c %Y "$OPENCLAW_CONFIG_PATH" 2>/dev/null || stat -f %m "$OPENCLAW_CONFIG_PATH" 2>/dev/null)
+      if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
+        MTIME=$(stat -c %Y "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null || stat -f %m "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null)
         if [ -n "$MTIME" ] && [ -n "$LAST_MTIME" ] && [ "$MTIME" != "$LAST_MTIME" ]; then
           echo "OpenClaw config changed, restarting gateway..."
           kill "$GATEWAY_PID" 2>/dev/null || true

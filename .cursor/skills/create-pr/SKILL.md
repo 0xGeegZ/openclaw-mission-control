@@ -21,20 +21,24 @@ globs:
 
 When invoked, execute the following workflow:
 
+**Run this command from the feature worktree** (the isolated folder for this feature/branch), not from the main repo root. If you are in the main repo, switch to the correct worktree directory first (e.g. the path you used with `git worktree add`). This keeps the PR scoped to this feature only.
+
 ## 1. Analyze Current State
+
+**Ensure you are in the feature worktree:** If the current directory is the main repo root (you did not open a worktree folder), instruct the user to switch to the feature worktree directory first; otherwise the PR may be created from the wrong branch or include unrelated changes.
 
 **Check git status:**
 
 ```bash
 git status
 git diff --stat
-git log --oneline dev..HEAD
+git log --oneline master..HEAD
 ```
 
 **Determine action needed:**
 
 - If uncommitted changes exist → stage and commit them
-- If on dev → create feature branch
+- If on master → create feature branch
 - If commits exist on branch → check if PR already exists
 
 ## 2. Handle Uncommitted Changes (if present)
@@ -60,9 +64,9 @@ git commit -m "type(scope): description"
 
 ## 3. Ensure Feature Branch (if needed)
 
-**When working on a task:** Use branch name `feat/task-<taskId>` (task ID from your notification). Create from dev: `git checkout dev && git pull && git checkout -b feat/task-<taskId>`. If the branch already exists remotely: `git fetch origin && git checkout feat/task-<taskId>`. Do not use a generic branch name for task work.
+**When working on a task:** Use branch name `feat/task-<taskId>` (task ID from your notification). Create from master: `git checkout master && git pull && git checkout -b feat/task-<taskId>`. If the branch already exists remotely: `git fetch origin && git checkout feat/task-<taskId>`. Do not use a generic branch name for task work.
 
-**If not in task context (or no task ID in notification):** Use conventional branch name. If currently on dev, create branch:
+**If not in task context (or no task ID in notification):** Use conventional branch name. If currently on master, create branch:
 
 - Format: `<type>/<short-description>`
 - Example: `feat/context-on-failure`, `fix/rule-evaluation`
@@ -77,8 +81,8 @@ git checkout -b <branch-name>
 **Review diff scope:**
 
 ```bash
-git diff dev --stat
-git diff dev --name-status
+git diff master --stat
+git diff master --name-status
 ```
 
 **Group changes by purpose:**
@@ -156,7 +160,7 @@ gh pr list --head $(git branch --show-current)
 gh pr create \
   --title "<PR Title>" \
   --body "<PR Description>" \
-  --base dev
+  --base master
 ```
 
 **Options to consider:**

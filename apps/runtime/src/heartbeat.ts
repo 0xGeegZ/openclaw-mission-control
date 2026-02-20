@@ -19,7 +19,7 @@ const log = createLogger("[Heartbeat]");
 
 interface HeartbeatState {
   isRunning: boolean;
-  schedules: Map<string, NodeJS.Timeout>;
+  schedules: Map<Id<"agents">, NodeJS.Timeout>;
   /** Track interval (minutes) per agent for reschedule-on-change. */
   intervals: Map<string, number>;
 }
@@ -700,12 +700,12 @@ export async function startHeartbeats(config: RuntimeConfig): Promise<void> {
 /** Max window over which to stagger first runs (ms). */
 const STAGGER_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 
-/** Agent shape for heartbeat scheduling (minimal). */
+/** Agent shape for heartbeat scheduling (minimal). Uses system session key from listAgents. */
 export interface AgentForHeartbeat {
   _id: Id<"agents">;
   name: string;
   slug?: string;
-  sessionKey: string;
+  systemSessionKey: string;
   heartbeatInterval?: number;
   effectiveBehaviorFlags?: {
     canCreateTasks?: boolean;
@@ -881,7 +881,7 @@ function runHeartbeatCycle(
           : undefined;
 
       const result = await sendToOpenClaw(
-        agent.sessionKey,
+        agent.systemSessionKey,
         heartbeatMessage,
         sendOptions,
       );
@@ -918,7 +918,7 @@ function runHeartbeatCycle(
         if (outputs.length > 0) {
           try {
             const finalText = await sendOpenClawToolResults(
-              agent.sessionKey,
+              agent.systemSessionKey,
               outputs,
             );
             if (finalText?.trim()) {
@@ -1102,5 +1102,5 @@ export function getHeartbeatState(): {
  * Used by agent sync to remove orphaned schedules even when gateway sessions are out of sync.
  */
 export function getScheduledAgentIds(): Id<"agents">[] {
-  return Array.from(state.schedules.keys()) as Id<"agents">[];
+  return Array.from(state.schedules.keys());
 }

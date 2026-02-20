@@ -5,15 +5,18 @@
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
 import type { DeliveryContext } from "./types";
-import { isOrchestratorChatTask, isQaAgentProfile } from "./policy";
+import {
+  isOrchestratorChatTask,
+  isRecipientInMultiAssigneeTask,
+} from "./policy";
 
 const MENTIONABLE_AGENTS_CAP = 25;
 const THREAD_MAX_MESSAGES = 25;
 const THREAD_MAX_CHARS_PER_MESSAGE = 1500;
 const TASK_DESCRIPTION_MAX_CHARS = 4000;
-const REPOSITORY_CONTEXT_MAX_CHARS = 12000;
+const REPOSITORY_CONTEXT_MAX_CHARS = 4000;
 const GLOBAL_CONTEXT_MAX_CHARS = 4000;
-const TASK_BRANCH_PREFIX = "feat/task-";
+/** Task branch/worktree are defined by the repository context document (seed-owned); no hardcoded paths here. */
 
 const STATUS_INSTRUCTION_VALID_TRANSITIONS =
   "Valid next statuses from current: assigned -> in_progress, in_progress -> review, in_progress -> blocked, review -> done or back to in_progress, review -> blocked, blocked -> in_progress. Do not move directly to done unless the current status is review.";
@@ -211,14 +214,19 @@ export function buildHttpCapabilityLabels(options: {
   return labels;
 }
 
+/** Instruction profile version for observability. */
+export const DELIVERY_INSTRUCTION_PROFILE_VERSION = "v2";
+
 /**
- * Format notification message for OpenClaw. Orchestrator is silent-by-default (no routine ack instruction).
- * @param context - Delivery context (notification, task, message, thread, flags).
- * @param taskStatusBaseUrl - Base URL for task-status HTTP fallback (e.g. http://runtime:3000).
- * @param toolCapabilities - Capability labels and schemas; must match tools sent to OpenClaw.
- * @returns Full prompt string for the notification.
+ * Build system/policy instructions for OpenResponses (instructions field).
+ * Includes identity, capabilities, current-task scope, and operational rules.
+ *
+ * @param context - Delivery context from getNotificationForDelivery (notification, task, agent, flags).
+ * @param taskStatusBaseUrl - Base URL for task-status/document/response-request HTTP fallbacks.
+ * @param toolCapabilities - Capability labels and tool schemas; used to choose tool vs HTTP wording.
+ * @returns Instructions string for the OpenResponses instructions field.
  */
-export function formatNotificationMessage(
+export function buildDeliveryInstructions(
   context: DeliveryContext,
   taskStatusBaseUrl: string,
   toolCapabilities: ToolCapabilitiesAndSchemas,
@@ -226,11 +234,6 @@ export function formatNotificationMessage(
   const {
     notification,
     task,
-    message,
-    thread,
-    repositoryDoc,
-    globalBriefingDoc,
-    taskOverview,
     mentionableAgents = [],
     primaryUserMention = null,
     orchestratorAgentId = null,
@@ -247,126 +250,59 @@ export function formatNotificationMessage(
     hasRuntimeTools &&
     hasToolSchema(toolCapabilities.schemas, "response_request");
   const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
-  const sessionKey = context.agent?.sessionKey ?? "<session-key>";
+  /** Session key for HTTP fallback instructions; deliverySessionKey is required for agent notifications. */
+  const sessionKey = context.deliverySessionKey?.trim();
+  if (!sessionKey) {
+    throw new Error(
+      "Missing deliverySessionKey; buildDeliveryInstructions requires backend-resolved session key",
+    );
+  }
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   const capabilitiesBlock =
     capabilityLabels.length > 0
-      ? `Runtime capabilities: ${capabilityLabels.join("; ")}. Use only the runtime capabilities listed here. If a runtime tool or HTTP fallback fails, report BLOCKED with the error message.\n\n`
+      ? `Runtime capabilities:\n${capabilityLabels.map((l) => `- ${l}`).join("\n")}\nUse only the capabilities listed above. If a tool or HTTP fallback fails, report BLOCKED with the error message.\n\n`
       : "Runtime capabilities: none. If asked to create tasks, change status, or create documents, report BLOCKED.\n\n";
 
   const agentName = context.agent?.name?.trim() || "Agent";
   const agentRole = context.agent?.role?.trim() || "Unknown role";
   const identityLine = `You are replying as: **${agentName}** (${agentRole}). Reply only as this agent; do not speak as or ask whether you are another role.\n\n`;
 
-  const taskDescription = task?.description?.trim()
-    ? `Task description:\n${truncateForContext(task.description.trim(), TASK_DESCRIPTION_MAX_CHARS)}`
-    : "";
-  const messageDetails = message
-    ? [
-        `Latest message:`,
-        message.content?.trim() || "(empty)",
-        "",
-        `Message author: ${message.authorType} (${message.authorId})`,
-        `Message ID: ${message._id}`,
-      ].join("\n")
-    : "";
-  const threadDetails = formatThreadContext(thread);
-  const localRepoHint =
-    "Writable clone (use for all git work): /root/clawd/repos/openclaw-mission-control. Before starting, run `git fetch origin` and `git pull`.";
-  const taskBranchName = task ? `${TASK_BRANCH_PREFIX}${task._id}` : null;
-  const taskBranchRule = taskBranchName
-    ? `For this task use only branch \`${taskBranchName}\`. Before code edits: git fetch origin, git checkout dev, git pull, then git checkout -b ${taskBranchName} or git checkout ${taskBranchName} if it exists. Push and open PR from that branch only.`
-    : null;
-  const repositoryDetails = repositoryDoc?.content?.trim()
-    ? [
-        "Repository context:",
-        truncateForContext(
-          repositoryDoc.content.trim(),
-          REPOSITORY_CONTEXT_MAX_CHARS,
-        ),
-        localRepoHint,
-        "",
-        "Use the repository context above as the default codebase. Do not ask which repo to use.",
-        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
-        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
-        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
-        'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
-        "Only use the read tool with paths under `/root/clawd` (e.g. /root/clawd/agents/<slug>/memory/WORKING.md). Do not read paths under /usr, /usr/local, or node_modules — they are not in your workspace and will fail.",
-        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
-        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
-        ...(taskBranchRule ? ["", taskBranchRule] : []),
-      ].join("\n")
-    : [
-        "Repository context: not found.",
-        localRepoHint,
-        "Prefer the local writable clone; use it for branch, commit, push, and gh pr create. PRs must target `dev` (use `--base dev`, not master).",
-        "To inspect the repo tree, use exec (e.g., `ls /root/clawd/repos/openclaw-mission-control`) and only use read on files.",
-        "Never call read on directories (for example `src/app/.../analytics/`); this causes EISDIR. For directory discovery use exec (`ls`, `rg`) first, then read a specific file path.",
-        "When a path contains App Router bracket segments, keep them exact (e.g. `[accountSlug]`, not `[accountSlug)`), and quote shell paths containing brackets/parentheses.",
-        'Prefer memory_get/memory_set for memory files when available. If read is needed, pass JSON args with `path` (for example `{ "path": "memory/WORKING.md" }`) and only target files.',
-        "Only use the read tool with paths under `/root/clawd` (e.g. /root/clawd/agents/<slug>/memory/WORKING.md). Do not read paths under /usr, /usr/local, or node_modules — they are not in your workspace and will fail.",
-        "Write artifacts under `/root/clawd/deliverables` for local use. To share a deliverable with the primary user, use the document_upsert tool and reference it in the thread only as [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/... or /root/clawd/deliverables/...) — the user cannot open them.",
-        "Workspace boundaries: read/write only under `/root/clawd` (agents, memory, deliverables, repos). Do not write outside `/root/clawd`; if a required path under `/root/clawd` is missing, create it if you can (e.g. `/root/clawd/agents`), otherwise report BLOCKED.",
-        ...(taskBranchRule ? ["", taskBranchRule] : []),
-      ].join("\n");
-  const globalContextSection = globalBriefingDoc?.content?.trim()
-    ? [
-        "Global Context:",
-        truncateForContext(
-          globalBriefingDoc.content.trim(),
-          GLOBAL_CONTEXT_MAX_CHARS,
-        ),
-        "",
-      ].join("\n")
-    : "";
-  const taskOverviewSection = formatTaskOverview(
-    taskOverview,
-    mentionableAgents,
-  );
-
-  const hasQaAgent = context.mentionableAgents.some((agent) =>
-    isQaAgentProfile(agent),
-  );
   const isOrchestratorChat = isOrchestratorChatTask(task);
-  const qaReviewNote = hasQaAgent
-    ? " When QA is configured, only QA can mark tasks as done after review passes."
-    : "";
+  const qaReviewNote =
+    "Only agents with close permission (canMarkDone capability) can mark tasks as done, and only when the task is in review.";
   const doneRestrictionNote = toolCapabilities.canMarkDone
     ? ""
-    : hasQaAgent
-      ? " You are not allowed to mark tasks as done; QA must approve and close the task."
-      : " You are not allowed to mark tasks as done; ask the orchestrator if a task should be closed.";
+    : "You do not have canMarkDone capability; do not mark tasks as done. Ask an authorized closer or the orchestrator if closure is needed.";
   const humanBlockedNote =
-    " When you need human input, approval, or confirmation (e.g. clarification, design sign-off, credentials), move to blocked and set blockedReason to describe what you need and from whom; do not stay in_progress while waiting for humans. When an authorized actor (orchestrator or assignee with status permission) acknowledges the blocked request or provides the needed input, move the task back to in_progress before continuing work.";
+    "When waiting on human input/approval, move task to blocked with blockedReason; move back to in_progress once unblocked.";
   const statusInstructions = task
     ? canModifyTaskStatus
       ? hasRuntimeTools && toolCapabilities.hasTaskStatus
-        ? `If you need to change task status, do it BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS}.${humanBlockedNote}${qaReviewNote} You have the **task_status** tool (see Capabilities) — call it with taskId, status (in_progress|review${toolCapabilities.canMarkDone ? "|done" : ""}|blocked), and blockedReason when status is blocked. You also have **task_update** to change title, description, priority, labels, assignees, or dueDate — call it before posting when you modify the task. Do NOT decide tool availability based on whether your UI lists it; if Capabilities includes task_status or task_update, you can call them. If you request a valid target status that isn't the next immediate step, the runtime may auto-apply required intermediate transitions (e.g. assigned -> in_progress -> review) when possible. If a tool returns an error, do not claim you changed status; report BLOCKED and include the error message. As a last resort (manual/CLI), you can call the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other fields. Note: inbox/assigned are handled by assignment changes, not this tool. If you have no way to update status (tool fails and HTTP is unreachable), do not post a completion summary; report BLOCKED and state that you could not update task status.${doneRestrictionNote}`
-        : `If you need to change task status, do it BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS}.${humanBlockedNote}${qaReviewNote} Use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "status": "<next valid status>", "blockedReason": "..." }\`, or POST ${runtimeBaseUrl}/agent/task-update for other task fields. Note: inbox/assigned are handled by assignment changes, not this endpoint. If the HTTP call fails, report BLOCKED and include the error message.${doneRestrictionNote}`
+        ? `Change task status BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS} ${humanBlockedNote} ${qaReviewNote} Use **task_status** for status transitions, and use **task_update** for task fields (title/description/priority/labels/assignees/dueDate). If both are required in one turn, call **task_status** first, then **task_update**. If a tool call fails, report BLOCKED with the error message. ${doneRestrictionNote}`
+        : `Change task status BEFORE posting a thread update. ${STATUS_INSTRUCTION_VALID_TRANSITIONS} ${humanBlockedNote} ${qaReviewNote} Use HTTP fallback: POST ${runtimeBaseUrl}/agent/task-status or /agent/task-update with header \`x-openclaw-session-key: ${sessionKey}\`. If HTTP fails, report BLOCKED. ${doneRestrictionNote}`
       : "You are not allowed to change task status. If asked to change or close this task, report BLOCKED and explain that status updates are not permitted for you."
     : "";
   const taskCreateInstructions = canCreateTasks
     ? hasRuntimeTools
-      ? `If you need to create tasks, use the **task_create** tool (see Capabilities). You can include assignee slugs via \`assigneeSlugs\` to assign on creation. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
-      : `If you need to create tasks, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "description": "...", "priority": 3, "labels": ["..."], "status": "inbox|assigned|in_progress|review|done|blocked", "blockedReason": "...", "dueDate": 1700000000000, "assigneeSlugs": ["qa"] }\`.`
+      ? "When needed, create follow-up tasks using **task_create**."
+      : `When needed, create follow-up tasks via HTTP fallback: POST ${runtimeBaseUrl}/agent/task-create with header \`x-openclaw-session-key: ${sessionKey}\`.`
     : "";
   const documentInstructions = canCreateDocuments
     ? hasRuntimeTools
-      ? `If you need to create or update documents, use the **document_upsert** tool (see Capabilities). This is the document sharing tool — always use it so the primary user can see the doc, and include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. Do not post local paths (e.g. /deliverables/PLAN_*.md or /root/clawd/deliverables/...) in the thread — the user cannot open them. If the tool fails, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`.`
-      : `If you need to create or update documents, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "title": "...", "content": "...", "type": "deliverable|note|template|reference", "taskId": "<Task ID above>" }\`. Always include the returned documentId and a Markdown link in your reply: \`[Document](/document/<documentId>)\`. Do not post local paths like /deliverables/... in the thread — the user cannot open them.`
+      ? "For large outputs or artifacts, use **document_upsert** and include `[Document](/document/<documentId>)` in your reply. Do not use share/send to channel or webchat — delivery is only via document_upsert and the thread."
+      : `For large outputs, use HTTP fallback POST ${runtimeBaseUrl}/agent/document with header \`x-openclaw-session-key: ${sessionKey}\`, then include \`[Document](/document/<documentId>)\` in your reply. Do not use share/send to channel or webchat.`
     : "";
   const canRequestResponses = canMentionAgents && task != null;
   const responseRequestInstructions = canRequestResponses
     ? hasResponseRequestTool
-      ? "If you need another agent to respond, use the **response_request** tool (see Capabilities). Provide recipientSlugs and a clear message."
-      : `If you need another agent to respond, use the HTTP fallback: POST ${runtimeBaseUrl}/agent/response-request with header \`x-openclaw-session-key: ${sessionKey}\` and JSON body \`{ "taskId": "<Task ID above>", "recipientSlugs": ["agent-slug"], "message": "..." }\`.`
+      ? "If another agent must act, use **response_request** (mentions alone do not notify agents)."
+      : `If another agent must act, use HTTP fallback POST ${runtimeBaseUrl}/agent/response-request with header \`x-openclaw-session-key: ${sessionKey}\`.`
     : "";
   const orchestratorToolInstructions = isOrchestrator
     ? hasRuntimeTools
-      ? "Orchestrator tools: use task_list for task snapshots, task_get for details, task_thread for recent thread context, task_search to find related work, task_assign to add agent assignees by slug, task_message to post updates to other tasks, task_delete to archive tasks, and task_link_pr to connect tasks to PRs. Include a taskId for task_get, task_thread, task_assign, task_message, task_delete, and task_link_pr. If any tool fails, report BLOCKED and include the error message."
-      : `Orchestrator tools are unavailable. Use the HTTP fallback endpoints: task_list (POST ${runtimeBaseUrl}/agent/task-list), task_get (POST ${runtimeBaseUrl}/agent/task-get), task_thread (POST ${runtimeBaseUrl}/agent/task-thread), task_search (POST ${runtimeBaseUrl}/agent/task-search), task_assign (POST ${runtimeBaseUrl}/agent/task-assign), task_message (POST ${runtimeBaseUrl}/agent/task-message), task_delete (POST ${runtimeBaseUrl}/agent/task-delete), and task_link_pr (POST ${runtimeBaseUrl}/agent/task-link-pr). Include header \`x-openclaw-session-key: ${sessionKey}\` and the JSON body described in the tool schemas.`
+      ? "Orchestrator tools are available (task_list/get/thread/search/assign/message/delete/link_pr). If any tool fails, report BLOCKED with the error."
+      : `Orchestrator tool calls must use HTTP fallbacks on ${runtimeBaseUrl} with header \`x-openclaw-session-key: ${sessionKey}\`.`
     : "";
   const orchestratorChatInstruction =
     isOrchestrator && isOrchestratorChat
@@ -376,21 +312,10 @@ export function formatNotificationMessage(
     isOrchestrator && task
       ? `\nOrchestrator note: If this task needs follow-up work, create those follow-up tasks before moving this task to done. If any PRs were reopened, merge them before moving this task to done.${canCreateTasks ? (hasRuntimeTools ? " Use the task_create tool." : ` Use the HTTP fallback (${runtimeBaseUrl}/agent/task-create).`) : " If task creation is not permitted, state the follow-ups needed and ask the primary user to create them."}`
       : "";
-
   const orchestratorResponseRequestInstruction =
     isOrchestrator && canMentionAgents
-      ? '\n**Orchestrator (required):** Before requesting QA (or any reviewer) to act, the task MUST be in REVIEW. Move the task to review first (task_status or task_update), then call the **response_request** tool in this reply with recipientSlugs and a clear message. Do not request QA approval while the task is still in_progress. When you need another agent to take an action (e.g. QA to trigger CI, confirm review, or move task to DONE), you MUST call the **response_request** tool — posting only a thread message that says you are "requesting" or "asking" them does not notify them; use the tool so the notification is delivered.'
+      ? "\n**Orchestrator (required):** move task to REVIEW before requesting QA/reviewer action, then call **response_request** in the same reply. Do not rely on thread mentions alone."
       : "";
-
-  const largeResultInstruction = canCreateDocuments
-    ? hasRuntimeTools
-      ? "If the result is large, create a document with document_upsert (document sharing tool), include the returned documentId and a Markdown link ([Document](/document/<documentId>)) in your reply, and summarize it here."
-      : "If the result is large, create a document via the HTTP fallback (/agent/document), include the returned documentId and a Markdown link ([Document](/document/<documentId>)) in your reply, and summarize it here."
-    : "If the result is large, summarize it here (document creation not permitted).";
-
-  const mentionableSection = canMentionAgents
-    ? formatMentionableAgentsSection(mentionableAgents)
-    : "";
 
   const assignmentClarificationTarget =
     notification?.type === "assignment"
@@ -411,55 +336,226 @@ export function formatNotificationMessage(
           ? "For clarification questions, @mention the primary user (shown above)."
           : "If you need clarification, ask in the thread."
       : "";
-
   const assignmentAckBlock =
     notification?.type === "assignment"
       ? `\n**Assignment — first reply only:** Reply with a short acknowledgment (1–2 sentences). ${assignmentClarificationTarget} Ask any clarifying questions now; do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.\n`
       : "";
+  const multiAssigneeCoordinationGateBlock =
+    notification?.type === "assignment" &&
+    isRecipientInMultiAssigneeTask(context)
+      ? `
+**Multi-assignee assignment gate (required):**
+- Your first reply to this assignment must be coordination-only: acknowledge, claim your sub-scope, and ask dependency questions.
+- In that first reply, call **response_request** for any assignee whose input you need.
+- Do not run substantive execution before coordination (for example: domain checks, coding, tests, or broad research). The only allowed pre-work is reading task/thread context needed to ask precise questions.
+- Exception rule: this assignment coordination reply takes priority over the "single reply per notification" rule. Send this coordination reply first, then continue when dependencies are clarified.
+`
+      : "";
+  const multiAssigneeBlock = isRecipientInMultiAssigneeTask(context)
+    ? `
+**Multi-assignee (thread-first collaboration required):** This task has multiple assignees. Collaboration means visible alignment in this task thread, not silent parallel work.
+- In your first substantive reply, claim your exact sub-scope.
+- If another assignee's work affects yours, ask a direct question in the thread and then send **response_request** so they are notified.
+- Do not treat silence as agreement: wait for a reply, or state a time-boxed assumption and ask the orchestrator to confirm.
+- Before moving to REVIEW, post a brief agreement summary in the thread (owners, decisions, remaining dependencies).
+- If a dependency is still unresolved, move to BLOCKED with blockedReason and send **response_request** to the blocking assignee.
+`
+    : "";
 
   const thisTaskAnchor = task
     ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${task.title} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
     : "\n**Respond only to this notification.** Ignore any other task or thread in the conversation history.\n";
 
-  return `
-${identityLine}${capabilitiesBlock}${thisTaskAnchor}## Notification: ${notification.type}
+  const workspaceInstruction =
+    "Primary operating instructions live in workspace files: AGENTS.md, USER.md, IDENTITY.md, SOUL.md, HEARTBEAT.md, and TOOLS.md. Follow those files; keep this reply focused on this notification.";
 
-**${notification.title}**
+  const scopeRules = [
+    "Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.",
+    "If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.",
+    "Important: This system captures only one reply per notification. Do not send progress updates.",
+    "Exception: on assignment notifications with multi-assignee coordination gate, send the required coordination-only reply first, then continue work after dependencies are clarified.",
+    "When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply.",
+  ].join("\n");
 
-${notification.body}
+  const operationalBlock = [
+    !hasRuntimeTools
+      ? `HTTP fallbacks: base URL \`${runtimeBaseUrl}\`, header \`x-openclaw-session-key: ${sessionKey}\`. Use for all POST /agent/* calls below.\n\n`
+      : "",
+    statusInstructions,
+    taskCreateInstructions,
+    documentInstructions,
+    responseRequestInstructions,
+    orchestratorToolInstructions,
+    orchestratorResponseRequestInstruction,
+    orchestratorChatInstruction,
+    followupTaskInstruction,
+    task?.status === "review" && toolCapabilities.canMarkDone
+      ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.'
+      : "",
+    task?.status === "done"
+      ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that."
+      : "",
+    task?.status === "blocked"
+      ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated. When an authorized actor (orchestrator or assignee) provides the needed input, move the task back to in_progress before resuming work."
+      : "",
+    assignmentAckBlock,
+    multiAssigneeCoordinationGateBlock,
+    multiAssigneeBlock,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-${task ? `Task: ${task.title} (${task.status})\nTask ID: ${task._id}` : ""}
-${taskDescription}
-${repositoryDetails}
-${globalContextSection}
-${taskOverviewSection}
-${messageDetails}
-${threadDetails}
-${mentionableSection}
-${formatPrimaryUserMentionSection(primaryUserMention)}
+  return [
+    identityLine,
+    capabilitiesBlock,
+    thisTaskAnchor,
+    workspaceInstruction,
+    "",
+    "===== RESPONSE SCOPE RULES START =====",
+    scopeRules,
+    "===== RESPONSE SCOPE RULES END =====",
+    "",
+    "===== OPERATIONAL INSTRUCTIONS START =====",
+    operationalBlock,
+    "===== OPERATIONAL INSTRUCTIONS END =====",
+  ].join("\n");
+}
 
-Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.
-If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.
+/**
+ * Build compact notification input for OpenResponses (input field).
+ * Notification payload plus minimal structured context (task, repository, global briefing, thread).
+ *
+ * @param context - Delivery context from getNotificationForDelivery.
+ * @param _taskStatusBaseUrl - Unused; kept for API consistency with buildDeliveryInstructions.
+ * @param _toolCapabilities - Unused; kept for API consistency with formatNotificationMessage.
+ * @returns Input string for the OpenResponses input field.
+ */
+export function buildNotificationInput(
+  context: DeliveryContext,
+  _taskStatusBaseUrl: string,
+  _toolCapabilities: ToolCapabilitiesAndSchemas,
+): string {
+  const {
+    notification,
+    task,
+    message,
+    thread,
+    repositoryDoc,
+    globalBriefingDoc,
+    taskOverview,
+    mentionableAgents = [],
+    primaryUserMention = null,
+  } = context;
+  const taskDescription = task?.description?.trim()
+    ? `Task description:\n${truncateForContext(task.description.trim(), TASK_DESCRIPTION_MAX_CHARS)}`
+    : "";
+  const notificationBodySection = [
+    "===== MAIN USER MESSAGE (NOTIFICATION BODY) START =====",
+    notification.body?.trim() || "(empty)",
+    "===== MAIN USER MESSAGE (NOTIFICATION BODY) END =====",
+  ].join("\n");
+  const requestToRespondToSection =
+    message?.content?.trim() &&
+    (notification.type === "thread_update" ||
+      notification.type === "mention" ||
+      notification.type === "response_request")
+      ? [
+          "===== REQUEST TO RESPOND TO START =====",
+          `Author: ${message.authorType} (${message.authorId})`,
+          "Content:",
+          message.content.trim(),
+          "===== REQUEST TO RESPOND TO END =====",
+        ].join("\n")
+      : "";
+  const messageDetails = message
+    ? [
+        "===== LATEST THREAD MESSAGE START =====",
+        `Message author: ${message.authorType} (${message.authorId})`,
+        `Message ID: ${message._id}`,
+        "Message content:",
+        message.content?.trim() || "(empty)",
+        "===== LATEST THREAD MESSAGE END =====",
+      ].join("\n")
+    : "";
+  const rawThreadDetails = formatThreadContext(thread);
+  const threadDetails =
+    rawThreadDetails.trim() === ""
+      ? ""
+      : [
+          "===== THREAD HISTORY START =====",
+          rawThreadDetails,
+          "===== THREAD HISTORY END =====",
+        ].join("\n");
+  const repositoryDetails = repositoryDoc?.content?.trim()
+    ? [
+        "Repository context:",
+        truncateForContext(
+          repositoryDoc.content.trim(),
+          REPOSITORY_CONTEXT_MAX_CHARS,
+        ),
+      ].join("\n")
+    : [
+        "Repository context: not found.",
+        "Ask the orchestrator or account owner to add a Repository document if repo/worktree rules are required.",
+      ].join("\n");
+  const globalContextSection = globalBriefingDoc?.content?.trim()
+    ? [
+        "Global Context:",
+        truncateForContext(
+          globalBriefingDoc.content.trim(),
+          GLOBAL_CONTEXT_MAX_CHARS,
+        ),
+        "",
+      ].join("\n")
+    : "";
+  const taskOverviewSection = formatTaskOverview(
+    taskOverview,
+    mentionableAgents,
+  );
+  const mentionableSection = formatMentionableAgentsSection(mentionableAgents);
 
-Important: This system captures only one reply per notification. Do not send progress updates. When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply. ${largeResultInstruction}
+  return [
+    `## Notification: ${notification.type}`,
+    `**${notification.title}**`,
+    "",
+    notificationBodySection,
+    requestToRespondToSection ? `\n${requestToRespondToSection}\n` : "",
+    "===== STRUCTURED CONTEXT START =====",
+    task ? `Task: ${task.title} (${task.status})\nTask ID: ${task._id}` : "",
+    taskDescription,
+    repositoryDetails,
+    globalContextSection,
+    taskOverviewSection,
+    messageDetails,
+    threadDetails,
+    mentionableSection,
+    formatPrimaryUserMentionSection(primaryUserMention),
+    "===== STRUCTURED CONTEXT END =====",
+    "Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.",
+    "",
+    `---\nNotification ID: ${notification._id}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
 
-${statusInstructions}
-${taskCreateInstructions}
-${documentInstructions}
-${responseRequestInstructions}
-${orchestratorToolInstructions}
-${orchestratorResponseRequestInstruction}
-${orchestratorChatInstruction}
-${followupTaskInstruction}
-${task?.status === "review" && toolCapabilities.canMarkDone ? '\nIf you are accepting this task as done, you MUST update status to "done" (tool or endpoint) before posting. If you cannot (tool unavailable or endpoint unreachable), report BLOCKED — do not post a "final summary" or claim the task is DONE.' : ""}
-${orchestratorResponseRequestInstruction}
-${task?.status === "done" ? "\nThis task is DONE. You were explicitly mentioned — reply once briefly (1–2 sentences) to the request (e.g. confirm you will push the PR or take the asked action). Do not use the full Summary/Work done/Artifacts format. Do not reply again to this thread after that." : ""}
-${task?.status === "blocked" ? "\nThis task is BLOCKED. Reply only to clarify or unblock; do not continue substantive work until status is updated. When an authorized actor (orchestrator or assignee) provides the needed input, move the task back to in_progress before resuming work." : ""}
-${assignmentAckBlock}
-
-Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.
-
----
-Notification ID: ${notification._id}
-`.trim();
+/**
+ * Format notification message for OpenClaw. Orchestrator is silent-by-default (no routine ack instruction).
+ * When the recipient is one of multiple task assignees, appends thread-first collaboration instructions
+ * (scope claim, Q/A exchange, response_request notification, agreement checkpoint).
+ * @param context - Delivery context (notification, task, message, thread, flags).
+ * @param taskStatusBaseUrl - Base URL for task-status HTTP fallback (e.g. http://runtime:3000).
+ * @param toolCapabilities - Capability labels and schemas; must match tools sent to OpenClaw.
+ * @returns Full prompt string for the notification.
+ */
+export function formatNotificationMessage(
+  context: DeliveryContext,
+  taskStatusBaseUrl: string,
+  toolCapabilities: ToolCapabilitiesAndSchemas,
+): string {
+  return [
+    buildDeliveryInstructions(context, taskStatusBaseUrl, toolCapabilities),
+    buildNotificationInput(context, taskStatusBaseUrl, toolCapabilities),
+  ].join("\n\n");
 }

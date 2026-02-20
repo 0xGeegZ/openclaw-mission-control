@@ -186,10 +186,7 @@ export function MessageItem({
         ) : (
           <AvatarFallback className="bg-transparent">
             {isAgent ? (
-              <AuthorIcon
-                className="h-4 w-4 text-primary"
-                aria-hidden
-              />
+              <AuthorIcon className="h-4 w-4 text-primary" aria-hidden />
             ) : (
               <User className="h-4 w-4 text-secondary-foreground" />
             )}
@@ -270,8 +267,11 @@ export function MessageItem({
           </div>
         ) : (
           <>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
-              <MessageContent content={message.content} mentions={message.mentions} />
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words text-foreground/90 prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:max-w-full prose-pre:overflow-x-auto prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-headings:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-a:break-all">
+              <MessageContent
+                content={message.content}
+                mentions={message.mentions}
+              />
             </div>
 
             {message.authorType === "user" &&
@@ -318,7 +318,10 @@ export function MessageItem({
                     )}
                   </div>
                   <span className="text-[10px] text-muted-foreground/50 font-medium">
-                    Seen by {readByAgents.length === 1 ? readByAgents[0].name : `${readByAgents.length} agents`}
+                    Seen by{" "}
+                    {readByAgents.length === 1
+                      ? readByAgents[0].name
+                      : `${readByAgents.length} agents`}
                   </span>
                 </div>
               )}
@@ -339,7 +342,10 @@ export function MessageItem({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-32 rounded-xl">
-            <DropdownMenuItem onClick={handleCopy} className="gap-2 text-sm rounded-lg">
+            <DropdownMenuItem
+              onClick={handleCopy}
+              className="gap-2 text-sm rounded-lg"
+            >
               {copied ? (
                 <CheckCheck className="h-3.5 w-3.5 text-green-500" />
               ) : (
@@ -348,7 +354,10 @@ export function MessageItem({
               {copied ? "Copied!" : "Copy"}
             </DropdownMenuItem>
             {isAuthor && (
-              <DropdownMenuItem onClick={handleEdit} className="gap-2 text-sm rounded-lg">
+              <DropdownMenuItem
+                onClick={handleEdit}
+                className="gap-2 text-sm rounded-lg"
+              >
                 <Edit2 className="h-3.5 w-3.5" />
                 Edit
               </DropdownMenuItem>
@@ -375,7 +384,8 @@ export function MessageItem({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Message</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this message? This action cannot be undone.
+              Are you sure you want to delete this message? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-3 px-1">

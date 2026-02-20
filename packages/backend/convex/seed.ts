@@ -2,6 +2,14 @@ import { mutation, internalMutation } from "./_generated/server";
 import { contentBySlug } from "./seed_skills_content.generated";
 import { requireAuth } from "./lib/auth";
 import { validateContentMarkdown } from "./lib/skills_validation";
+import {
+  buildDefaultUserContent,
+  buildDefaultIdentityContent,
+} from "./lib/user_identity_fallback";
+import {
+  SOUL_UNIVERSAL_OPERATING_RULES,
+  SOUL_UNIVERSAL_NEVER_DO,
+} from "./lib/agent_soul";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
@@ -539,6 +547,18 @@ When replying with an acknowledgment, a quick confirmation, or when the thread a
 
 When you receive a new **assignment** notification, reply first with a short acknowledgment (1–2 sentences). Ask any clarifying questions now; if you need input from the orchestrator or the person who assigned the task, @mention them. Do not use the full Summary/Work done/Artifacts format in this first reply. Begin substantive work only after this acknowledgment.
 
+## Working with multiple assignees
+
+When a task has **two or more agent assignees**, you must collaborate explicitly to avoid duplicate work and conflicting changes.
+
+- **Declare your scope:** In your first reply (or as soon as you start work), state clearly what part of the task you own (e.g. "I'll handle the API changes; @engineer-2 can own the frontend."). Do not assume you own the whole task.
+- **Ask in-thread, not in silence:** If another assignee's work affects yours, ask direct questions in the task thread and propose options or assumptions so everyone can see the trade-offs.
+- **Avoid overlap:** Read the thread before acting. If another assignee has already claimed or delivered a sub-scope, do not redo it. Pick a different sub-scope or coordinate with them.
+- **Handoffs are thread + tool:** Keep the request visible in the thread, then send **response_request** to notify the target assignee. @mentions in the thread do **not** notify agents; only **response_request** delivers a notification.
+- **Require explicit agreement:** Do not treat silence as agreement. Wait for a reply, or record a time-boxed assumption in-thread and ask the orchestrator to confirm.
+- **Before moving to REVIEW:** Post a short agreement summary in the thread (owner per sub-scope, decisions made, remaining dependencies). If a dependency is unresolved, move to BLOCKED and set blockedReason naming the dependency and assignee.
+- **Blocked by another assignee:** If you cannot proceed until a co-assignee acts, move to BLOCKED, set blockedReason, and send **response_request** to that assignee so they are notified. Do not stay in IN_PROGRESS while silently waiting.
+
 ## Capabilities and tools
 
 Your notification prompt includes a **Capabilities** line listing what you are allowed to do. Only use tools you have; if a capability is missing, report **BLOCKED** instead of pretending to act. If a tool returns an error (e.g. success: false), report **BLOCKED** and do not claim you changed status.
@@ -574,7 +594,7 @@ Agent @mentions do **not** notify other agents. To request a follow-up, you must
 Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), \`http://127.0.0.1:3000\` points at the gateway container and will fail — use \`http://runtime:3000\` instead.
 
 - Endpoint: \`POST {TASK_STATUS_BASE_URL}/agent/task-status\`
-- Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
+- Header: \`x-openclaw-session-key\` (use the session key from the notification prompt)
 - Body: \`{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }\`
 
 Rules:
@@ -591,7 +611,7 @@ Example (HTTP fallback):
 BASE_URL="http://runtime:3000"
 curl -X POST "\${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
-  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -H "x-openclaw-session-key: <session-key-from-prompt>" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
@@ -609,7 +629,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
 - **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.
 
-All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
+All require header \`x-openclaw-session-key\` (backend-resolved task/system key from prompt) and are local-only.
 
 ## Orchestrator (squad lead)
 
@@ -630,14 +650,7 @@ The account can designate one agent as the **orchestrator** (PM/squad lead). Tha
 
 ### Orchestrator follow-ups (tool-only)
 
-When you are the orchestrator (squad lead), use @mentions to request follow-ups from specific agents:
-
-- Use @mentions to request follow-ups from specific agents.
-- Choose agents from the roster list shown in your notification prompt (by slug, e.g. \`@researcher\`).
-- Mention only agents who can add value to the discussion; avoid @all unless necessary.
-- If you are blocked or need confirmation, @mention the primary user shown in your prompt.
-- For any UI/frontend need, involve \`@designer\`: assign \`designer\` as task owner when UI is the main deliverable, or request a focused UI review when UI is partial scope.
-- **When a task is DONE:** only @mention agents to start or continue work on **other existing tasks** (e.g. "@Engineer please pick up the next task from the board"). Do not ask them to respond or add to this done task thread — that causes reply loops.
+When you are the orchestrator (squad lead), request follow-ups with the **response_request** tool using agent slugs from the roster list in your prompt. In REVIEW with QA configured, you must send a response_request to QA asking them to confirm and move the task to DONE; a thread approval is not sufficient. When you need QA or any other agent to do something (e.g. trigger CI, confirm review), call **response_request** in the same reply — do not only post a thread message saying you are "requesting" or "asking" them; that does not notify them. Do not @mention agents in thread replies; @mentions will not notify them. If you are blocked or need confirmation, @mention the primary user shown in your prompt.
 
 ### Ping requests (Orchestrator)
 
@@ -665,7 +678,7 @@ When creating a doc, always include:
 - Open questions (if any)
 - "How to verify" (when relevant)
 - Last updated timestamp
-- Create/share docs only via \`document_upsert\`; then include \`documentId\` and \`[Document](/document/<documentId>)\` in your reply.
+- Create/share docs only via \`document_upsert\`; then include \`documentId\` and \`[Document](/document/<documentId>)\` in your reply. Do not use share/send to channel or webchat — delivery is only via document_upsert and the thread.
 - If you need to share a file (PDF/image/archive), use the runtime upload tool flow. Never paste local file paths (e.g. /deliverables/..., /root/clawd/deliverables/...) as if they were shared deliverables — the primary user cannot open them; use document_upsert and [Document](/document/<documentId>) for docs.
 
 ## Safety / secrets
@@ -701,6 +714,8 @@ const DOC_HEARTBEAT_CONTENT = `# HEARTBEAT.md — Wake Checklist (Strict)
 Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread, claim your sub-scope, and ask any dependency questions in-thread. For each dependency or handoff, keep the request visible in the thread and send **response_request** so the assignee is notified. Do not treat silence as agreement; wait for a reply, or record a time-boxed assumption and ask orchestrator confirmation. Before moving to REVIEW, post a brief agreement summary (owners, decisions, open dependencies). If you are blocked on another assignee's output, move to BLOCKED with blockedReason naming that dependency. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
 
 ## 3) Execute one atomic action
 
@@ -758,7 +773,7 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 - **Convex**: schema + functions in \`packages/backend/convex\`
 - **Clerk** for auth
 - Runtime service: \`apps/runtime\` (OpenClaw gateway, notification delivery, heartbeat)
-- OpenClaw sessions: one per agent, session key \`agent:{slug}:{accountId}\`
+- OpenClaw sessions: backend-resolved task/system keys in \`agentRuntimeSessions\`
 - Multi-tenancy: \`accountId\` on every table; all queries filter by account.
 `;
 
@@ -766,9 +781,11 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 const DOC_REPOSITORY_CONTENT = `# Repository — Primary
 
 - **Name:** OpenClaw Mission Control
-- **Writable clone (use for all git work):** /root/clawd/repos/openclaw-mission-control
+- **Main clone (fetch/pull/worktree management only):** /root/clawd/repos/openclaw-mission-control
+- **Task worktrees (required for code changes):** /root/clawd/worktrees/feat-task-<taskId>
 - **GitHub:** https://github.com/0xGeegZ/openclaw-mission-control
-- **Usage:** Before starting a task, run \`git fetch origin\` and \`git pull\`. Work in the writable clone for branch, commit, push, and \`gh pr create\`. Do not run \`gh auth login\` when GH_TOKEN is set.
+- **Branch policy:** one branch per task, \`feat/task-<taskId>\`. PR base branch: \`dev\`.
+- **Usage:** In the main clone, run only \`git fetch origin\`, \`git checkout dev\`, \`git pull\`, and \`git worktree add/remove\`. Do all file edits, commit, push, and \`gh pr create\` from the task worktree. Do not run \`gh auth login\` when GH_TOKEN is set.
 - **Access note:** If you see a 404, authentication is missing; request GH_TOKEN (Contents + Pull requests write scopes).
 `;
 
@@ -782,9 +799,17 @@ const seedDocs = [
 ] as const;
 
 /** Minimal OpenClaw config for seed agents (matches schema). */
+type SeedBehaviorFlags = Pick<
+  {
+    [K in keyof typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags]: boolean;
+  },
+  "canCreateTasks" | "canReviewTasks" | "canMarkDone"
+>;
+
+/** Build baseline OpenClaw config for seeded agents. */
 function defaultOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: { canCreateTasks: boolean },
+  behaviorFlags: SeedBehaviorFlags,
 ) {
   return {
     ...DEFAULT_OPENCLAW_CONFIG,
@@ -793,6 +818,8 @@ function defaultOpenclawConfig(
     behaviorFlags: {
       ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
+      canReviewTasks: behaviorFlags.canReviewTasks,
+      canMarkDone: behaviorFlags.canMarkDone,
     },
   };
 }
@@ -802,7 +829,7 @@ function defaultOpenclawConfig(
  */
 function buildSeedOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: { canCreateTasks: boolean },
+  behaviorFlags: SeedBehaviorFlags,
   existingConfig?: {
     systemPromptPrefix?: string;
     rateLimits?: {
@@ -872,9 +899,11 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Do not narrate the checklist on heartbeat; start with a concrete action update or reply with \`HEARTBEAT_OK\`.
 - When nudging assignees for status on heartbeat, use response_request only and put your summary in your final reply; do not use task_message for that.
 - Delegate to Engineer/QA with clear acceptance criteria.
+- When multiple agents are assigned to one task, enforce thread-first collaboration: confirm explicit sub-scope ownership, require question/answer exchanges for cross-scope dependencies, and ask for a brief agreement summary before REVIEW; use response_request to notify blockers.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -915,6 +944,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "engineer":
       return `# SOUL — ${name}
@@ -936,7 +966,9 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - Run or describe tests when changing behavior.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
+- When the task has other agent assignees, declare your sub-scope in your first reply, ask dependency questions in-thread, and record agreed decisions before implementation; use response_request for any dependency on co-assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -964,6 +996,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "qa":
       return `# SOUL — ${name}
@@ -987,7 +1020,9 @@ Protect quality and product integrity by validating work against acceptance crit
 - Prefer automated checks where possible.
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
+- When the task has multiple assignees, verify cross-assignee integration and call out missing handoffs, unanswered dependency questions, or missing agreement summaries in the thread.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1021,6 +1056,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "designer":
       return `# SOUL — ${name}
@@ -1039,7 +1075,9 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Call out accessibility risks early.
 - Provide concrete design artifacts (layouts, component notes, or copy blocks).
 - Keep feedback actionable and scoped.
+- When co-assigned with other agents, state your design scope in your first reply, ask dependency questions in-thread, and use response_request if you need input from another assignee.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1067,6 +1105,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Change established design decisions without documenting rationale.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "writer":
       return `# SOUL — ${name}
@@ -1085,7 +1124,9 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Avoid buzzwords and vague claims.
 - Ask for missing context only when blocked.
 - Provide multiple headline or CTA options when relevant.
+- When co-assigned with other agents, declare your content scope, ask dependency questions in-thread, and use response_request for dependencies on other assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1113,9 +1154,10 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Fabricate stats or testimonials.
 - Change brand voice without approval.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     default:
-      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n`;
+      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n${SOUL_UNIVERSAL_OPERATING_RULES}\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n${SOUL_UNIVERSAL_NEVER_DO}\n`;
   }
 }
 
@@ -1219,10 +1261,8 @@ async function ensureDocs(
     const existingDoc = existingByTitle.get(d.title);
     if (existingDoc) {
       existing += 1;
-      if (
-        d.title === "AGENTS.md — Operating Manual" &&
-        existingDoc.content !== d.content
-      ) {
+      // Keep all prompt-critical managed docs in sync when seed content changes.
+      if (existingDoc.content !== d.content) {
         const now = Date.now();
         const nextVersion =
           typeof existingDoc.version === "number" ? existingDoc.version + 1 : 1;
@@ -1345,6 +1385,18 @@ async function runSeedWithOwner(
     options.createDemoIfNone,
   );
 
+  // Ensure account has USER.md scaffold (seed-owned default).
+  const currentAccount = await ctx.db.get(accountId);
+  const settings = (currentAccount?.settings ?? {}) as { userMd?: string };
+  if (settings.userMd === undefined || settings.userMd === null) {
+    await ctx.db.patch(accountId, {
+      settings: {
+        ...currentAccount?.settings,
+        userMd: buildDefaultUserContent(),
+      },
+    });
+  }
+
   const {
     slugToId,
     created: skillsCreated,
@@ -1373,21 +1425,24 @@ async function runSeedWithOwner(
       .map((slug) => slugToId[slug])
       .filter((id): id is Id<"skills"> => id !== undefined);
     const soulContent = buildSoulContent(a.name, a.role, a.agentRole);
+    const identityContent = buildDefaultIdentityContent(a.name, a.role);
     const openclawConfig = buildSeedOpenclawConfig(
       skillIds,
-      { canCreateTasks: a.canCreateTasks },
+      {
+        canCreateTasks: a.canCreateTasks,
+        canReviewTasks: a.slug === "qa",
+        canMarkDone: a.slug === "qa" || a.slug === "squad-lead",
+      },
       existingAgent?.openclawConfig,
     );
-    const sessionKey = `agent:${a.slug}:${accountId}`;
-
     if (existingAgent) {
       await ctx.db.patch(existingAgent._id, {
         name: a.name,
         role: a.role,
         description: a.description,
-        sessionKey,
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
+        identityContent,
         openclawConfig,
         icon: a.icon,
       });
@@ -1401,11 +1456,11 @@ async function runSeedWithOwner(
       slug: a.slug,
       role: a.role,
       description: a.description,
-      sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
       icon: a.icon,
       soulContent,
+      identityContent,
       openclawConfig,
       createdAt: now,
     });

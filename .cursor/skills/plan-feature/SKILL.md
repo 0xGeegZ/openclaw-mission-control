@@ -14,7 +14,7 @@ The plan must be detailed enough that:
 
 - If we give it to **100 different engineers**, at least **85%** of the resulting code would be very similar.
 - A **junior engineer** can implement the feature by following the plan step by step.
-- Running command .cursor/commands/code-review-checklist.md agains the plan you gonna write should not return any issues or warnings.
+- Running the code-review-checklist skill against the plan you write should not return any issues or warnings.
 
 ---
 
@@ -29,9 +29,14 @@ The plan must be detailed enough that:
    - Identify which **apps/packages** in this repo are affected (e.g. `apps/web`, `packages/backend`, `packages/ui`).
    - Note any **key assumptions** and mark them clearly (e.g. "Assumption A: …") so they can be confirmed later.
 
-3. **Feature setup checklist** (confirm before proceeding)
+3. **Workspace isolation**
+   - Create a worktree for this feature so work does not mix with other features or the main repo. From the repo root: `git worktree add <path> -b <branch>`, e.g. `git worktree add ../mission-control--feat-<slug> -b feat/<slug>` or `git worktree add ./.worktrees/feat-<slug> -b feat/<slug>` (use a short slug from the feature name).
+   - All planning and implementation must happen in this worktree: either open the worktree folder in Cursor (File > Open Folder) or run all implementation commands from that path. Do not implement in the main repo folder.
+
+4. **Feature setup checklist** (confirm before proceeding)
    - [ ] Requirements / scope documented
    - [ ] User stories or acceptance criteria clear
+   - [ ] Worktree created and Cursor/terminal using worktree path
    - [ ] Feature branch created (if applicable)
    - [ ] Development environment ready
 

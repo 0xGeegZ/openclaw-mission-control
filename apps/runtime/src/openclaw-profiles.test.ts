@@ -48,9 +48,11 @@ describe("mapModelToOpenClaw", () => {
     withTempEnv(
       { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
       () => {
+        expect(mapModelToOpenClaw("minimax-m2.5")).toBe("minimax/minimax-m2.5");
         expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
           "anthropic/claude-haiku-4.5",
         );
+        expect(mapModelToOpenClaw("kimi-k2.5")).toBe("moonshotai/kimi-k2.5");
         expect(mapModelToOpenClaw("gpt-5-nano")).toBe("openai/gpt-5-nano");
       },
     );
@@ -58,8 +60,14 @@ describe("mapModelToOpenClaw", () => {
 
   it("maps models through Vercel AI Gateway when configured", () => {
     withTempEnv({ VERCEL_AI_GATEWAY_API_KEY: "test-key" }, () => {
+      expect(mapModelToOpenClaw("minimax-m2.5")).toBe(
+        "vercel-ai-gateway/minimax/minimax-m2.5",
+      );
       expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
         "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+      );
+      expect(mapModelToOpenClaw("kimi-k2.5")).toBe(
+        "vercel-ai-gateway/moonshotai/kimi-k2.5",
       );
       expect(mapModelToOpenClaw("gpt-5-nano")).toBe(
         "vercel-ai-gateway/openai/gpt-5-nano",
@@ -193,8 +201,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Engineer",
         slug: "engineer",
         role: "Engineer",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL\n",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
     ];
@@ -215,6 +224,48 @@ describe("syncOpenClawProfiles", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("maps workspace paths in generated config when configWorkspaceRoot differs", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents-runtime");
+    const configWorkspaceRoot = "/root/clawd/agents";
+    const agents: AgentForProfile[] = [
+      {
+        _id: "agent1",
+        name: "Engineer",
+        slug: "engineer",
+        role: "Engineer",
+        effectiveSoulContent: "# SOUL\n",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
+        resolvedSkills: [
+          {
+            _id: "s1",
+            name: "Web Search",
+            slug: "web-search",
+            contentMarkdown: "# Web Search\n\nSearch the web.\n",
+          },
+        ],
+      },
+    ];
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configWorkspaceRoot,
+      configPath,
+    });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.agents.list[0].workspace).toBe("/root/clawd/agents/engineer");
+    expect(config.load.extraDirs).toContain(
+      "/root/clawd/agents/engineer/skills",
+    );
+
+    const sourceWorkspaceDir = path.join(workspaceRoot, "engineer");
+    expect(fs.existsSync(sourceWorkspaceDir)).toBe(true);
+    expect(fs.existsSync(path.join(sourceWorkspaceDir, "SOUL.md"))).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("skips agents with unsafe slug and does not add them to config", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
@@ -224,8 +275,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Bad",
         slug: "..",
         role: "Role",
-        sessionKey: "agent:..:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
       {
@@ -233,8 +285,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Good",
         slug: "good",
         role: "Role",
-        sessionKey: "agent:good:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
     ];
@@ -266,9 +319,10 @@ describe("syncOpenClawProfiles", () => {
             name: "GPT-5 Nano",
             slug: "gpt-5-nano",
             role: "R",
-            sessionKey: "agent:gpt-5-nano:acc1",
             openclawConfig: { model: "gpt-5-nano" },
             effectiveSoulContent: "# SOUL",
+            effectiveUserMd: "# User\n",
+            effectiveIdentityContent: "# IDENTITY\n",
             resolvedSkills: [],
           },
         ];
@@ -294,8 +348,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -345,8 +400,9 @@ disable-model-invocation: true
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -392,8 +448,9 @@ disable-model-invocation: true
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -435,8 +492,9 @@ description: Custom name in frontmatter
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -480,8 +538,9 @@ description: Custom name in frontmatter
           name: "Engineer",
           slug: "engineer",
           role: "Engineer",
-          sessionKey: "agent:engineer:acc1",
           effectiveSoulContent: "# SOUL\n",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
           resolvedSkills: [],
         },
       ];
@@ -512,8 +571,9 @@ description: Custom name in frontmatter
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -568,8 +628,9 @@ description: Custom name in frontmatter
         name: "Engineer",
         slug: agentSlug,
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
     ];

@@ -102,6 +102,7 @@ function createRuntimeConfig(): RuntimeConfig {
     openclawClientToolsEnabled: true,
     taskStatusBaseUrl: BASE_URL,
     openclawWorkspaceRoot: "/tmp/test",
+    openclawConfigWorkspaceRoot: "/tmp/test",
     openclawConfigPath: "/tmp/test/openclaw.json",
     openclawAgentsMdPath: undefined,
     openclawHeartbeatMdPath: "/tmp/test/HEARTBEAT.md",

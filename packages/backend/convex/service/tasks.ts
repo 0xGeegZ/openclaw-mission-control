@@ -4,6 +4,7 @@ import {
   internalQuery,
   type MutationCtx,
 } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
@@ -31,6 +32,28 @@ const QA_ROLE_PATTERN = /\bqa\b|quality assurance|quality\b/i;
  */
 function requiresAssignee(status: TaskStatus): boolean {
   return status === TASK_STATUS.ASSIGNED || status === TASK_STATUS.IN_PROGRESS;
+}
+
+/**
+ * Resolve initial assignedAgentIds for createFromAgent: use provided list when present,
+ * otherwise auto-assign creator when status requires assignees.
+ * Exported for unit tests.
+ */
+export function computeCreateFromAgentAssignedAgentIds(
+  provided: Id<"agents">[] | undefined,
+  requestedStatus: TaskStatus,
+  creatorAgentId: Id<"agents">,
+): Id<"agents">[] {
+  if (provided?.length) {
+    return [...provided];
+  }
+  if (
+    requestedStatus === TASK_STATUS.ASSIGNED ||
+    requestedStatus === TASK_STATUS.IN_PROGRESS
+  ) {
+    return [creatorAgentId];
+  }
+  return [];
 }
 
 /**
@@ -272,7 +295,8 @@ export const getForTool = internalQuery({
 
 /**
  * Create a task on behalf of an agent (service-only).
- * Enforces status requirements; auto-assigns creating agent when status is assigned/in_progress and no assignees.
+ * Enforces status requirements; accepts optional initial assignees; auto-assigns creating agent
+ * only when status is assigned/in_progress and no assignees were provided.
  */
 export const createFromAgent = internalMutation({
   args: {
@@ -284,6 +308,7 @@ export const createFromAgent = internalMutation({
     dueDate: v.optional(v.number()),
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
+    assignedAgentIds: v.optional(v.array(v.id("agents"))),
   },
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
@@ -294,15 +319,31 @@ export const createFromAgent = internalMutation({
     const now = Date.now();
 
     const assignedUserIds: string[] = [];
-    let assignedAgentIds: Id<"agents">[] = [];
-    const requestedStatus = args.status ?? TASK_STATUS.INBOX;
+    let requestedStatus = args.status ?? TASK_STATUS.INBOX;
+    // Inbox allows no assignees; if caller provided assignees, use assigned so validation passes.
     if (
-      (requestedStatus === TASK_STATUS.ASSIGNED ||
-        requestedStatus === TASK_STATUS.IN_PROGRESS) &&
-      assignedUserIds.length === 0
+      requestedStatus === TASK_STATUS.INBOX &&
+      args.assignedAgentIds &&
+      args.assignedAgentIds.length > 0
     ) {
-      assignedAgentIds = [args.agentId];
+      requestedStatus = TASK_STATUS.ASSIGNED;
     }
+
+    if (args.assignedAgentIds?.length) {
+      for (const aid of args.assignedAgentIds) {
+        const assignedAgent = await ctx.db.get(aid);
+        if (!assignedAgent || assignedAgent.accountId !== accountId) {
+          throw new Error(`Invalid agent: ${aid}`);
+        }
+      }
+    }
+
+    const assignedAgentIds = computeCreateFromAgentAssignedAgentIds(
+      args.assignedAgentIds,
+      requestedStatus,
+      args.agentId,
+    );
+
     const hasAssignees =
       assignedUserIds.length > 0 || assignedAgentIds.length > 0;
     const requirementError = validateStatusRequirements(
@@ -346,8 +387,17 @@ export const createFromAgent = internalMutation({
     });
 
     await ensureOrchestratorSubscribed(ctx, accountId, taskId);
-    if (assignedAgentIds.includes(args.agentId)) {
-      await ensureSubscribed(ctx, accountId, taskId, "agent", args.agentId);
+    for (const assignedAgentId of assignedAgentIds) {
+      await ensureSubscribed(ctx, accountId, taskId, "agent", assignedAgentId);
+      await createAssignmentNotification(
+        ctx,
+        accountId,
+        taskId,
+        "agent",
+        assignedAgentId,
+        agent.name,
+        args.title,
+      );
     }
 
     return taskId;
@@ -592,6 +642,18 @@ export const updateStatusFromAgent = internalMutation({
     }
 
     await ctx.db.patch(args.taskId, updates);
+
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+        {
+          accountId: task.accountId,
+          taskId: args.taskId,
+          closedReason: "task_archived",
+        },
+      );
+    }
 
     if (!suppressNotifications) {
       for (const uid of task.assignedUserIds) {
@@ -932,6 +994,15 @@ export const deleteTaskFromAgent = internalMutation({
       archivedAt: now,
       updatedAt: now,
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+      {
+        accountId: task.accountId,
+        taskId: args.taskId,
+        closedReason: "task_archived",
+      },
+    );
 
     // Log activity for audit trail
     await logActivity({

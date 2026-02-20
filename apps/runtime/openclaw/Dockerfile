@@ -24,7 +24,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROME_PATH=/usr/bin/chromium
 ENV CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage --disable-features=TranslateUI --disable-default-apps --disable-extensions --disable-sync --disable-background-networking --no-first-run"
 
-ARG OPENCLAW_VERSION=2026.2.14
+ARG OPENCLAW_VERSION=2026.2.19
 ARG EXTRA_APT_PACKAGES=""
 
 RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
@@ -37,9 +37,6 @@ RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
 RUN npm install -g pnpm \
     && npm install -g "openclaw@${OPENCLAW_VERSION}" \
     && openclaw --version
-
-COPY user-setup.sh /tmp/user-setup.sh
-RUN chmod +x /tmp/user-setup.sh && /tmp/user-setup.sh
 
 RUN mkdir -p /root/.openclaw /root/.openclaw-templates /root/clawd /root/clawd/skills
 

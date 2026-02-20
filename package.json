@@ -43,6 +43,9 @@
     "packages/*"
   ],
   "packageManager": "npm@11.6.1",
+  "overrides": {
+    "esbuild": ">=0.25.0"
+  },
   "dependencies": {
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/cli": "^2.29.8",

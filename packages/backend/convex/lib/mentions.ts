@@ -258,6 +258,8 @@ export async function resolveMentions(
 
 /**
  * Get all mentionable entities for @all.
+ * Includes both workspace members (users) and agents; excludes the author.
+ * Mention notifications are created for each, so @all does notify agents.
  */
 export async function getAllMentions(
   ctx: QueryCtx,

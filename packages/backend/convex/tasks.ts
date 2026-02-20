@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import { taskStatusValidator } from "./lib/validators";
@@ -441,6 +442,18 @@ export const updateStatus = mutation({
     }
 
     await ctx.db.patch(args.taskId, updates);
+
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+        {
+          accountId: task.accountId,
+          taskId: args.taskId,
+          closedReason: "task_archived",
+        },
+      );
+    }
 
     for (const uid of task.assignedUserIds) {
       await createStatusChangeNotification(

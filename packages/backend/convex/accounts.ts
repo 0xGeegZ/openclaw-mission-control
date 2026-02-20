@@ -19,6 +19,7 @@ import {
   createRuntimeOfflineNotifications,
   createRuntimeOnlineNotifications,
 } from "./lib/notifications";
+import { USER_MD_MAX_LENGTH } from "./lib/validators";
 
 /**
  * Create a new account.
@@ -178,6 +179,8 @@ const agentDefaultsValidator = v.object({
       canModifyTaskStatus: v.boolean(),
       canCreateDocuments: v.boolean(),
       canMentionAgents: v.boolean(),
+      canReviewTasks: v.boolean(),
+      canMarkDone: v.boolean(),
     }),
   ),
   rateLimits: v.optional(
@@ -190,6 +193,8 @@ const agentDefaultsValidator = v.object({
 
 const accountSettingsValidator = v.object({
   theme: v.optional(v.string()),
+  /** Account-shared USER.md content (admin-only). Max length enforced in handler. */
+  userMd: v.optional(v.string()),
   notificationPreferences: v.optional(
     v.object({
       taskUpdates: v.boolean(),
@@ -263,6 +268,14 @@ export const update = mutation({
         }
       }
       const validModelValues: string[] = AVAILABLE_MODELS.map((m) => m.value);
+      if (args.settings.userMd !== undefined) {
+        const trimmed = (args.settings.userMd ?? "").trim();
+        if (trimmed.length > USER_MD_MAX_LENGTH) {
+          throw new Error(
+            `userMd exceeds maximum length (${USER_MD_MAX_LENGTH} characters). Got ${trimmed.length}.`,
+          );
+        }
+      }
       if (args.settings.agentDefaults?.model != null) {
         const model = String(args.settings.agentDefaults.model).trim();
         if (model && !validModelValues.includes(model)) {
@@ -276,6 +289,7 @@ export const update = mutation({
           account as {
             settings?: {
               theme?: string;
+              userMd?: string;
               notificationPreferences?: {
                 taskUpdates?: boolean;
                 agentActivity?: boolean;
@@ -292,6 +306,9 @@ export const update = mutation({
         ...current,
         ...(args.settings.theme !== undefined && {
           theme: args.settings.theme,
+        }),
+        ...(args.settings.userMd !== undefined && {
+          userMd: (args.settings.userMd ?? "").trim(),
         }),
         ...(args.settings.notificationPreferences !== undefined && {
           notificationPreferences: {

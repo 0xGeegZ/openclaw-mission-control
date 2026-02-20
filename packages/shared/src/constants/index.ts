@@ -21,6 +21,7 @@ import {
   type NotificationType,
   type LLMModel,
   type SkillCategory,
+  type BehaviorFlags,
 } from "../types";
 
 // Re-export const objects from types for convenience
@@ -101,9 +102,11 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
  */
 export const AVAILABLE_MODELS = [
   {
-    value: LLM_MODEL.CLAUDE_HAIKU_4_5,
-    label: "Claude Haiku 4.5 (Recommended)",
+    value: LLM_MODEL.MINIMAX_M2_5,
+    label: "Minimax M2.5 (Recommended)",
   },
+  { value: LLM_MODEL.CLAUDE_HAIKU_4_5, label: "Claude Haiku 4.5" },
+  { value: LLM_MODEL.KIMI_K2_5, label: "Moonshot Kimi K2.5" },
   { value: LLM_MODEL.GPT_5_NANO, label: "GPT-5 Nano" },
 ] as const;
 
@@ -111,14 +114,39 @@ export const AVAILABLE_MODELS = [
  * OpenClaw provider/model mapping for supported LLM identifiers.
  */
 export const MODEL_TO_OPENCLAW: Record<LLMModel, string> = {
+  [LLM_MODEL.MINIMAX_M2_5]: "minimax/minimax-m2.5",
   [LLM_MODEL.CLAUDE_HAIKU_4_5]: "anthropic/claude-haiku-4.5",
+  [LLM_MODEL.KIMI_K2_5]: "moonshotai/kimi-k2.5",
   [LLM_MODEL.GPT_5_NANO]: "openai/gpt-5-nano",
 };
 
 /**
  * Fallback OpenClaw provider/model when no mapping exists.
+ * Used when a stored model id has no entry in MODEL_TO_OPENCLAW.
  */
 export const OPENCLAW_FALLBACK_MODEL = "anthropic/claude-haiku-4.5";
+
+/**
+ * Human-readable provider names for each LLM model (UI display).
+ */
+export const MODEL_PROVIDER_LABELS: Record<LLMModel, string> = {
+  [LLM_MODEL.MINIMAX_M2_5]: "Minimax",
+  [LLM_MODEL.CLAUDE_HAIKU_4_5]: "Anthropic",
+  [LLM_MODEL.KIMI_K2_5]: "Moonshot AI",
+  [LLM_MODEL.GPT_5_NANO]: "OpenAI",
+};
+
+/**
+ * Returns the provider label for a model value, or "Other" if unknown or empty.
+ * @param modelValue - LLM model id (e.g. minimax-m2.5, claude-haiku-4.5)
+ * @returns Human-readable provider name for UI
+ */
+export function getModelProviderLabel(modelValue: string): string {
+  const trimmed = modelValue?.trim() ?? "";
+  if (trimmed === "") return "Other";
+  const label = MODEL_PROVIDER_LABELS[trimmed as LLMModel];
+  return label ?? "Other";
+}
 
 /**
  * Skill category labels for UI display.
@@ -250,8 +278,20 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 /**
  * Default OpenClaw configuration for new agents.
  */
+const DEFAULT_BEHAVIOR_FLAGS: BehaviorFlags = {
+  canCreateTasks: false,
+  canModifyTaskStatus: true,
+  canCreateDocuments: true,
+  canMentionAgents: true,
+  canReviewTasks: false,
+  canMarkDone: false,
+};
+
+/**
+ * Shared default OpenClaw config used by web, backend, and runtime.
+ */
 export const DEFAULT_OPENCLAW_CONFIG = {
-  model: LLM_MODEL.CLAUDE_HAIKU_4_5,
+  model: LLM_MODEL.MINIMAX_M2_5,
   temperature: 0.7,
   maxTokens: 4096,
   skillIds: [],
@@ -260,10 +300,5 @@ export const DEFAULT_OPENCLAW_CONFIG = {
     includeTaskContext: true,
     includeTeamContext: true,
   },
-  behaviorFlags: {
-    canCreateTasks: false,
-    canModifyTaskStatus: true,
-    canCreateDocuments: true,
-    canMentionAgents: true,
-  },
+  behaviorFlags: DEFAULT_BEHAVIOR_FLAGS,
 } as const;

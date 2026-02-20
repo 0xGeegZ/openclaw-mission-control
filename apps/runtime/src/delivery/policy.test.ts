@@ -2,13 +2,14 @@
  * Unit tests for delivery policy: shouldDeliverToAgent, shouldRetryNoResponseForNotification,
  * orchestrator silent-by-default, and role/QA helpers.
  */
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { describe, it, expect } from "vitest";
 import type { DeliveryContext } from "./types";
 import {
+  agentCanReview,
   canAgentMarkDone,
   isOrchestratorChatTask,
-  isQaAgentProfile,
-  isReviewerRole,
+  isRecipientInMultiAssigneeTask,
   shouldDeliverToAgent,
   shouldPersistNoResponseFallback,
   shouldPersistOrchestratorThreadAck,
@@ -16,27 +17,33 @@ import {
   TASK_STATUSES_SKIP_STATUS_CHANGE,
 } from "./policy";
 
+const aid = (s: string): Id<"agents"> => s as Id<"agents">;
+const tid = (s: string): Id<"tasks"> => s as Id<"tasks">;
+const nid = (s: string): Id<"notifications"> => s as Id<"notifications">;
+const accId = (s: string): Id<"accounts"> => s as Id<"accounts">;
+const mid = (s: string): Id<"messages"> => s as Id<"messages">;
+
 function buildContext(
   overrides: Partial<DeliveryContext> = {},
 ): DeliveryContext {
   const base: DeliveryContext = {
     notification: {
-      _id: "n1",
+      _id: nid("n1"),
       type: "thread_update",
       title: "Update",
       body: "Body",
       recipientId: "agent-a",
-      accountId: "acc1",
+      accountId: accId("acc1"),
     },
-    agent: { _id: "agent-a", role: "Developer", name: "Engineer" },
+    agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
     task: {
-      _id: "task1",
+      _id: tid("task1"),
       status: "in_progress",
       title: "Task",
-      assignedAgentIds: ["agent-a"],
+      assignedAgentIds: [aid("agent-a")],
     },
     message: {
-      _id: "m1",
+      _id: mid("m1"),
       authorType: "agent",
       authorId: "agent-b",
       content: "Done",
@@ -93,7 +100,7 @@ describe("policy matrix", () => {
     const ctx = buildContext({
       notification: { ...buildContext().notification!, type: "thread_update" },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "agent-b",
         content: "Ok",
@@ -109,16 +116,16 @@ describe("policy matrix", () => {
         type: "thread_update",
         recipientId: "orch",
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Orchestrator" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["engineer"],
+        assignedAgentIds: [aid("engineer")],
       },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "engineer",
         content: "Update",
@@ -151,10 +158,10 @@ describe("shouldDeliverToAgent", () => {
     const ctx = buildContext({
       notification: { ...buildContext().notification!, type: "thread_update" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "done",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -170,10 +177,10 @@ describe("shouldDeliverToAgent", () => {
   it("orchestrator chat: only orchestrator recipient receives", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
         labels: ["system:orchestrator-chat"],
       },
       notification: {
@@ -182,14 +189,14 @@ describe("shouldDeliverToAgent", () => {
         recipientType: "agent",
         recipientId: "orch",
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Orchestrator" },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
     const ctxOther = buildContext({
       ...ctx,
       notification: { ...ctx.notification, recipientId: "agent-a" },
-      agent: { _id: "agent-a", role: "Developer", name: "Engineer" },
+      agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
     });
     expect(shouldDeliverToAgent(ctxOther)).toBe(false);
   });
@@ -199,7 +206,7 @@ describe("isOrchestratorChatTask", () => {
   it("returns true when task has system:orchestrator-chat label", () => {
     expect(
       isOrchestratorChatTask({
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
         labels: ["system:orchestrator-chat"],
@@ -209,7 +216,7 @@ describe("isOrchestratorChatTask", () => {
   it("returns false when label is missing", () => {
     expect(
       isOrchestratorChatTask({
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
       }),
@@ -217,26 +224,21 @@ describe("isOrchestratorChatTask", () => {
   });
 });
 
-describe("isReviewerRole", () => {
-  it("returns true for Squad Lead and QA", () => {
-    expect(isReviewerRole("Squad Lead")).toBe(true);
-    expect(isReviewerRole("QA")).toBe(true);
-    expect(isReviewerRole("review")).toBe(true);
+describe("agentCanReview", () => {
+  it("returns true when effectiveBehaviorFlags.canReviewTasks is true", () => {
+    expect(
+      agentCanReview(
+        buildContext({ effectiveBehaviorFlags: { canReviewTasks: true } }),
+      ),
+    ).toBe(true);
   });
-  it("returns false for Developer", () => {
-    expect(isReviewerRole("Developer")).toBe(false);
-  });
-});
-
-describe("isQaAgentProfile", () => {
-  it("returns true when slug is qa", () => {
-    expect(isQaAgentProfile({ slug: "qa", role: "Developer" })).toBe(true);
-  });
-  it("returns true when role contains QA", () => {
-    expect(isQaAgentProfile({ role: "Quality Assurance" })).toBe(true);
-  });
-  it("returns false for other roles", () => {
-    expect(isQaAgentProfile({ role: "Developer", slug: "engineer" })).toBe(
+  it("returns false when canReviewTasks is false or missing", () => {
+    expect(
+      agentCanReview(
+        buildContext({ effectiveBehaviorFlags: { canReviewTasks: false } }),
+      ),
+    ).toBe(false);
+    expect(agentCanReview(buildContext({ effectiveBehaviorFlags: {} }))).toBe(
       false,
     );
   });
@@ -247,29 +249,90 @@ describe("canAgentMarkDone", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "in_progress",
-        isOrchestrator: true,
-        hasQaAgent: false,
+        canMarkDone: true,
       }),
     ).toBe(false);
   });
-  it("returns true for orchestrator when no QA and status is review", () => {
+  it("returns false when canMarkDone is false even if status is review", () => {
     expect(
       canAgentMarkDone({
         taskStatus: "review",
-        isOrchestrator: true,
-        hasQaAgent: false,
+        canMarkDone: false,
+      }),
+    ).toBe(false);
+  });
+  it("returns true when task is review and canMarkDone is true", () => {
+    expect(
+      canAgentMarkDone({
+        taskStatus: "review",
+        canMarkDone: true,
       }),
     ).toBe(true);
   });
-  it("returns true for QA agent when hasQaAgent and role is QA", () => {
+});
+
+describe("isRecipientInMultiAssigneeTask", () => {
+  it("returns true when task has 2+ assignees and recipient agent is one of them", () => {
     expect(
-      canAgentMarkDone({
-        taskStatus: "review",
-        agentRole: "QA",
-        agentSlug: "qa",
-        isOrchestrator: false,
-        hasQaAgent: true,
-      }),
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a"), aid("agent-b")],
+          },
+          agent: { _id: aid("agent-a"), role: "Engineer", name: "A" },
+        }),
+      ),
     ).toBe(true);
+  });
+  it("returns false when task has only one assignee", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a")],
+          },
+          agent: { _id: aid("agent-a"), role: "Engineer", name: "A" },
+        }),
+      ),
+    ).toBe(false);
+  });
+  it("returns false when task has 2+ assignees but recipient is not in the list", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a"), aid("agent-b")],
+          },
+          agent: { _id: aid("agent-c"), role: "Engineer", name: "C" },
+        }),
+      ),
+    ).toBe(false);
+  });
+  it("returns false when task or agent is missing", () => {
+    expect(
+      isRecipientInMultiAssigneeTask(buildContext({ task: null, agent: null })),
+    ).toBe(false);
+    expect(
+      isRecipientInMultiAssigneeTask(
+        buildContext({
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [],
+          },
+          agent: { _id: aid("agent-a"), name: "A" },
+        }),
+      ),
+    ).toBe(false);
   });
 });

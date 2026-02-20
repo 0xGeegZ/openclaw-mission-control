@@ -290,10 +290,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12">
                       {agent.avatarUrl ? (
-                        <AvatarImage
-                          src={agent.avatarUrl}
-                          alt={agent.name}
-                        />
+                        <AvatarImage src={agent.avatarUrl} alt={agent.name} />
                       ) : null}
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                         {AgentFallbackIcon ? (
@@ -319,9 +316,9 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
                       Last seen {lastSeenText}
                     </div>
                   )}
-                  {agent.sessionKey && (
-                    <p className="text-xs text-muted-foreground font-mono truncate">
-                      {agent.sessionKey}
+                  {agent.systemSessionKey && (
+                    <p className="text-xs text-muted-foreground font-mono truncate mt-2">
+                      {agent.systemSessionKey}
                     </p>
                   )}
                 </CardContent>

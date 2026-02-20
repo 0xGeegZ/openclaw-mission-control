@@ -52,6 +52,7 @@ import { cn } from "@packages/ui/lib/utils";
 import {
   AVAILABLE_MODELS,
   DEFAULT_OPENCLAW_CONFIG,
+  getModelProviderLabel,
   RUNTIME_STATUS,
 } from "@packages/shared";
 
@@ -72,20 +73,17 @@ const DEFAULT_MAX_TOKENS = DEFAULT_OPENCLAW_CONFIG.maxTokens ?? 4096;
 const DEFAULT_MAX_HISTORY =
   DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages;
 
-/**
- * Resolve a provider label for a given model value.
- */
-function getModelProviderLabel(modelValue: string): string {
-  if (modelValue.startsWith("claude-")) return "Anthropic";
-  if (modelValue.startsWith("gpt-")) return "OpenAI";
-  return "Other";
-}
-
 export default function OpenClawPage({ params }: OpenClawPageProps) {
   use(params);
   const { account, accountId, isLoading, isAdmin } = useAccount();
   const updateAccount = useMutation(api.accounts.update);
   const requestRestart = useMutation(api.accounts.requestRestart);
+  const migrateAgentsToDefaultModel = useMutation(
+    api.agents.migrateAgentsToDefaultModel,
+  );
+  const migratePromptScaffold = useMutation(
+    api.agents.migratePromptScaffold,
+  );
   const provisionServiceToken = useAction(
     api.service.actions.provisionServiceToken,
   );
@@ -106,6 +104,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
             canModifyTaskStatus?: boolean;
             canCreateDocuments?: boolean;
             canMentionAgents?: boolean;
+            canReviewTasks?: boolean;
+            canMarkDone?: boolean;
           };
           rateLimits?: { requestsPerMinute?: number; tokensPerDay?: number };
         };
@@ -125,6 +125,8 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
     canModifyTaskStatus: true,
     canCreateDocuments: true,
     canMentionAgents: true,
+    canReviewTasks: false,
+    canMarkDone: false,
   });
   const [rateRpm, setRateRpm] = useState("20");
   const [rateTpd, setRateTpd] = useState("100000");
@@ -441,6 +443,96 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           Conversation history included in context
                         </p>
                       </div>
+
+                      <div className="space-y-2 rounded-xl border border-amber-200/50 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
+                        <Label>Migrate existing agents to default model</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Set every agent and each account’s default model to{" "}
+                          {DEFAULT_MODEL}. The selector above will show the new
+                          default and existing agents will use it on next
+                          runtime sync.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          disabled={isSaving}
+                          onClick={async () => {
+                            try {
+                              const result = await migrateAgentsToDefaultModel(
+                                {},
+                              );
+                              const parts: string[] = [];
+                              if (result.agentsUpdated > 0)
+                                parts.push(
+                                  `${result.agentsUpdated} agent(s) updated`,
+                                );
+                              if (result.accountsUpdated > 0)
+                                parts.push("account default model updated");
+                              toast.success(
+                                parts.length > 0
+                                  ? parts.join("; ")
+                                  : "No agents or accounts needed updating",
+                              );
+                            } catch (e) {
+                              toast.error("Migration failed", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
+                            }
+                          }}
+                        >
+                          Migrate agents to default model
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-amber-200/50 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
+                        <Label>Scaffold USER.md & IDENTITY.md</Label>
+                        <p className="text-xs text-muted-foreground">
+                          One-time migration: set account USER profile and each
+                          agent’s IDENTITY content and review/done behavior
+                          flags if missing. Run once per account after upgrade.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          disabled={isSaving || !accountId}
+                          onClick={async () => {
+                            if (!accountId) return;
+                            try {
+                              const result = await migratePromptScaffold({
+                                accountId,
+                              });
+                              const parts: string[] = [];
+                              if (result.accountsUpdated > 0)
+                                parts.push("account USER profile set");
+                              if (result.agentsUpdated > 0)
+                                parts.push(
+                                  `${result.agentsUpdated} agent(s) updated`,
+                                );
+                              toast.success(
+                                parts.length > 0
+                                  ? parts.join("; ")
+                                  : "No updates needed",
+                              );
+                            } catch (e) {
+                              toast.error("Migration failed", {
+                                description:
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Unknown error",
+                              });
+                            }
+                          }}
+                        >
+                          Run prompt scaffold migration
+                        </Button>
+                      </div>
                     </div>
 
                     <Separator />
@@ -535,6 +627,20 @@ export default function OpenClawPage({ params }: OpenClawPageProps) {
                           key: "canMentionAgents" as const,
                           label: "Can Mention Agents",
                           description: "Allow agents to mention other agents",
+                        },
+                        {
+                          id: "review-tasks",
+                          key: "canReviewTasks" as const,
+                          label: "Can Review Tasks",
+                          description:
+                            "Receive review notifications and act as reviewer",
+                        },
+                        {
+                          id: "mark-done",
+                          key: "canMarkDone" as const,
+                          label: "Can Mark Done",
+                          description:
+                            "Allow agent to mark tasks done (e.g. after QA)",
                         },
                       ].map((flag) => (
                         <div

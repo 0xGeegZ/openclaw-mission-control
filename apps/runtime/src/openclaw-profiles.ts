@@ -5,13 +5,12 @@ import { MODEL_TO_OPENCLAW, type LLMModel } from "@packages/shared";
 
 const log = createLogger("[OpenClawProfiles]");
 
-/** Agent payload from listAgentsForRuntime (effectiveSoulContent, resolvedSkills). */
+/** Agent payload from listAgentsForRuntime (effectiveSoulContent, effectiveUserMd, effectiveIdentityContent, resolvedSkills). */
 export interface AgentForProfile {
   _id: string;
   name: string;
   slug: string;
   role: string;
-  sessionKey: string;
   openclawConfig?: {
     model?: string;
     temperature?: number;
@@ -20,6 +19,8 @@ export interface AgentForProfile {
     [key: string]: unknown;
   };
   effectiveSoulContent: string;
+  effectiveUserMd: string;
+  effectiveIdentityContent: string;
   resolvedSkills: Array<{
     _id: string;
     name: string;
@@ -47,6 +48,11 @@ function resolveSoulContent(agent: AgentForProfile): string {
 /** Options for syncOpenClawProfiles. */
 export interface ProfileSyncOptions {
   workspaceRoot: string;
+  /**
+   * Optional workspace root path to write into generated openclaw.json.
+   * Defaults to workspaceRoot. Useful when runtime and gateway mount paths differ.
+   */
+  configWorkspaceRoot?: string;
   configPath: string;
   /** Optional path to AGENTS.md to copy into each workspace; if unset, embedded default is used */
   agentsMdPath?: string;
@@ -54,18 +60,12 @@ export interface ProfileSyncOptions {
   heartbeatMdPath?: string;
 }
 
-/** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). */
+/** Default AGENTS.md content when file path is not available (e.g. in Docker runtime container). Platform-only; repo/worktree details come from seed-owned Repository document. */
 const DEFAULT_AGENTS_MD = `# AGENTS.md - OpenClaw Mission Control Operating Manual
 
 ## What you are
 
 You are one specialist in a team of AI agents. You collaborate through OpenClaw Mission Control (tasks, threads, docs). Your job is to move work forward and leave a clear trail.
-
-## Primary repository
-
-- Writable clone (use for all work): /root/clawd/repos/openclaw-mission-control
-- Use the writable clone for all git operations. Write artifacts under /root/clawd/deliverables for local use; to share with the primary user, use document_upsert and reference only as [Document](/document/<documentId>). Do not post paths like /deliverables/... in the thread — the user cannot open them.
-- One branch per task: use branch feat/task-<taskId> (from your notification); create it from dev before editing, and push/PR only from that branch.
 
 ## Non-negotiable rules
 
@@ -91,13 +91,18 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Prefer memory tools first: use memory_get / memory_set when available.
 - Use read only for explicit file paths, never for directories.
 - Read arguments must include a JSON object with path, for example: {"path":"memory/WORKING.md"}.
-- Only use read with paths under /root/clawd; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
+- Only use read with paths under your workspace; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
 - If memory/YYYY-MM-DD.md is missing, create it before reading it.
 
-## Document sharing (critical)
+## Document delivery (critical)
 
-- When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
-- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths (e.g. /deliverables/PLAN_*.md, /root/clawd/deliverables/...) — the primary user cannot open them.
+- When you produce a document or large deliverable, you must use the **document_upsert** tool so the primary user can see it in the dashboard.
+- After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths — the primary user cannot open them.
+- Do not use any "share", "send to channel", or "webchat" action to deliver documents. In OpenClaw Mission Control, documents are delivered only via document_upsert and the task-thread reply with the document link.
+
+## Working with multiple assignees
+
+When a task has two or more agent assignees, collaborate explicitly in the task thread: declare your sub-scope in your first reply, ask direct dependency questions in-thread, and keep decisions visible so assignees can align. For each dependency or handoff, keep the request in-thread and send **response_request** (not @mentions) so the assignee is notified. Do not treat silence as agreement; wait for a reply, or record a time-boxed assumption and ask orchestrator confirmation. Before moving to REVIEW, post a brief agreement summary (owners, decisions, open dependencies). If blocked on a co-assignee, move to BLOCKED with blockedReason naming the dependency and send response_request to that assignee.
 
 ## Capabilities and tools
 
@@ -168,6 +173,8 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md - Wake Checklist (Strict)
 Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1-2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread, claim your sub-scope, and ask any dependency questions in-thread. For each dependency or handoff, keep the request visible in the thread and send **response_request** so the assignee is notified. Do not treat silence as agreement; wait for a reply, or record a time-boxed assumption and ask orchestrator confirmation. Before moving to REVIEW, post a brief agreement summary (owners, decisions, open dependencies). If you are blocked on another assignee's output, move to BLOCKED with blockedReason naming that dependency. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
 
 ## 3) Execute one atomic action
 
@@ -549,6 +556,25 @@ function resolveAgentDir(workspaceRoot: string, slug: string): string | null {
 }
 
 /**
+ * Map a path under runtime workspaceRoot into configWorkspaceRoot for openclaw.json.
+ * Returns sourcePath unchanged when it does not belong to runtimeWorkspaceRoot.
+ */
+function mapWorkspacePathForConfig(
+  sourcePath: string,
+  runtimeWorkspaceRoot: string,
+  configWorkspaceRoot: string,
+): string {
+  const runtimeRootResolved = path.resolve(runtimeWorkspaceRoot);
+  const configRootResolved = path.resolve(configWorkspaceRoot);
+  const sourceResolved = path.resolve(sourcePath);
+  const relative = path.relative(runtimeRootResolved, sourceResolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return sourceResolved;
+  }
+  return path.resolve(configRootResolved, relative);
+}
+
+/**
  * Write file only if content changed (by hash) to avoid unnecessary churn.
  */
 function writeIfChanged(filePath: string, content: string): boolean {
@@ -577,14 +603,25 @@ export function syncOpenClawProfiles(
   agents: AgentForProfile[],
   options: ProfileSyncOptions,
 ): { configChanged: boolean } {
-  const { workspaceRoot, configPath, agentsMdPath, heartbeatMdPath } = options;
+  const {
+    workspaceRoot,
+    configWorkspaceRoot,
+    configPath,
+    agentsMdPath,
+    heartbeatMdPath,
+  } = options;
   const agentsMdContent = getAgentsMdContent(agentsMdPath);
   const heartbeatMdContent = getHeartbeatMdContent(heartbeatMdPath);
 
   ensureDir(workspaceRoot);
 
   const rootResolved = path.resolve(workspaceRoot);
-  const validAgents: Array<{ agent: AgentForProfile; agentDir: string }> = [];
+  const configRootResolved = path.resolve(configWorkspaceRoot || workspaceRoot);
+  const validAgents: Array<{
+    agent: AgentForProfile;
+    agentDir: string;
+    configAgentDir: string;
+  }> = [];
   const extraDirsSet = new Set<string>();
   /** OpenClaw skills.entries keys: must match frontmatter `name` in each SKILL.md. */
   const materializedSkillKeysSet = new Set<string>();
@@ -598,10 +635,25 @@ export function syncOpenClawProfiles(
       });
       continue;
     }
-    validAgents.push({ agent, agentDir });
+    const configAgentDir = mapWorkspacePathForConfig(
+      agentDir,
+      rootResolved,
+      configRootResolved,
+    );
+    validAgents.push({ agent, agentDir, configAgentDir });
     ensureDir(agentDir);
 
     writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
+    writeIfChanged(
+      path.join(agentDir, "USER.md"),
+      agent.effectiveUserMd?.trim() ||
+        "# User\n\nAccount context (edit in Settings > Agent Profile).",
+    );
+    writeIfChanged(
+      path.join(agentDir, "IDENTITY.md"),
+      agent.effectiveIdentityContent?.trim() ||
+        `# IDENTITY — ${agent.name}\n\nRole: ${agent.role}\n\nYou are **${agent.name}**, a specialist agent.`,
+    );
     writeIfChanged(path.join(agentDir, "AGENTS.md"), agentsMdContent);
     writeIfChanged(path.join(agentDir, "HEARTBEAT.md"), heartbeatMdContent);
     writeIfChanged(
@@ -610,6 +662,7 @@ export function syncOpenClawProfiles(
     );
 
     const skillsDir = path.join(agentDir, "skills");
+    const configSkillsDir = path.join(configAgentDir, "skills");
     for (const skill of agent.resolvedSkills) {
       const rawContent = skill.contentMarkdown?.trim();
       if (!rawContent) continue;
@@ -633,7 +686,7 @@ export function syncOpenClawProfiles(
       try {
         ensureDir(skillDir);
         writeIfChanged(skillMdPath, contentToWrite);
-        extraDirsSet.add(skillsDir);
+        extraDirsSet.add(configSkillsDir);
         materializedSkillKeysSet.add(configKey);
       } catch (err) {
         log.error("Failed to write SKILL.md; skipping skill", {
@@ -649,11 +702,10 @@ export function syncOpenClawProfiles(
   }
 
   const openclawConfig = buildOpenClawConfig(
-    validAgents.map(({ agent, agentDir }) => ({
+    validAgents.map(({ agent, configAgentDir }) => ({
       ...agent,
-      _workspacePath: agentDir,
+      _workspacePath: configAgentDir,
     })),
-    rootResolved,
     Array.from(extraDirsSet),
     Array.from(materializedSkillKeysSet),
   );
@@ -704,7 +756,6 @@ interface AgentWithWorkspacePath extends AgentForProfile {
  */
 function buildOpenClawConfig(
   agents: AgentWithWorkspacePath[],
-  _workspaceRoot: string,
   extraDirs: string[],
   materializedSkillKeys: string[],
 ): Record<string, unknown> {

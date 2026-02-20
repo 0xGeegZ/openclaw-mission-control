@@ -8,6 +8,7 @@
  * Invariant: every processed notification reaches a terminal state (delivered, skipped, or one fallback then delivered). No perpetual requeue.
  */
 
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { DeliveryContext } from "./types";
 
 /** Task statuses for which we skip delivering status_change to agents (avoid ack storms). */
@@ -37,53 +38,36 @@ export function isOrchestratorChatTask(
 }
 
 /**
- * Whether the agent role is a reviewer (e.g. Squad Lead, QA).
- * @param role - Agent role string.
- * @returns true if role matches squad lead, qa, or review (case-insensitive).
+ * Whether the agent can receive review-related notifications (status_change to review, thread_update when in review).
+ * Based on explicit behavior flag only; no role/slug heuristics.
  */
-export function isReviewerRole(role: string | undefined): boolean {
-  if (!role) return false;
-  return /squad lead|qa|review/i.test(role);
+export function agentCanReview(context: DeliveryContext): boolean {
+  return context.effectiveBehaviorFlags?.canReviewTasks === true;
 }
 
 /**
- * Whether an agent profile is QA (by slug or role).
- * @param profile - Agent profile with optional role and slug.
- * @returns true if slug is "qa" or role contains QA-related terms.
- */
-export function isQaAgentProfile(
-  profile?: {
-    role?: string;
-    slug?: string;
-  } | null,
-): boolean {
-  if (!profile) return false;
-  const role = profile.role ?? "";
-  const slug = profile.slug ?? "";
-  if (slug.trim().toLowerCase() === "qa") return true;
-  return /\bqa\b|quality assurance|quality\b/i.test(role);
-}
-
-/**
- * Whether the agent can mark a task as done. Requires task in review; when QA exists, only QA can close.
- * @param options - Task status, agent role/slug, orchestrator flag, and whether account has a QA agent.
- * @returns true if task is in review and (no QA => orchestrator can close, has QA => this agent is QA).
+ * Whether the agent can mark a task as done. Requires task in review and explicit canMarkDone flag.
+ * No role/slug heuristics (e.g. QA); gating is via behavior flags only.
  */
 export function canAgentMarkDone(options: {
   taskStatus?: string;
-  agentRole?: string;
-  agentSlug?: string;
-  isOrchestrator: boolean;
-  hasQaAgent: boolean;
+  canMarkDone?: boolean;
 }): boolean {
-  if (options.taskStatus !== "review") return false;
-  if (options.hasQaAgent) {
-    return isQaAgentProfile({
-      role: options.agentRole,
-      slug: options.agentSlug,
-    });
-  }
-  return options.isOrchestrator;
+  return options.taskStatus === "review" && options.canMarkDone === true;
+}
+
+/**
+ * Whether the recipient agent is one of multiple assignees on the task (used to show collaboration instructions in the prompt).
+ * @param context - Full delivery context.
+ * @returns true when task has 2+ assignees and context.agent._id is in that list.
+ */
+export function isRecipientInMultiAssigneeTask(
+  context: DeliveryContext,
+): boolean {
+  const ids = context.task?.assignedAgentIds;
+  const agentId = context.agent?._id;
+  if (!ids || ids.length < 2 || !agentId) return false;
+  return ids.includes(agentId);
 }
 
 /**
@@ -124,7 +108,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
       if (orchestratorAgentId != null && recipientId === orchestratorAgentId) {
         return true;
       }
-      return isReviewerRole(context.agent?.role);
+      return agentCanReview(context);
     }
   }
 
@@ -150,10 +134,10 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     }
     const isAssignedRecipient =
       Array.isArray(assignedAgentIds) && typeof recipientId === "string"
-        ? assignedAgentIds.includes(recipientId)
+        ? assignedAgentIds.includes(recipientId as Id<"agents">)
         : false;
     const isReviewerRecipient =
-      taskStatus === "review" && isReviewerRole(agentRole);
+      taskStatus === "review" && agentCanReview(context);
     if (sourceNotificationType === "thread_update") {
       if (
         isOrchestratorAuthor &&

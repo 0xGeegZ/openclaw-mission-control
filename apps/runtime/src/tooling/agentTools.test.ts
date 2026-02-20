@@ -318,6 +318,39 @@ describe("executeAgentTool", () => {
     );
   });
 
+  it("validates task_history requires taskId", async () => {
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_history",
+      arguments: "{}",
+    });
+    expect(result).toEqual({ success: false, error: "taskId is required" });
+  });
+
+  it("executes task_history with taskId and optional limits", async () => {
+    mockAction.mockResolvedValue({
+      task: { _id: "task1", title: "T" },
+      messages: [],
+      activities: [],
+      meta: { messageLimitApplied: 25, activityLimitApplied: 30 },
+    });
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "task_history",
+      arguments: JSON.stringify({
+        taskId: "task1",
+        messageLimit: 50,
+        activityLimit: 40,
+      }),
+    });
+    expect(result.success).toBe(true);
+    expect(mockAction).toHaveBeenCalledTimes(1);
+    const callArgs = mockAction.mock.calls[0][1] as Record<string, unknown>;
+    expect(callArgs.taskId).toBe("task1");
+    expect(callArgs.messageLimit).toBe(50);
+    expect(callArgs.activityLimit).toBe(40);
+  });
+
   it("validates task_link_pr requires taskId and prNumber", async () => {
     const missingTaskId = await executeAgentTool({
       ...baseParams,
@@ -410,7 +443,6 @@ describe("executeAgentTool", () => {
         { _id: "agent1", slug: "orchestrator" },
         { _id: "agent2", slug: "engineer" },
       ])
-      .mockResolvedValueOnce({ taskId: "task1" })
       .mockResolvedValueOnce({ taskId: "task1" });
 
     const result = await executeAgentTool({
@@ -425,7 +457,7 @@ describe("executeAgentTool", () => {
     });
 
     expect(result).toEqual({ success: true, taskId: "task1" });
-    expect(mockAction).toHaveBeenCalledTimes(3);
+    expect(mockAction).toHaveBeenCalledTimes(2);
 
     const createCall = mockAction.mock.calls.find(([, payload]) => {
       return (
@@ -436,14 +468,6 @@ describe("executeAgentTool", () => {
     expect(createCall?.[1]).toMatchObject({
       title: "Delegate implementation",
       status: "inbox",
-    });
-
-    const assignCall = mockAction.mock.calls.find(([, payload]) => {
-      return (payload as { taskId?: string }).taskId === "task1";
-    });
-    expect(assignCall).toBeDefined();
-    expect(assignCall?.[1]).toMatchObject({
-      taskId: "task1",
       assignedAgentIds: ["agent2"],
     });
   });
