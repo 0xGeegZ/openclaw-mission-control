@@ -132,7 +132,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       hasTaskContext: false,
     });
     expect(withDocs.capabilityLabels).toContain(
-      "list documents (document_list tool)",
+      "List documents (document_list)",
     );
     expect(schemaNames(withDocs.schemas)).toContain("document_list");
 
@@ -143,7 +143,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       hasTaskContext: true,
     });
     expect(withTask.capabilityLabels).toContain(
-      "list documents (document_list tool)",
+      "List documents (document_list)",
     );
     expect(schemaNames(withTask.schemas)).toContain("document_list");
 
@@ -207,10 +207,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       hasTaskContext: true,
     };
     const result = getToolCapabilitiesAndSchemas(options);
-    const toolLabels = result.capabilityLabels.filter((l) =>
-      l.includes(" tool)"),
-    );
-    expect(toolLabels.length).toBe(result.schemas.length);
+    expect(result.capabilityLabels.length).toBe(result.schemas.length);
     expect(schemaNames(result.schemas).length).toBe(result.schemas.length);
   });
 

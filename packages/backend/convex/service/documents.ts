@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
 import {
   documentTypeValidator,
   DOCUMENT_TITLE_MAX_LENGTH,
@@ -29,7 +28,8 @@ export const listForAgentTool = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = Math.min(args.limit ?? 50, 100);
+    const rawLimit = args.limit ?? 50;
+    const limit = Math.min(rawLimit < 1 ? 50 : rawLimit, 100);
     const accountId = args.accountId;
     const typeFilter = args.type;
 

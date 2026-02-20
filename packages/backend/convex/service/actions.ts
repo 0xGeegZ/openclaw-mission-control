@@ -1719,7 +1719,8 @@ export const listDocumentsForAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const limit = Math.min(args.limit ?? 50, 100);
+    const rawLimit = args.limit ?? 50;
+    const limit = Math.min(rawLimit < 1 ? 50 : rawLimit, 100);
     const documents = await ctx.runQuery(
       internal.service.documents.listForAgentTool,
       {

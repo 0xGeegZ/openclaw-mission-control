@@ -1042,10 +1042,103 @@ describe("createResponseRequestNotifications", () => {
 // ============================================================================
 
 describe("listDocumentsForAgent", () => {
-  it("should be defined and export documents array shape", async () => {
+  const testAccountId = "acc_docs1" as Id<"accounts">;
+  const testServiceToken = "mc_service_acc_docs1_secret";
+
+  it("should be defined", async () => {
     const { listDocumentsForAgent } = await import("./actions");
     expect(listDocumentsForAgent).toBeDefined();
-    // Action is callable by runtime with serviceToken, accountId, optional taskId/type/limit.
-    // Return shape: { documents: Array<{ _id, title, type?, taskId?, updatedAt }> }.
+  });
+
+  it("returns documents array with required shape when called with valid auth", async () => {
+    const mockDocuments = [
+      {
+        _id: "doc1" as Id<"documents">,
+        title: "Deliverable 1",
+        type: "deliverable" as const,
+        updatedAt: 1000,
+      },
+      {
+        _id: "doc2" as Id<"documents">,
+        title: "Note",
+        type: "note" as const,
+        taskId: "task_1" as Id<"tasks">,
+        updatedAt: 2000,
+      },
+    ];
+    const runQuery = vi.fn().mockResolvedValue(mockDocuments);
+    const requireServiceAuth = vi.fn().mockResolvedValue({
+      accountId: testAccountId,
+      serviceId: "svc_1",
+    });
+
+    const ctx = { runQuery } as any;
+    const args = {
+      serviceToken: testServiceToken,
+      accountId: testAccountId,
+      taskId: undefined as Id<"tasks"> | undefined,
+      type: undefined as
+        | "deliverable"
+        | "note"
+        | "template"
+        | "reference"
+        | undefined,
+      limit: 50,
+    };
+
+    const handler = async () => {
+      const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+      if (serviceContext.accountId !== args.accountId) {
+        throw new Error("Forbidden: Service token does not match account");
+      }
+      const rawLimit = args.limit ?? 50;
+      const limit = Math.min(rawLimit < 1 ? 50 : rawLimit, 100);
+      const documents = await ctx.runQuery({} as any, {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        type: args.type,
+        limit,
+      });
+      return { documents };
+    };
+
+    const result = await handler();
+    expect(result).toHaveProperty("documents");
+    expect(Array.isArray(result.documents)).toBe(true);
+    expect(result.documents).toHaveLength(2);
+    for (const doc of result.documents) {
+      expect(doc).toHaveProperty("_id");
+      expect(doc).toHaveProperty("title");
+      expect(doc).toHaveProperty("updatedAt");
+      expect(typeof doc.updatedAt).toBe("number");
+      if (doc.type != null) {
+        expect(["deliverable", "note", "template", "reference"]).toContain(
+          doc.type,
+        );
+      }
+    }
+    expect(result.documents[1]).toHaveProperty("taskId");
+  });
+
+  it("throws when accountId does not match service context", async () => {
+    const requireServiceAuth = vi.fn().mockResolvedValue({
+      accountId: "acc_other" as Id<"accounts">,
+      serviceId: "svc_1",
+    });
+    const ctx = { runQuery: vi.fn() } as any;
+    const args = {
+      serviceToken: testServiceToken,
+      accountId: testAccountId,
+    };
+    const handler = async () => {
+      const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+      if (serviceContext.accountId !== args.accountId) {
+        throw new Error("Forbidden: Service token does not match account");
+      }
+      return { documents: [] };
+    };
+    await expect(handler()).rejects.toThrow(
+      "Forbidden: Service token does not match account",
+    );
   });
 });

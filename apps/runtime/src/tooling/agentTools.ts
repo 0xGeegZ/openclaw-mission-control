@@ -469,7 +469,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
   }
   if (options.canCreateDocuments || options.hasTaskContext) {
-    capabilityLabels.push("list documents (document_list tool)");
+    capabilityLabels.push("List documents (document_list)");
     schemas.push(DOCUMENT_LIST_TOOL_SCHEMA);
   }
   if (options.hasTaskContext && options.canMentionAgents === true) {
