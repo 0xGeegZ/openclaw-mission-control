@@ -21,6 +21,12 @@ import {
 } from "./lib/notifications";
 import { USER_MD_MAX_LENGTH } from "./lib/validators";
 
+/** Bounds for agentDefaults (same as agents.updateOpenclawConfig). */
+const AGENT_DEFAULT_TEMPERATURE_MIN = 0;
+const AGENT_DEFAULT_TEMPERATURE_MAX = 2;
+const AGENT_DEFAULT_MAX_TOKENS_MIN = 1;
+const AGENT_DEFAULT_MAX_TOKENS_MAX = 128_000;
+
 /**
  * Create a new account.
  * The creating user becomes the owner.
@@ -281,6 +287,31 @@ export const update = mutation({
         if (model && !validModelValues.includes(model)) {
           throw new Error(
             `Invalid agent default model: "${model}". Must be one of: ${validModelValues.join(", ")}`,
+          );
+        }
+      }
+      if (args.settings.agentDefaults?.temperature != null) {
+        const t = args.settings.agentDefaults.temperature;
+        if (
+          typeof t !== "number" ||
+          t < AGENT_DEFAULT_TEMPERATURE_MIN ||
+          t > AGENT_DEFAULT_TEMPERATURE_MAX
+        ) {
+          throw new Error(
+            `Invalid agent default temperature: must be between ${AGENT_DEFAULT_TEMPERATURE_MIN} and ${AGENT_DEFAULT_TEMPERATURE_MAX}.`,
+          );
+        }
+      }
+      if (args.settings.agentDefaults?.maxTokens != null) {
+        const m = args.settings.agentDefaults.maxTokens;
+        if (
+          typeof m !== "number" ||
+          !Number.isInteger(m) ||
+          m < AGENT_DEFAULT_MAX_TOKENS_MIN ||
+          m > AGENT_DEFAULT_MAX_TOKENS_MAX
+        ) {
+          throw new Error(
+            `Invalid agent default maxTokens: must be an integer between ${AGENT_DEFAULT_MAX_TOKENS_MIN} and ${AGENT_DEFAULT_MAX_TOKENS_MAX}.`,
           );
         }
       }
