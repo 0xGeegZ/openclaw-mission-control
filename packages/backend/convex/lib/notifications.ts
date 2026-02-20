@@ -70,14 +70,71 @@ export async function createMentionNotifications(
   return notificationIds;
 }
 
+interface ThreadUpdateCandidate {
+  id: Id<"notifications">;
+  createdAt: number;
+}
+
+/**
+ * Build latest undelivered thread_update candidate per agent recipient for one task.
+ * The map key is recipientId; when duplicates exist, keeps the most recent one.
+ * @param ctx - Convex mutation context.
+ * @param accountId - Account ID (tenant isolation).
+ * @param taskId - Task ID (indexed).
+ * @returns Recipient map with latest undelivered notification id and createdAt.
+ */
+async function buildUndeliveredAgentThreadUpdateMap(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  taskId: Id<"tasks">,
+): Promise<Map<string, ThreadUpdateCandidate>> {
+  const allForTask = await ctx.db
+    .query("notifications")
+    .withIndex("by_task", (q) => q.eq("taskId", taskId))
+    .collect();
+
+  const byRecipient = new Map<string, ThreadUpdateCandidate>();
+  for (const notification of allForTask) {
+    if (notification.accountId !== accountId) continue;
+    if (notification.type !== "thread_update") continue;
+    if (notification.recipientType !== "agent") continue;
+    if (notification.deliveredAt !== undefined) continue;
+    if (!notification.recipientId || !notification.recipientId.trim()) continue;
+
+    const previous = byRecipient.get(notification.recipientId);
+    const isNewer = !previous || notification.createdAt >= previous.createdAt;
+    if (isNewer) {
+      byRecipient.set(notification.recipientId, {
+        id: notification._id,
+        createdAt: notification.createdAt,
+      });
+    }
+  }
+  return byRecipient;
+}
+
 /**
  * Create notifications for thread subscribers.
  * Called after a message is created, excluding author and already-mentioned.
  * Respects account notificationPreferences.agentActivity for user recipients.
  * When an agent is explicitly mentioned, skip thread_update notifications for agents
  * to avoid multiple agent replies.
- * If taskStatus is done/blocked, skip agent thread_update notifications to avoid
- * reply storms when humans post in completed tasks.
+ * For agent recipients, coalesces with an existing undelivered thread_update for the same
+ * (taskId, recipientId): patches that notification with the latest messageId/title/body/createdAt
+ * instead of inserting a new row.
+ * @param ctx - Convex mutation context.
+ * @param accountId - Account ID.
+ * @param taskId - Task ID.
+ * @param messageId - New message ID (and for coalesced row, updated messageId).
+ * @param authorType - Author type (user | agent).
+ * @param authorId - Author ID (skipped as subscriber).
+ * @param authorName - Display name for title/body.
+ * @param taskTitle - Task title for body.
+ * @param mentionedIds - Subscriber IDs to skip (already mentioned).
+ * @param hasAgentMentions - When true, skip agent thread_update to avoid duplicate replies.
+ * @param taskStatus - When done/blocked, skip agent thread_update notifications.
+ * @param options - Orchestrator chat filter and suppressAgentNotifications.
+ * @returns Array of notification IDs (inserted or coalesced).
  */
 export async function createThreadNotifications(
   ctx: MutationCtx,
@@ -105,6 +162,12 @@ export async function createThreadNotifications(
     .withIndex("by_task", (q) => q.eq("taskId", taskId))
     .collect();
   const notificationIds: Id<"notifications">[] = [];
+  const now = Date.now();
+  const title = `${authorName} replied`;
+  const body = `New message in task "${taskTitle}"`;
+  const undeliveredThreadUpdatesByRecipient =
+    await buildUndeliveredAgentThreadUpdateMap(ctx, accountId, taskId);
+
   for (const subscription of subscriptions) {
     if (
       options?.isOrchestratorChat &&
@@ -123,7 +186,14 @@ export async function createThreadNotifications(
       subscription.subscriberType === "agent"
     )
       continue;
-    if (hasAgentMentions && subscription.subscriberType === "agent") continue;
+    // When user mentions agents, skip thread_update for other agents but still notify orchestrator in orchestrator chat
+    if (hasAgentMentions && subscription.subscriberType === "agent") {
+      const isOrchestrator =
+        options?.isOrchestratorChat &&
+        options?.orchestratorAgentId &&
+        subscription.subscriberId === options.orchestratorAgentId;
+      if (!isOrchestrator) continue;
+    }
     if (
       subscription.subscriberType === authorType &&
       subscription.subscriberId === authorId
@@ -136,6 +206,27 @@ export async function createThreadNotifications(
     ) {
       continue;
     }
+
+    if (subscription.subscriberType === "agent") {
+      const existing = undeliveredThreadUpdatesByRecipient.get(
+        subscription.subscriberId,
+      );
+      if (existing) {
+        await ctx.db.patch(existing.id, {
+          messageId,
+          title,
+          body,
+          createdAt: now,
+        });
+        notificationIds.push(existing.id);
+        undeliveredThreadUpdatesByRecipient.set(subscription.subscriberId, {
+          id: existing.id,
+          createdAt: now,
+        });
+        continue;
+      }
+    }
+
     const notificationId = await ctx.db.insert("notifications", {
       accountId,
       type: "thread_update",
@@ -143,11 +234,17 @@ export async function createThreadNotifications(
       recipientId: subscription.subscriberId,
       taskId,
       messageId,
-      title: `${authorName} replied`,
-      body: `New message in task "${taskTitle}"`,
-      createdAt: Date.now(),
+      title,
+      body,
+      createdAt: now,
     });
     notificationIds.push(notificationId);
+    if (subscription.subscriberType === "agent") {
+      undeliveredThreadUpdatesByRecipient.set(subscription.subscriberId, {
+        id: notificationId,
+        createdAt: now,
+      });
+    }
   }
   return notificationIds;
 }
@@ -287,4 +384,79 @@ export async function createRoleChangeNotification(
     body: `Your role was changed to ${newRole}`,
     createdAt: Date.now(),
   });
+}
+
+/**
+ * Create runtime status broadcast notifications for all unique account members.
+ * Used for critical account-wide runtime transitions (offline/online).
+ */
+async function createRuntimeStatusBroadcastNotifications(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  title: string,
+  body: string,
+): Promise<Id<"notifications">[]> {
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .collect();
+
+  const recipientIds = new Set<string>();
+  for (const membership of memberships) {
+    if (membership.userId?.trim()) {
+      recipientIds.add(membership.userId);
+    }
+  }
+
+  const notificationIds: Id<"notifications">[] = [];
+  const now = Date.now();
+  for (const recipientId of Array.from(recipientIds)) {
+    const notificationId = await ctx.db.insert("notifications", {
+      accountId,
+      type: "status_change",
+      recipientType: "user",
+      recipientId,
+      title,
+      body,
+      createdAt: now,
+    });
+    notificationIds.push(notificationId);
+  }
+
+  return notificationIds;
+}
+
+/**
+ * Create mandatory user notifications when account runtime goes offline.
+ * This alert is intentionally not preference-gated because runtime outages
+ * impact account-wide agent automation.
+ */
+export async function createRuntimeOfflineNotifications(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  accountName: string,
+): Promise<Id<"notifications">[]> {
+  return createRuntimeStatusBroadcastNotifications(
+    ctx,
+    accountId,
+    "Runtime is offline",
+    `Mission Control runtime for "${accountName}" went offline.`,
+  );
+}
+
+/**
+ * Create mandatory user notifications when account runtime comes back online.
+ * This alert is intentionally not preference-gated to surface recovery.
+ */
+export async function createRuntimeOnlineNotifications(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+  accountName: string,
+): Promise<Id<"notifications">[]> {
+  return createRuntimeStatusBroadcastNotifications(
+    ctx,
+    accountId,
+    "Runtime is online",
+    `Mission Control runtime for "${accountName}" is back online.`,
+  );
 }

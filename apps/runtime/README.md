@@ -13,8 +13,8 @@ OpenClaw Mission Control is a multi-agent coordination SaaS. The runtime is the 
 The runtime:
 
 1. Connects to Convex with a **service token** scoped to one `accountId`.
-2. Starts the **OpenClaw gateway** and registers agent sessions (session keys like `agent:{slug}:{accountId}`).
-3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session via the OpenResponses HTTP API (`POST {OPENCLAW_GATEWAY_URL}/v1/responses` with `x-openclaw-session-key`). Agent replies are **written back** to the task thread in Convex so they appear in the OpenClaw Mission Control web app. The gateway HTTP endpoint must be enabled in OpenClaw config.
+2. Starts the **OpenClaw gateway** and registers agent sessions. Session keys are resolved by the backend: **task-scoped** (`task:{taskId}:agent:{slug}:{accountId}:vN`) for notifications with a task, and **system** (`system:agent:{slug}:{accountId}:vN`) for non-task (e.g. heartbeat). One persistent session per (task, agent) while the task is active; a new generation is created when a task is reopened after being done.
+3. **Delivery loop**: polls Convex for undelivered agent notifications (mentions, subscriptions, assignments), then sends them to the correct OpenClaw session via the OpenResponses HTTP API (`POST {OPENCLAW_GATEWAY_URL}/v1/responses` with `x-openclaw-session-key`). Each request sends **instructions** (system/policy) and **input** (notification payload + compact context) separately. Agent replies are **written back** to the task thread in Convex so they appear in the OpenClaw Mission Control web app. The gateway HTTP endpoint must be enabled in OpenClaw config.
 4. **Heartbeat scheduler**: wakes each agent on its schedule to check for work and report status.
 5. **Agent sync**: periodically fetches the agent list from Convex so new agents go online without restarting the runtime.
 6. **Health server**: exposes `/health` and `/version`, and periodically reports status (and versions) to Convex.
@@ -32,45 +32,63 @@ See [docs/concept/openclaw-mission-control-initial-article.md](../../docs/concep
 
 Copy [.env.example](./.env.example) to `.env` and set:
 
-| Variable                                              | Required | Description                                                                                                                                                                                                                            |
-| ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ACCOUNT_ID`                                          | Yes      | Convex `accounts` document ID this runtime serves.                                                                                                                                                                                     |
-| `CONVEX_URL`                                          | Yes      | Convex deployment URL (e.g. `https://xxx.convex.cloud`).                                                                                                                                                                               |
-| `SERVICE_TOKEN`                                       | Yes      | Token for Convex service-only actions (account-scoped).                                                                                                                                                                                |
-| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3000`).                                                                                                                                                                                          |
-| `DELIVERY_INTERVAL`                                   | No       | Notification poll interval in ms (default `15000`).                                                                                                                                                                                    |
-| `HEALTH_CHECK_INTERVAL`                               | No       | Convex status report interval in ms (default `300000`).                                                                                                                                                                                |
-| `AGENT_SYNC_INTERVAL`                                 | No       | Agent list sync interval in ms; new agents picked up without restart (default `300000`).                                                                                                                                               |
-| `RUNTIME_VERSION`                                     | No       | Override version (default: `package.json` version).                                                                                                                                                                                    |
-| `OPENCLAW_VERSION`                                    | No       | Override if `openclaw --version` fails.                                                                                                                                                                                                |
-| `LOG_LEVEL`                                           | No       | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                                                               |
-| `HEALTH_HOST`                                         | No       | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker).                                                                                                                                                         |
-| `TASK_STATUS_BASE_URL`                                | No       | Base URL the OpenClaw gateway can use to reach runtime HTTP fallback endpoints (defaults to `http://{HEALTH_HOST}:{HEALTH_PORT}`).                                                                                                     |
-| `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                           |
-| `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error). |
-| `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                     |
-| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `300000`). Clamped to 5000–600000; invalid values are adjusted and a warning is logged.                                                                                           |
-| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled. Set `OPENCLAW_PROFILE_SYNC=true` to populate these workspace files. |
-| `OPENCLAW_CONFIG_PATH`                                | No       | Path to generated `openclaw.json` (default `/root/clawd/openclaw.json`).                                                                                                                                                               |
-| `OPENCLAW_AGENTS_MD_PATH`                             | No       | Optional path to `AGENTS.md` to copy into each agent workspace; unset uses embedded default.                                                                                                                                           |
-| `OPENCLAW_HEARTBEAT_MD_PATH`                          | No       | Optional path to `HEARTBEAT.md` to copy into each agent workspace; defaults to `/root/clawd/HEARTBEAT.md`.                                                                                                                             |
-| `OPENCLAW_PROFILE_SYNC`                               | No       | Set to `true` to enable profile sync (workspaces and openclaw.json); default is disabled.                                                                                                                                              |
-| `OPENCLAW_CLIENT_TOOLS_ENABLED`                       | No       | When `false`, disable client-side tools and rely on HTTP fallbacks.                                                                                                                                                                    |
-| `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                            |
-| `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                      |
-| `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                            |
+| Variable                                              | Required | Description                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_ID`                                          | Yes      | Convex `accounts` document ID this runtime serves.                                                                                                                                                                                                                                                                                                       |
+| `CONVEX_URL`                                          | Yes      | Convex deployment URL (e.g. `https://xxx.convex.cloud`).                                                                                                                                                                                                                                                                                                 |
+| `SERVICE_TOKEN`                                       | Yes      | Token for Convex service-only actions (account-scoped).                                                                                                                                                                                                                                                                                                  |
+| `HEALTH_PORT`                                         | No       | HTTP port for health server (default `3000`).                                                                                                                                                                                                                                                                                                            |
+| `DELIVERY_INTERVAL`                                   | No       | Notification poll interval in ms (default `15000`).                                                                                                                                                                                                                                                                                                      |
+| `HEALTH_CHECK_INTERVAL`                               | No       | Convex status report interval in ms (default `300000`).                                                                                                                                                                                                                                                                                                  |
+| `AGENT_SYNC_INTERVAL`                                 | No       | Agent list sync interval in ms; new agents picked up without restart (default `300000`).                                                                                                                                                                                                                                                                 |
+| `RUNTIME_VERSION`                                     | No       | Override version (default: `package.json` version).                                                                                                                                                                                                                                                                                                      |
+| `OPENCLAW_VERSION`                                    | No       | Override if `openclaw --version` fails.                                                                                                                                                                                                                                                                                                                  |
+| `LOG_LEVEL`                                           | No       | `debug` \| `info` \| `warn` \| `error` (default `info`).                                                                                                                                                                                                                                                                                                 |
+| `HEALTH_HOST`                                         | No       | Bind address for health server (default `127.0.0.1`; use `0.0.0.0` in Docker).                                                                                                                                                                                                                                                                           |
+| `TASK_STATUS_BASE_URL`                                | No       | Base URL the OpenClaw gateway can use to reach runtime HTTP fallback endpoints (defaults to `http://{HEALTH_HOST}:{HEALTH_PORT}`).                                                                                                                                                                                                                       |
+| `DELIVERY_BACKOFF_BASE_MS`, `DELIVERY_BACKOFF_MAX_MS` | No       | Backoff on delivery poll errors (defaults `5000`, `300000`).                                                                                                                                                                                                                                                                                             |
+| `OPENCLAW_GATEWAY_URL`                                | No       | OpenClaw gateway base URL for OpenResponses (`POST /v1/responses`). Default `http://127.0.0.1:18789`; in Docker with profile `openclaw` use `http://openclaw-gateway:18789`. Empty = disabled (send will fail with descriptive error).                                                                                                                   |
+| `OPENCLAW_GATEWAY_TOKEN`                              | No       | Gateway Bearer token. Optional for local gateway URLs; required for non-local URLs. If empty, the gateway binds to localhost only.                                                                                                                                                                                                                       |
+| `OPENCLAW_REQUEST_TIMEOUT_MS`                         | No       | Timeout for `/v1/responses` requests in ms (default `300000`). Clamped to 5000–600000. Use 600000 (10 min) if agents often run long (e.g. many tool calls); otherwise the reply may time out and not appear in the UI.                                                                                                                                   |
+| `OPENCLAW_WORKSPACE_ROOT`                             | No       | Root directory for per-agent workspaces (default `/root/clawd/agents`). Runtime writes `USER.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `AGENTS.md`, `HEARTBEAT.md` when profile sync is enabled. Other profile-sync paths are derived internally from this folder.                                                                                      |
+| `OPENCLAW_PROFILE_SYNC`                               | No       | Set to `true` to enable profile sync (workspaces and openclaw.json); default is disabled.                                                                                                                                                                                                                                                                |
+| `OPENCLAW_CLIENT_TOOLS_ENABLED`                       | No       | When `false`, disable client-side tools and rely on HTTP fallbacks.                                                                                                                                                                                                                                                                                      |
+| `OPENCLAW_SESSION_RETENTION_DAYS`                     | No       | Optional OpenClaw session store prune on gateway start. Set a number of days to remove stale session entries; set `0` to clear all entries.                                                                                                                                                                                                              |
+| `OPENCLAW_TASK_SCOPED_SESSIONS`                       | No       | Optional; when set to `true`, enables task-scoped and system session resolution (default: always on). Exists for operational visibility; rollback is via deployment rollback, not runtime fallback.                                                                                                                                                      |
+| `OPENCLAW_DELIVERY_INSTRUCTIONS_V2`                   | No       | Optional; when set to `true`, delivery uses OpenResponses `instructions` + compact `input` (default: always on). Exists for observability; rollback is via deployment rollback.                                                                                                                                                                          |
+| `AI_GATEWAY_API_KEY`                                  | No       | Vercel AI Gateway key used by OpenClaw (optional). If unset, `VERCEL_AI_GATEWAY_API_KEY` is used.                                                                                                                                                                                                                                                        |
+| `BRAVE_API_KEY`                                       | No       | Brave Search API key for OpenClaw `web_search` (optional). When set in the runtime/gateway environment (e.g. Docker `env` or `.env`), the startup script enables Brave as the web search provider. Get a key at [brave.com/search/api](https://brave.com/search/api/) (use the **Data for Search** plan; Data for AI is not compatible with web_search). |
+| `OPENCLAW_BROWSER_EXECUTABLE_PATH`                    | No       | Optional managed-browser executable override used by the gateway startup script. If unset, startup auto-detects in this order: `brave-browser`, `chromium`, `chromium-browser`.                                                                                                                                                                          |
+| `DROPLET_ID`, `DROPLET_IP`, `DROPLET_REGION`          | No       | Infrastructure identifiers (reported in health and Convex).                                                                                                                                                                                                                                                                                              |
 
-### Applying updates to agent prompts (AGENTS.md, HEARTBEAT.md)
+### Applying updates to agent prompts (USER.md, IDENTITY.md, AGENTS.md, HEARTBEAT.md)
 
-Agents read AGENTS.md and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
+Agents read USER.md, IDENTITY.md, AGENTS.md, and HEARTBEAT.md from their workspace. To ensure **current** agents use updated wording (e.g. “only push code for the current task”, “skill usage is mandatory for relevant operations”):
 
-1. **Restart the runtime** so profile sync runs again. Sync writes the current AGENTS.md and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
+1. **Restart the runtime** so profile sync runs again. Sync writes USER.md (from account settings), IDENTITY.md (from agent identityContent or default), SOUL.md, AGENTS.md, and HEARTBEAT.md into each agent’s workspace; OpenClaw then uses those files on the next run.
 
 2. **Where does the content come from?**
-   - **If you set file paths:** Set `OPENCLAW_AGENTS_MD_PATH` and/or `OPENCLAW_HEARTBEAT_MD_PATH` to the repo files (e.g. mount the repo in Docker and use `/path/in/container/docs/runtime/AGENTS.md`). After updating the docs and restarting the runtime, agents get the new content on next sync.
-   - **If you do not set paths:** The runtime uses embedded defaults in code. After a code change that updates those defaults (or a new runtime image deploy), restart the runtime so sync rewrites the workspace files.
+   - USER.md: account `settings.userMd` (editable in Settings > Agent Profile) or default.
+   - IDENTITY.md: agent `identityContent` or default from name/role.
+   - AGENTS.md / HEARTBEAT.md: runtime prefers repo docs when available (`docs/runtime/AGENTS.md`, `docs/runtime/HEARTBEAT.md`) and falls back to embedded defaults when those files are unavailable.
+   - After updating docs or runtime code, restart runtime so profile sync rewrites agent workspace files.
 
-3. **Optional:** Re-run seed so the Convex reference document “AGENTS.md — Operating Manual” stays in sync for the dashboard; agents themselves are driven by the runtime workspace files, not by that document.
+3. **Optional:** Re-run seed so the Convex reference document “AGENTS.md — Operating Manual” stays in sync for the dashboard; agents themselves are driven by the runtime workspace files, not by that document. See [PROMPT_LAYERING_AUDIT.md](../../docs/runtime/PROMPT_LAYERING_AUDIT.md) for ownership rules.
+
+### Session model and rollout
+
+All runtime session routing uses backend-resolved task/system keys only. The legacy `agents.sessionKey` field is not used for routing: initGateway and agent-sync register system session keys from `listAgents`; heartbeat uses the same system key; delivery uses `deliverySessionKey` (task or system) from `getNotificationForDelivery`. Rollback is by deploying a previous runtime version; there is no runtime-level fallback to the old session model.
+
+### OpenClaw Control UI Chat (http://localhost:18789/chat)
+
+The OpenClaw gateway stores sessions per **agent id** as defined in its config (`openclaw.json`). The runtime-generated config uses **agent slug** as that id (`agents.list[].id`). The runtime therefore sends `x-openclaw-agent-id` and `model: openclaw:<slug>` (not the Convex document id) so that:
+
+1. The gateway routes each request to the correct agent workspace and model.
+2. Sessions appear under the same agent ids the Control UI uses, so **Chat** lists system- and task-scoped sessions per agent (e.g. squad-lead, engineer). If you do not see chats after the session-keys refactor, ensure the runtime sends the agent **slug** to the gateway (this is set from `listAgents` and from the session key format `...:agent:<slug>:...`).
+
+### Repo and worktrees
+
+Agents do not work in the main clone directly. The start script (or Compose) ensures a main clone at `/root/clawd/repos/openclaw-mission-control` and a `worktrees` directory at `/root/clawd/worktrees`. Each task uses a **per-task worktree** at `/root/clawd/worktrees/feat-task-<taskId>` for branch `feat/task-<taskId>`. All code edits, commits, push, and PR creation happen in that worktree so each PR stays isolated. See AGENTS.md (Task worktree) for the exact workflow.
 
 ## Running locally
 
@@ -112,6 +130,8 @@ npm run docker:up:openclaw
 
 For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
+**Browser (managed profile):** The startup script pre-launches a Chromium-based browser with CDP on port 18800 and configures the `openclaw` profile (`cdpPort: 18800`, `attachOnly: true`) so the gateway attaches to it (see [OpenClaw browser docs](https://docs.openclaw.ai/tools/browser), [configuration guide](https://www.getopenclaw.ai/help/configuration-guide)). Browser binary selection is automatic (`brave-browser` -> `chromium` -> `chromium-browser`) and can be overridden with `OPENCLAW_BROWSER_EXECUTABLE_PATH`.
+
 If you prefer direct Compose commands, run them from the repo root:
 
 ```bash
@@ -137,22 +157,22 @@ Both return JSON. Default port: `3000`.
 
 These endpoints are **local-only** (loopback) and require the header `x-openclaw-session-key`. They are used as HTTP fallbacks when client-side tools are disabled or unavailable.
 
-| Endpoint | Method | Purpose |
-| --- | --- | --- |
-| `/agent/task-status` | POST | Update task status. Response includes `status`, `requestedStatus`, `changed`, `updatedAt`. |
-| `/agent/task-create` | POST | Create a task. Returns `taskId`. |
-| `/agent/task-assign` | POST | Assign agents to a task (orchestrator-only). |
-| `/agent/response-request` | POST | Request a response from other agents. |
-| `/agent/document` | POST | Create or update a document. |
-| `/agent/task-message` | POST | Post a message to another task (orchestrator-only). |
-| `/agent/task-list` | POST | List tasks (orchestrator-only). |
-| `/agent/task-get` | POST | Fetch task details (orchestrator-only). |
-| `/agent/task-thread` | POST | Fetch task thread messages (most recent, returned oldest-to-newest). |
-| `/agent/task-search` | POST | Search tasks (orchestrator-only). |
-| `/agent/task-load` | POST | Load task + thread in one call. |
-| `/agent/get-agent-skills` | POST | Fetch skills for one or all agents. |
-| `/agent/task-delete` | POST | Archive/delete a task (orchestrator-only). |
-| `/agent/task-link-pr` | POST | Link a task to a GitHub PR (orchestrator-only). |
+| Endpoint                  | Method | Purpose                                                                                    |
+| ------------------------- | ------ | ------------------------------------------------------------------------------------------ |
+| `/agent/task-status`      | POST   | Update task status. Response includes `status`, `requestedStatus`, `changed`, `updatedAt`. |
+| `/agent/task-create`      | POST   | Create a task. Returns `taskId`.                                                           |
+| `/agent/task-assign`      | POST   | Assign agents to a task (orchestrator-only).                                               |
+| `/agent/response-request` | POST   | Request a response from other agents.                                                      |
+| `/agent/document`         | POST   | Create or update a document.                                                               |
+| `/agent/task-message`     | POST   | Post a message to another task (orchestrator-only).                                        |
+| `/agent/task-list`        | POST   | List tasks (orchestrator-only).                                                            |
+| `/agent/task-get`         | POST   | Fetch task details (orchestrator-only).                                                    |
+| `/agent/task-thread`      | POST   | Fetch task thread messages (most recent, returned oldest-to-newest).                       |
+| `/agent/task-search`      | POST   | Search tasks (orchestrator-only).                                                          |
+| `/agent/task-load`        | POST   | Load task + thread in one call.                                                            |
+| `/agent/get-agent-skills` | POST   | Fetch skills for one or all agents.                                                        |
+| `/agent/task-delete`      | POST   | Archive/delete a task (orchestrator-only).                                                 |
+| `/agent/task-link-pr`     | POST   | Link a task to a GitHub PR (orchestrator-only).                                            |
 
 ### Tools and session key
 

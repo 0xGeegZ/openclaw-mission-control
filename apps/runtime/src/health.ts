@@ -1,6 +1,6 @@
 import http from "http";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api } from "./convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
 import { getAgentSyncState } from "./agent-sync";
 import { getDeliveryState } from "./delivery";
 import { getAgentIdForSessionKey, getGatewayState } from "./gateway";
@@ -17,6 +17,10 @@ import {
   getAllMetrics,
   formatPrometheusMetrics,
 } from "./metrics";
+import {
+  filterOrchestratorFromAssignees,
+  normalizeTaskCreateStatusForOrchestrator,
+} from "./task-create-orchestrator-utils";
 import type { TaskStatus } from "@packages/shared";
 
 const log = createLogger("[Health]");
@@ -139,6 +143,33 @@ function mapTaskStatusError(message: string): {
 }
 
 /**
+ * Map task-create errors to HTTP status codes (validation vs auth vs forbidden).
+ * Aligns with mapTaskStatusError: 401 for auth, 403 for forbidden, 422 for validation.
+ */
+function mapTaskCreateError(message: string): {
+  status: number;
+  message: string;
+} {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("invalid agent") ||
+    normalized.includes("invalid status")
+  ) {
+    return { status: 422, message };
+  }
+  if (normalized.includes("unauthorized")) {
+    return { status: 401, message };
+  }
+  if (normalized.includes("forbidden")) {
+    return { status: 403, message };
+  }
+  if (normalized.includes("not found")) {
+    return { status: 404, message };
+  }
+  return { status: 403, message };
+}
+
+/**
  * Fetch orchestrator agent id for the account.
  */
 async function getOrchestratorAgentId(
@@ -174,10 +205,10 @@ async function resolveAgentSlugs(
   slugs: string[],
 ): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  });
+  })) as ListAgentsItem[];
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {
@@ -308,6 +339,9 @@ export function startHealthServer(config: RuntimeConfig): void {
           consecutiveFailures: delivery.consecutiveFailures,
           lastErrorAt: delivery.lastErrorAt,
           lastErrorMessage: delivery.lastErrorMessage,
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
         },
         heartbeat: {
           running: heartbeat.isRunning,
@@ -498,7 +532,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           log.warn("[task-update] Invalid status:", body.status);
           sendJson(res, 422, {
             success: false,
-            error: "Invalid status: must be in_progress, review, done, or blocked",
+            error:
+              "Invalid status: must be in_progress, review, done, or blocked",
           });
           return;
         }
@@ -512,7 +547,10 @@ export function startHealthServer(config: RuntimeConfig): void {
         }
       }
 
-      if (body.priority !== undefined && (body.priority < 1 || body.priority > 5)) {
+      if (
+        body.priority !== undefined &&
+        (body.priority < 1 || body.priority > 5)
+      ) {
         log.warn("[task-update] Invalid priority:", body.priority);
         sendJson(res, 422, {
           success: false,
@@ -632,10 +670,7 @@ export function startHealthServer(config: RuntimeConfig): void {
           });
           return;
         }
-        const assigneeMap = await resolveAgentSlugs(
-          config,
-          body.assigneeSlugs,
-        );
+        const assigneeMap = await resolveAgentSlugs(config, body.assigneeSlugs);
         assigneeIds = Array.from(assigneeMap.values()).filter(
           Boolean,
         ) as Id<"agents">[];
@@ -650,6 +685,46 @@ export function startHealthServer(config: RuntimeConfig): void {
           return;
         }
       }
+      const isOrchestrator = await isOrchestratorAgent(agentId, config);
+      const allowedCreateStatuses = new Set<CreatableTaskStatus>([
+        "inbox",
+        "assigned",
+        "in_progress",
+        "review",
+        "done",
+        "blocked",
+      ]);
+      if (
+        body.status !== undefined &&
+        !allowedCreateStatuses.has(body.status as CreatableTaskStatus)
+      ) {
+        log.warn("[task-create] Invalid status:", body.status);
+        sendJson(res, 422, {
+          success: false,
+          error:
+            "Invalid status: must be inbox, assigned, in_progress, review, done, or blocked",
+        });
+        return;
+      }
+      if (body.status === "blocked" && !body.blockedReason?.trim()) {
+        log.warn("[task-create] Missing blockedReason for blocked status");
+        sendJson(res, 422, {
+          success: false,
+          error: "blockedReason is required when status is blocked",
+        });
+        return;
+      }
+      if (assigneeIds?.length) {
+        assigneeIds = filterOrchestratorFromAssignees({
+          assigneeIds,
+          requesterAgentId: agentId,
+          isOrchestrator,
+        });
+      }
+      const createStatus = normalizeTaskCreateStatusForOrchestrator(
+        body.status,
+        isOrchestrator,
+      ) as CreatableTaskStatus | undefined;
       try {
         const client = getConvexClient();
         const { taskId } = await client.action(
@@ -662,20 +737,12 @@ export function startHealthServer(config: RuntimeConfig): void {
             description: body.description?.trim(),
             priority: body.priority,
             labels: body.labels,
-            status: body.status as CreatableTaskStatus | undefined,
+            status: createStatus,
             blockedReason: body.blockedReason?.trim(),
             dueDate: body.dueDate,
+            assignedAgentIds: assigneeIds?.length ? assigneeIds : undefined,
           },
         );
-        if (assigneeIds?.length) {
-          await client.action(api.service.actions.assignTaskFromAgent, {
-            accountId: config.accountId,
-            serviceToken: config.serviceToken,
-            agentId,
-            taskId: taskId as Id<"tasks">,
-            assignedAgentIds: assigneeIds,
-          });
-        }
         const duration = Date.now() - requestStart;
         recordSuccess("agent.task_create", duration);
         log.info("[task-create] Success:", {
@@ -693,7 +760,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
-        sendJson(res, 403, { success: false, error: message });
+        const mapped = mapTaskCreateError(message);
+        sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
       return;
     }
@@ -737,10 +805,7 @@ export function startHealthServer(config: RuntimeConfig): void {
       }
       try {
         const client = getConvexClient();
-        const assigneeMap = await resolveAgentSlugs(
-          config,
-          normalizedSlugs,
-        );
+        const assigneeMap = await resolveAgentSlugs(config, normalizedSlugs);
         const assigneeIds = Array.from(assigneeMap.values()).filter(
           Boolean,
         ) as Id<"agents">[];
@@ -1021,9 +1086,7 @@ export function startHealthServer(config: RuntimeConfig): void {
         : undefined;
       let assigneeAgentId: Id<"agents"> | undefined;
       if (assigneeSlug) {
-        const assigneeMap = await resolveAgentSlugs(config, [
-          assigneeSlug,
-        ]);
+        const assigneeMap = await resolveAgentSlugs(config, [assigneeSlug]);
         const resolvedId = assigneeMap.get(assigneeSlug) ?? "";
         if (!resolvedId) {
           sendJson(res, 422, {
@@ -1239,12 +1302,15 @@ export function startHealthServer(config: RuntimeConfig): void {
         const queryAgentId = body.agentId
           ? (body.agentId as Id<"agents">)
           : undefined;
-        const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
-          accountId: config.accountId,
-          agentId,
-          serviceToken: config.serviceToken,
-          queryAgentId,
-        });
+        const skills = await client.action(
+          api.service.actions.getAgentSkillsForTool,
+          {
+            accountId: config.accountId,
+            agentId,
+            serviceToken: config.serviceToken,
+            queryAgentId,
+          },
+        );
         sendJson(res, 200, { success: true, data: { agents: skills } });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1371,6 +1437,9 @@ export function startHealthServer(config: RuntimeConfig): void {
               running: delivery.isRunning,
               delivered: delivery.deliveredCount,
               failed: delivery.failedCount,
+              noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+              requiredNotificationRetryExhaustedCount:
+                delivery.requiredNotificationRetryExhaustedCount,
             },
             gateway: {
               running: gateway.isRunning,
@@ -1385,8 +1454,13 @@ export function startHealthServer(config: RuntimeConfig): void {
         };
         sendJson(res, 200, json);
       } else {
-        // Prometheus text format
-        const prometheusText = formatPrometheusMetrics();
+        // Prometheus text format (include delivery counters)
+        const delivery = getDeliveryState();
+        const prometheusText = formatPrometheusMetrics({
+          noResponseTerminalSkipCount: delivery.noResponseTerminalSkipCount,
+          requiredNotificationRetryExhaustedCount:
+            delivery.requiredNotificationRetryExhaustedCount,
+        });
         res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
         res.end(prometheusText);
       }

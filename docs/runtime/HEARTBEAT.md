@@ -2,8 +2,12 @@
 
 ## 1) Load context (always)
 
-- Read memory/WORKING.md
-- Read today's note (memory/YYYY-MM-DD.md)
+- Prefer memory tools first: use `memory_get` / `memory_set` when available.
+- Load `memory/WORKING.md`.
+- Load today's note (`memory/YYYY-MM-DD.md`).
+- If today's note is missing, create it under your workspace memory directory before continuing.
+- If you must use `read`, pass JSON arguments with an explicit file path key, for example: `{ "path": "memory/WORKING.md" }`.
+- Do not call `read` on directories.
 - Fetch:
   - unread notifications (mentions + thread updates)
   - tasks assigned to me where status != done
@@ -21,6 +25,8 @@
 Avoid posting review status reminders unless you have new feedback or a direct request.
 
 **New assignment:** If the notification is an assignment, your first action must be to acknowledge in 1–2 sentences and ask clarifying questions if needed (@mention orchestrator or primary user). Only after that reply, proceed to substantive work on a later turn.
+
+**Multi-assignee tasks:** If this task has two or more agent assignees (see task context or assignees list), before starting new work: read the thread, claim your sub-scope, and ask any dependency questions in-thread. For each dependency or handoff, keep the request visible in the thread and send **response_request** so the assignee is notified. Do not treat silence as agreement; wait for a reply, or record a time-boxed assumption and ask orchestrator confirmation. Before moving to REVIEW, post a brief agreement summary (owners, decisions, open dependencies). If you are blocked on another assignee's output, move to BLOCKED with blockedReason naming that dependency. If the dependency is stale (no response after a reasonable wait), say so in the thread and either proceed with a stated assumption or keep BLOCKED and request orchestrator input.
 
 ## 3) Execute one atomic action
 

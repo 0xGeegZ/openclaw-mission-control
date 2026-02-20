@@ -26,7 +26,10 @@ interface ActivityFiltersProps {
 /**
  * Filter dropdown for activity feed by type.
  */
-export function ActivityFilters({ value, onValueChange }: ActivityFiltersProps) {
+export function ActivityFilters({
+  value,
+  onValueChange,
+}: ActivityFiltersProps) {
   return (
     <Select
       value={value}

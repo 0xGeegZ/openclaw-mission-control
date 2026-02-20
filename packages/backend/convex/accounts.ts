@@ -15,6 +15,11 @@ import {
 import { AVAILABLE_MODELS } from "@packages/shared";
 import { cascadeDeleteAccount } from "./lib/reference_validation";
 import { logActivity } from "./lib/activity";
+import {
+  createRuntimeOfflineNotifications,
+  createRuntimeOnlineNotifications,
+} from "./lib/notifications";
+import { USER_MD_MAX_LENGTH } from "./lib/validators";
 
 /**
  * Create a new account.
@@ -191,6 +196,8 @@ const agentDefaultsValidator = v.object({
       canModifyTaskStatus: v.boolean(),
       canCreateDocuments: v.boolean(),
       canMentionAgents: v.boolean(),
+      canReviewTasks: v.boolean(),
+      canMarkDone: v.boolean(),
     }),
   ),
   rateLimits: v.optional(
@@ -203,6 +210,8 @@ const agentDefaultsValidator = v.object({
 
 const accountSettingsValidator = v.object({
   theme: v.optional(v.string()),
+  /** Account-shared USER.md content (admin-only). Max length enforced in handler. */
+  userMd: v.optional(v.string()),
   notificationPreferences: v.optional(
     v.object({
       taskUpdates: v.boolean(),
@@ -276,6 +285,14 @@ export const update = mutation({
         }
       }
       const validModelValues: string[] = AVAILABLE_MODELS.map((m) => m.value);
+      if (args.settings.userMd !== undefined) {
+        const trimmed = (args.settings.userMd ?? "").trim();
+        if (trimmed.length > USER_MD_MAX_LENGTH) {
+          throw new Error(
+            `userMd exceeds maximum length (${USER_MD_MAX_LENGTH} characters). Got ${trimmed.length}.`,
+          );
+        }
+      }
       if (args.settings.agentDefaults?.model != null) {
         const model = String(args.settings.agentDefaults.model).trim();
         if (model && !validModelValues.includes(model)) {
@@ -289,6 +306,7 @@ export const update = mutation({
           account as {
             settings?: {
               theme?: string;
+              userMd?: string;
               notificationPreferences?: {
                 taskUpdates?: boolean;
                 agentActivity?: boolean;
@@ -305,6 +323,9 @@ export const update = mutation({
         ...current,
         ...(args.settings.theme !== undefined && {
           theme: args.settings.theme,
+        }),
+        ...(args.settings.userMd !== undefined && {
+          userMd: (args.settings.userMd ?? "").trim(),
         }),
         ...(args.settings.notificationPreferences !== undefined && {
           notificationPreferences: {
@@ -450,6 +471,31 @@ export const updateRuntimeStatusInternal = internalMutation({
           newStatus: args.status,
         },
       });
+
+      const runtimeWentDown =
+        args.status === "offline" &&
+        (previousRuntimeStatus === "online" ||
+          previousRuntimeStatus === "degraded");
+      if (runtimeWentDown) {
+        await createRuntimeOfflineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
+
+      const runtimeCameOnline =
+        args.status === "online" &&
+        (previousRuntimeStatus === "offline" ||
+          previousRuntimeStatus === "error" ||
+          previousRuntimeStatus === "provisioning");
+      if (runtimeCameOnline) {
+        await createRuntimeOnlineNotifications(
+          ctx,
+          args.accountId,
+          account.name,
+        );
+      }
     }
 
     /** When runtime goes offline, mark all agents offline and clear typing state to avoid false positives. */
@@ -557,7 +603,7 @@ export const updateRuntimeStatusInternal = internalMutation({
 });
 
 /** Consider runtime stale after this many ms without a health check (e.g. runtime killed/crashed). */
-const RUNTIME_STALE_MS = 5 * 60 * 1000;
+const RUNTIME_STALE_MS = 90 * 1000;
 
 /**
  * Mark runtimes offline when lastHealthCheck is too old.
@@ -570,7 +616,10 @@ export const markStaleRuntimesOffline = internalMutation({
     const accounts = await ctx.db.query("accounts").collect();
     let marked = 0;
     for (const account of accounts) {
-      if (account.runtimeStatus !== "online" && account.runtimeStatus !== "degraded") {
+      if (
+        account.runtimeStatus !== "online" &&
+        account.runtimeStatus !== "degraded"
+      ) {
         continue;
       }
       const lastCheck = account.runtimeConfig?.lastHealthCheck;

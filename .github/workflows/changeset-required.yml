@@ -1,0 +1,109 @@
+# Require a changeset when versioned code (packages/* or apps/*) is changed.
+# Posts a single PR comment with the check result and fails the check if no changeset is present.
+name: Changeset required
+
+on:
+  pull_request:
+    branches: [master, dev]
+
+concurrency:
+  group: changeset-required-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changeset-check:
+    name: Changeset check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Check for changeset
+        id: check
+        run: |
+          BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          CHANGED=$(git diff --name-only "$BASE_REF...HEAD" || true)
+
+          echo "changed_files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          VERSIONED=$(echo "$CHANGED" | grep -E '^(packages/|apps/)' || true)
+          # Valid changesets: .changeset/*.md but not .changeset/README.md
+          CHANGESETS=$(echo "$CHANGED" | grep -E '^\.changeset/.+\.md$' | grep -v '^\.changeset/README\.md$' || true)
+
+          if [ -n "$VERSIONED" ]; then
+            echo "versioned_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "versioned_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$CHANGESETS" ]; then
+            echo "changeset_found=true" >> "$GITHUB_OUTPUT"
+            echo "changeset_files<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$CHANGESETS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "changeset_found=false" >> "$GITHUB_OUTPUT"
+            echo "changeset_files=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const versionedChanged = '${{ steps.check.outputs.versioned_changed }}' === 'true';
+            const changesetFound = '${{ steps.check.outputs.changeset_found }}' === 'true';
+            const changesetFiles = `${{ steps.check.outputs.changeset_files }}`.trim().split('\n').filter(Boolean);
+            const marker = '<!-- changeset-required -->';
+
+            let statusLine;
+            if (versionedChanged && changesetFound) {
+              const files = changesetFiles.length ? changesetFiles.map(f => `- \`${f}\``).join('\n') : '- (see diff)';
+              statusLine = '**Status:** Changeset(s) found. This PR is ready for release.\n\n**Files:**\n' + files;
+            } else if (versionedChanged && !changesetFound) {
+              statusLine = '**Status:** No changeset found. This PR changes versioned code (`packages/` or `apps/`) but does not include a changeset file.\n\nAdd a new `.md` file under `.changeset/` (see [.changeset/README.md](https://github.com/${{ github.repository }}/blob/${{ github.head_ref || github.ref_name }}/.changeset/README.md)). Use `npx changeset` or `npx changeset add`.';
+            } else {
+              statusLine = '**Status:** No changes to versioned code (`packages/` or `apps/`). A changeset is not required.';
+            }
+
+            const body = '## Changeset check\n\n' + marker + '\n\n' + statusLine;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComment = comments.find(c => c.body && c.body.includes(marker) && c.user.type === 'Bot');
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail if versioned code changed without changeset
+        if: steps.check.outputs.versioned_changed == 'true' && steps.check.outputs.changeset_found == 'false'
+        run: |
+          echo "::error::This PR changes versioned code (packages/ or apps/) but does not include a changeset. Add a file under .changeset/ (see .changeset/README.md)."
+          exit 1

@@ -15,7 +15,11 @@ interface TaskActivityTimelineProps {
   accountSlug: string;
 }
 
-type ActivityFilter = "all" | "status_changes" | "assignments" | "comments_documents";
+type ActivityFilter =
+  | "all"
+  | "status_changes"
+  | "assignments"
+  | "comments_documents";
 
 /**
  * Activity timeline for a specific task.
@@ -79,7 +83,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-all" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-all"
+              className="cursor-pointer font-normal text-sm"
+            >
               All
             </Label>
           </div>
@@ -93,7 +100,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-status" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-status"
+              className="cursor-pointer font-normal text-sm"
+            >
               Status Changes
             </Label>
           </div>
@@ -107,7 +117,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-assignments" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-assignments"
+              className="cursor-pointer font-normal text-sm"
+            >
               Assignments
             </Label>
           </div>
@@ -121,7 +134,10 @@ export function TaskActivityTimeline({
               onChange={(e) => setFilter(e.target.value as ActivityFilter)}
               className="cursor-pointer"
             />
-            <Label htmlFor="filter-comments" className="cursor-pointer font-normal text-sm">
+            <Label
+              htmlFor="filter-comments"
+              className="cursor-pointer font-normal text-sm"
+            >
               Comments & Documents
             </Label>
           </div>

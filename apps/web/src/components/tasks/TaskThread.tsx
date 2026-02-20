@@ -1,11 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
-import { TYPING_WINDOW_MS } from "@packages/shared";
 import { MessageItem, type ReadByAgent } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import {
@@ -13,38 +12,8 @@ import {
   getShouldShowTypingIndicator,
 } from "./taskThreadIndicators";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { MessageSquare, Sparkles } from "lucide-react";
-
-/**
- * Build display-ready agent info for agent mentions on a message.
- */
-function getMentionedAgentsForMessage(
-  message: Doc<"messages"> | null,
-  agentsByAuthorId?: Record<
-    string,
-    { name: string; avatarUrl?: string; icon?: string }
-  >,
-): ReadByAgent[] {
-  if (!message?.mentions?.length) return [];
-  const agentsMap = new Map<string, ReadByAgent>();
-  for (const mention of message.mentions) {
-    if (mention.type !== "agent") continue;
-    if (!mention.id) continue;
-    const agent = agentsByAuthorId?.[mention.id];
-    const name = agent?.name ?? mention.name ?? "Agent";
-    if (!agentsMap.has(mention.id)) {
-      agentsMap.set(mention.id, {
-        id: mention.id,
-        name,
-        avatarUrl: agent?.avatarUrl,
-        icon: agent?.icon,
-      });
-    }
-  }
-  return Array.from(agentsMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-}
+import { Bot, MessageSquare, Sparkles } from "lucide-react";
+import { AGENT_ICON_MAP } from "@/lib/agentIcons";
 
 /**
  * Resolve the latest user-authored message and its index within the thread.
@@ -70,7 +39,7 @@ interface TaskThreadProps {
   enableMentions?: boolean;
   /** Enable slash command autocomplete and parsing. */
   enableSlashCommands?: boolean;
-  /** Use agent replies as a fallback for read/typing indicators. */
+  /** Use agent replies as a fallback for "Seen by" (read indicators only). */
   useReadByFallback?: boolean;
 }
 
@@ -98,14 +67,6 @@ export function TaskThread({
     { taskId },
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const hasReceiptsInTypingWindow =
-    receipts?.some(
-      (r) =>
-        r.readAt != null &&
-        r.deliveredAt == null &&
-        now - r.readAt <= TYPING_WINDOW_MS,
-    ) ?? false;
 
   /** Map agent id -> { name, avatarUrl, icon } for message author display */
   const agentsByAuthorId = useMemo(() => {
@@ -151,7 +112,7 @@ export function TaskThread({
       if (
         r.readAt != null &&
         r.deliveredAt == null &&
-        now - r.readAt <= TYPING_WINDOW_MS
+        r.deliveryEndedAt == null
       ) {
         const agent = agentsByAuthorId?.[r.recipientId];
         const name = agent?.name ?? "Agent";
@@ -168,7 +129,7 @@ export function TaskThread({
     return Array.from(agentsMap.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [receipts, agentsByAuthorId, now]);
+  }, [receipts, agentsByAuthorId]);
 
   /** Latest user-authored message (for read receipt/typing fallback). */
   const latestUserMessageInfo = getLatestUserMessageInfo(messages);
@@ -234,47 +195,13 @@ export function TaskThread({
     [strictSeenByAgents, fallbackReadByAgents, typingAgents],
   );
 
-  const mentionedAgentsForLatestUser = useMemo(
-    () => getMentionedAgentsForMessage(latestUserMessage, agentsByAuthorId),
-    [agentsByAuthorId, latestUserMessage],
-  );
-
-  const fallbackTypingAgents = useMemo((): ReadByAgent[] => {
-    if (!useReadByFallback) return [];
-    if (!latestUserMessage) return [];
-    if (mentionedAgentsForLatestUser.length === 0) return [];
-    if (agentsAfterLatestUser.length > 0) return [];
-    if (now - latestUserMessage.createdAt > TYPING_WINDOW_MS) return [];
-    return mentionedAgentsForLatestUser;
-  }, [
-    agentsAfterLatestUser.length,
-    latestUserMessage,
-    mentionedAgentsForLatestUser,
-    now,
-    useReadByFallback,
-  ]);
-
-  /** Use same source as sidebar first, then fallback so thread and sidebar stay in sync. */
-  const effectiveTypingAgents =
-    typingAgentsFromQuery.length > 0
-      ? typingAgentsFromQuery
-      : fallbackTypingAgents;
-
-  const hasTypingIndicatorsActive =
-    typingAgentsFromQuery.length > 0 ||
-    hasReceiptsInTypingWindow ||
-    fallbackTypingAgents.length > 0;
+  /** Typing comes only from backend (listAgentIdsTypingByTask) and receipts; no mention-based fallback. */
+  const effectiveTypingAgents = typingAgentsFromQuery;
 
   /** Typing indicator shows whenever there are task-scoped typing agents; no longer gated by Seen by. */
   const shouldShowTypingIndicator = getShouldShowTypingIndicator(
     effectiveTypingAgents,
   );
-
-  useEffect(() => {
-    if (!hasTypingIndicatorsActive) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [hasTypingIndicatorsActive]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -370,9 +297,15 @@ export function TaskThread({
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-primary">
-                      {agent.name.charAt(0).toUpperCase()}
-                    </div>
+                    (() => {
+                      const FallbackIcon =
+                        (agent.icon && AGENT_ICON_MAP[agent.icon]) || Bot;
+                      return (
+                        <div className="h-full w-full flex items-center justify-center text-primary">
+                          <FallbackIcon className="h-4 w-4" />
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               ))}

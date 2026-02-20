@@ -304,12 +304,14 @@ export function MessageInput({
     setIsSubmitting(true);
     try {
       // Upload files if any are attached
-      let attachments: Array<{
-        storageId: Id<"_storage">;
-        name: string;
-        type: string;
-        size: number;
-      }> | undefined;
+      let attachments:
+        | Array<{
+            storageId: Id<"_storage">;
+            name: string;
+            type: string;
+            size: number;
+          }>
+        | undefined;
 
       if (attachedFiles.length > 0) {
         attachments = [];
@@ -317,7 +319,7 @@ export function MessageInput({
           try {
             // 1. Get upload URL
             const uploadUrl = await generateUploadUrl({ taskId });
-            
+
             // 2. Upload file to Convex storage
             const result = await fetch(uploadUrl, {
               method: "POST",
@@ -343,7 +345,10 @@ export function MessageInput({
             });
           } catch (uploadError) {
             toast.error(`Failed to upload ${attachedFile.file.name}`, {
-              description: uploadError instanceof Error ? uploadError.message : "Unknown error",
+              description:
+                uploadError instanceof Error
+                  ? uploadError.message
+                  : "Unknown error",
             });
             throw uploadError; // Stop message creation if upload fails
           }
@@ -499,7 +504,6 @@ export function MessageInput({
         if (f.preview) URL.revokeObjectURL(f.preview);
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSuggestionSelect = useCallback(
@@ -772,10 +776,7 @@ export function MessageInput({
                                       ? AGENT_ICON_MAP[option.agent.icon]
                                       : Bot;
                                   return (
-                                    <Icon
-                                      className="h-4 w-4"
-                                      aria-hidden
-                                    />
+                                    <Icon className="h-4 w-4" aria-hidden />
                                   );
                                 })()}
                               </AvatarFallback>
@@ -841,7 +842,6 @@ export function MessageInput({
                   >
                     {attachment.preview ? (
                       <div className="h-8 w-8 rounded overflow-hidden bg-muted">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={attachment.preview}
                           alt={attachment.file.name}

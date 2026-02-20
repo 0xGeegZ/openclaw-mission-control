@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
@@ -55,6 +56,11 @@ export interface RuntimeConfig {
   taskStatusBaseUrl: string;
   /** Root directory for per-agent OpenClaw workspaces (SOUL.md, TOOLS.md, etc.). */
   openclawWorkspaceRoot: string;
+  /**
+   * Workspace root path written into generated openclaw.json.
+   * Derived from OPENCLAW_WORKSPACE_ROOT; for Docker profile-sync, /clawd/* maps to /root/clawd/*.
+   */
+  openclawConfigWorkspaceRoot: string;
   /** Path to generated openclaw.json read by the OpenClaw gateway. */
   openclawConfigPath: string;
   /** Optional path to AGENTS.md to copy into each agent workspace; unset uses embedded default. */
@@ -166,6 +172,39 @@ function toConnectHost(bindHost: string): string {
 }
 
 /**
+ * Convert runtime workspace root into the gateway-visible workspace root used in generated config.
+ */
+function toGatewayWorkspaceRoot(workspaceRoot: string): string {
+  const resolved = path.resolve(workspaceRoot);
+  if (resolved === "/clawd" || resolved.startsWith("/clawd/")) {
+    return path.posix.join("/root", resolved.replace(/^\/+/, ""));
+  }
+  return resolved;
+}
+
+/**
+ * Resolve runtime manual path from known locations.
+ */
+function resolveRuntimeManualPath(
+  workspaceParent: string,
+  filename: "AGENTS.md" | "HEARTBEAT.md",
+): string | undefined {
+  const candidates = [
+    path.join("/app/docs/runtime", filename),
+    path.resolve(process.cwd(), "../../docs/runtime", filename),
+    path.join(workspaceParent, filename),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // Ignore fs errors and continue fallback chain.
+    }
+  }
+  return undefined;
+}
+
+/**
  * Load runtime configuration from environment variables.
  */
 export async function loadConfig(): Promise<RuntimeConfig> {
@@ -258,18 +297,24 @@ export async function loadConfig(): Promise<RuntimeConfig> {
   const openclawWorkspaceRoot =
     normalizeEnvValue(process.env.OPENCLAW_WORKSPACE_ROOT)?.trim() ||
     "/root/clawd/agents";
-  const openclawConfigPath =
-    normalizeEnvValue(process.env.OPENCLAW_CONFIG_PATH)?.trim() ||
-    "/root/clawd/openclaw.json";
-  const openclawAgentsMdPath = normalizeEnvValue(
-    process.env.OPENCLAW_AGENTS_MD_PATH,
-  )?.trim();
+  const openclawWorkspaceParent = path.dirname(openclawWorkspaceRoot);
+  const openclawConfigWorkspaceRoot = toGatewayWorkspaceRoot(
+    openclawWorkspaceRoot,
+  );
+  const openclawConfigPath = path.join(
+    openclawWorkspaceParent,
+    "openclaw.json",
+  );
+  const openclawAgentsMdPath = resolveRuntimeManualPath(
+    openclawWorkspaceParent,
+    "AGENTS.md",
+  );
   const defaultHeartbeatMdPath = path.join(
-    path.dirname(openclawWorkspaceRoot),
+    openclawWorkspaceParent,
     "HEARTBEAT.md",
   );
   const openclawHeartbeatMdPath =
-    normalizeEnvValue(process.env.OPENCLAW_HEARTBEAT_MD_PATH)?.trim() ||
+    resolveRuntimeManualPath(openclawWorkspaceParent, "HEARTBEAT.md") ||
     defaultHeartbeatMdPath;
 
   const openclawProfileSyncEnabled = parseBooleanEnv(
@@ -290,7 +335,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 15000),
     healthCheckInterval: parseIntOrDefault(
       process.env.HEALTH_CHECK_INTERVAL,
-      300000,
+      30000,
     ),
     agentSyncInterval: parseIntOrDefault(
       process.env.AGENT_SYNC_INTERVAL,
@@ -331,6 +376,7 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     openclawClientToolsEnabled,
     taskStatusBaseUrl,
     openclawWorkspaceRoot,
+    openclawConfigWorkspaceRoot,
     openclawConfigPath,
     openclawAgentsMdPath: openclawAgentsMdPath || undefined,
     openclawHeartbeatMdPath: openclawHeartbeatMdPath || undefined,

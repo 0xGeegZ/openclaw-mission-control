@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   TASK_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_TRANSITIONS,
   AGENT_STATUS_ORDER,
   AVAILABLE_MODELS,
+  getModelProviderLabel,
+  MODEL_PROVIDER_LABELS,
+  MODEL_TO_OPENCLAW,
+  OPENCLAW_FALLBACK_MODEL,
   SKILL_CATEGORY_LABELS,
   DEFAULT_OPENCLAW_CONFIG,
   ANALYTICS_TIME_RANGE,
@@ -16,7 +20,6 @@ import {
 import type {
   TaskStatus,
   AnalyticsTimeRange,
-  LLMModel,
   SkillCategory,
 } from "../../types";
 
@@ -223,29 +226,83 @@ describe("AVAILABLE_MODELS", () => {
     }
   });
 
-  it("includes the default model (claude-haiku-4.5)", () => {
+  it("includes the default model (minimax-m2.5)", () => {
     const hasDefaultModel = AVAILABLE_MODELS.some(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "minimax-m2.5",
     );
     expect(hasDefaultModel).toBe(true);
   });
 
   it("default model is marked as recommended in the label", () => {
     const defaultModel = AVAILABLE_MODELS.find(
-      (m) => m.value === "claude-haiku-4.5"
+      (m) => m.value === "minimax-m2.5",
     );
     expect(defaultModel).toBeDefined();
     expect(defaultModel!.label).toContain("Recommended");
   });
 
-  it("has at least 2 model options", () => {
-    expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(2);
+  it("has exactly 4 model options", () => {
+    expect(AVAILABLE_MODELS.length).toBe(4);
+  });
+
+  it("first model is the default OpenClaw config model", () => {
+    expect(AVAILABLE_MODELS[0].value).toBe(DEFAULT_OPENCLAW_CONFIG.model);
   });
 
   it("model values are unique", () => {
     const values = AVAILABLE_MODELS.map((m) => m.value);
     const uniqueValues = new Set(values);
     expect(uniqueValues.size).toBe(values.length);
+  });
+
+  it("every model has a MODEL_TO_OPENCLAW mapping", () => {
+    for (const model of AVAILABLE_MODELS) {
+      expect(MODEL_TO_OPENCLAW[model.value]).toBeDefined();
+      expect(typeof MODEL_TO_OPENCLAW[model.value]).toBe("string");
+      expect(MODEL_TO_OPENCLAW[model.value].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("OPENCLAW_FALLBACK_MODEL matches the second model (Haiku) OpenClaw mapping", () => {
+    const secondModelValue = AVAILABLE_MODELS[1].value;
+    expect(OPENCLAW_FALLBACK_MODEL).toBe(MODEL_TO_OPENCLAW[secondModelValue]);
+  });
+});
+
+// ============================================================================
+// MODEL_PROVIDER_LABELS and getModelProviderLabel Tests
+// ============================================================================
+
+describe("MODEL_PROVIDER_LABELS", () => {
+  it("has an entry for every AVAILABLE_MODELS value", () => {
+    for (const model of AVAILABLE_MODELS) {
+      expect(MODEL_PROVIDER_LABELS[model.value]).toBeDefined();
+      expect(typeof MODEL_PROVIDER_LABELS[model.value]).toBe("string");
+      expect(MODEL_PROVIDER_LABELS[model.value].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("getModelProviderLabel", () => {
+  it("returns provider label for each known model value", () => {
+    expect(getModelProviderLabel("minimax-m2.5")).toBe("Minimax");
+    expect(getModelProviderLabel("claude-haiku-4.5")).toBe("Anthropic");
+    expect(getModelProviderLabel("kimi-k2.5")).toBe("Moonshot AI");
+    expect(getModelProviderLabel("gpt-5-nano")).toBe("OpenAI");
+  });
+
+  it("returns Other for unknown model value", () => {
+    expect(getModelProviderLabel("unknown-model")).toBe("Other");
+    expect(getModelProviderLabel("claude-3-opus")).toBe("Other");
+  });
+
+  it("returns Other for empty or whitespace", () => {
+    expect(getModelProviderLabel("")).toBe("Other");
+    expect(getModelProviderLabel("   ")).toBe("Other");
+  });
+
+  it("trims input before lookup", () => {
+    expect(getModelProviderLabel("  minimax-m2.5  ")).toBe("Minimax");
   });
 });
 
@@ -332,68 +389,89 @@ describe("DEFAULT_OPENCLAW_CONFIG", () => {
 
   it("contextConfig has all required nested properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "maxHistoryMessages"
+      "maxHistoryMessages",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTaskContext"
+      "includeTaskContext",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.contextConfig).toHaveProperty(
-      "includeTeamContext"
+      "includeTeamContext",
     );
   });
 
   it("contextConfig.maxHistoryMessages is a positive number", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBe(
-      "number"
-    );
-    expect(DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages).toBeGreaterThan(0);
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBe("number");
+    expect(
+      DEFAULT_OPENCLAW_CONFIG.contextConfig.maxHistoryMessages,
+    ).toBeGreaterThan(0);
   });
 
   it("contextConfig flags are boolean values", () => {
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTaskContext,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.contextConfig.includeTeamContext,
+    ).toBe("boolean");
   });
 
   it("behaviorFlags has all required properties", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateTasks"
+      "canCreateTasks",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canModifyTaskStatus"
+      "canModifyTaskStatus",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canCreateDocuments"
+      "canCreateDocuments",
     );
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
-      "canMentionAgents"
+      "canMentionAgents",
+    );
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
+      "canReviewTasks",
+    );
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags).toHaveProperty(
+      "canMarkDone",
     );
   });
 
   it("behaviorFlags are all boolean values", () => {
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(
-      "boolean"
+      "boolean",
     );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
-      "boolean"
-    );
-    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments).toBe(
-      "boolean"
-    );
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus,
+    ).toBe("boolean");
+    expect(
+      typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateDocuments,
+    ).toBe("boolean");
     expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMentionAgents).toBe(
-      "boolean"
+      "boolean",
+    );
+    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canReviewTasks).toBe(
+      "boolean",
+    );
+    expect(typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMarkDone).toBe(
+      "boolean",
     );
   });
 
   it("canModifyTaskStatus is enabled by default for agents", () => {
-    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(true);
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canModifyTaskStatus).toBe(
+      true,
+    );
   });
 
   it("canCreateTasks is disabled by default for security", () => {
     expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canCreateTasks).toBe(false);
+  });
+
+  it("behaviorFlags canReviewTasks and canMarkDone default to false", () => {
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canReviewTasks).toBe(false);
+    expect(DEFAULT_OPENCLAW_CONFIG.behaviorFlags.canMarkDone).toBe(false);
   });
 });
 

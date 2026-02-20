@@ -25,13 +25,18 @@ export {
 };
 
 /** Set for O(1) lookup with proper typing - accepts any TaskStatus in .has() */
-export const PAUSE_ALLOWED_STATUS_SET = new Set<TaskStatus>(PAUSE_ALLOWED_STATUSES);
+export const PAUSE_ALLOWED_STATUS_SET = new Set<TaskStatus>(
+  PAUSE_ALLOWED_STATUSES,
+);
 
 /** Map of Sets for O(1) transition validation with proper typing */
 const TRANSITION_SETS = new Map<TaskStatus, Set<TaskStatus>>(
-  (Object.entries(TASK_STATUS_TRANSITIONS) as [TaskStatus, readonly TaskStatus[]][]).map(
-    ([status, targets]) => [status, new Set(targets)],
-  ),
+  (
+    Object.entries(TASK_STATUS_TRANSITIONS) as [
+      TaskStatus,
+      readonly TaskStatus[],
+    ][]
+  ).map(([status, targets]) => [status, new Set(targets)]),
 );
 
 /**

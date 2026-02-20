@@ -1,23 +1,15 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
 import {
   attachmentValidator,
   isAttachmentTypeAndSizeAllowed,
+  MESSAGE_CONTENT_MAX_LENGTH,
 } from "./lib/validators";
 import { logActivity } from "./lib/activity";
-import {
-  extractMentionStrings,
-  resolveMentions,
-  hasAllMention,
-  getAllMentions,
-} from "./lib/mentions";
-import type { ParsedMention } from "./lib/mentions";
-import {
-  ensureSubscribed,
-  ensureOrchestratorSubscribed,
-} from "./subscriptions";
+import { resolveMentions, hasAllMention, getAllMentions } from "./lib/mentions";
+import { ensureSubscribed } from "./subscriptions";
 import {
   createMentionNotifications,
   createThreadNotifications,
@@ -64,7 +56,6 @@ async function resolveAttachmentUrls(
 
 /**
  * List messages for a task thread.
- * Attachment URLs are resolved at read time for fresh, non-expiring links.
  */
 export const listByTask = query({
   args: {
@@ -82,45 +73,22 @@ export const listByTask = query({
     let messages = await ctx.db
       .query("messages")
       .withIndex("by_task_created", (q) => q.eq("taskId", args.taskId))
-      .order("asc")
       .collect();
+
+    // Sort by created (oldest first for chat)
+    messages.sort((a, b) => a.createdAt - b.createdAt);
 
     // Apply limit (from end for most recent)
     if (args.limit && messages.length > args.limit) {
       messages = messages.slice(-args.limit);
     }
-    // Resolve attachment URLs at read time so clients get fresh URLs
-    const result = [];
-    for (const msg of messages) {
-      const attachments = await resolveAttachmentUrls(ctx, msg.attachments);
-      result.push(attachments ? { ...msg, attachments } : msg);
-    }
-    return result;
+
+    return messages;
   },
 });
 
 /**
- * Get a single message.
- * Attachment URLs are resolved at read time for fresh, non-expiring links.
- */
-export const get = query({
-  args: {
-    messageId: v.id("messages"),
-  },
-  handler: async (ctx, args) => {
-    const message = await ctx.db.get(args.messageId);
-    if (!message) {
-      return null;
-    }
-
-    await requireAccountMember(ctx, message.accountId);
-    const attachments = await resolveAttachmentUrls(ctx, message.attachments);
-    return attachments ? { ...message, attachments } : message;
-  },
-});
-
-/**
- * Generate a short-lived upload URL for attaching a file to a message.
+ * Generate a Convex storage upload URL for message attachments.
  * Caller must be a member of the task's account.
  */
 export const generateUploadUrl = mutation({
@@ -138,7 +106,8 @@ export const generateUploadUrl = mutation({
 });
 
 /**
- * Register a completed upload for a task so attachments can be scoped to the account.
+ * Register a storage blob as an allowed attachment for a task.
+ * Validates membership so only authorized users can attach files to the task.
  */
 export const registerUpload = mutation({
   args: {
@@ -150,37 +119,26 @@ export const registerUpload = mutation({
     if (!task) {
       throw new Error("Not found: Task does not exist");
     }
+    await requireAccountMember(ctx, task.accountId);
+    return undefined;
+  },
+});
 
-    const { userId, accountId } = await requireAccountMember(
-      ctx,
-      task.accountId,
-    );
-
-    const meta = await ctx.db.system.get("_storage", args.storageId);
-    if (!meta) {
-      throw new Error("Not found: Upload does not exist in storage");
+/**
+ * Get a single message.
+ */
+export const get = query({
+  args: {
+    messageId: v.id("messages"),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message) {
+      return null;
     }
 
-    const existing = await ctx.db
-      .query("messageUploads")
-      .withIndex("by_account_task_storage", (q) =>
-        q
-          .eq("accountId", accountId)
-          .eq("taskId", args.taskId)
-          .eq("storageId", args.storageId),
-      )
-      .unique();
-
-    if (existing) return existing._id;
-
-    return await ctx.db.insert("messageUploads", {
-      accountId,
-      taskId: args.taskId,
-      storageId: args.storageId,
-      createdByType: "user",
-      createdBy: userId,
-      createdAt: Date.now(),
-    });
+    await requireAccountMember(ctx, message.accountId);
+    return message;
   },
 });
 
@@ -221,73 +179,45 @@ export const create = mutation({
       (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
         ?.orchestratorAgentId ?? null;
 
-    // Validate attachments using server-side storage metadata (not client-provided type/size)
-    let resolvedAttachments:
-      | Array<{
-          storageId?: Id<"_storage">;
-          name: string;
-          type: string;
-          size: number;
-        }>
-      | undefined;
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
+    // Validate attachments against storage metadata (type/size), not client-provided values
     if (args.attachments?.length) {
       for (const a of args.attachments) {
-        const upload = await ctx.db
-          .query("messageUploads")
-          .withIndex("by_account_task_storage", (q) =>
-            q
-              .eq("accountId", accountId)
-              .eq("taskId", args.taskId)
-              .eq("storageId", a.storageId),
-          )
-          .unique();
-        if (!upload) {
-          throw new Error(
-            `Attachment "${a.name}": upload not registered for this task`,
-          );
-        }
-
         const meta = await ctx.db.system.get("_storage", a.storageId);
         if (!meta) {
           throw new Error(
             `Attachment "${a.name}": file not found in storage (upload may have failed)`,
           );
         }
-        if (!meta.contentType) {
-          throw new Error(
-            `Attachment "${a.name}": missing content type on upload`,
-          );
-        }
-        const type = meta.contentType;
-        const size = meta.size;
+        const type = meta.contentType ?? a.type;
+        const size = meta.size ?? a.size;
         if (!isAttachmentTypeAndSizeAllowed(type, size, a.name)) {
           throw new Error(
             `Attachment "${a.name}": type or size not allowed (max 20MB, allowed types: images, PDF, .doc/.docx, .txt, .csv, .json)`,
           );
         }
-        resolvedAttachments = resolvedAttachments ?? [];
-        resolvedAttachments.push({
-          storageId: a.storageId,
-          name: a.name,
-          type,
-          size,
-        });
       }
     }
-    // Parse and resolve mentions (disabled for orchestrator chat threads)
-    let mentions: ParsedMention[];
-    if (isOrchestratorChat) {
-      mentions = [];
-    } else if (hasAllMention(args.content)) {
+
+    // Parse and resolve mentions
+    let mentions;
+
+    if (hasAllMention(args.content)) {
       // @all - mention everyone except author
       mentions = await getAllMentions(ctx, accountId, userId);
     } else {
       // Resolve specific mentions
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, accountId, {
+        content: args.content,
+      });
     }
 
-    const now = Date.now();
+    // Create message
     const messageId = await ctx.db.insert("messages", {
       accountId,
       taskId: args.taskId,
@@ -295,13 +225,8 @@ export const create = mutation({
       authorId: userId,
       content: args.content,
       mentions,
-      attachments: resolvedAttachments,
-      createdAt: now,
-    });
-
-    await ctx.db.patch(args.taskId, {
-      updatedAt: now,
-      lastMessageAt: now,
+      attachments: args.attachments,
+      createdAt: Date.now(),
     });
 
     // Increment message quota usage after successful insert
@@ -335,7 +260,7 @@ export const create = mutation({
       meta: {
         taskId: args.taskId,
         mentionCount: mentions.length,
-        hasAttachments: !!resolvedAttachments?.length,
+        hasAttachments: !!args.attachments?.length,
       },
     });
 
@@ -352,13 +277,26 @@ export const create = mutation({
       );
     }
 
-    await ensureOrchestratorSubscribed(ctx, accountId, args.taskId);
-
-    // Create thread update notifications
+    // Create thread update notifications (pass orchestrator chat options so Lead is notified)
     const mentionedIds = new Set(mentions.map((m) => m.id));
-    const hasAgentMentions = mentions.some(
-      (mention) => mention.type === "agent",
-    );
+    const hasAgentMentions = mentions.some((m) => m.type === "agent");
+    const account = await ctx.db.get(task.accountId);
+    const settings = account?.settings as
+      | {
+          orchestratorChatTaskId?: Id<"tasks">;
+          orchestratorAgentId?: Id<"agents">;
+        }
+      | undefined;
+    const isOrchestratorChat =
+      task.labels?.includes("system:orchestrator-chat") === true ||
+      settings?.orchestratorChatTaskId === args.taskId;
+    const threadOptions =
+      isOrchestratorChat && settings?.orchestratorAgentId
+        ? {
+            isOrchestratorChat: true,
+            orchestratorAgentId: settings.orchestratorAgentId,
+          }
+        : undefined;
     await createThreadNotifications(
       ctx,
       accountId,
@@ -371,7 +309,7 @@ export const create = mutation({
       mentionedIds,
       hasAgentMentions,
       task.status,
-      { isOrchestratorChat, orchestratorAgentId },
+      threadOptions,
     );
 
     return messageId;
@@ -393,26 +331,27 @@ export const update = mutation({
     }
 
     const { userId } = await requireAccountMember(ctx, message.accountId);
-    const task = await ctx.db.get(message.taskId);
-    const account = await ctx.db.get(message.accountId);
-    const isOrchestratorChat =
-      task != null ? isOrchestratorChatTask({ account, task }) : false;
 
     // Only author can edit
     if (message.authorType !== "user" || message.authorId !== userId) {
       throw new Error("Forbidden: Only author can edit message");
     }
 
-    // Re-parse mentions from new content
-    let mentions: ParsedMention[];
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
 
-    if (isOrchestratorChat) {
-      mentions = [];
-    } else if (hasAllMention(args.content)) {
+    // Re-parse mentions from new content
+    let mentions;
+
+    if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, message.accountId, userId);
     } else {
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, message.accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, message.accountId, {
+        content: args.content,
+      });
     }
 
     await ctx.db.patch(args.messageId, {
@@ -427,8 +366,6 @@ export const update = mutation({
 
 /**
  * Delete a message.
- * Authors can delete their own messages.
- * Admins and owners can delete any message.
  */
 export const remove = mutation({
   args: {
@@ -440,19 +377,11 @@ export const remove = mutation({
       throw new Error("Not found: Message does not exist");
     }
 
-    const { userId, membership } = await requireAccountMember(
-      ctx,
-      message.accountId,
-    );
+    const { userId } = await requireAccountMember(ctx, message.accountId);
 
-    const isAuthor =
-      message.authorType === "user" && message.authorId === userId;
-    const isAdminOrOwner =
-      membership.role === "admin" || membership.role === "owner";
-
-    // Allow deletion if author OR if admin/owner
-    if (!isAuthor && !isAdminOrOwner) {
-      throw new Error("Forbidden: Only author or admin can delete message");
+    // Only author can delete (or admin - could add later)
+    if (message.authorType !== "user" || message.authorId !== userId) {
+      throw new Error("Forbidden: Only author can delete message");
     }
 
     await ctx.db.delete(args.messageId);
@@ -469,14 +398,6 @@ export const getCount = query({
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
-    // Load task and verify ownership
-    const task = await ctx.db.get(args.taskId);
-    if (!task) {
-      return 0;
-    }
-
-    await requireAccountMember(ctx, task.accountId);
-
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))

@@ -17,7 +17,12 @@ import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Separator } from "@packages/ui/components/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@packages/ui/components/tabs";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import {
   Dialog,
@@ -34,7 +39,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@packages/ui/components/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@packages/ui/components/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@packages/ui/components/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,10 +69,11 @@ import {
   ArrowRightLeft,
   AlertTriangle,
   Loader2,
+  Bot,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getInitials } from "@/lib/utils";
-import { isValidSlug, validateAccountName } from "@/lib/settings-validation";
+import { isValidSlug, validateAccountName, validateUserMd, USER_MD_MAX_LENGTH } from "@/lib/settings-validation";
 import { BillingTab } from "@/components/billing/BillingTab";
 
 interface SettingsPageProps {
@@ -96,34 +106,42 @@ export default function SettingsPage({ params }: SettingsPageProps) {
   const [inviteUserEmail, setInviteUserEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
-  
+
   // Email-based invitations
   const [showEmailInvite, setShowEmailInvite] = useState(false);
   const [emailInviteAddress, setEmailInviteAddress] = useState("");
-  const [emailInviteRole, setEmailInviteRole] = useState<"member" | "admin">("member");
+  const [emailInviteRole, setEmailInviteRole] = useState<"member" | "admin">(
+    "member",
+  );
   const [emailInviteSubmitting, setEmailInviteSubmitting] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [theme, setThemeState] = useState<"light" | "dark" | "system">("system");
+  const [theme, setThemeState] = useState<"light" | "dark" | "system">(
+    "system",
+  );
   const [themeSaving, setThemeSaving] = useState(false);
-  
+
+  const [userMd, setUserMd] = useState("");
+  const [userMdSaving, setUserMdSaving] = useState(false);
+
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
-  const [transferTarget, setTransferTarget] = useState<Id<"memberships"> | null>(null);
+  const [transferTarget, setTransferTarget] =
+    useState<Id<"memberships"> | null>(null);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
 
   const { setTheme: setNextTheme } = useTheme();
 
   const members = useQuery(
     api.memberships.list,
-    accountId ? { accountId } : "skip"
+    accountId ? { accountId } : "skip",
   );
-  
+
   const pendingInvitations = useQuery(
     api.invitations.listByAccount,
-    accountId && isAdmin ? { accountId, status: "pending" } : "skip"
+    accountId && isAdmin ? { accountId, status: "pending" } : "skip",
   );
 
   const updateAccount = useMutation(api.accounts.update);
@@ -148,16 +166,39 @@ export default function SettingsPage({ params }: SettingsPageProps) {
    * When account.settings.notificationPreferences is absent, defaults are not applied here (state keeps initial values).
    */
   useEffect(() => {
-    const prefs = (account as { settings?: { notificationPreferences?: { taskUpdates?: boolean; agentActivity?: boolean; emailDigest?: boolean; memberUpdates?: boolean }; theme?: string } })?.settings?.notificationPreferences;
-    const accountTheme = (account as { settings?: { theme?: string } })?.settings?.theme;
+    const prefs = (
+      account as {
+        settings?: {
+          notificationPreferences?: {
+            taskUpdates?: boolean;
+            agentActivity?: boolean;
+            emailDigest?: boolean;
+            memberUpdates?: boolean;
+          };
+          theme?: string;
+        };
+      }
+    )?.settings?.notificationPreferences;
+    const accountTheme = (account as { settings?: { theme?: string } })
+      ?.settings?.theme;
     if (prefs) {
       setTaskUpdates(prefs.taskUpdates ?? true);
       setAgentActivity(prefs.agentActivity ?? true);
       setEmailDigest(prefs.emailDigest ?? false);
       setMemberUpdates(prefs.memberUpdates ?? true);
     }
-    if (accountTheme && (accountTheme === "light" || accountTheme === "dark" || accountTheme === "system")) {
+    if (
+      accountTheme &&
+      (accountTheme === "light" ||
+        accountTheme === "dark" ||
+        accountTheme === "system")
+    ) {
       setThemeState(accountTheme);
+    }
+    const accountUserMd = (account as { settings?: { userMd?: string } })
+      ?.settings?.userMd;
+    if (accountUserMd !== undefined) {
+      setUserMd(accountUserMd ?? "");
     }
   }, [account]);
 
@@ -174,7 +215,9 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       return;
     }
     if (trimmedSlug && !isValidSlug(trimmedSlug)) {
-      setSlugError("URL can only contain lowercase letters, numbers, and hyphens");
+      setSlugError(
+        "URL can only contain lowercase letters, numbers, and hyphens",
+      );
       return;
     }
 
@@ -224,6 +267,28 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     }
   };
 
+  const handleSaveUserMd = async () => {
+    if (!accountId || !isAdmin) return;
+    const trimmed = userMd.trim();
+    const validation = validateUserMd(trimmed);
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+    setUserMdSaving(true);
+    try {
+      await updateAccount({
+        accountId,
+        settings: { userMd: trimmed },
+      });
+      toast.success("Agent profile saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setUserMdSaving(false);
+    }
+  };
+
   const handleThemeChange = async (value: "light" | "dark" | "system") => {
     if (!accountId) return;
     setThemeState(value);
@@ -243,7 +308,12 @@ export default function SettingsPage({ params }: SettingsPageProps) {
   };
 
   const handleInvite = async () => {
-    if (!accountId || !inviteUserId.trim() || !inviteUserName.trim() || !inviteUserEmail.trim()) {
+    if (
+      !accountId ||
+      !inviteUserId.trim() ||
+      !inviteUserName.trim() ||
+      !inviteUserEmail.trim()
+    ) {
       toast.error("User ID, name, and email are required");
       return;
     }
@@ -269,7 +339,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     }
   };
 
-  const handleUpdateRole = async (membershipId: Id<"memberships">, role: "member" | "admin") => {
+  const handleUpdateRole = async (
+    membershipId: Id<"memberships">,
+    role: "member" | "admin",
+  ) => {
     if (!accountId) return;
     try {
       await updateRole({ accountId, membershipId, role });
@@ -323,12 +396,17 @@ export default function SettingsPage({ params }: SettingsPageProps) {
     if (!accountId || !transferTarget) return;
     setTransferSubmitting(true);
     try {
-      await transferOwnership({ accountId, newOwnerMembershipId: transferTarget });
+      await transferOwnership({
+        accountId,
+        newOwnerMembershipId: transferTarget,
+      });
       toast.success("Ownership transferred successfully");
       setShowTransferDialog(false);
       setTransferTarget(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to transfer ownership");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to transfer ownership",
+      );
     } finally {
       setTransferSubmitting(false);
     }
@@ -362,7 +440,9 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       await cancelInvitation({ invitationId });
       toast.success("Invitation cancelled");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel invitation");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to cancel invitation",
+      );
     }
   };
 
@@ -378,7 +458,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="general" className="w-full max-w-4xl mx-auto space-y-6">
+        <Tabs
+          defaultValue="general"
+          className="w-full max-w-4xl mx-auto space-y-6"
+        >
           <TabsList className="inline-flex w-auto">
             <TabsTrigger value="general" className="gap-2">
               <Building2 className="h-4 w-4 hidden sm:inline" />
@@ -392,6 +475,10 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               <Bell className="h-4 w-4 hidden sm:inline" />
               Notifications
             </TabsTrigger>
+            <TabsTrigger value="agent-profile" className="gap-2">
+              <Bot className="h-4 w-4 hidden sm:inline" />
+              Agent Profile
+            </TabsTrigger>
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="h-4 w-4 hidden sm:inline" />
               Appearance
@@ -403,421 +490,520 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </TabsList>
 
           <TabsContent value="general" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" />
-                    Workspace Information
-                  </CardTitle>
-                  <CardDescription>
-                    Update your workspace details and settings
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {isLoading ? (
-                    <div className="space-y-4">
-                      <Skeleton className="h-10 w-full" />
-                      <Skeleton className="h-10 w-full" />
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Workspace Information
+                </CardTitle>
+                <CardDescription>
+                  Update your workspace details and settings
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="workspace-name">Workspace Name</Label>
+                      <Input
+                        id="workspace-name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="My Workspace"
+                      />
                     </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="workspace-name">Workspace Name</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="workspace-slug">Workspace URL</Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">/</span>
                         <Input
-                          id="workspace-name"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="My Workspace"
+                          id="workspace-slug"
+                          value={slug}
+                          onChange={(e) => {
+                            setSlug(e.target.value);
+                            setSlugError(null);
+                          }}
+                          placeholder="my-workspace"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="workspace-slug">Workspace URL</Label>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">/</span>
-                          <Input
-                            id="workspace-slug"
-                            value={slug}
-                            onChange={(e) => {
-                              setSlug(e.target.value);
-                              setSlugError(null);
-                            }}
-                            placeholder="my-workspace"
-                          />
-                        </div>
-                        {slugError && (
-                          <p className="text-sm text-destructive">{slugError}</p>
-                        )}
-                      </div>
-                      <Button
-                        className="mt-4"
-                        onClick={handleSaveGeneral}
-                        disabled={generalSaving}
-                      >
-                        {generalSaving ? "Saving…" : "Save Changes"}
-                      </Button>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              {isOwner && (
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-destructive">
-                      <Trash2 className="h-5 w-5" />
-                      Danger Zone
-                    </CardTitle>
-                    <CardDescription>
-                      Irreversible and destructive actions
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Delete Workspace</p>
-                        <p className="text-sm text-muted-foreground">
-                          Permanently delete this workspace and all its data
-                        </p>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowDeleteConfirm(true)}
-                      >
-                        Delete Workspace
-                      </Button>
+                      {slugError && (
+                        <p className="text-sm text-destructive">{slugError}</p>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
+                    <Button
+                      className="mt-4"
+                      onClick={handleSaveGeneral}
+                      disabled={generalSaving}
+                    >
+                      {generalSaving ? "Saving…" : "Save Changes"}
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-            <TabsContent value="members" className="mt-6 space-y-6">
-              <Card>
+            {isOwner && (
+              <Card className="border-destructive/50">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Team Members
+                  <CardTitle className="flex items-center gap-2 text-destructive">
+                    <Trash2 className="h-5 w-5" />
+                    Danger Zone
                   </CardTitle>
                   <CardDescription>
-                    Manage who has access to this workspace
+                    Irreversible and destructive actions
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {isAdmin && (
-                    <div className="mb-4 flex gap-2">
-                      <Button onClick={() => setShowInvite(true)}>
-                        <Users className="mr-2 h-4 w-4" />
-                        Invite by User ID
-                      </Button>
-                      <Button variant="outline" onClick={() => setShowEmailInvite(true)}>
-                        Invite by Email
-                      </Button>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Delete Workspace</p>
+                      <p className="text-sm text-muted-foreground">
+                        Permanently delete this workspace and all its data
+                      </p>
                     </div>
-                  )}
-                  {members === undefined ? (
-                    <div className="space-y-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-14 w-full rounded-lg" />
-                      ))}
-                    </div>
-                  ) : members.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No members yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {members.map((member) => (
-                        <div
-                          key={member._id}
-                          className="flex items-center gap-4 p-4 rounded-lg bg-muted/30 border"
-                        >
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={member.userAvatarUrl} alt={member.userName} />
-                            <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                              {getInitials(member.userName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium truncate">{member.userName}</p>
-                              {member.role === "owner" && (
-                                <Crown className="h-4 w-4 text-yellow-500 shrink-0" />
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {member.userEmail}
-                            </p>
-                          </div>
-                          <span className="text-sm capitalize text-muted-foreground">
-                            {member.role}
-                          </span>
-                          {isAdmin && member.role !== "owner" && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                  <span className="sr-only">Actions</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdateRole(member._id, "admin")}
-                                  disabled={member.role === "admin"}
-                                >
-                                  <UserCog className="mr-2 h-4 w-4" />
-                                  Make admin
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdateRole(member._id, "member")}
-                                  disabled={member.role === "member"}
-                                >
-                                  <User className="mr-2 h-4 w-4" />
-                                  Make member
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => handleRemoveMember(member._id)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Remove
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              
-              {/* Pending Invitations - admin only */}
-              {isAdmin && pendingInvitations && pendingInvitations.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Pending Invitations</CardTitle>
-                    <CardDescription>
-                      {pendingInvitations.length} pending invitation{pendingInvitations.length > 1 ? "s" : ""}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {pendingInvitations.map((invitation) => (
-                        <div
-                          key={invitation._id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border"
-                        >
-                          <div>
-                            <p className="text-sm font-medium">{invitation.email}</p>
-                            <p className="text-xs text-muted-foreground capitalize">
-                              Invited as {invitation.role}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => handleCancelInvitation(invitation._id)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              
-              {/* Transfer Ownership - owner only */}
-              {isOwner && members && members.length > 1 && (
-                <Card className="border-amber-500/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                      <ArrowRightLeft className="h-5 w-5" />
-                      Transfer Ownership
-                    </CardTitle>
-                    <CardDescription>
-                      Transfer workspace ownership to another member
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Transfer to another member</p>
-                        <p className="text-sm text-muted-foreground">
-                          You will become an admin after transferring ownership
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowTransferDialog(true)}
-                      >
-                        Transfer Ownership
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              
-              {/* Leave Workspace - non-owners only */}
-              {!isOwner && (
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-destructive">
-                      <LogOut className="h-5 w-5" />
-                      Leave Workspace
-                    </CardTitle>
-                    <CardDescription>
-                      Remove yourself from this workspace
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Leave this workspace</p>
-                        <p className="text-sm text-muted-foreground">
-                          You will lose access to all workspace data
-                        </p>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowLeaveConfirm(true)}
-                      >
-                        Leave Workspace
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-
-            <TabsContent value="notifications" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bell className="h-5 w-5" />
-                    Notification Preferences
-                  </CardTitle>
-                  <CardDescription>
-                    Configure how and when you receive notifications
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Task Updates</p>
-                        <p className="text-sm text-muted-foreground">
-                          Get notified when tasks are assigned or updated
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTaskUpdates((v) => !v)}
-                      >
-                        {taskUpdates ? "On" : "Off"}
-                      </Button>
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Agent Activity</p>
-                        <p className="text-sm text-muted-foreground">
-                          Receive alerts when agents complete tasks
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAgentActivity((v) => !v)}
-                      >
-                        {agentActivity ? "On" : "Off"}
-                      </Button>
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Email Digest</p>
-                        <p className="text-sm text-muted-foreground">
-                          Daily digest and important updates via email
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEmailDigest((v) => !v)}
-                      >
-                        {emailDigest ? "On" : "Off"}
-                      </Button>
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Member Updates</p>
-                        <p className="text-sm text-muted-foreground">
-                          Notifications when members join, leave, or roles change
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setMemberUpdates((v) => !v)}
-                      >
-                        {memberUpdates ? "On" : "Off"}
-                      </Button>
-                    </div>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowDeleteConfirm(true)}
+                    >
+                      Delete Workspace
+                    </Button>
                   </div>
-                  <Button
-                    className="mt-4"
-                    onClick={handleSaveNotifications}
-                    disabled={notifSaving}
-                  >
-                    {notifSaving ? "Saving…" : "Save preferences"}
-                  </Button>
                 </CardContent>
               </Card>
-            </TabsContent>
+            )}
+          </TabsContent>
 
-            <TabsContent value="appearance" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Palette className="h-5 w-5" />
-                    Theme & Appearance
-                  </CardTitle>
-                  <CardDescription>
-                    Choose a theme for this workspace. Saved per workspace.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { value: "light" as const, label: "Light", icon: Sun },
-                      { value: "dark" as const, label: "Dark", icon: Moon },
-                      { value: "system" as const, label: "System", icon: Monitor },
-                    ].map(({ value, label, icon: Icon }) => (
-                      <Button
-                        key={value}
-                        variant={theme === value ? "secondary" : "outline"}
-                        className="gap-2"
-                        onClick={() => handleThemeChange(value)}
-                        disabled={themeSaving}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </Button>
+          <TabsContent value="members" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Team Members
+                </CardTitle>
+                <CardDescription>
+                  Manage who has access to this workspace
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isAdmin && (
+                  <div className="mb-4 flex gap-2">
+                    <Button onClick={() => setShowInvite(true)}>
+                      <Users className="mr-2 h-4 w-4" />
+                      Invite by User ID
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowEmailInvite(true)}
+                    >
+                      Invite by Email
+                    </Button>
+                  </div>
+                )}
+                {members === undefined ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-14 w-full rounded-lg" />
                     ))}
                   </div>
-                  {themeSaving && (
-                    <p className="text-xs text-muted-foreground mt-2">Saving…</p>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                ) : members.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No members yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {members.map((member) => (
+                      <div
+                        key={member._id}
+                        className="flex items-center gap-4 p-4 rounded-lg bg-muted/30 border"
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage
+                            src={member.userAvatarUrl}
+                            alt={member.userName}
+                          />
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                            {getInitials(member.userName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">
+                              {member.userName}
+                            </p>
+                            {member.role === "owner" && (
+                              <Crown className="h-4 w-4 text-yellow-500 shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {member.userEmail}
+                          </p>
+                        </div>
+                        <span className="text-sm capitalize text-muted-foreground">
+                          {member.role}
+                        </span>
+                        {isAdmin && member.role !== "owner" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleUpdateRole(member._id, "admin")
+                                }
+                                disabled={member.role === "admin"}
+                              >
+                                <UserCog className="mr-2 h-4 w-4" />
+                                Make admin
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleUpdateRole(member._id, "member")
+                                }
+                                disabled={member.role === "member"}
+                              >
+                                <User className="mr-2 h-4 w-4" />
+                                Make member
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleRemoveMember(member._id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remove
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <TabsContent value="billing" className="mt-6 space-y-6">
               {accountId && (
                 <BillingTab accountId={accountId} accountSlug={accountSlug} />
               )}
+
+            {/* Pending Invitations - admin only */}
+            {isAdmin && pendingInvitations && pendingInvitations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Pending Invitations
+                  </CardTitle>
+                  <CardDescription>
+                    {pendingInvitations.length} pending invitation
+                    {pendingInvitations.length > 1 ? "s" : ""}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {pendingInvitations.map((invitation) => (
+                      <div
+                        key={invitation._id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">
+                            {invitation.email}
+                          </p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            Invited as {invitation.role}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleCancelInvitation(invitation._id)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Transfer Ownership - owner only */}
+            {isOwner && members && members.length > 1 && (
+              <Card className="border-amber-500/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <ArrowRightLeft className="h-5 w-5" />
+                    Transfer Ownership
+                  </CardTitle>
+                  <CardDescription>
+                    Transfer workspace ownership to another member
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Transfer to another member</p>
+                      <p className="text-sm text-muted-foreground">
+                        You will become an admin after transferring ownership
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowTransferDialog(true)}
+                    >
+                      Transfer Ownership
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Leave Workspace - non-owners only */}
+            {!isOwner && (
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-destructive">
+                    <LogOut className="h-5 w-5" />
+                    Leave Workspace
+                  </CardTitle>
+                  <CardDescription>
+                    Remove yourself from this workspace
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Leave this workspace</p>
+                      <p className="text-sm text-muted-foreground">
+                        You will lose access to all workspace data
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowLeaveConfirm(true)}
+                    >
+                      Leave Workspace
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="notifications" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Notification Preferences
+                </CardTitle>
+                <CardDescription>
+                  Configure how and when you receive notifications
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Task Updates</p>
+                      <p className="text-sm text-muted-foreground">
+                        Get notified when tasks are assigned or updated
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTaskUpdates((v) => !v)}
+                    >
+                      {taskUpdates ? "On" : "Off"}
+                    </Button>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Agent Activity</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receive alerts when agents complete tasks
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAgentActivity((v) => !v)}
+                    >
+                      {agentActivity ? "On" : "Off"}
+                    </Button>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Email Digest</p>
+                      <p className="text-sm text-muted-foreground">
+                        Daily digest and important updates via email
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEmailDigest((v) => !v)}
+                    >
+                      {emailDigest ? "On" : "Off"}
+                    </Button>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Member Updates</p>
+                      <p className="text-sm text-muted-foreground">
+                        Notifications when members join, leave, or roles change
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMemberUpdates((v) => !v)}
+                    >
+                      {memberUpdates ? "On" : "Off"}
+                    </Button>
+                  </div>
+                </div>
+                <Button
+                  className="mt-4"
+                  onClick={handleSaveNotifications}
+                  disabled={notifSaving}
+                >
+                  {notifSaving ? "Saving…" : "Save preferences"}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="agent-profile" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  Agent Profile (USER.md)
+                </CardTitle>
+                <CardDescription>
+                  Account-shared context for all agents: team, repo, and workflow. Materialized as USER.md in each agent workspace. Only admins can edit.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <Skeleton className="h-48 w-full" />
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="user-md">
+                      Markdown content ({userMd.length.toLocaleString()} / {USER_MD_MAX_LENGTH.toLocaleString()} chars)
+                    </Label>
+                    <textarea
+                      id="user-md"
+                      className="flex min-h-[200px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={userMd}
+                      onChange={(e) => setUserMd(e.target.value)}
+                      placeholder="# User\n\nDescribe your team, repo, and workflow for agents."
+                      disabled={!isAdmin}
+                      rows={12}
+                    />
+                    {isAdmin ? (
+                      <Button
+                        className="mt-2"
+                        onClick={handleSaveUserMd}
+                        disabled={userMdSaving}
+                      >
+                        {userMdSaving ? "Saving…" : "Save"}
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Only admins can edit the agent profile.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="appearance" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Palette className="h-5 w-5" />
+                  Theme & Appearance
+                </CardTitle>
+                <CardDescription>
+                  Choose a theme for this workspace. Saved per workspace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { value: "light" as const, label: "Light", icon: Sun },
+                    { value: "dark" as const, label: "Dark", icon: Moon },
+                    {
+                      value: "system" as const,
+                      label: "System",
+                      icon: Monitor,
+                    },
+                  ].map(({ value, label, icon: Icon }) => (
+                    <Button
+                      key={value}
+                      variant={theme === value ? "secondary" : "outline"}
+                      className="gap-2"
+                      onClick={() => handleThemeChange(value)}
+                      disabled={themeSaving}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                {themeSaving && (
+                  <p className="text-xs text-muted-foreground mt-2">Saving…</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="billing" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Billing & Subscription
+                </CardTitle>
+                <CardDescription>
+                  Manage your subscription and payment methods
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
+                    <CreditCard className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Billing coming soon</h3>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                    View and manage your subscription, invoices, and payment
+                    methods.
+                  </p>
+                </div>
+              </CardContent>
+            </TabsContent>
           </TabsContent>
         </Tabs>
       </div>
@@ -828,7 +1014,8 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
-              Add a member by their Clerk user ID, display name, and email. The user must already have an account.
+              Add a member by their Clerk user ID, display name, and email. The
+              user must already have an account.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -882,14 +1069,19 @@ export default function SettingsPage({ params }: SettingsPageProps) {
             </Button>
             <Button
               onClick={handleInvite}
-              disabled={inviteSubmitting || !inviteUserId.trim() || !inviteUserName.trim() || !inviteUserEmail.trim()}
+              disabled={
+                inviteSubmitting ||
+                !inviteUserId.trim() ||
+                !inviteUserName.trim() ||
+                !inviteUserEmail.trim()
+              }
             >
               {inviteSubmitting ? "Sending…" : "Send Invite"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Email invite dialog */}
       <Dialog open={showEmailInvite} onOpenChange={setShowEmailInvite}>
         <DialogContent className="sm:max-w-md">
@@ -914,7 +1106,9 @@ export default function SettingsPage({ params }: SettingsPageProps) {
               <Label>Role</Label>
               <Select
                 value={emailInviteRole}
-                onValueChange={(v) => setEmailInviteRole(v as "member" | "admin")}
+                onValueChange={(v) =>
+                  setEmailInviteRole(v as "member" | "admin")
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -958,17 +1152,28 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogHeader>
           <div className="py-4 px-1">
             <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20 mb-3">
-              <p className="text-sm font-medium text-destructive">Warning: Permanent deletion</p>
+              <p className="text-sm font-medium text-destructive">
+                Warning: Permanent deletion
+              </p>
               <p className="text-xs text-muted-foreground mt-1">
-                All tasks, agents, documents, and team data will be permanently deleted.
+                All tasks, agents, documents, and team data will be permanently
+                deleted.
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete <span className="font-semibold text-foreground">{account?.name}</span>?
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-foreground">
+                {account?.name}
+              </span>
+              ?
             </p>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} className="rounded-lg">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="rounded-lg"
+            >
               Cancel
             </Button>
             <Button
@@ -987,7 +1192,7 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Leave workspace confirmation */}
       <Dialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
         <DialogContent className="sm:max-w-md">
@@ -1006,12 +1211,20 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogHeader>
           <div className="py-4 px-1">
             <p className="text-sm text-muted-foreground">
-              Are you sure you want to leave <span className="font-semibold text-foreground">{account?.name}</span>? 
-              You will lose access to all workspace data including tasks, documents, and conversations.
+              Are you sure you want to leave{" "}
+              <span className="font-semibold text-foreground">
+                {account?.name}
+              </span>
+              ? You will lose access to all workspace data including tasks,
+              documents, and conversations.
             </p>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={() => setShowLeaveConfirm(false)} className="rounded-lg">
+            <Button
+              variant="outline"
+              onClick={() => setShowLeaveConfirm(false)}
+              className="rounded-lg"
+            >
               Cancel
             </Button>
             <Button
@@ -1030,17 +1243,21 @@ export default function SettingsPage({ params }: SettingsPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Transfer ownership dialog */}
-      <Dialog open={showTransferDialog} onOpenChange={(open) => {
-        setShowTransferDialog(open);
-        if (!open) setTransferTarget(null);
-      }}>
+      <Dialog
+        open={showTransferDialog}
+        onOpenChange={(open) => {
+          setShowTransferDialog(open);
+          if (!open) setTransferTarget(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Transfer Ownership</DialogTitle>
             <DialogDescription>
-              Select a member to transfer workspace ownership to. You will become an admin after the transfer.
+              Select a member to transfer workspace ownership to. You will
+              become an admin after the transfer.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -1054,20 +1271,27 @@ export default function SettingsPage({ params }: SettingsPageProps) {
                   <SelectValue placeholder="Select a member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {members?.filter(m => m.role !== "owner").map((member) => (
-                    <SelectItem key={member._id} value={member._id}>
-                      <div className="flex items-center gap-2">
-                        <span>{member.userName}</span>
-                        <span className="text-muted-foreground text-xs">({member.role})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {members
+                    ?.filter((m) => m.role !== "owner")
+                    .map((member) => (
+                      <SelectItem key={member._id} value={member._id}>
+                        <div className="flex items-center gap-2">
+                          <span>{member.userName}</span>
+                          <span className="text-muted-foreground text-xs">
+                            ({member.role})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTransferDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowTransferDialog(false)}
+            >
               Cancel
             </Button>
             <Button

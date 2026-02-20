@@ -48,9 +48,11 @@ describe("mapModelToOpenClaw", () => {
     withTempEnv(
       { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
       () => {
+        expect(mapModelToOpenClaw("minimax-m2.5")).toBe("minimax/minimax-m2.5");
         expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
           "anthropic/claude-haiku-4.5",
         );
+        expect(mapModelToOpenClaw("kimi-k2.5")).toBe("moonshotai/kimi-k2.5");
         expect(mapModelToOpenClaw("gpt-5-nano")).toBe("openai/gpt-5-nano");
       },
     );
@@ -58,8 +60,14 @@ describe("mapModelToOpenClaw", () => {
 
   it("maps models through Vercel AI Gateway when configured", () => {
     withTempEnv({ VERCEL_AI_GATEWAY_API_KEY: "test-key" }, () => {
+      expect(mapModelToOpenClaw("minimax-m2.5")).toBe(
+        "vercel-ai-gateway/minimax/minimax-m2.5",
+      );
       expect(mapModelToOpenClaw("claude-haiku-4.5")).toBe(
         "vercel-ai-gateway/anthropic/claude-haiku-4.5",
+      );
+      expect(mapModelToOpenClaw("kimi-k2.5")).toBe(
+        "vercel-ai-gateway/moonshotai/kimi-k2.5",
       );
       expect(mapModelToOpenClaw("gpt-5-nano")).toBe(
         "vercel-ai-gateway/openai/gpt-5-nano",
@@ -172,6 +180,18 @@ describe("safeSkillSlug", () => {
 });
 
 describe("syncOpenClawProfiles", () => {
+  /**
+   * Build a YYYY-MM-DD date string in UTC with day offset.
+   */
+  function utcDayString(now: Date, offsetDays: number): string {
+    const utc = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + offsetDays,
+    );
+    return new Date(utc).toISOString().slice(0, 10);
+  }
+
   it("writes openclaw.json with agents.list and skipBootstrap", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
@@ -181,8 +201,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Engineer",
         slug: "engineer",
         role: "Engineer",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL\n",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
     ];
@@ -203,6 +224,48 @@ describe("syncOpenClawProfiles", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("maps workspace paths in generated config when configWorkspaceRoot differs", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents-runtime");
+    const configWorkspaceRoot = "/root/clawd/agents";
+    const agents: AgentForProfile[] = [
+      {
+        _id: "agent1",
+        name: "Engineer",
+        slug: "engineer",
+        role: "Engineer",
+        effectiveSoulContent: "# SOUL\n",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
+        resolvedSkills: [
+          {
+            _id: "s1",
+            name: "Web Search",
+            slug: "web-search",
+            contentMarkdown: "# Web Search\n\nSearch the web.\n",
+          },
+        ],
+      },
+    ];
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configWorkspaceRoot,
+      configPath,
+    });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.agents.list[0].workspace).toBe("/root/clawd/agents/engineer");
+    expect(config.load.extraDirs).toContain(
+      "/root/clawd/agents/engineer/skills",
+    );
+
+    const sourceWorkspaceDir = path.join(workspaceRoot, "engineer");
+    expect(fs.existsSync(sourceWorkspaceDir)).toBe(true);
+    expect(fs.existsSync(path.join(sourceWorkspaceDir, "SOUL.md"))).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("skips agents with unsafe slug and does not add them to config", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
     const configPath = path.join(tmp, "openclaw.json");
@@ -212,8 +275,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Bad",
         slug: "..",
         role: "Role",
-        sessionKey: "agent:..:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
       {
@@ -221,8 +285,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Good",
         slug: "good",
         role: "Role",
-        sessionKey: "agent:good:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [],
       },
     ];
@@ -244,7 +309,9 @@ describe("syncOpenClawProfiles", () => {
     withTempEnv(
       { AI_GATEWAY_API_KEY: undefined, VERCEL_AI_GATEWAY_API_KEY: undefined },
       () => {
-        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+        const tmp = fs.mkdtempSync(
+          path.join(os.tmpdir(), "openclaw-profiles-"),
+        );
         const configPath = path.join(tmp, "openclaw.json");
         const agents: AgentForProfile[] = [
           {
@@ -252,9 +319,10 @@ describe("syncOpenClawProfiles", () => {
             name: "GPT-5 Nano",
             slug: "gpt-5-nano",
             role: "R",
-            sessionKey: "agent:gpt-5-nano:acc1",
             openclawConfig: { model: "gpt-5-nano" },
             effectiveSoulContent: "# SOUL",
+            effectiveUserMd: "# User\n",
+            effectiveIdentityContent: "# IDENTITY\n",
             resolvedSkills: [],
           },
         ];
@@ -280,8 +348,9 @@ describe("syncOpenClawProfiles", () => {
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -331,8 +400,9 @@ disable-model-invocation: true
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -378,8 +448,9 @@ disable-model-invocation: true
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -421,8 +492,9 @@ description: Custom name in frontmatter
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -466,8 +538,9 @@ description: Custom name in frontmatter
           name: "Engineer",
           slug: "engineer",
           role: "Engineer",
-          sessionKey: "agent:engineer:acc1",
           effectiveSoulContent: "# SOUL\n",
+          effectiveUserMd: "# User\n",
+          effectiveIdentityContent: "# IDENTITY\n",
           resolvedSkills: [],
         },
       ];
@@ -498,8 +571,9 @@ description: Custom name in frontmatter
         name: "Engineer",
         slug: "engineer",
         role: "R",
-        sessionKey: "agent:engineer:acc1",
         effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
         resolvedSkills: [
           {
             _id: "s1",
@@ -540,6 +614,49 @@ description: Custom name in frontmatter
     expect(config.skills?.entries?.["no-content"]).toBeUndefined();
     expect(config.skills?.entries?.["with-content"]).toEqual({ enabled: true });
     expect(config.skills?.allowBundled).toBeUndefined();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("creates per-agent memory scaffold including rolling daily notes", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-profiles-"));
+    const configPath = path.join(tmp, "openclaw.json");
+    const workspaceRoot = path.join(tmp, "agents");
+    const agentSlug = "engineer";
+    const agents: AgentForProfile[] = [
+      {
+        _id: "a1",
+        name: "Engineer",
+        slug: agentSlug,
+        role: "R",
+        effectiveSoulContent: "# SOUL",
+        effectiveUserMd: "# User\n",
+        effectiveIdentityContent: "# IDENTITY\n",
+        resolvedSkills: [],
+      },
+    ];
+
+    syncOpenClawProfiles(agents, {
+      workspaceRoot,
+      configPath,
+    });
+
+    const now = new Date();
+    const memoryRoot = path.join(workspaceRoot, agentSlug);
+    const memoryDir = path.join(memoryRoot, "memory");
+    const deliverablesDir = path.join(memoryRoot, "deliverables");
+    expect(fs.existsSync(path.join(memoryRoot, "MEMORY.md"))).toBe(true);
+    expect(fs.existsSync(path.join(memoryDir, "WORKING.md"))).toBe(true);
+    expect(fs.existsSync(deliverablesDir)).toBe(true);
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, -1)}.md`)),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, 0)}.md`)),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(memoryDir, `${utcDayString(now, 1)}.md`)),
+    ).toBe(true);
+
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });

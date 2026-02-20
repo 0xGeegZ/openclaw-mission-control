@@ -272,7 +272,9 @@ export function KanbanBoard({
               tasks={displayTasks[status] || []}
               accountSlug={accountSlug}
               onAddTask={
-                status === TASK_STATUS.INBOX ? () => setShowCreateDialog(true) : undefined
+                status === TASK_STATUS.INBOX
+                  ? () => setShowCreateDialog(true)
+                  : undefined
               }
               onTaskClick={handleTaskClick}
               agents={agents}

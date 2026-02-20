@@ -30,18 +30,30 @@ services:
       dockerfile: apps/runtime/Dockerfile
     container_name: openclaw-runtime
     restart: unless-stopped
+    # Runtime can also hit EMFILE/ENFILE with many active sessions, logs, and watchers.
+    # Keep nofile aligned with gateway to avoid startup/runtime FD exhaustion.
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    # Run as host user when DOCKER_UID/DOCKER_GID set (e.g. by runtime-docker-up.sh) so bind mount is writable without sudo.
+    user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
     env_file:
       - ./.env
     environment:
       - HEALTH_HOST=0.0.0.0
+      # Runtime container runs as non-root; use /clawd (not /root/*) to avoid EACCES traversing /root.
+      - OPENCLAW_WORKSPACE_ROOT=/clawd/agents
+      # openclaw.json and manual fallback paths derive from OPENCLAW_WORKSPACE_ROOT.
       # So the OpenClaw gateway container can reach this service for task-status HTTP fallback
       - TASK_STATUS_BASE_URL=http://runtime:3000
-      - OPENCLAW_REQUEST_TIMEOUT_MS=300000
+      # 10 min max so long-running agent runs (e.g. Writer with many tools) complete before timeout
+      - OPENCLAW_REQUEST_TIMEOUT_MS=600000
       # OpenClaw gateway (local) ignores client-side tools; use HTTP fallbacks instead.
       - OPENCLAW_CLIENT_TOOLS_ENABLED=0
     volumes:
-      # Shared with openclaw-gateway: runtime writes agent workspaces and openclaw.json here
-      - ../../.runtime/openclaw-workspace:/root/clawd:delegated
+      # Shared with openclaw-gateway: runtime writes agent workspaces/openclaw.json to this host mount.
+      - ../../.runtime/openclaw-workspace:/clawd:delegated
     ports:
       - "127.0.0.1:3000:3000"
     deploy:

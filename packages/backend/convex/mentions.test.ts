@@ -1,119 +1,122 @@
 /**
- * Unit tests for mentions query
+ * Unit tests for mentions listMentionCandidates query.
  *
- * Tests: mentions.listMentionCandidates query auth enforcement
- * Coverage: mentions.ts (public query with auth guard)
+ * The query handler is: requireAccountMember(ctx, accountId) then listCandidates(ctx, accountId).
+ * Auth is tested in lib/auth.test.ts; listCandidates in lib/mentions.test.ts.
+ * Here we test the composed handler logic with a shared mock context.
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { requireAccountMember } from "./lib/auth";
+import { listCandidates } from "./lib/mentions";
 import { Id } from "./_generated/dataModel";
 
-// ============================================================================
-// Mock Query Handler Tests
-// ============================================================================
+function createMockQueryContext(
+  accountId: Id<"accounts">,
+  memberships: unknown[] = [],
+  agents: unknown[] = [],
+) {
+  const accountDoc = {
+    _id: accountId,
+    name: "Test Account",
+    slug: "test-account",
+  };
+  const membership = memberships.length
+    ? {
+        _id: "membership_1" as Id<"memberships">,
+        userId: "user_123",
+        accountId,
+        role: "member",
+      }
+    : null;
 
-describe("mentions.listMentionCandidates query", () => {
-  it("should require account membership auth", async () => {
-    // Simulate the query behavior: requireAccountMember must be called
-    // This test verifies the auth pattern is enforced
-    const mockCtx = {
-      auth: {
-        getUserIdentity: vi.fn().mockResolvedValue({
-          subject: "user_123",
-          email: "user@example.com",
+  return {
+    auth: {
+      getUserIdentity: vi.fn().mockResolvedValue({
+        subject: "user_123",
+        name: "Test User",
+        email: "test@example.com",
+      }),
+    },
+    db: {
+      get: vi.fn(async (id: Id<"accounts">) =>
+        id === accountId ? accountDoc : null,
+      ),
+      query: (table: string) => ({
+        withIndex: (_indexName: string, _fn: (_q: unknown) => unknown) => ({
+          unique: async () => membership,
+          collect: async () => {
+            if (table === "memberships") return memberships;
+            if (table === "agents") return agents;
+            return [];
+          },
         }),
-      },
-      db: {
-        get: vi.fn(),
-        query: vi.fn().mockReturnValue({
-          withIndex: vi.fn().mockReturnValue({
-            unique: vi.fn(),
-            collect: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      },
-    };
+      }),
+    },
+  } as unknown as Parameters<typeof requireAccountMember>[0];
+}
 
-    // The handler should call requireAccountMember(ctx, accountId)
-    // which calls auth.getUserIdentity() and db.query().withIndex().unique()
-    // This test verifies those calls are made in the right order
-    expect(mockCtx.auth.getUserIdentity).toBeDefined();
-    expect(mockCtx.db.query).toBeDefined();
+describe("mentions.listMentionCandidates query (handler logic)", () => {
+  it("returns users and agents after auth when user is member", async () => {
+    const accountId = "account_1" as Id<"accounts">;
+    const memberships = [
+      {
+        userId: "user_1",
+        userName: "Alice",
+        userEmail: "alice@example.com",
+        userAvatarUrl: "https://example.com/alice.jpg",
+      },
+    ];
+    const agents = [
+      {
+        _id: "agent_1" as Id<"agents">,
+        name: "Squad Lead",
+        slug: "squad-lead",
+        accountId,
+      },
+    ];
+    const ctx = createMockQueryContext(accountId, memberships, agents);
+
+    await requireAccountMember(ctx, accountId);
+    const result = await listCandidates(ctx, accountId);
+
+    expect(result).toHaveProperty("users");
+    expect(result).toHaveProperty("agents");
+    expect(result.users).toHaveLength(1);
+    expect(result.agents).toHaveLength(1);
+    expect(result.users[0]).toEqual({
+      id: "user_1",
+      name: "Alice",
+      email: "alice@example.com",
+      avatarUrl: "https://example.com/alice.jpg",
+    });
+    expect(result.agents[0]).toEqual({
+      id: "agent_1",
+      name: "Squad Lead",
+      slug: "squad-lead",
+    });
   });
 
-  it("should return users and agents grouped by type when authorized", async () => {
-    // The query should call listCandidates helper and return its result
-    // Expected shape: { users: [...], agents: [...] }
-    const expectedResult = {
-      users: [
-        {
-          id: "user_1",
-          name: "Alice",
-          email: "alice@example.com",
-          avatarUrl: "https://example.com/alice.jpg",
-        },
-      ],
-      agents: [
-        {
-          id: "agent_1",
-          name: "Squad Lead",
-          slug: "squad-lead",
-        },
-      ],
-    };
+  it("throws when user is not a member (auth enforced before listCandidates)", async () => {
+    const accountId = "account_1" as Id<"accounts">;
+    const ctx = createMockQueryContext(accountId, [], []);
 
-    // The query handler should return this structure after auth passes
-    expect(expectedResult).toHaveProperty("users");
-    expect(expectedResult).toHaveProperty("agents");
-    expect(Array.isArray(expectedResult.users)).toBe(true);
-    expect(Array.isArray(expectedResult.agents)).toBe(true);
+    await expect(requireAccountMember(ctx, accountId)).rejects.toThrow(
+      "Forbidden: User is not a member of this account",
+    );
   });
 
-  it("should not allow unauthenticated access", async () => {
-    // If requireAccountMember throws (user not in account), query should fail
-    // This simulates: await requireAccountMember(ctx, accountId) throws
-    const mockError = new Error("Forbidden: Not a member of this account");
+  it("returns empty users and agents for member with empty workspace", async () => {
+    const accountId = "account_1" as Id<"accounts">;
+    const memberships = [
+      { userId: "user_1", userName: "Alice", userEmail: "a@b.com" },
+    ];
+    const ctx = createMockQueryContext(accountId, memberships, []);
 
-    // The handler should propagate this error to the client
-    expect(mockError.message).toContain("Forbidden");
-    expect(mockError.message).toContain("Not a member");
-  });
+    await requireAccountMember(ctx, accountId);
+    const result = await listCandidates(ctx, accountId);
 
-  it("should return empty arrays for empty workspace", async () => {
-    const expectedResult = {
-      users: [],
-      agents: [],
-    };
-
-    // Even if no members/agents exist, should return valid shape
-    expect(expectedResult.users).toHaveLength(0);
-    expect(expectedResult.agents).toHaveLength(0);
-  });
-
-  it("should filter results by accountId for data isolation", async () => {
-    // The query uses listCandidates which queries:
-    // - memberships.withIndex("by_account", q => q.eq("accountId", accountId))
-    // - agents.withIndex("by_account", q => q.eq("accountId", accountId))
-    // This ensures no cross-account leakage
-
-    // Mock verification: both queries must filter by accountId
-    const mockMembershipsIndex = {
-      withIndex: (name: string, fn: (q: any) => any) => {
-        expect(name).toBe("by_account");
-        // Verify the filter function is called
-        expect(fn).toBeDefined();
-      },
-    };
-
-    const mockAgentsIndex = {
-      withIndex: (name: string, fn: (q: any) => any) => {
-        expect(name).toBe("by_account");
-        expect(fn).toBeDefined();
-      },
-    };
-
-    // Both indexes must be by_account to ensure isolation
-    expect(mockMembershipsIndex).toBeDefined();
-    expect(mockAgentsIndex).toBeDefined();
+    expect(result.users).toHaveLength(1);
+    expect(result.agents).toHaveLength(0);
   });
 });

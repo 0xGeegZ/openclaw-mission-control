@@ -27,15 +27,37 @@ if [ -n "$PROFILE" ]; then
   compose_args+=( --profile "$PROFILE" )
 fi
 
-# Ensure volume dirs exist. Runtime container runs as UID 10001 (see apps/runtime/Dockerfile);
-# the workspace mount must be writable by that user so profile sync can create agents/ and openclaw.json.
-RUNTIME_UID=10001
-RUNTIME_GID=10001
-mkdir -p .runtime/openclaw-workspace .runtime/openclaw-data
-if ! chown -R "${RUNTIME_UID}:${RUNTIME_GID}" .runtime/openclaw-workspace 2>/dev/null; then
-  echo "Note: Could not chown .runtime/openclaw-workspace to ${RUNTIME_UID}:${RUNTIME_GID} (may need sudo). If the runtime fails with EACCES, run:" >&2
-  echo "  sudo chown -R ${RUNTIME_UID}:${RUNTIME_GID} .runtime/openclaw-workspace" >&2
+# Run runtime as host user so the bind mount is writable (Docker Desktop Mac preserves host UID in the mount).
+DOCKER_UID="${DOCKER_UID:-$(id -u 2>/dev/null)}"
+DOCKER_GID="${DOCKER_GID:-$(id -g 2>/dev/null)}"
+if [ -z "$DOCKER_UID" ] || [ -z "$DOCKER_GID" ]; then
+  echo "Error: could not get current user id. Set DOCKER_UID and DOCKER_GID manually." >&2
+  exit 1
 fi
+export DOCKER_UID DOCKER_GID
+COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
+DOCKER_UID_ENV="$COMPOSE_DIR/.env.docker-uid"
+printf "DOCKER_UID=%s\nDOCKER_GID=%s\n" "$DOCKER_UID" "$DOCKER_GID" > "$DOCKER_UID_ENV"
+# Create workspace and agents dir ahead of boot so profile sync does not need first-run mkdir in-container.
+mkdir -p .runtime/openclaw-workspace/agents .runtime/openclaw-data
+if ! chown -R "${DOCKER_UID}:${DOCKER_GID}" .runtime/openclaw-workspace 2>/dev/null; then
+  echo "Note: chown without sudo failed, trying with sudo..." >&2
+  if ! sudo chown -R "${DOCKER_UID}:${DOCKER_GID}" .runtime/openclaw-workspace; then
+    echo "Error: workspace must be writable by runtime. From repo root run:" >&2
+    echo "  sudo chown -R ${DOCKER_UID}:${DOCKER_GID} .runtime/openclaw-workspace" >&2
+    exit 1
+  fi
+fi
+if ! chmod -R a+rwX .runtime/openclaw-workspace 2>/dev/null; then
+  sudo chmod -R a+rwX .runtime/openclaw-workspace 2>/dev/null || true
+fi
+WRITE_TEST=".runtime/openclaw-workspace/.write-test-$$"
+if ! touch "$WRITE_TEST" 2>/dev/null || ! rm -f "$WRITE_TEST" 2>/dev/null; then
+  echo "Error: workspace is not writable by current user (UID $DOCKER_UID). Run:" >&2
+  echo "  sudo chown -R ${DOCKER_UID}:${DOCKER_GID} .runtime/openclaw-workspace" >&2
+  exit 1
+fi
+echo "Runtime will run as UID $DOCKER_UID (workspace chown'd). Starting compose..."
 
 # Clean up any leftover containers/networks from a previous failed run to avoid
 # "network ... not found" when Docker has stale references (common on macOS).
@@ -50,7 +72,7 @@ if [ "$BUILD" = "1" ]; then
 fi
 
 run_compose() {
-  docker compose "${compose_args[@]}" "${up_args[@]}"
+  docker compose --env-file "$DOCKER_UID_ENV" "${compose_args[@]}" "${up_args[@]}"
 }
 
 if run_compose; then

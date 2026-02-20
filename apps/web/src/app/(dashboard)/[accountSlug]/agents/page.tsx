@@ -36,8 +36,9 @@ export default function AgentsPage({ params }: AgentsPageProps) {
   // Show loading state when account or roster is loading
   const isLoading = isAccountLoading || (accountId && roster === undefined);
   const onlineCount =
-    roster?.filter((a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY)
-      .length ?? 0;
+    roster?.filter(
+      (a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY,
+    ).length ?? 0;
 
   return (
     <div className="flex flex-col h-full">

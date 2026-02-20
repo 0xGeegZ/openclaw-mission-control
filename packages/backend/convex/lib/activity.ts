@@ -25,13 +25,26 @@ export interface LogActivityParams {
 /**
  * Log an activity to the activity feed.
  * This is the full implementation (not a stub).
- * 
+ *
  * @param params - Activity parameters
  * @returns The created activity ID
  */
-export async function logActivity(params: LogActivityParams): Promise<Id<"activities">> {
-  const { ctx, accountId, type, actorType, actorId, actorName, targetType, targetId, targetName, meta } = params;
-  
+export async function logActivity(
+  params: LogActivityParams,
+): Promise<Id<"activities">> {
+  const {
+    ctx,
+    accountId,
+    type,
+    actorType,
+    actorId,
+    actorName,
+    targetType,
+    targetId,
+    targetName,
+    meta,
+  } = params;
+
   return ctx.db.insert("activities", {
     accountId,
     type,
@@ -59,7 +72,7 @@ export function getActivityDescription(
   type: ActivityType,
   actorName: string,
   targetName?: string,
-  meta?: Record<string, unknown>
+  meta?: Record<string, unknown>,
 ): string {
   const target = targetName ?? "an item";
 

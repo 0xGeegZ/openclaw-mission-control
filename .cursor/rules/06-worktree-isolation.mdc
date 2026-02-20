@@ -1,0 +1,17 @@
+---
+description: Use a dedicated worktree (or tmp folder) for feature/task work so PRs stay isolated.
+globs:
+alwaysApply: true
+---
+
+# Worktree isolation for feature work
+
+When working on a feature or task, **do not perform feature work in the main repo directory** when multiple features or agents may be in progress. Use one of:
+
+1. **Git worktree (preferred):** Create a worktree for the feature branch so all edits and the PR come from an isolated directory.
+   - From repo root: `git worktree add <path> -b <branch>` (e.g. `git worktree add ../mission-control--feat-xyz -b feat/xyz` or `git worktree add .worktrees/feat-xyz -b feat/xyz`).
+   - Open the worktree path in Cursor or run all implementation and PR steps from that directory.
+
+2. **Dedicated tmp folder:** If worktrees are not possible, use a separate clone or copy in a tmp directory and merge back via patch or manual PR.
+
+This keeps each PR scoped to one feature and avoids mixed commits. For the full workflow, see the plan-feature skill (Phase 0: Workspace isolation) and, for runtime agents, `docs/runtime/AGENTS.md` (Task worktree).

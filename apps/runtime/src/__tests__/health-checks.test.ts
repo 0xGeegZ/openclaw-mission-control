@@ -15,6 +15,27 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 const TEST_PORT = 39494;
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
 
+/** Retry fetch a few times to tolerate server warm-up or transient ECONNRESET. */
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(url, options);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (i < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 vi.mock("../gateway", () => ({
   getGatewayState: vi.fn().mockReturnValue({
     isRunning: true,
@@ -35,6 +56,8 @@ vi.mock("../delivery", () => ({
     lastErrorAt: null,
     lastErrorMessage: null,
     noResponseFailures: new Map(),
+    noResponseTerminalSkipCount: 0,
+    requiredNotificationRetryExhaustedCount: 0,
   }),
 }));
 
@@ -79,6 +102,7 @@ function createRuntimeConfig(): RuntimeConfig {
     openclawClientToolsEnabled: true,
     taskStatusBaseUrl: BASE_URL,
     openclawWorkspaceRoot: "/tmp/test",
+    openclawConfigWorkspaceRoot: "/tmp/test",
     openclawConfigPath: "/tmp/test/openclaw.json",
     openclawAgentsMdPath: undefined,
     openclawHeartbeatMdPath: "/tmp/test/HEARTBEAT.md",
@@ -97,7 +121,7 @@ describe("health server public endpoints", () => {
   });
 
   it("returns full health payload on GET /health", async () => {
-    const response = await fetch(`${BASE_URL}/health`);
+    const response = await fetchWithRetry(`${BASE_URL}/health`);
     expect(response.status).toBe(200);
 
     const payload = (await response.json()) as {
@@ -127,7 +151,7 @@ describe("health server public endpoints", () => {
   });
 
   it("returns version info on GET /version", async () => {
-    const response = await fetch(`${BASE_URL}/version`);
+    const response = await fetchWithRetry(`${BASE_URL}/version`);
     expect(response.status).toBe(200);
 
     const payload = (await response.json()) as {
@@ -144,7 +168,7 @@ describe("health server public endpoints", () => {
   });
 
   it("returns prometheus text by default on GET /metrics", async () => {
-    const response = await fetch(`${BASE_URL}/metrics`);
+    const response = await fetchWithRetry(`${BASE_URL}/metrics`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/plain");
 
@@ -153,7 +177,7 @@ describe("health server public endpoints", () => {
   });
 
   it("returns json metrics when Accept: application/json", async () => {
-    const response = await fetch(`${BASE_URL}/metrics`, {
+    const response = await fetchWithRetry(`${BASE_URL}/metrics`, {
       headers: { Accept: "application/json" },
     });
     expect(response.status).toBe(200);
@@ -179,17 +203,20 @@ describe("health server public endpoints", () => {
   });
 
   it("returns 404 for unknown public endpoints", async () => {
-    const response = await fetch(`${BASE_URL}/does-not-exist`);
+    const response = await fetchWithRetry(`${BASE_URL}/does-not-exist`);
     expect(response.status).toBe(404);
   });
 
   it("matches known endpoints when query params are present", async () => {
-    const healthResponse = await fetch(`${BASE_URL}/health?verbose=1`);
+    const healthResponse = await fetchWithRetry(`${BASE_URL}/health?verbose=1`);
     expect(healthResponse.status).toBe(200);
 
-    const metricsResponse = await fetch(`${BASE_URL}/metrics?format=json`, {
-      headers: { Accept: "application/json" },
-    });
+    const metricsResponse = await fetchWithRetry(
+      `${BASE_URL}/metrics?format=json`,
+      {
+        headers: { Accept: "application/json" },
+      },
+    );
     expect(metricsResponse.status).toBe(200);
   });
 });

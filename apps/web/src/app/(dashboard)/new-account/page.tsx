@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Authenticated,
@@ -61,16 +61,6 @@ function NewAccountContent() {
   const createAccount = useMutation(api.accounts.create);
   const myAccounts = useQuery(api.accounts.listMyAccounts);
 
-  // Redirect to first account if user already has accounts
-  useEffect(() => {
-    if (myAccounts && myAccounts.length > 0) {
-      const firstAccount = myAccounts[0];
-      if (firstAccount && firstAccount.slug) {
-        router.push(`/${firstAccount.slug}/tasks`);
-      }
-    }
-  }, [myAccounts, router]);
-
   // Show loading state while checking accounts
   if (myAccounts === undefined) {
     return (
@@ -78,11 +68,6 @@ function NewAccountContent() {
         <p className="text-muted-foreground">Loading accounts...</p>
       </div>
     );
-  }
-
-  // Don't render form if user has accounts (will redirect)
-  if (myAccounts && myAccounts.length > 0) {
-    return null;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,7 +123,7 @@ function NewAccountContent() {
           </div>
           <CardTitle className="text-2xl">Create Your Account</CardTitle>
           <CardDescription>
-            Get started by creating your first OpenClaw Mission Control account
+            Create a new OpenClaw Mission Control account
           </CardDescription>
         </CardHeader>
         <CardContent>

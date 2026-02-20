@@ -1,7 +1,15 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@packages/backend/convex/_generated/api";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { RuntimeConfig } from "./config";
 import { createLogger } from "./logger";
+
+/** Minimal shape for items returned by service.actions.listAgents (backend returns unknown[]). Runtime uses systemSessionKey only. */
+export interface ListAgentsItem {
+  _id: Id<"agents">;
+  systemSessionKey: string;
+  slug?: string;
+}
 
 const log = createLogger("[Convex]");
 
@@ -24,7 +32,12 @@ async function fetchWithRetry(
   input: string | URL | Request,
   init?: RequestInit,
 ): Promise<Response> {
-  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -39,10 +52,13 @@ async function fetchWithRetry(
         msg.includes("ENOTFOUND");
       if (attempt < MAX_ATTEMPTS - 1 && isRetryable) {
         const delayMs = INITIAL_BACKOFF_MS * BACKOFF_BASE ** attempt;
-        log.warn(
-          "Convex request failed, retrying",
-          { attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, delayMs, error: msg, url },
-        );
+        log.warn("Convex request failed, retrying", {
+          attempt: attempt + 1,
+          maxAttempts: MAX_ATTEMPTS,
+          delayMs,
+          error: msg,
+          url,
+        });
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
@@ -74,7 +90,9 @@ export function initConvexClient(config: RuntimeConfig): ConvexHttpClient {
  */
 export function getConvexClient(): ConvexHttpClient {
   if (!client) {
-    throw new Error("Convex client not initialized. Call initConvexClient first.");
+    throw new Error(
+      "Convex client not initialized. Call initConvexClient first.",
+    );
   }
   return client;
 }

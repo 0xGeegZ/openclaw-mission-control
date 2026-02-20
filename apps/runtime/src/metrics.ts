@@ -88,10 +88,19 @@ export function resetMetrics(): void {
   }
 }
 
+/** Delivery state slice used to append delivery counters to Prometheus output. */
+export interface DeliveryMetricsSlice {
+  noResponseTerminalSkipCount: number;
+  requiredNotificationRetryExhaustedCount: number;
+}
+
 /**
  * Format metrics as Prometheus-style text.
+ * Optionally include delivery counters when provided (avoids circular dependency from metrics -> delivery).
  */
-export function formatPrometheusMetrics(): string {
+export function formatPrometheusMetrics(
+  deliverySlice?: DeliveryMetricsSlice | null,
+): string {
   const lines: string[] = [];
   const timestamp = Date.now();
 
@@ -148,6 +157,23 @@ export function formatPrometheusMetrics(): string {
     lines.push(`# TYPE runtime_operation_duration_max gauge`);
     lines.push(
       `runtime_operation_duration_max{operation="${operation}"} ${m.maxDurationMs} ${timestamp}`,
+    );
+  }
+
+  if (deliverySlice) {
+    lines.push(
+      `# HELP delivery_no_response_terminal_skip_total Passive no-response notifications skipped (marked delivered without retry).`,
+    );
+    lines.push(`# TYPE delivery_no_response_terminal_skip_total counter`);
+    lines.push(
+      `delivery_no_response_terminal_skip_total ${deliverySlice.noResponseTerminalSkipCount} ${timestamp}`,
+    );
+    lines.push(
+      `# HELP delivery_required_retry_exhausted_total Retry-eligible no-response notifications that exhausted retries (required types plus retryable thread updates).`,
+    );
+    lines.push(`# TYPE delivery_required_retry_exhausted_total counter`);
+    lines.push(
+      `delivery_required_retry_exhausted_total ${deliverySlice.requiredNotificationRetryExhaustedCount} ${timestamp}`,
     );
   }
 

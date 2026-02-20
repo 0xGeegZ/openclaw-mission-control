@@ -35,6 +35,7 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 .env
+.env.docker-uid
 
 # turbo
 .turbo
@@ -48,3 +49,6 @@ packages/backend/convex/seed-skills/*.md
 !packages/backend/convex/seed-skills/github-issue-triage.md
 !packages/backend/convex/seed-skills/release-management.md
 !packages/backend/convex/seed-skills/backend-convex.md
+
+# Worktrees
+.worktrees/

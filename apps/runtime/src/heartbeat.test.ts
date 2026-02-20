@@ -184,7 +184,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: null,
-      nowMs: 1000 + 3 * 60 * 60 * 1000 + 1,
+      nowMs: 1000 + 16 * 60 * 1000,
     });
     expect(shouldRequest).toBe(true);
   });
@@ -200,7 +200,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: 10_000,
-      nowMs: 10_000 + 30 * 60 * 1000,
+      nowMs: 10_000 + 10 * 60 * 1000,
     });
     expect(shouldRequest).toBe(false);
   });
@@ -249,7 +249,7 @@ describe("shouldRequestAssigneeResponse", () => {
     const shouldRequest = shouldRequestAssigneeResponse({
       task,
       lastAssigneeReplyAt: null,
-      nowMs: 1_000 + 3 * 60 * 60 * 1000 + 1,
+      nowMs: 1_000 + 16 * 60 * 1000,
     });
     expect(shouldRequest).toBe(true);
   });
@@ -365,7 +365,9 @@ describe("buildHeartbeatMessage", () => {
     expect(message).toContain(
       "Prioritize stale in_progress/review tasks first",
     );
-    expect(message).toContain("task_load (or task_get/task_thread/task_search)");
+    expect(message).toContain(
+      "task_load (or task_get/task_thread/task_search)",
+    );
     expect(message).toContain("response_request only");
     expect(message).toContain("do not also post task_message");
     expect(message).toContain("response_request");
@@ -389,7 +391,7 @@ describe("buildHeartbeatMessage", () => {
       isOrchestrator: false,
       focusTaskThread: [
         {
-          messageId: "msg1" as unknown as Id<"messages">,
+          messageId: "msg1" as Id<"messages">,
           authorType: "user",
           authorId: "user_1",
           authorName: "Guillaume",

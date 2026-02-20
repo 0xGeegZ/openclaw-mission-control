@@ -48,7 +48,11 @@ const STATUS_CONFIG: Record<
     textColor: "text-amber-500",
     label: "OFFLINE",
   },
-  error: { color: "bg-destructive", textColor: "text-destructive", label: "ERROR" },
+  error: {
+    color: "bg-destructive",
+    textColor: "text-destructive",
+    label: "ERROR",
+  },
   typing: {
     color: "bg-cyan-500",
     textColor: "text-cyan-500",
@@ -87,7 +91,9 @@ export function AgentsSidebar({
 
   const isLoading = accountId && agents === undefined;
   const activeAgents =
-    agents?.filter((a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY) ?? [];
+    agents?.filter(
+      (a) => a.status === AGENT_STATUS.ONLINE || a.status === AGENT_STATUS.BUSY,
+    ) ?? [];
 
   return (
     <div className={cn("flex flex-col h-full border-r bg-card", className)}>
@@ -209,10 +215,7 @@ function AgentItem({ agent, isSelected, isTyping, onClick }: AgentItemProps) {
         ) : null}
         <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
           {FallbackIcon ? (
-            <FallbackIcon
-              className="h-5 w-5 text-primary"
-              aria-hidden
-            />
+            <FallbackIcon className="h-5 w-5 text-primary" aria-hidden />
           ) : (
             agent.name.slice(0, 2).toUpperCase()
           )}

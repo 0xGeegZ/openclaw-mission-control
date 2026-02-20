@@ -4,6 +4,7 @@ import { Doc, Id } from "../_generated/dataModel";
 import {
   attachmentValidator,
   isAttachmentTypeAndSizeAllowed,
+  MESSAGE_CONTENT_MAX_LENGTH,
 } from "../lib/validators";
 import { logActivity } from "../lib/activity";
 import {
@@ -11,7 +12,6 @@ import {
   ensureOrchestratorSubscribed,
 } from "../subscriptions";
 import {
-  extractMentionStrings,
   resolveMentions,
   hasAllMention,
   getAllMentions,
@@ -168,6 +168,42 @@ export const listThreadForTool = internalQuery({
   },
 });
 
+/** Default and max limits for task_history activity list (must match actions.ts). */
+const TASK_HISTORY_ACTIVITY_LIMIT_DEFAULT = 30;
+const TASK_HISTORY_ACTIVITY_LIMIT_MAX = 200;
+
+/**
+ * List task-scoped activities for agent tools (internal, service-only).
+ * Returns activities with targetType=task and targetId=taskId, account-validated, newest first.
+ */
+export const listTaskActivitiesForTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    taskId: v.id("tasks"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.accountId !== args.accountId) {
+      return [];
+    }
+
+    const limit = Math.min(
+      args.limit ?? TASK_HISTORY_ACTIVITY_LIMIT_DEFAULT,
+      TASK_HISTORY_ACTIVITY_LIMIT_MAX,
+    );
+    const activities = await ctx.db
+      .query("activities")
+      .withIndex("by_target", (q) =>
+        q.eq("targetType", "task").eq("targetId", args.taskId),
+      )
+      .order("desc")
+      .take(limit);
+
+    return activities.filter((a) => a.accountId === args.accountId);
+  },
+});
+
 /**
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread.
@@ -202,6 +238,13 @@ export const createFromAgent = internalMutation({
     if (task.accountId !== agent.accountId) {
       throw new Error("Forbidden: Task belongs to different account");
     }
+
+    if (args.content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Message content too long (max ${MESSAGE_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
     const account = await ctx.db.get(agent.accountId);
     const isOrchestratorChat = isOrchestratorChatTask({ account, task });
     const orchestratorAgentId =
@@ -281,8 +324,9 @@ export const createFromAgent = internalMutation({
     } else if (hasAllMention(args.content)) {
       mentions = await getAllMentions(ctx, agent.accountId, args.agentId);
     } else {
-      const mentionStrings = extractMentionStrings(args.content);
-      mentions = await resolveMentions(ctx, agent.accountId, mentionStrings);
+      mentions = await resolveMentions(ctx, agent.accountId, {
+        content: args.content,
+      });
     }
 
     const suppressAgentNotifications = args.suppressAgentNotifications === true;

@@ -1,6 +1,6 @@
 import net from "node:net";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api } from "./convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -128,22 +128,11 @@ function parseOpenClawResponseBody(body: string): SendToOpenClawResult {
 const DEFAULT_GATEWAY_READY_TIMEOUT_MS = 30000;
 const DEFAULT_GATEWAY_READY_INTERVAL_MS = 1000;
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 1000;
-const NO_RESPONSE_FROM_OPENCLAW_MESSAGE = "No response from OpenClaw.";
-const NO_RESPONSE_MENTION_PREFIX_PATTERN =
-  /^(@[A-Za-z0-9_-]+)(\s+@[A-Za-z0-9_-]+)*$/;
-const NO_RESPONSE_FALLBACK_MESSAGE = [
-  "**Summary**",
-  "- OpenClaw did not return a response for this run.",
-  "",
-  "**Work done**",
-  "- None (no output received).",
-  "",
-  "**Next step (one)**",
-  "- Retry once the runtime or gateway is healthy; check OpenClaw logs if this persists.",
-  "",
-  "**Sources**",
-  "- None.",
-].join("\n");
+const SYSTEM_SESSION_PREFIX = "system:";
+import {
+  buildNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 interface GatewayAddress {
   host: string;
@@ -171,16 +160,29 @@ function resolveGatewayAddress(baseUrl: string): GatewayAddress | null {
 
 /**
  * Resolve the OpenClaw agent id from a session key.
- * Falls back to "main" when the key is not in agent:<id>:<...> form.
+ * Uses registered session map only (task/system keys from backend). No legacy parsing.
  */
 function resolveAgentIdFromSessionKey(sessionKey: string): string {
   const trimmed = sessionKey?.trim();
   if (!trimmed) return "main";
-  const parts = trimmed.split(":");
-  if (parts.length >= 2 && parts[0] === "agent" && parts[1]) {
-    return parts[1];
-  }
+  const session = state.sessions.get(trimmed);
+  if (session) return session.agentId;
   return "main";
+}
+
+/**
+ * Agent id to send to the OpenClaw gateway (x-openclaw-agent-id, model).
+ * Must match openclaw.json agents.list[].id (slug) so sessions appear in Control UI Chat.
+ * Falls back to slug parsed from session key (system:agent:SLUG:... or task:...:agent:SLUG:...) then Convex agentId.
+ */
+function getOpenClawAgentId(sessionKey: string): string {
+  const trimmed = sessionKey?.trim();
+  if (!trimmed) return "main";
+  const session = state.sessions.get(trimmed);
+  if (session?.agentSlug) return session.agentSlug;
+  const match = trimmed.match(/:agent:([^:]+):/);
+  if (match?.[1]) return match[1];
+  return session ? String(session.agentId) : "main";
 }
 
 /**
@@ -234,6 +236,8 @@ interface GatewayState {
 interface SessionInfo {
   sessionKey: string;
   agentId: Id<"agents">;
+  /** Agent slug for OpenClaw gateway routing; must match openclaw.json agents.list[].id so Control UI Chat shows sessions. */
+  agentSlug?: string;
   lastMessage: number | null;
 }
 
@@ -247,59 +251,17 @@ const state: GatewayState = {
   lastSendError: null,
 };
 
-/**
- * Detect OpenClaw "no response" placeholder messages, including mention-only prefixes.
- */
-export function parseNoResponsePlaceholder(response: string): {
-  isPlaceholder: boolean;
-  mentionPrefix: string | null;
-} {
-  const trimmed = response.trim();
-  if (!trimmed) return { isPlaceholder: false, mentionPrefix: null };
-  if (trimmed === NO_RESPONSE_FROM_OPENCLAW_MESSAGE) {
-    return { isPlaceholder: true, mentionPrefix: null };
-  }
-  if (!trimmed.endsWith(NO_RESPONSE_FROM_OPENCLAW_MESSAGE)) {
-    return { isPlaceholder: false, mentionPrefix: null };
-  }
-  const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FROM_OPENCLAW_MESSAGE.length)
-    .trim();
-  if (!prefix) return { isPlaceholder: true, mentionPrefix: null };
-  if (NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix)) {
-    return { isPlaceholder: true, mentionPrefix: prefix };
-  }
-  return { isPlaceholder: false, mentionPrefix: null };
-}
-
-/**
- * Build a fallback response for placeholder OpenClaw messages.
- */
-export function buildNoResponseFallbackMessage(
-  mentionPrefix?: string | null,
-): string {
-  const prefix = mentionPrefix ? `${mentionPrefix.trim()}\n\n` : "";
-  return `${prefix}${NO_RESPONSE_FALLBACK_MESSAGE}`;
-}
-
-/**
- * Detect fallback messages generated for no-response OpenClaw runs.
- * Accepts plain fallback and mention-prefixed variants.
- */
-export function isNoResponseFallbackMessage(content: string): boolean {
-  const trimmed = content.trim();
-  if (!trimmed) return false;
-  if (trimmed === NO_RESPONSE_FALLBACK_MESSAGE) return true;
-  if (!trimmed.endsWith(NO_RESPONSE_FALLBACK_MESSAGE)) return false;
-  const prefix = trimmed
-    .slice(0, trimmed.length - NO_RESPONSE_FALLBACK_MESSAGE.length)
-    .trim();
-  return !prefix || NO_RESPONSE_MENTION_PREFIX_PATTERN.test(prefix);
-}
+/** Re-export from shared no-response module for backward compatibility. */
+export {
+  buildNoResponseFallbackMessage,
+  isNoResponseFallbackMessage,
+  parseNoResponsePlaceholder,
+} from "./delivery/no-response";
 
 /**
  * Initialize the OpenClaw gateway.
- * Fetches agents and registers their sessions; stores gateway URL/token for send.
+ * Fetches agents (with backend-resolved systemSessionKey), registers each in the session map,
+ * and stores gateway URL/token. Throws if any agent is missing systemSessionKey.
  */
 export async function initGateway(config: RuntimeConfig): Promise<void> {
   log.info("Initializing OpenClaw gateway...");
@@ -309,18 +271,29 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   state.openclawRequestTimeoutMs = config.openclawRequestTimeoutMs;
 
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  });
+  })) as ListAgentsItem[];
 
   for (const agent of agents) {
-    state.sessions.set(agent.sessionKey, {
-      sessionKey: agent.sessionKey,
+    const key = agent.systemSessionKey;
+    if (typeof key !== "string" || !key.trim()) {
+      log.error("Agent missing systemSessionKey; cannot register", {
+        agentId: agent._id,
+        slug: agent.slug,
+      });
+      throw new Error(
+        `Cannot init gateway: agent ${agent._id} has no systemSessionKey (backend must return systemSessionKey for every agent)`,
+      );
+    }
+    state.sessions.set(key, {
+      sessionKey: key,
       agentId: agent._id,
+      agentSlug: typeof agent.slug === "string" ? agent.slug : undefined,
       lastMessage: null,
     });
-    log.debug("Registered session:", agent.sessionKey);
+    log.debug("Registered session:", key);
   }
 
   state.isRunning = true;
@@ -381,36 +354,69 @@ export async function waitForOpenClawGatewayReady(
   return false;
 }
 
-/** Agent shape from listAgents (minimal for registration). */
+/** Agent shape for registration (system session key from listAgents). */
 export interface AgentForSession {
   _id: Id<"agents">;
-  sessionKey: string;
+  systemSessionKey: string;
+  /** Agent slug; used as OpenClaw gateway agent id so Control UI Chat shows sessions. */
+  slug?: string;
 }
 
 /**
  * Register or update a single agent session (idempotent).
- * Used by agent sync to add new agents without restart.
+ * Used by agent sync when agents are added; accepts system session key only (from listAgents).
+ * Skips registration when systemSessionKey is missing or empty (logs warning).
  */
 export function registerAgentSession(agent: AgentForSession): void {
-  state.sessions.set(agent.sessionKey, {
-    sessionKey: agent.sessionKey,
-    agentId: agent._id,
-    lastMessage: null,
-  });
-  log.debug("Registered session:", agent.sessionKey);
+  refreshAgentSystemSession(agent);
 }
 
 /**
- * Remove a session by agent id.
+ * Replace the active system session key for an agent while preserving task-scoped keys.
+ * Used by agent sync so task sessions remain valid between sync ticks.
+ */
+export function refreshAgentSystemSession(agent: AgentForSession): void {
+  const key = agent.systemSessionKey?.trim();
+  if (!key) {
+    log.warn(
+      "refreshAgentSystemSession: skipping agent with empty systemSessionKey",
+      {
+        agentId: agent._id,
+      },
+    );
+    return;
+  }
+  for (const [existingKey, info] of state.sessions.entries()) {
+    if (
+      info.agentId === agent._id &&
+      existingKey !== key &&
+      existingKey.startsWith(SYSTEM_SESSION_PREFIX)
+    ) {
+      state.sessions.delete(existingKey);
+      log.debug("Removed stale system session:", existingKey);
+    }
+  }
+  state.sessions.set(key, {
+    sessionKey: key,
+    agentId: agent._id,
+    agentSlug: agent.slug,
+    lastMessage: null,
+  });
+  log.debug("Registered session:", key);
+}
+
+/**
+ * Remove all sessions for an agent (task-scoped and system keys).
  * Used by agent sync when an agent is deleted in Convex.
  */
 export function removeAgentSession(agentId: Id<"agents">): void {
+  const toDelete: string[] = [];
   for (const [key, info] of state.sessions.entries()) {
-    if (info.agentId === agentId) {
-      state.sessions.delete(key);
-      log.debug("Removed session:", key);
-      return;
-    }
+    if (info.agentId === agentId) toDelete.push(key);
+  }
+  for (const key of toDelete) {
+    state.sessions.delete(key);
+    log.debug("Removed session:", key);
   }
 }
 
@@ -430,6 +436,45 @@ export interface SendToOpenClawOptions {
   tools?: unknown[];
   /** tool_choice: "auto" | "required" | { type: "function", name: string } */
   toolChoice?: "auto" | "required" | { type: "function"; name: string };
+  /** System instructions (OpenResponses instructions) merged into system prompt for this request. */
+  instructions?: string;
+}
+
+/**
+ * Register a session key for an agent so send/receive can use it.
+ * Call before send when using resolver-generated keys (task or system) that may not be in initGateway.
+ * Pass agentSlug when available so the OpenClaw gateway receives the same agent id as in openclaw.json (Control UI Chat).
+ */
+export function registerSession(
+  sessionKey: string,
+  agentId: Id<"agents">,
+  agentSlug?: string,
+): void {
+  if (!sessionKey?.trim()) return;
+  const existing = state.sessions.get(sessionKey);
+  if (existing && existing.agentId === agentId) {
+    if (
+      typeof agentSlug === "string" &&
+      agentSlug.trim() &&
+      existing.agentSlug !== agentSlug
+    ) {
+      state.sessions.set(sessionKey, {
+        ...existing,
+        agentSlug: agentSlug.trim(),
+      });
+    }
+    return;
+  }
+  state.sessions.set(sessionKey, {
+    sessionKey,
+    agentId,
+    agentSlug:
+      typeof agentSlug === "string" && agentSlug.trim()
+        ? agentSlug.trim()
+        : undefined,
+    lastMessage: null,
+  });
+  log.debug("Registered session:", sessionKey);
 }
 
 /**
@@ -439,7 +484,7 @@ export interface SendToOpenClawOptions {
  * Throws on non-2xx or when gateway URL is disabled so delivery loop keeps notification undelivered.
  *
  * Session key and tools: The gateway must run this request in the session identified by
- * x-openclaw-session-key (e.g. agent:engineer:{accountId}) so that per-request tools (task_status,
+ * x-openclaw-session-key (for example task/system resolver keys) so that per-request tools (task_status,
  * task_update, task_create, document_upsert) are applied to that run. If the gateway runs the request under a
  * different session (e.g. main or openresponses:uuid), the model will not see our tools and will
  * report "tool not in function set". See docs/runtime/AGENTS.md and OpenClaw session routing.
@@ -466,18 +511,18 @@ export async function sendToOpenClaw(
 
   log.debug("Sending to", sessionKey, ":", message.substring(0, 100));
 
-  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-openclaw-session-key": sessionKey,
-    "x-openclaw-agent-id": agentId,
+    "x-openclaw-agent-id": openclawAgentId,
   };
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
   const payload: Record<string, unknown> = {
-    model: `openclaw:${agentId}`,
+    model: `openclaw:${openclawAgentId}`,
     input: message,
     stream: false,
     // OpenResponses session routing: "user" lets the gateway derive a stable session key
@@ -485,6 +530,12 @@ export async function sendToOpenClaw(
     // endpoint is stateless per request and generates a new session (e.g. openresponses:uuid).
     user: sessionKey,
   };
+  if (
+    typeof options?.instructions === "string" &&
+    options.instructions.trim()
+  ) {
+    payload.instructions = options.instructions.trim();
+  }
   if (
     options?.tools &&
     Array.isArray(options.tools) &&
@@ -555,18 +606,18 @@ export async function sendOpenClawToolResults(
     );
   }
 
-  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-openclaw-session-key": sessionKey,
-    "x-openclaw-agent-id": agentId,
+    "x-openclaw-agent-id": openclawAgentId,
   };
   if (state.openclawGatewayToken) {
     headers["Authorization"] = `Bearer ${state.openclawGatewayToken}`;
   }
   const body = JSON.stringify({
-    model: `openclaw:${agentId}`,
+    model: `openclaw:${openclawAgentId}`,
     stream: false,
     user: sessionKey,
     function_call_output: outputs,

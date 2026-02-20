@@ -202,12 +202,14 @@ export function TaskAssignees({ task, showLabel = true }: TaskAssigneesProps) {
                       <div
                         className={cn(
                           "w-2 h-2 rounded-full shrink-0",
-                          agent.status === AGENT_STATUS.ONLINE && "bg-emerald-500",
+                          agent.status === AGENT_STATUS.ONLINE &&
+                            "bg-emerald-500",
                           agent.status === AGENT_STATUS.BUSY && "bg-amber-500",
                           agent.status === AGENT_STATUS.IDLE && "bg-blue-400",
                           agent.status === AGENT_STATUS.OFFLINE &&
                             "bg-muted-foreground/40",
-                          agent.status === AGENT_STATUS.ERROR && "bg-destructive",
+                          agent.status === AGENT_STATUS.ERROR &&
+                            "bg-destructive",
                         )}
                         title={agent.status}
                       />

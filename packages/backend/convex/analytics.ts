@@ -31,7 +31,10 @@ export interface TimeRangeArgs {
  * Used by getMetrics, getAgentStats, getMemberActivity for tenant-scoped analytics.
  * Exported for unit tests.
  */
-export function resolveTimeRange(args: TimeRangeArgs): { fromDate: number; now: number } {
+export function resolveTimeRange(args: TimeRangeArgs): {
+  fromDate: number;
+  now: number;
+} {
   const now = args.toDate ?? Date.now();
   let fromDate: number;
   switch (args.timeRange) {
@@ -168,7 +171,7 @@ export const getMetrics = query({
     const timeSeriesPoints: TimeSeriesPoint[] = [];
 
     // Initialize date range
-    let currentDate = new Date(fromDate);
+    const currentDate = new Date(fromDate);
     const endDate = new Date(now);
 
     while (currentDate <= endDate) {
@@ -343,10 +346,7 @@ export const getMemberActivity = query({
     const taskAssignmentMap = new Map<string, number>();
     tasksInRange.forEach((task) => {
       task.assignedUserIds.forEach((userId) => {
-        taskAssignmentMap.set(
-          userId,
-          (taskAssignmentMap.get(userId) || 0) + 1,
-        );
+        taskAssignmentMap.set(userId, (taskAssignmentMap.get(userId) || 0) + 1);
       });
     });
 
@@ -360,7 +360,10 @@ export const getMemberActivity = query({
         lastActivityAt: now, // Placeholder; would need to track per member
       }))
       .filter((stat) => stat.messageCount > 0 || stat.tasksAssigned > 0) // Only return active members
-      .sort((a, b) => b.messageCount + b.tasksAssigned - (a.messageCount + a.tasksAssigned)); // Sort by total activity
+      .sort(
+        (a, b) =>
+          b.messageCount + b.tasksAssigned - (a.messageCount + a.tasksAssigned),
+      ); // Sort by total activity
 
     return memberActivity;
   },

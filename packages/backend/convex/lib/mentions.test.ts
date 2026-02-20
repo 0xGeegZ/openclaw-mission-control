@@ -5,7 +5,7 @@
  * Coverage: lib/mentions.ts (mention parsing and resolution logic)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   extractMentionStrings,
   hasAllMention,
@@ -201,6 +201,32 @@ describe("resolveMentions", () => {
     expect(result[0].slug).toBe("squad-lead");
   });
 
+  it("should resolve agent slug mentions from content when followed by sentence text", async () => {
+    const mockCtx = createMockQueryContext(
+      [],
+      [
+        {
+          _id: "agent_1" as Id<"agents">,
+          name: "Squad Lead",
+          slug: "squad-lead",
+          accountId: "account_1" as Id<"accounts">,
+        },
+      ],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      {
+        content: "@squad-lead please answer engineer for the next steps",
+      },
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("agent");
+    expect(result[0].slug).toBe("squad-lead");
+  });
+
   it("should skip unresolved mentions", async () => {
     const mockCtx = createMockQueryContext([], []);
 
@@ -285,6 +311,35 @@ describe("resolveMentions", () => {
     expect(result[0].type).toBe("agent");
     expect(result[0].name).toBe("QA Reviewer");
     expect(result[0].slug).toBe("qa");
+  });
+
+  it("should resolve unquoted full-name mention from content using longest prefix", async () => {
+    const mockCtx = createMockQueryContext(
+      [
+        {
+          userId: "user_1",
+          userName: "guillaume dieudonne",
+          userEmail: "guillaume@example.com",
+        },
+      ],
+      [],
+    );
+
+    const result = await resolveMentions(
+      mockCtx,
+      "account_1" as Id<"accounts">,
+      {
+        mentionStrings: ["guillaume"],
+        content: "Awaiting approval from **@guillaume dieudonne before merge**",
+      },
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      type: "user",
+      id: "user_1",
+      name: "guillaume dieudonne",
+    });
   });
 });
 

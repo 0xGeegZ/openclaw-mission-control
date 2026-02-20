@@ -199,7 +199,9 @@ export type SkillCategory =
  * Available LLM models for OpenClaw.
  */
 export const LLM_MODEL = {
+  MINIMAX_M2_5: "minimax-m2.5",
   CLAUDE_HAIKU_4_5: "claude-haiku-4.5",
+  KIMI_K2_5: "kimi-k2.5",
   GPT_5_NANO: "gpt-5-nano",
 } as const;
 
@@ -224,6 +226,23 @@ export type AnalyticsTimeRange =
   (typeof ANALYTICS_TIME_RANGE)[keyof typeof ANALYTICS_TIME_RANGE];
 
 // ============================================================================
+// BEHAVIOR FLAGS
+// ============================================================================
+
+/**
+ * Behavior permissions enforced for each agent.
+ */
+export interface BehaviorFlags {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  canMentionAgents: boolean;
+  canReviewTasks: boolean;
+  canMarkDone: boolean;
+  requiresApprovalForActions?: string[];
+}
+
+// ============================================================================
 // OPENCLAW CONFIG
 // ============================================================================
 
@@ -246,11 +265,5 @@ export interface OpenClawConfig {
     requestsPerMinute: number;
     tokensPerDay?: number;
   };
-  behaviorFlags?: {
-    canCreateTasks: boolean;
-    canModifyTaskStatus: boolean;
-    canCreateDocuments: boolean;
-    canMentionAgents: boolean;
-    requiresApprovalForActions?: string[];
-  };
+  behaviorFlags?: BehaviorFlags;
 }

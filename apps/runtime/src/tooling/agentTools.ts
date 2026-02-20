@@ -5,7 +5,11 @@
  * Tools are attached only when the agent's effective behavior flags allow them.
  */
 
-import { getConvexClient, api } from "../convex-client";
+import { getConvexClient, api, type ListAgentsItem } from "../convex-client";
+import {
+  filterOrchestratorFromAssignees,
+  normalizeTaskCreateStatusForOrchestrator,
+} from "../task-create-orchestrator-utils";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TASK_STATUS, type TaskStatus } from "@packages/shared";
 import {
@@ -210,7 +214,8 @@ export const TASK_SEARCH_TOOL_SCHEMA = {
       properties: {
         query: {
           type: "string",
-          description: "Search query (e.g., 'PR #65', 'database', 'blocked by auth')",
+          description:
+            "Search query (e.g., 'PR #65', 'database', 'blocked by auth')",
         },
         limit: {
           type: "number",
@@ -240,6 +245,36 @@ export const TASK_LOAD_TOOL_SCHEMA = {
           type: "number",
           description:
             "Optional thread message limit (default 10, max 200). Returns the most recent messages ordered oldest-to-newest.",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+};
+
+/** OpenResponses function tool schema: load task snapshot + message and activity history */
+export const TASK_HISTORY_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "task_history",
+    description:
+      "Load task snapshot plus message history and activity history in one call. Returns task metadata, recent thread messages (oldest to newest), and recent task activities (newest first). Use when you need both conversation and audit context for the current task.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Task ID to load history for",
+        },
+        messageLimit: {
+          type: "number",
+          description:
+            "Optional message limit (default 25, max 200). Returns oldest-to-newest.",
+        },
+        activityLimit: {
+          type: "number",
+          description:
+            "Optional activity limit (default 30, max 200). Returns newest-first.",
         },
       },
       required: ["taskId"],
@@ -320,7 +355,7 @@ export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   function: {
     name: "document_upsert",
     description:
-      "Create or update a document (deliverable, note, template, or reference). Use documentId to update an existing document.",
+      "Create or update a document (deliverable, note, template, or reference) so the primary user can open it in the dashboard. Use documentId to update an existing document. After calling, include [Document](/document/<documentId>) in your thread reply. Do not use share/send to channel or webchat — delivery is only via this tool and the thread.",
     parameters: {
       type: "object",
       properties: {
@@ -393,7 +428,7 @@ export function getToolCapabilitiesAndSchemas(options: {
     capabilityLabels.push("change task status (task_status tool)");
     schemas.push(createTaskStatusToolSchema({ allowDone: canMarkDone }));
     capabilityLabels.push(
-      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate"
+      "update task fields (task_update tool): title/description/priority/labels/assignees/status/dueDate",
     );
     schemas.push(TASK_UPDATE_TOOL_SCHEMA);
   }
@@ -413,9 +448,15 @@ export function getToolCapabilitiesAndSchemas(options: {
   capabilityLabels.push("query agent skills (get_agent_skills tool)");
   schemas.push(GET_AGENT_SKILLS_TOOL_SCHEMA);
 
-  // Utility tools available to all agents
+  // Utility tools available to all agents with task context
   capabilityLabels.push("load task details with thread (task_load tool)");
   schemas.push(TASK_LOAD_TOOL_SCHEMA);
+  if (options.hasTaskContext) {
+    capabilityLabels.push(
+      "load task history: messages + activities (task_history tool)",
+    );
+    schemas.push(TASK_HISTORY_TOOL_SCHEMA);
+  }
 
   if (isOrchestrator) {
     capabilityLabels.push("assign agents (task_assign tool)");
@@ -483,40 +524,6 @@ function normalizeTaskPriority(value: unknown): number | undefined {
 }
 
 /**
- * Avoid orchestrator self-assignment on task creation when requested status implies assignees.
- * The service createTask endpoint auto-assigns the creator for assigned/in_progress, so we
- * downgrade to inbox for orchestrator-created tasks and let explicit assignment happen after.
- */
-function normalizeTaskCreateStatusForOrchestrator(
-  status: unknown,
-  isOrchestrator: boolean | undefined,
-): TaskStatus | undefined {
-  if (typeof status !== "string") return undefined;
-  if (!isTaskStatus(status)) return undefined;
-  if (
-    isOrchestrator === true &&
-    (status === TASK_STATUS.ASSIGNED || status === TASK_STATUS.IN_PROGRESS)
-  ) {
-    return TASK_STATUS.INBOX;
-  }
-  return status;
-}
-
-/**
- * Remove explicit orchestrator self-assignment from delegated task creation requests.
- */
-function removeOrchestratorSelfAssignee(params: {
-  assigneeIds: Id<"agents">[];
-  requesterAgentId: Id<"agents">;
-  isOrchestrator: boolean | undefined;
-}): Id<"agents">[] {
-  if (params.isOrchestrator !== true) return params.assigneeIds;
-  return params.assigneeIds.filter(
-    (assigneeId) => assigneeId !== params.requesterAgentId,
-  );
-}
-
-/**
  * Resolve agent slugs to ids for tool calls.
  */
 async function resolveAgentSlugs(params: {
@@ -525,10 +532,10 @@ async function resolveAgentSlugs(params: {
   slugs: string[];
 }): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = await client.action(api.service.actions.listAgents, {
+  const agents = (await client.action(api.service.actions.listAgents, {
     accountId: params.accountId,
     serviceToken: params.serviceToken,
-  });
+  })) as ListAgentsItem[];
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {
@@ -709,15 +716,15 @@ export async function executeAgentTool(params: {
             error: `Unknown assignee slugs: ${missing.join(", ")}`,
           };
         }
-        assigneeIds = removeOrchestratorSelfAssignee({
+        assigneeIds = filterOrchestratorFromAssignees({
           assigneeIds,
           requesterAgentId: agentId,
-          isOrchestrator,
+          isOrchestrator: isOrchestrator === true,
         });
       }
       const createStatus = normalizeTaskCreateStatusForOrchestrator(
         args.status,
-        isOrchestrator,
+        isOrchestrator === true,
       );
       const { taskId: newTaskId } = await client.action(
         api.service.actions.createTaskFromAgent,
@@ -732,17 +739,9 @@ export async function executeAgentTool(params: {
           status: createStatus,
           blockedReason: args.blockedReason?.trim(),
           dueDate: args.dueDate,
+          assignedAgentIds: assigneeIds.length > 0 ? assigneeIds : undefined,
         },
       );
-      if (assigneeIds.length > 0) {
-        await client.action(api.service.actions.assignTaskFromAgent, {
-          accountId,
-          serviceToken,
-          agentId,
-          taskId: newTaskId,
-          assignedAgentIds: assigneeIds,
-        });
-      }
       return { success: true, taskId: newTaskId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1088,6 +1087,39 @@ export async function executeAgentTool(params: {
     }
   }
 
+  if (name === "task_history") {
+    let args: {
+      taskId?: string;
+      messageLimit?: number;
+      activityLimit?: number;
+    };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    if (!args.taskId?.trim()) {
+      return { success: false, error: "taskId is required" };
+    }
+    try {
+      const result = await client.action(
+        api.service.actions.getTaskHistoryForAgentTool,
+        {
+          accountId,
+          serviceToken,
+          agentId,
+          taskId: args.taskId as Id<"tasks">,
+          messageLimit: args.messageLimit,
+          activityLimit: args.activityLimit,
+        },
+      );
+      return { success: true, data: result };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
   if (name === "task_delete") {
     let args: { taskId?: string; reason?: string };
     try {
@@ -1170,12 +1202,15 @@ export async function executeAgentTool(params: {
       const queryAgentId = args.agentId
         ? (args.agentId as Id<"agents">)
         : undefined;
-      const skills = await client.action(api.service.actions.getAgentSkillsForTool, {
-        accountId,
-        agentId,
-        serviceToken,
-        queryAgentId,
-      });
+      const skills = await client.action(
+        api.service.actions.getAgentSkillsForTool,
+        {
+          accountId,
+          agentId,
+          serviceToken,
+          queryAgentId,
+        },
+      );
       return { success: true, data: { agents: skills } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

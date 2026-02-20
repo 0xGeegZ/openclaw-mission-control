@@ -96,6 +96,8 @@ export default defineSchema({
             memberUpdates: v.boolean(),
           }),
         ),
+        /** Account-shared USER.md content (editable in Settings by admin). */
+        userMd: v.optional(v.string()),
         /** Default OpenClaw config for new agents (admin-editable). */
         agentDefaults: v.optional(
           v.object({
@@ -109,6 +111,8 @@ export default defineSchema({
                 canModifyTaskStatus: v.boolean(),
                 canCreateDocuments: v.boolean(),
                 canMentionAgents: v.boolean(),
+                canReviewTasks: v.boolean(),
+                canMarkDone: v.boolean(),
               }),
             ),
             rateLimits: v.optional(
@@ -229,7 +233,7 @@ export default defineSchema({
 
   // ==========================================================================
   // AGENTS
-  // AI agent definitions. Each agent maps to an OpenClaw session.
+  // AI agent definitions.
   // ==========================================================================
   agents: defineTable({
     /** Account this agent belongs to */
@@ -246,12 +250,6 @@ export default defineSchema({
 
     /** Detailed description of agent's responsibilities */
     description: v.optional(v.string()),
-
-    /**
-     * OpenClaw session key.
-     * Format: agent:{slug}:{accountId}
-     */
-    sessionKey: v.string(),
 
     /** Current operational status */
     status: agentStatusValidator,
@@ -276,6 +274,12 @@ export default defineSchema({
      * Contains personality, constraints, and operating procedures.
      */
     soulContent: v.optional(v.string()),
+
+    /**
+     * IDENTITY file content (per-agent persona/role).
+     * Materialized as IDENTITY.md in the agent workspace.
+     */
+    identityContent: v.optional(v.string()),
 
     /**
      * OpenClaw runtime configuration.
@@ -333,6 +337,10 @@ export default defineSchema({
             canCreateDocuments: v.boolean(),
             /** Can agent mention other agents? */
             canMentionAgents: v.boolean(),
+            /** Can agent receive review notifications and perform review? */
+            canReviewTasks: v.boolean(),
+            /** Can agent mark tasks done (e.g. close)? */
+            canMarkDone: v.boolean(),
             /** Requires human approval for certain actions? */
             requiresApprovalForActions: v.optional(v.array(v.string())),
           }),
@@ -345,8 +353,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
-    .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]),
+    .index("by_account_slug", ["accountId", "slug"]),
 
   // ==========================================================================
   // TASKS
@@ -429,6 +436,57 @@ export default defineSchema({
     .index("by_account_created", ["accountId", "createdAt"]),
 
   // ==========================================================================
+  // AGENT RUNTIME SESSIONS
+  // Unified per-agent runtime sessions: task-scoped or system (non-task).
+  // ==========================================================================
+  agentRuntimeSessions: defineTable({
+    /** Account (tenant isolation) */
+    accountId: v.id("accounts"),
+
+    /** Agent this session belongs to */
+    agentId: v.id("agents"),
+
+    /** task = per-(task,agent) with generation; system = non-task/heartbeat */
+    sessionType: v.union(v.literal("task"), v.literal("system")),
+
+    /** Set when sessionType is "task" */
+    taskId: v.optional(v.id("tasks")),
+
+    /** Agent slug at session creation (for sessionKey format) */
+    agentSlug: v.string(),
+
+    /** Generation number (v1, v2, ...); for task, incremented on reopen. */
+    generation: v.number(),
+
+    /** OpenClaw session key (task or system format). */
+    sessionKey: v.string(),
+
+    /** When this session was opened */
+    openedAt: v.number(),
+
+    /** When this session was closed (undefined = active) */
+    closedAt: v.optional(v.number()),
+
+    /** Why closed (e.g. "task_done", "task_archived") */
+    closedReason: v.optional(v.string()),
+  })
+    .index("by_account_type_task_agent_closed", [
+      "accountId",
+      "sessionType",
+      "taskId",
+      "agentId",
+      "closedAt",
+    ])
+    .index("by_account_type_agent_closed", [
+      "accountId",
+      "sessionType",
+      "agentId",
+      "closedAt",
+    ])
+    .index("by_session_key", ["sessionKey"])
+    .index("by_account_task", ["accountId", "taskId"]),
+
+  // ==========================================================================
   // MESSAGES
   // Comments/messages in task threads.
   // ==========================================================================
@@ -496,6 +554,7 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_created", ["taskId", "createdAt"])
+    .index("by_account_task_created", ["accountId", "taskId", "createdAt"])
     .index("by_task_author_created", [
       "taskId",
       "authorType",
@@ -702,6 +761,12 @@ export default defineSchema({
      * timestamp = read at
      */
     readAt: v.optional(v.number()),
+
+    /**
+     * Delivery loop ended for this attempt (success or failure); typing stops.
+     * Cleared on markRead so retries can show typing again.
+     */
+    deliveryEndedAt: v.optional(v.number()),
 
     /** Timestamp of creation */
     createdAt: v.number(),

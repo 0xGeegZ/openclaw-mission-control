@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build and output
+.next
+.swc
+out
+build
+dist
+.turbo
+*.tsbuildinfo
+
+# Testing
+coverage
+
+# Expo
+.expo
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+
+# Runtime / OpenClaw persisted data (Docker Compose shared volumes: openclaw-workspace, openclaw-data)
+.runtime
+
+# Generated artifacts
+packages/backend/convex/seed_skills_content.generated.ts
+packages/backend/convex/seed-skills/*.md
+!packages/backend/convex/seed-skills/github-issue-triage.md
+!packages/backend/convex/seed-skills/release-management.md
+!packages/backend/convex/seed-skills/backend-convex.md
+
+# Worktrees
+.worktrees
