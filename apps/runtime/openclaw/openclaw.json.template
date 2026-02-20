@@ -26,7 +26,7 @@
       },
       "compaction": { "mode": "safeguard" },
       "contextPruning": { "mode": "cache-ttl", "ttl": "5m" },
-      "maxConcurrent": 4,
+      "maxConcurrent": 5,
       "subagents": { "maxConcurrent": 8 }
     }
   },
