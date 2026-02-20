@@ -5,7 +5,7 @@
  * Tools are attached only when the agent's effective behavior flags allow them.
  */
 
-import { getConvexClient, api, type ListAgentsItem } from "../convex-client";
+import { getConvexClient, api } from "../convex-client";
 import {
   filterOrchestratorFromAssignees,
   normalizeTaskCreateStatusForOrchestrator,
@@ -564,10 +564,10 @@ async function resolveAgentSlugs(params: {
   slugs: string[];
 }): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = (await client.action(api.service.actions.listAgents, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: params.accountId,
     serviceToken: params.serviceToken,
-  })) as ListAgentsItem[];
+  });
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {

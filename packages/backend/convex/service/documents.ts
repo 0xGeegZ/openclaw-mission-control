@@ -37,31 +37,30 @@ export const listForAgentTool = internalQuery({
     const typeFilter = args.type;
 
     if (args.taskId) {
-      // Task path: index by_task then filter/sort/slice. For very large task doc counts, consider by_task_updated + take(limit).
+      // Task path: use by_task_updated for bounded read; filter deleted/type in app.
       const task = await ctx.db.get(args.taskId);
       if (!task || task.accountId !== accountId) {
         return [];
       }
+      const fetchCount = Math.min(limit * 2, 200);
       const docs = await ctx.db
         .query("documents")
-        .withIndex("by_task", (q) => q.eq("taskId", args.taskId!))
-        .collect();
+        .withIndex("by_task_updated", (q) => q.eq("taskId", args.taskId!))
+        .order("desc")
+        .take(fetchCount);
       let filtered = docs.filter(
         (d) => !d.deletedAt && d.accountId === accountId,
       );
       if (typeFilter) {
         filtered = filtered.filter((d) => d.type === typeFilter);
       }
-      return filtered
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, limit)
-        .map((d) => ({
-          _id: d._id,
-          title: documentDisplayTitle(d),
-          type: d.type,
-          taskId: d.taskId,
-          updatedAt: d.updatedAt,
-        }));
+      return filtered.slice(0, limit).map((d) => ({
+        _id: d._id,
+        title: documentDisplayTitle(d),
+        type: d.type,
+        taskId: d.taskId,
+        updatedAt: d.updatedAt,
+      }));
     }
 
     const fetchLimit = Math.min(limit * 2, 100);

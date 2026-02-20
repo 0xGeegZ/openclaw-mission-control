@@ -40,6 +40,13 @@ Defined in `apps/runtime/src/tooling/agentTools.ts` (and `taskStatusTool.ts`, `t
 | **task_delete**      | Orchestrator only                         | Archive a task with required reason (soft delete).                                                                                         |
 | **task_link_pr**     | Orchestrator only                         | Link task to a GitHub PR bidirectionally (taskId, prNumber).                                                                               |
 
+**Intentional parity gaps (user-only, no agent tool):**
+
+- **Document soft-delete:** Users can soft-delete documents via the UI/API; there is no `document_soft_delete` or `document_archive` agent tool. Agents can create/update via document_upsert but cannot remove or archive documents. Add an agent tool only if product wants agents to archive superseded deliverables.
+- **Message edit/delete:** Users can edit or delete messages; no agent tools for message_remove or message_update (by design; only author/user can edit).
+- **Task reopen:** Users can reopen done tasks; agents cannot set status to inbox/assigned (AGENT_ALLOWED_STATUSES). Reopen is user-only.
+- **Document duplicate:** UI supports duplicate document and link doc to task; document_upsert supports taskId (link parity); no duplicate-document agent tool. Add only if automation workflows need it.
+
 HTTP fallbacks are documented in AGENTS.md and seed/USER_TEMPLATE for task_status, task_update, task_create, document, response_request when tools are not offered.
 
 ---

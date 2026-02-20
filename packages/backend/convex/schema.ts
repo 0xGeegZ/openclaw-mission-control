@@ -655,6 +655,7 @@ export default defineSchema({
     .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
+    .index("by_task_updated", ["taskId", "updatedAt"])
     .index("by_account_updated", ["accountId", "updatedAt"])
     .index("by_account_deleted", ["accountId", "deletedAt"]),
 

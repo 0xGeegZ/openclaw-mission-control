@@ -10,8 +10,16 @@ import {
   _resetNoResponseRetryState,
   _runOnePollCycle,
   getDeliveryState,
-  type DeliveryContext,
 } from "./delivery";
+import type { DeliveryContext } from "./delivery/types";
+import {
+  accId,
+  aid,
+  buildContext,
+  mid,
+  nid,
+  tid,
+} from "./test-helpers/deliveryContext";
 
 const mockGetConvexClient = vi.hoisted(() => vi.fn());
 const mockAction = vi.hoisted(() => vi.fn());
@@ -41,52 +49,6 @@ vi.mock("./metrics", () => ({
 vi.mock("./backoff", () => ({
   backoffMs: mockBackoffMs,
 }));
-
-const aid = (s: string): Id<"agents"> => s as Id<"agents">;
-const tid = (s: string): Id<"tasks"> => s as Id<"tasks">;
-const nid = (s: string): Id<"notifications"> => s as Id<"notifications">;
-const accId = (s: string): Id<"accounts"> => s as Id<"accounts">;
-const mid = (s: string): Id<"messages"> => s as Id<"messages">;
-
-function buildContext(
-  overrides: Partial<DeliveryContext> = {},
-): DeliveryContext {
-  const base: DeliveryContext = {
-    notification: {
-      _id: nid("n1"),
-      type: "thread_update",
-      title: "Update",
-      body: "Body",
-      recipientId: "agent-a",
-      accountId: accId("acc1"),
-    },
-    agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
-    task: {
-      _id: tid("task1"),
-      status: "in_progress",
-      title: "Task",
-      assignedAgentIds: [aid("agent-a")],
-    },
-    message: {
-      _id: mid("m1"),
-      authorType: "agent",
-      authorId: "agent-b",
-      content: "Done",
-    },
-    thread: [],
-    sourceNotificationType: null,
-    orchestratorAgentId: null,
-    primaryUserMention: null,
-    mentionableAgents: [],
-    assignedAgents: [],
-    effectiveBehaviorFlags: {},
-    deliverySessionKey: "system:agent:engineer:acc1:v1",
-    repositoryDoc: null,
-    globalBriefingDoc: null,
-    taskOverview: null,
-  };
-  return { ...base, ...overrides } as DeliveryContext;
-}
 
 const DEFAULT_INTERVAL = 5000;
 const DEFAULT_BACKOFF_MS = 1000;

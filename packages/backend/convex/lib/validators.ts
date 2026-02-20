@@ -442,6 +442,12 @@ export const DOCUMENT_TITLE_MAX_LENGTH = 2_000;
 /** Maximum document content length (characters) to prevent storage/DoS. */
 export const DOCUMENT_CONTENT_MAX_LENGTH = 1_000_000;
 
+/** Maximum task title length (characters). Aligns with document title limit. */
+export const TASK_TITLE_MAX_LENGTH = 2_000;
+
+/** Maximum task description length (characters) to prevent storage/DoS. */
+export const TASK_DESCRIPTION_MAX_LENGTH = 100_000;
+
 /** Allowed MIME type prefixes/values for attachments (matches UI accept). */
 export const ATTACHMENT_ALLOWED_TYPES = [
   "image/",

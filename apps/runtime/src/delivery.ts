@@ -39,6 +39,7 @@ import {
   buildDeliveryInstructions,
   buildNotificationInput,
 } from "./delivery/prompt";
+import type { GetForDeliveryResult } from "@packages/backend/convex/service/notifications";
 import type { DeliveryContext } from "./delivery/types";
 
 export type { DeliveryContext } from "./delivery/types";
@@ -70,6 +71,10 @@ interface DeliveryState {
   consecutiveFailures: number;
   lastErrorAt: number | null;
   lastErrorMessage: string | null;
+  /**
+   * Per-notification no-response retry counts. Process-local only: lost on runtime restart,
+   * so a notification that exhausted retries may be retried again after restart.
+   */
   noResponseFailures: Map<string, { count: number; lastAt: number }>;
   /** Count of passive no-response notifications skipped (marked delivered without retry or fallback). */
   noResponseTerminalSkipCount: number;
@@ -197,6 +202,17 @@ export function _getNoResponseRetryDecision(
   notificationId: string,
   now: number = Date.now(),
 ): { attempt: number; shouldRetry: boolean } {
+  /** Cap map size to avoid unbounded growth; prune oldest entries when at limit. */
+  const NO_RESPONSE_FAILURES_MAP_MAX = 1000;
+  if (state.noResponseFailures.size >= NO_RESPONSE_FAILURES_MAP_MAX) {
+    const entries = [...state.noResponseFailures.entries()];
+    entries.sort((a, b) => a[1].lastAt - b[1].lastAt);
+    const toRemove = Math.ceil(NO_RESPONSE_FAILURES_MAP_MAX * 0.2);
+    for (let i = 0; i < toRemove && i < entries.length; i++) {
+      state.noResponseFailures.delete(entries[i]![0]);
+    }
+  }
+
   const existing = state.noResponseFailures.get(notificationId);
   let count = existing?.count ?? 0;
   const lastAt = existing?.lastAt ?? 0;
@@ -576,9 +592,11 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         );
 
         // Null or missing context: notification stays undelivered and will be retried on next poll.
-        if (context?.agent) {
-          /** Single cast at boundary: backend returns string for some id fields; at runtime they are Convex ids. */
-          const ctx: DeliveryContext = context as unknown as DeliveryContext;
+        const deliveryContext = context as GetForDeliveryResult | null;
+        if (deliveryContext?.agent) {
+          /** Backend returns GetForDeliveryResult (id as string); runtime uses DeliveryContext (Id<"agents">). Structurally compatible for policy/prompt. */
+          const ctx: DeliveryContext =
+            deliveryContext as unknown as DeliveryContext;
           if (!ctx.agent) continue;
           if (ctx.notification?.taskId && !ctx.task) {
             await markDeliveredAndLog(
@@ -667,9 +685,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
           }
           if (noResponseOutcome.exhausted) {
             state.requiredNotificationRetryExhaustedCount++;
-            const attempt =
-              noResponseOutcome.attempt ??
-              _getNoResponseRetryDecision(notification._id).attempt;
+            const attempt = noResponseOutcome.attempt ?? 0;
             log.warn(
               "OpenClaw returned no response; giving up",
               notification._id,
@@ -735,7 +751,8 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         state.lastErrorAt = Date.now();
         state.lastErrorMessage =
           error instanceof Error ? error.message : String(error);
-        log.warn("Failed to deliver", notification._id, state.lastErrorMessage);
+        const shortMsg = state.lastErrorMessage.slice(0, 200);
+        log.warn("Failed to deliver", notification._id, shortMsg);
         try {
           await client.action(
             api.service.actions.markNotificationDeliveryEnded,

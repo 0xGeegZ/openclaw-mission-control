@@ -31,13 +31,13 @@ export interface GetForDeliveryResult {
   orchestratorAgentId: Id<"agents"> | null;
   primaryUserMention: { id: string; name: string; email: string | null } | null;
   mentionableAgents: Array<{
-    id: string;
+    id: Id<"agents">;
     slug: string;
     name: string;
     role: string;
   }>;
   assignedAgents: Array<{
-    id: string;
+    id: Id<"agents">;
     slug: string;
     name: string;
     role: string;
@@ -73,6 +73,9 @@ const TASK_OVERVIEW_STATUSES: TaskStatus[] = [
 const TASK_OVERVIEW_LIMIT = 3;
 const TASK_OVERVIEW_SCAN_LIMIT = 100;
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
+
+/** Max thread messages to load for delivery context (avoids unbounded collect on long threads). */
+const GET_FOR_DELIVERY_THREAD_CAP = 50;
 const RESPONSE_REQUEST_RETRY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 /** Max limit for listUndeliveredForAccount to avoid large in-memory collect/slice. */
@@ -85,52 +88,44 @@ async function buildTaskOverview(
   ctx: { db: DatabaseReader },
   accountId: Id<"accounts">,
 ): Promise<NonNullable<GetForDeliveryResult["taskOverview"]>> {
-  const totals: Array<{ status: string; count: number }> = [];
-  const topTasks: Array<{
-    status: string;
-    tasks: Array<{
-      taskId: Id<"tasks">;
-      title: string;
-      status: string;
-      priority: number;
-      assignedAgentIds: Array<Id<"agents">>;
-      assignedUserIds: string[];
-    }>;
-  }> = [];
+  const results = await Promise.all(
+    TASK_OVERVIEW_STATUSES.map(async (status) => {
+      const tasks: Doc<"tasks">[] = await ctx.db
+        .query("tasks")
+        .withIndex("by_account_status", (q) =>
+          q.eq("accountId", accountId).eq("status", status),
+        )
+        .order("desc")
+        .take(TASK_OVERVIEW_SCAN_LIMIT);
 
-  for (const status of TASK_OVERVIEW_STATUSES) {
-    const tasks: Doc<"tasks">[] = await ctx.db
-      .query("tasks")
-      .withIndex("by_account_status", (q) =>
-        q.eq("accountId", accountId).eq("status", status),
-      )
-      .order("desc")
-      .take(TASK_OVERVIEW_SCAN_LIMIT);
+      const filteredTasks = tasks.filter(
+        (task) => !task.labels?.includes(ORCHESTRATOR_CHAT_LABEL),
+      );
 
-    const filteredTasks = tasks.filter(
-      (task) => !task.labels?.includes(ORCHESTRATOR_CHAT_LABEL),
-    );
+      filteredTasks.sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return b.createdAt - a.createdAt;
+      });
 
-    filteredTasks.sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority;
-      return b.createdAt - a.createdAt;
-    });
+      return {
+        status,
+        count: filteredTasks.length,
+        tasks: filteredTasks.slice(0, TASK_OVERVIEW_LIMIT).map((task) => ({
+          taskId: task._id,
+          title: task.title,
+          status: task.status,
+          priority: task.priority,
+          assignedAgentIds: task.assignedAgentIds,
+          assignedUserIds: task.assignedUserIds,
+        })),
+      };
+    }),
+  );
 
-    totals.push({ status, count: filteredTasks.length });
-    topTasks.push({
-      status,
-      tasks: filteredTasks.slice(0, TASK_OVERVIEW_LIMIT).map((task) => ({
-        taskId: task._id,
-        title: task.title,
-        status: task.status,
-        priority: task.priority,
-        assignedAgentIds: task.assignedAgentIds,
-        assignedUserIds: task.assignedUserIds,
-      })),
-    });
-  }
-
-  return { totals, topTasks };
+  return {
+    totals: results.map((r) => ({ status: r.status, count: r.count })),
+    topTasks: results.map((r) => ({ status: r.status, tasks: r.tasks })),
+  };
 }
 
 /**
@@ -297,14 +292,16 @@ export const getByIdForAccount = internalQuery({
  * Get notification details for delivery (service-only).
  * Returns full context needed to deliver to agent.
  * Must be called from service action with validated service token.
+ * Defense in depth: returns null when notification.accountId !== accountId.
  */
 export const getForDelivery = internalQuery({
   args: {
     notificationId: v.id("notifications"),
+    accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
     const notification = await ctx.db.get(args.notificationId);
-    if (!notification) {
+    if (!notification || notification.accountId !== args.accountId) {
       return null;
     }
 
@@ -355,13 +352,14 @@ export const getForDelivery = internalQuery({
     }[] = [];
     const taskId = notification.taskId;
     if (taskId && task && task.accountId === notification.accountId) {
-      const threadMessages = await ctx.db
+      const threadMessagesDesc = await ctx.db
         .query("messages")
         .withIndex("by_account_task_created", (q) =>
           q.eq("accountId", notification.accountId).eq("taskId", taskId),
         )
-        .order("asc")
-        .collect();
+        .order("desc")
+        .take(GET_FOR_DELIVERY_THREAD_CAP);
+      const threadMessages = threadMessagesDesc.reverse();
 
       for (let i = threadMessages.length - 1; i >= 0; i--) {
         if (threadMessages[i].authorType === "user") {

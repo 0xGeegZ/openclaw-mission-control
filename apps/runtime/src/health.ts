@@ -1,6 +1,6 @@
 import http from "http";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
+import { getConvexClient, api } from "./convex-client";
 import { getAgentSyncState } from "./agent-sync";
 import { getDeliveryState } from "./delivery";
 import { getAgentIdForSessionKey, getGatewayState } from "./gateway";
@@ -205,10 +205,10 @@ async function resolveAgentSlugs(
   slugs: string[],
 ): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = (await client.action(api.service.actions.listAgents, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  })) as ListAgentsItem[];
+  });
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {

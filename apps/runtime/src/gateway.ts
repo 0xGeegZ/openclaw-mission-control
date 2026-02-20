@@ -1,6 +1,6 @@
 import net from "node:net";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
+import { getConvexClient, api } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
@@ -271,10 +271,10 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   state.openclawRequestTimeoutMs = config.openclawRequestTimeoutMs;
 
   const client = getConvexClient();
-  const agents = (await client.action(api.service.actions.listAgents, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  })) as ListAgentsItem[];
+  });
 
   for (const agent of agents) {
     const key = agent.systemSessionKey;
