@@ -71,6 +71,14 @@ function findStatusPath(options: {
   return null;
 }
 
+/** Statuses the runtime is allowed to set via task_status / task_update (in_progress, review, done, blocked). */
+const AGENT_ALLOWED_STATUSES = new Set<TaskStatus>([
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+]);
+
 /**
  * Service actions for runtime service.
  * These actions validate service tokens and call internal queries/mutations.
@@ -400,25 +408,17 @@ export const markNotificationDelivered = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Verify notification belongs to this account using internal query
     const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
+      internal.service.notifications.getByIdForAccount,
       {
         notificationId: args.notificationId,
+        accountId: args.accountId,
       },
     );
-
-    const notification = notificationResult?.notification;
-
-    if (!notification) {
+    if (!notificationResult?.notification) {
       throw new Error("Not found: Notification does not exist");
     }
 
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
-    }
-
-    // Call internal mutation
     await ctx.runMutation(internal.service.notifications.markDelivered, {
       notificationId: args.notificationId,
     });
@@ -444,15 +444,14 @@ export const markNotificationRead = action({
       throw new Error("Forbidden: Service token does not match account");
     }
     const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
-      { notificationId: args.notificationId },
+      internal.service.notifications.getByIdForAccount,
+      {
+        notificationId: args.notificationId,
+        accountId: args.accountId,
+      },
     );
-    const notification = notificationResult?.notification;
-    if (!notification) {
+    if (!notificationResult?.notification) {
       throw new Error("Not found: Notification does not exist");
-    }
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
     }
     await ctx.runMutation(internal.service.notifications.markRead, {
       notificationId: args.notificationId,
@@ -478,15 +477,14 @@ export const markNotificationDeliveryEnded = action({
       throw new Error("Forbidden: Service token does not match account");
     }
     const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
-      { notificationId: args.notificationId },
+      internal.service.notifications.getByIdForAccount,
+      {
+        notificationId: args.notificationId,
+        accountId: args.accountId,
+      },
     );
-    const notification = notificationResult?.notification;
-    if (!notification) {
+    if (!notificationResult?.notification) {
       throw new Error("Not found: Notification does not exist");
-    }
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
     }
     await ctx.runMutation(internal.service.notifications.markDeliveryEnded, {
       notificationId: args.notificationId,
@@ -753,13 +751,7 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
-    if (!allowedStatuses.has(args.status)) {
+    if (!AGENT_ALLOWED_STATUSES.has(args.status)) {
       throw new Error(
         "Invalid status: must be in_progress, review, done, or blocked",
       );
@@ -782,13 +774,6 @@ export const updateTaskStatusFromAgent = action({
     if (!flags.canModifyTaskStatus) {
       throw new Error("Forbidden: Agent is not allowed to modify task status");
     }
-
-    const allowedNextStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
 
     let changed = false;
     let finalStatus: TaskStatus | null = null;
@@ -835,7 +820,7 @@ export const updateTaskStatusFromAgent = action({
       const path = findStatusPath({
         from: currentStatus,
         to: targetStatus,
-        allowedNextStatuses,
+        allowedNextStatuses: AGENT_ALLOWED_STATUSES,
       });
       if (!path || path.length === 0) {
         throw new Error(
@@ -1076,14 +1061,7 @@ export const updateTaskFromAgent = action({
       );
     }
 
-    // Validate status and blockedReason
-    const allowedStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
-    if (args.status && !allowedStatuses.has(args.status)) {
+    if (args.status && !AGENT_ALLOWED_STATUSES.has(args.status)) {
       throw new Error(
         "Invalid status: must be in_progress, review, done, or blocked",
       );
@@ -1148,19 +1126,10 @@ export const updateTaskFromAgent = action({
       });
     }
 
-    // If status is being changed, handle status transitions
     if (args.status && args.status !== task.status) {
-      const allowedNextStatuses = new Set<TaskStatus>([
-        TASK_STATUS.IN_PROGRESS,
-        TASK_STATUS.REVIEW,
-        TASK_STATUS.DONE,
-        TASK_STATUS.BLOCKED,
-      ]);
-
       const targetStatus = args.status;
       const currentStatus = task.status;
 
-      // Validate task must be in review before marking done
       if (
         targetStatus === TASK_STATUS.DONE &&
         currentStatus !== TASK_STATUS.REVIEW &&
@@ -1171,11 +1140,10 @@ export const updateTaskFromAgent = action({
         );
       }
 
-      // Apply status change through transitions
       const path = findStatusPath({
         from: currentStatus,
         to: targetStatus,
-        allowedNextStatuses,
+        allowedNextStatuses: AGENT_ALLOWED_STATUSES,
       });
       if (!path || path.length === 0) {
         throw new Error(
@@ -1720,7 +1688,10 @@ export const listDocumentsForAgent = action({
     }
 
     const rawLimit = args.limit ?? 50;
-    const limit = Math.min(rawLimit < 1 ? 50 : rawLimit, 100);
+    const limit = Math.min(
+      Math.max(1, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 50),
+      100,
+    );
     const documents = await ctx.runQuery(
       internal.service.documents.listForAgentTool,
       {

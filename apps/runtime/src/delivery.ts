@@ -491,13 +491,7 @@ async function persistMessageAndMaybeAdvanceTask(
       skipMessageReason ?? "empty or intentionally suppressed",
     );
   }
-  await client.action(api.service.actions.markNotificationDelivered, {
-    notificationId: notification._id,
-    serviceToken: config.serviceToken,
-    accountId: config.accountId,
-  });
-  state.deliveredCount++;
-  log.debug("Delivered notification", notification._id);
+  await markDeliveredAndLog(client, config, notification._id);
 }
 
 /**
@@ -520,6 +514,29 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
   };
 
   poll();
+}
+
+/**
+ * Mark a notification as delivered, increment delivered count, and log.
+ * Used by the poll cycle for skip and success paths to avoid duplication.
+ */
+async function markDeliveredAndLog(
+  client: ReturnType<typeof getConvexClient>,
+  config: RuntimeConfig,
+  notificationId: Id<"notifications">,
+  logReason?: string,
+): Promise<void> {
+  await client.action(api.service.actions.markNotificationDelivered, {
+    notificationId,
+    serviceToken: config.serviceToken,
+    accountId: config.accountId,
+  });
+  state.deliveredCount++;
+  if (logReason) {
+    log.info(logReason, notificationId);
+  } else {
+    log.debug("Delivered notification", notificationId);
+  }
 }
 
 /**
@@ -564,35 +581,29 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
           const ctx: DeliveryContext = context as unknown as DeliveryContext;
           if (!ctx.agent) continue;
           if (ctx.notification?.taskId && !ctx.task) {
-            await client.action(api.service.actions.markNotificationDelivered, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-            state.deliveredCount++;
-            log.info("Skipped delivery for missing task", notification._id);
+            await markDeliveredAndLog(
+              client,
+              config,
+              notification._id,
+              "Skipped delivery for missing task",
+            );
             continue;
           }
           if (!shouldDeliverToAgent(ctx)) {
-            await client.action(api.service.actions.markNotificationDelivered, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-            state.deliveredCount++;
-            log.debug("Skipped delivery for notification", notification._id);
+            await markDeliveredAndLog(
+              client,
+              config,
+              notification._id,
+              "Skipped delivery for notification",
+            );
             continue;
           }
           if (_isStaleThreadUpdateNotification(ctx)) {
-            await client.action(api.service.actions.markNotificationDelivered, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-            state.deliveredCount++;
-            log.debug(
-              "Skipped stale thread update notification",
+            await markDeliveredAndLog(
+              client,
+              config,
               notification._id,
+              "Skipped stale thread update notification",
             );
             continue;
           }
@@ -635,13 +646,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
               ctx.agent.name,
             );
             clearNoResponseRetry(notification._id);
-            await client.action(api.service.actions.markNotificationDelivered, {
-              notificationId: notification._id,
-              serviceToken: config.serviceToken,
-              accountId: config.accountId,
-            });
-            state.deliveredCount++;
-            log.debug("Delivered notification (no reply)", notification._id);
+            await markDeliveredAndLog(client, config, notification._id);
             continue;
           }
           const noResponseOutcome = handleNoResponseAfterSend(
@@ -718,13 +723,12 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
             canModifyTaskStatus,
           );
         } else if (context?.notification) {
-          await client.action(api.service.actions.markNotificationDelivered, {
-            notificationId: notification._id,
-            serviceToken: config.serviceToken,
-            accountId: config.accountId,
-          });
-          state.deliveredCount++;
-          log.debug("Skipped delivery for missing agent", notification._id);
+          await markDeliveredAndLog(
+            client,
+            config,
+            notification._id,
+            "Skipped delivery for missing agent",
+          );
         }
       } catch (error) {
         state.failedCount++;

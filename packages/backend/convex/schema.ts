@@ -781,6 +781,12 @@ export default defineSchema({
       "recipientType",
       "deliveredAt",
     ])
+    .index("by_account_undelivered_created", [
+      "accountId",
+      "recipientType",
+      "deliveredAt",
+      "createdAt",
+    ])
     .index("by_recipient_unread", ["recipientType", "recipientId", "readAt"])
     .index("by_account_created", ["accountId", "createdAt"])
     .index("by_task", ["taskId"])

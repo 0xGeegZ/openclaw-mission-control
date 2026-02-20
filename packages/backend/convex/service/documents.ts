@@ -29,11 +29,15 @@ export const listForAgentTool = internalQuery({
   },
   handler: async (ctx, args) => {
     const rawLimit = args.limit ?? 50;
-    const limit = Math.min(rawLimit < 1 ? 50 : rawLimit, 100);
+    const limit = Math.min(
+      Math.max(1, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 50),
+      100,
+    );
     const accountId = args.accountId;
     const typeFilter = args.type;
 
     if (args.taskId) {
+      // Task path: index by_task then filter/sort/slice. For very large task doc counts, consider by_task_updated + take(limit).
       const task = await ctx.db.get(args.taskId);
       if (!task || task.accountId !== accountId) {
         return [];

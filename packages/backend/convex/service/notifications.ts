@@ -144,24 +144,21 @@ export const listUndeliveredForAccount = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Doc<"notifications">[]> => {
-    const notifications = await ctx.db
+    const rawLimit = args.limit ?? 100;
+    const effectiveLimit = Math.min(
+      Number.isFinite(rawLimit) ? Math.max(1, Math.floor(rawLimit)) : 100,
+      LIST_UNDELIVERED_MAX_LIMIT,
+    );
+    return await ctx.db
       .query("notifications")
-      .withIndex("by_account_undelivered", (q) =>
+      .withIndex("by_account_undelivered_created", (q) =>
         q
           .eq("accountId", args.accountId)
           .eq("recipientType", "agent")
           .eq("deliveredAt", undefined),
       )
-      .collect();
-
-    // Sort by created (oldest first for FIFO)
-    notifications.sort((a, b) => a.createdAt - b.createdAt);
-
-    const effectiveLimit = Math.min(
-      args.limit ?? 100,
-      LIST_UNDELIVERED_MAX_LIMIT,
-    );
-    return notifications.slice(0, effectiveLimit);
+      .order("asc")
+      .take(effectiveLimit);
   },
 });
 
@@ -271,6 +268,28 @@ export const clearTypingStateForAccount = internalMutation({
       }
     }
     return { cleared };
+  },
+});
+
+/**
+ * Lightweight existence/account check for a notification (service-only).
+ * Used by markNotificationDelivered, markNotificationRead, markNotificationDeliveryEnded
+ * instead of full getForDelivery to avoid double read load per delivery.
+ */
+export const getByIdForAccount = internalQuery({
+  args: {
+    notificationId: v.id("notifications"),
+    accountId: v.id("accounts"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ notification: Doc<"notifications"> } | null> => {
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification || notification.accountId !== args.accountId) {
+      return null;
+    }
+    return { notification };
   },
 });
 
