@@ -507,6 +507,59 @@ describe("_runOnePollCycle", () => {
     expect(deliveryEndedCalls.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("no-response retry exhaustion: same notification returns empty 3 times then proceeds to exhausted and marks delivered", async () => {
+    const notifId = nid("n-exhaust");
+    const taskId = tid("task-exhaust");
+    mockAction.mockImplementation(
+      async (_actionRef: unknown, args: unknown) => {
+        const a = args as Record<string, unknown> | undefined;
+        if (a && a.limit === 50) return [{ _id: notifId }];
+        if (a && a.notificationId === notifId && !("content" in a)) {
+          return buildContext({
+            notification: {
+              _id: notifId,
+              type: "assignment",
+              title: "T",
+              body: "B",
+              taskId,
+              recipientType: "agent",
+              recipientId: "agent-a",
+              accountId: config.accountId,
+            },
+            task: {
+              _id: taskId,
+              status: "assigned",
+              title: "T",
+              assignedAgentIds: [aid("agent-a")],
+            },
+          });
+        }
+        return undefined;
+      },
+    );
+    mockSendToOpenClaw.mockResolvedValue({ text: "", toolCalls: [] });
+
+    const beforeDelivered = getDeliveryState().deliveredCount;
+    const beforeExhausted =
+      getDeliveryState().requiredNotificationRetryExhaustedCount;
+    const beforeFailed = getDeliveryState().failedCount;
+
+    await _runOnePollCycle(config);
+    expect(getDeliveryState().failedCount).toBe(beforeFailed + 1);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered);
+
+    await _runOnePollCycle(config);
+    expect(getDeliveryState().failedCount).toBe(beforeFailed + 2);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered);
+
+    await _runOnePollCycle(config);
+    expect(getDeliveryState().deliveredCount).toBe(beforeDelivered + 1);
+    expect(getDeliveryState().requiredNotificationRetryExhaustedCount).toBe(
+      beforeExhausted + 1,
+    );
+    expect(getDeliveryState().failedCount).toBe(beforeFailed + 2);
+  });
+
   it("returns finite positive delay", async () => {
     mockAction.mockResolvedValue([]);
     const delay = await _runOnePollCycle(config);

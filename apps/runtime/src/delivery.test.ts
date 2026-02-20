@@ -783,8 +783,11 @@ describe("no response retry decision", () => {
     const first = _getNoResponseRetryDecision("n1");
     const second = _getNoResponseRetryDecision("n1");
     const third = _getNoResponseRetryDecision("n1");
+    expect(first.attempt).toBe(1);
     expect(first.shouldRetry).toBe(true);
+    expect(second.attempt).toBe(2);
     expect(second.shouldRetry).toBe(true);
+    expect(third.attempt).toBe(3);
     expect(third.shouldRetry).toBe(false);
   });
 

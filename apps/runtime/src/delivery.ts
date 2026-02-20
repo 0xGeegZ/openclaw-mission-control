@@ -662,7 +662,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
               ctx.agent.name,
               `(attempt ${noResponseOutcome.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
             );
-            clearNoResponseRetry(notification._id);
+            // Do not clear retry state here so the next poll sees the correct attempt count and can exhaust after NO_RESPONSE_RETRY_LIMIT.
             throw new Error(noResponseOutcome.reason);
           }
           if (noResponseOutcome.exhausted) {
