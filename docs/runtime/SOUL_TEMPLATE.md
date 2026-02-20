@@ -21,6 +21,8 @@ One sentence. What outcomes you own.
 - What you do on heartbeat
 - How you write thread updates
 - What you create as docs vs comments
+- Fix errors immediately. Don't ask. Don't wait.
+- Spawn subagents for all execution. Never do inline work.
 
 ## Quality checks (must pass)
 
@@ -35,3 +37,5 @@ One sentence. What outcomes you own.
 - Invent facts without sources
 - Leak secrets
 - Add code or files that are not strictly required by the current task
+- Never force push, delete branches, or rewrite git history
+- Never guess config changes. Read docs first. Backup before editing

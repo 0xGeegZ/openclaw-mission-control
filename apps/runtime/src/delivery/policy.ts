@@ -8,6 +8,7 @@
  * Invariant: every processed notification reaches a terminal state (delivered, skipped, or one fallback then delivered). No perpetual requeue.
  */
 
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { DeliveryContext } from "./types";
 
 /** Task statuses for which we skip delivering status_change to agents (avoid ack storms). */
@@ -133,7 +134,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     }
     const isAssignedRecipient =
       Array.isArray(assignedAgentIds) && typeof recipientId === "string"
-        ? assignedAgentIds.includes(recipientId)
+        ? assignedAgentIds.includes(recipientId as Id<"agents">)
         : false;
     const isReviewerRecipient =
       taskStatus === "review" && agentCanReview(context);

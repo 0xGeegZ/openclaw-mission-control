@@ -2,6 +2,7 @@
  * Unit tests for delivery policy: shouldDeliverToAgent, shouldRetryNoResponseForNotification,
  * orchestrator silent-by-default, and role/QA helpers.
  */
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { describe, it, expect } from "vitest";
 import type { DeliveryContext } from "./types";
 import {
@@ -16,27 +17,33 @@ import {
   TASK_STATUSES_SKIP_STATUS_CHANGE,
 } from "./policy";
 
+const aid = (s: string): Id<"agents"> => s as Id<"agents">;
+const tid = (s: string): Id<"tasks"> => s as Id<"tasks">;
+const nid = (s: string): Id<"notifications"> => s as Id<"notifications">;
+const accId = (s: string): Id<"accounts"> => s as Id<"accounts">;
+const mid = (s: string): Id<"messages"> => s as Id<"messages">;
+
 function buildContext(
   overrides: Partial<DeliveryContext> = {},
 ): DeliveryContext {
   const base: DeliveryContext = {
     notification: {
-      _id: "n1",
+      _id: nid("n1"),
       type: "thread_update",
       title: "Update",
       body: "Body",
       recipientId: "agent-a",
-      accountId: "acc1",
+      accountId: accId("acc1"),
     },
-    agent: { _id: "agent-a", role: "Developer", name: "Engineer" },
+    agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
     task: {
-      _id: "task1",
+      _id: tid("task1"),
       status: "in_progress",
       title: "Task",
-      assignedAgentIds: ["agent-a"],
+      assignedAgentIds: [aid("agent-a")],
     },
     message: {
-      _id: "m1",
+      _id: mid("m1"),
       authorType: "agent",
       authorId: "agent-b",
       content: "Done",
@@ -93,7 +100,7 @@ describe("policy matrix", () => {
     const ctx = buildContext({
       notification: { ...buildContext().notification!, type: "thread_update" },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "agent-b",
         content: "Ok",
@@ -109,16 +116,16 @@ describe("policy matrix", () => {
         type: "thread_update",
         recipientId: "orch",
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Orchestrator" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["engineer"],
+        assignedAgentIds: [aid("engineer")],
       },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "engineer",
         content: "Update",
@@ -151,10 +158,10 @@ describe("shouldDeliverToAgent", () => {
     const ctx = buildContext({
       notification: { ...buildContext().notification!, type: "thread_update" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "done",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -170,10 +177,10 @@ describe("shouldDeliverToAgent", () => {
   it("orchestrator chat: only orchestrator recipient receives", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
         labels: ["system:orchestrator-chat"],
       },
       notification: {
@@ -182,14 +189,14 @@ describe("shouldDeliverToAgent", () => {
         recipientType: "agent",
         recipientId: "orch",
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Orchestrator" },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
     const ctxOther = buildContext({
       ...ctx,
       notification: { ...ctx.notification, recipientId: "agent-a" },
-      agent: { _id: "agent-a", role: "Developer", name: "Engineer" },
+      agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
     });
     expect(shouldDeliverToAgent(ctxOther)).toBe(false);
   });
@@ -199,7 +206,7 @@ describe("isOrchestratorChatTask", () => {
   it("returns true when task has system:orchestrator-chat label", () => {
     expect(
       isOrchestratorChatTask({
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
         labels: ["system:orchestrator-chat"],
@@ -209,7 +216,7 @@ describe("isOrchestratorChatTask", () => {
   it("returns false when label is missing", () => {
     expect(
       isOrchestratorChatTask({
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
       }),
@@ -269,8 +276,13 @@ describe("isRecipientInMultiAssigneeTask", () => {
     expect(
       isRecipientInMultiAssigneeTask(
         buildContext({
-          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a", "agent-b"] },
-          agent: { _id: "agent-a", role: "Engineer", name: "A" },
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a"), aid("agent-b")],
+          },
+          agent: { _id: aid("agent-a"), role: "Engineer", name: "A" },
         }),
       ),
     ).toBe(true);
@@ -279,8 +291,13 @@ describe("isRecipientInMultiAssigneeTask", () => {
     expect(
       isRecipientInMultiAssigneeTask(
         buildContext({
-          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a"] },
-          agent: { _id: "agent-a", role: "Engineer", name: "A" },
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a")],
+          },
+          agent: { _id: aid("agent-a"), role: "Engineer", name: "A" },
         }),
       ),
     ).toBe(false);
@@ -289,8 +306,13 @@ describe("isRecipientInMultiAssigneeTask", () => {
     expect(
       isRecipientInMultiAssigneeTask(
         buildContext({
-          task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: ["agent-a", "agent-b"] },
-          agent: { _id: "agent-c", role: "Engineer", name: "C" },
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [aid("agent-a"), aid("agent-b")],
+          },
+          agent: { _id: aid("agent-c"), role: "Engineer", name: "C" },
         }),
       ),
     ).toBe(false);
@@ -301,7 +323,15 @@ describe("isRecipientInMultiAssigneeTask", () => {
     ).toBe(false);
     expect(
       isRecipientInMultiAssigneeTask(
-        buildContext({ task: { _id: "t1", status: "in_progress", title: "T", assignedAgentIds: [] }, agent: { _id: "agent-a", name: "A" } }),
+        buildContext({
+          task: {
+            _id: tid("t1"),
+            status: "in_progress",
+            title: "T",
+            assignedAgentIds: [],
+          },
+          agent: { _id: aid("agent-a"), name: "A" },
+        }),
       ),
     ).toBe(false);
   });

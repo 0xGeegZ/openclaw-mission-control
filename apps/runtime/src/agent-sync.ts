@@ -2,7 +2,7 @@ import { RuntimeConfig } from "./config";
 import { getConvexClient, api } from "./convex-client";
 import {
   getGatewayState,
-  registerAgentSession,
+  refreshAgentSystemSession,
   removeAgentSession,
 } from "./gateway";
 import {
@@ -84,8 +84,11 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     }
 
     for (const agent of agents) {
-      removeAgentSession(agent._id);
-      registerAgentSession({ _id: agent._id, sessionKey: agent.sessionKey });
+      refreshAgentSystemSession({
+        _id: agent._id,
+        systemSessionKey: agent.systemSessionKey,
+        slug: agent.slug,
+      });
       ensureHeartbeatScheduled(agent, config);
       if (!currentAgentIds.has(agent._id)) {
         added++;
@@ -99,7 +102,7 @@ async function runSync(config: RuntimeConfig): Promise<void> {
           accountId: config.accountId,
           serviceToken: config.serviceToken,
         },
-      )) as unknown as AgentForProfile[];
+      )) as AgentForProfile[];
 
       const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
@@ -158,7 +161,7 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
       },
-    )) as unknown as AgentForProfile[];
+    )) as AgentForProfile[];
     syncOpenClawProfiles(profileAgents, {
       workspaceRoot: config.openclawWorkspaceRoot,
       configWorkspaceRoot: config.openclawConfigWorkspaceRoot,

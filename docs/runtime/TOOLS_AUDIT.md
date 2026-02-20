@@ -20,23 +20,24 @@ If agents appear not to be “mentioned” by @all, the cause is elsewhere (e.g.
 
 Defined in `apps/runtime/src/tooling/agentTools.ts` (and `taskStatusTool.ts`, `taskUpdateTool.ts`, `taskDeleteTool.ts`). Attached per delivery based on behavior flags and orchestrator role.
 
-| Tool                 | Scope                                  | Purpose                                                                                                                  |
-| -------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **task_status**      | All (with task + canModifyTaskStatus)  | Update current task status (in_progress, review, done, blocked). Policy: only reviewers can set done when QA configured. |
-| **task_update**      | Same as task_status                    | Update task fields: title, description, priority, labels, assignees, status, dueDate.                                    |
-| **task_create**      | When canCreateTasks                    | Create a new task (title required; optional description, priority, labels, status, assigneeSlugs for orchestrator).      |
-| **document_upsert**  | When canCreateDocuments                | Create or update a document (deliverable, note, template, reference); optional taskId, documentId.                       |
-| **response_request** | When hasTaskContext + canMentionAgents | Request a response from other agents by slug (taskId, recipientSlugs, message). Replaces @mentions for notifying agents. |
-| **task_load**        | All (with task)                        | Load full task details with thread summary (title, description, status, blockers, assignees, thread history).            |
-| **get_agent_skills** | All                                    | List skills per agent; optional agentId to query one agent.                                                              |
-| **task_assign**      | Orchestrator only                      | Assign agents to a task by slug (taskId, assigneeSlugs).                                                                 |
-| **task_message**     | Orchestrator only                      | Post a message to another task’s thread (taskId, content).                                                               |
-| **task_list**        | Orchestrator only                      | List tasks with optional status, assigneeSlug, limit.                                                                    |
-| **task_get**         | Orchestrator only                      | Fetch one task by ID.                                                                                                    |
-| **task_thread**      | Orchestrator only                      | Fetch recent thread messages for a task (limit).                                                                         |
-| **task_search**      | Orchestrator only                      | Search tasks by title/description/blockers (query, limit).                                                               |
-| **task_delete**      | Orchestrator only                      | Archive a task with required reason (soft delete).                                                                       |
-| **task_link_pr**     | Orchestrator only                      | Link task to a GitHub PR bidirectionally (taskId, prNumber).                                                             |
+| Tool                 | Scope                                  | Purpose                                                                                                                                    |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **task_status**      | All (with task + canModifyTaskStatus)  | Update current task status (in_progress, review, done, blocked). Policy: only reviewers can set done when QA configured.                   |
+| **task_update**      | Same as task_status                    | Update task fields: title, description, priority, labels, assignees, status, dueDate.                                                      |
+| **task_create**      | When canCreateTasks                    | Create a new task (title required; optional description, priority, labels, status, assigneeSlugs for orchestrator).                        |
+| **document_upsert**  | When canCreateDocuments                | Create or update a document (deliverable, note, template, reference); optional taskId, documentId.                                         |
+| **response_request** | When hasTaskContext + canMentionAgents | Request a response from other agents by slug (taskId, recipientSlugs, message). Replaces @mentions for notifying agents.                   |
+| **task_load**        | All (with task)                        | Load full task details with thread summary (title, description, status, blockers, assignees, thread history).                              |
+| **task_history**     | All (with task)                        | Load task snapshot plus message history and activity history (messages oldest→newest, activities newest→oldest; limits 25/200 and 30/200). |
+| **get_agent_skills** | All                                    | List skills per agent; optional agentId to query one agent.                                                                                |
+| **task_assign**      | Orchestrator only                      | Assign agents to a task by slug (taskId, assigneeSlugs).                                                                                   |
+| **task_message**     | Orchestrator only                      | Post a message to another task’s thread (taskId, content).                                                                                 |
+| **task_list**        | Orchestrator only                      | List tasks with optional status, assigneeSlug, limit.                                                                                      |
+| **task_get**         | Orchestrator only                      | Fetch one task by ID.                                                                                                                      |
+| **task_thread**      | Orchestrator only                      | Fetch recent thread messages for a task (limit).                                                                                           |
+| **task_search**      | Orchestrator only                      | Search tasks by title/description/blockers (query, limit).                                                                                 |
+| **task_delete**      | Orchestrator only                      | Archive a task with required reason (soft delete).                                                                                         |
+| **task_link_pr**     | Orchestrator only                      | Link task to a GitHub PR bidirectionally (taskId, prNumber).                                                                               |
 
 HTTP fallbacks are documented in AGENTS.md and seed/USER_TEMPLATE for task_status, task_update, task_create, document, response_request when tools are not offered.
 

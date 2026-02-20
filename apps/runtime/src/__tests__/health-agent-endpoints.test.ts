@@ -226,7 +226,7 @@ describe("agent endpoints - session validation", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-openclaw-session-key": "agent:unknown:account",
+        "x-openclaw-session-key": "system:agent:unknown:account:v1",
       },
       body: JSON.stringify({ taskId: "abc", status: "in_progress" }),
     });
@@ -241,7 +241,7 @@ describe("agent endpoints - session validation", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-openclaw-session-key": "agent:unknown:account",
+        "x-openclaw-session-key": "system:agent:unknown:account:v1",
       },
       body: JSON.stringify({ title: "Test task" }),
     });
@@ -255,7 +255,7 @@ describe("agent endpoints - session validation", () => {
 describe("POST /agent/task-create orchestrator parity", () => {
   const orchestratorId = "agent-orch1" as Id<"agents">;
   const engineerId = "agent-eng1" as Id<"agents">;
-  const sessionKey = "agent:squad-lead:test-account-id";
+  const sessionKey = "system:agent:squad-lead:test-account-id:v1";
 
   const mockAction = vi.fn();
 

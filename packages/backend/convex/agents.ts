@@ -19,14 +19,6 @@ import {
 } from "./lib/user_identity_fallback";
 
 /**
- * Generate a session key for an agent.
- * Format: agent:{slug}:{accountId}
- */
-function generateSessionKey(slug: string, accountId: Id<"accounts">): string {
-  return `agent:${slug}:${accountId}`;
-}
-
-/**
  * Get default OpenClaw config for new agents.
  */
 function getDefaultOpenclawConfig() {
@@ -34,11 +26,7 @@ function getDefaultOpenclawConfig() {
     ...DEFAULT_OPENCLAW_CONFIG,
     skillIds: [],
     contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
-    behaviorFlags: {
-      ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
-      canReviewTasks: false,
-      canMarkDone: false,
-    },
+    behaviorFlags: { ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags },
   };
 }
 
@@ -98,7 +86,7 @@ export const listByStatus = query({
 });
 
 /**
- * Get a single agent by ID.
+ * Get an agent by id with optional active system session key for display.
  */
 export const get = query({
   args: {
@@ -111,7 +99,22 @@ export const get = query({
     }
 
     await requireAccountMember(ctx, agent.accountId);
-    return agent;
+
+    const systemSession = await ctx.db
+      .query("agentRuntimeSessions")
+      .withIndex("by_account_type_agent_closed", (q) =>
+        q
+          .eq("accountId", agent.accountId)
+          .eq("sessionType", "system")
+          .eq("agentId", agent._id)
+          .eq("closedAt", undefined),
+      )
+      .first();
+
+    return {
+      ...agent,
+      systemSessionKey: systemSession?.sessionKey ?? null,
+    };
   },
 });
 
@@ -137,26 +140,19 @@ export const getBySlug = query({
 
 /**
  * Get an agent by session key.
- * Used by runtime to look up agent from OpenClaw session.
+ * Runtime lookup by session key is sourced from agentRuntimeSessions only.
  */
 export const getBySessionKey = query({
   args: {
     sessionKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const agent = await ctx.db
-      .query("agents")
+    const sessionRow = await ctx.db
+      .query("agentRuntimeSessions")
       .withIndex("by_session_key", (q) => q.eq("sessionKey", args.sessionKey))
-      .unique();
-
-    if (!agent) {
-      return null;
-    }
-
-    // Note: This query may be called by service without user auth
-    // The session key itself acts as authentication
-
-    return agent;
+      .first();
+    if (!sessionRow) return null;
+    return await ctx.db.get(sessionRow.agentId);
   },
 });
 
@@ -269,8 +265,6 @@ export const create = mutation({
       ...agentDefaults,
     };
 
-    const sessionKey = generateSessionKey(args.slug, args.accountId);
-
     const soulContent =
       args.soulContent ?? generateDefaultSoul(args.name, args.role);
 
@@ -289,7 +283,6 @@ export const create = mutation({
       slug: args.slug,
       role: args.role,
       description: args.description,
-      sessionKey,
       status: "offline",
       heartbeatInterval: args.heartbeatInterval ?? 15, // Default 15 minutes
       avatarUrl: args.avatarUrl,

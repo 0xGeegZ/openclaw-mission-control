@@ -1,7 +1,11 @@
 import { getConvexClient, api } from "./convex-client";
 import { backoffMs } from "./backoff";
 import { RuntimeConfig } from "./config";
-import { sendOpenClawToolResults, sendToOpenClaw } from "./gateway";
+import {
+  sendOpenClawToolResults,
+  sendToOpenClaw,
+  registerSession,
+} from "./gateway";
 import { createLogger } from "./logger";
 import {
   getToolCapabilitiesAndSchemas,
@@ -29,12 +33,17 @@ export {
 } from "./delivery/policy";
 import {
   buildHttpCapabilityLabels,
-  formatNotificationMessage,
+  buildDeliveryInstructions,
+  buildNotificationInput,
 } from "./delivery/prompt";
 import type { DeliveryContext } from "./delivery/types";
 
 export type { DeliveryContext } from "./delivery/types";
-export { formatNotificationMessage } from "./delivery/prompt";
+export {
+  buildDeliveryInstructions,
+  buildNotificationInput,
+  formatNotificationMessage,
+} from "./delivery/prompt";
 
 const log = createLogger("[Delivery]");
 
@@ -152,7 +161,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
           );
 
           if (context?.agent) {
-            if (context.notification?.taskId && !context.task) {
+            /** Single cast at boundary: backend returns string for some id fields; at runtime they are Convex ids. */
+            const ctx: DeliveryContext = context as unknown as DeliveryContext;
+            if (!ctx.agent) continue;
+            if (ctx.notification?.taskId && !ctx.task) {
               await client.action(
                 api.service.actions.markNotificationDelivered,
                 {
@@ -165,7 +177,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.info("Skipped delivery for missing task", notification._id);
               continue;
             }
-            if (!shouldDeliverToAgent(context as DeliveryContext)) {
+            if (!shouldDeliverToAgent(ctx)) {
               await client.action(
                 api.service.actions.markNotificationDelivered,
                 {
@@ -178,7 +190,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.debug("Skipped delivery for notification", notification._id);
               continue;
             }
-            if (isStaleThreadUpdateNotification(context as DeliveryContext)) {
+            if (isStaleThreadUpdateNotification(ctx)) {
               await client.action(
                 api.service.actions.markNotificationDelivered,
                 {
@@ -209,17 +221,17 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               );
             }
             const flags: DeliveryContext["effectiveBehaviorFlags"] =
-              context.effectiveBehaviorFlags ?? {};
-            const hasTask = !!context?.task;
+              ctx.effectiveBehaviorFlags ?? {};
+            const hasTask = !!ctx.task;
             const canModifyTaskStatus = flags.canModifyTaskStatus !== false;
             const canCreateTasks = flags.canCreateTasks === true;
             const canCreateDocuments = flags.canCreateDocuments === true;
             const canMentionAgents = flags.canMentionAgents === true;
             const isOrchestrator =
-              context.orchestratorAgentId != null &&
-              context.agent._id === context.orchestratorAgentId;
+              ctx.orchestratorAgentId != null &&
+              ctx.agent._id === ctx.orchestratorAgentId;
             const canMarkDone = canAgentMarkDone({
-              taskStatus: context.task?.status,
+              taskStatus: ctx.task?.status,
               canMarkDone: flags.canMarkDone === true,
             });
             const rawToolCapabilities = getToolCapabilitiesAndSchemas({
@@ -245,31 +257,42 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   }),
                   schemas: [],
                 };
+            const sessionKey = ctx.deliverySessionKey;
+            if (!sessionKey) {
+              throw new Error(
+                "Missing deliverySessionKey; backend must return deliverySessionKey for all agent notifications (task and system sessions)",
+              );
+            }
+            registerSession(sessionKey, ctx.agent._id, ctx.agent.slug);
+
+            const instructions = buildDeliveryInstructions(
+              ctx,
+              config.taskStatusBaseUrl,
+              toolCapabilities,
+            );
+            const input = buildNotificationInput(
+              ctx,
+              config.taskStatusBaseUrl,
+              toolCapabilities,
+            );
             const sendOptions =
               toolCapabilities.schemas.length > 0
                 ? {
                     tools: toolCapabilities.schemas,
                     toolChoice: "auto" as const,
+                    instructions,
                   }
-                : undefined;
-            if (sendOptions) {
+                : { instructions };
+            if (sendOptions.tools) {
               log.debug("Sending with tools", sendOptions.tools.length);
             }
 
-            const result = await sendToOpenClaw(
-              context.agent.sessionKey,
-              formatNotificationMessage(
-                context as DeliveryContext,
-                config.taskStatusBaseUrl,
-                toolCapabilities,
-              ),
-              sendOptions,
-            );
+            const result = await sendToOpenClaw(sessionKey, input, sendOptions);
 
             let textToPost: string | null = result.text?.trim() ?? null;
             let suppressAgentNotifications = false;
             let skipMessageReason: string | null = null;
-            const taskId = context.notification?.taskId;
+            const taskId = ctx.notification?.taskId;
             const noResponsePlaceholder = textToPost
               ? parseNoResponsePlaceholder(textToPost)
               : null;
@@ -279,7 +302,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.info(
                 "OpenClaw returned HEARTBEAT_OK; skipping notification",
                 notification._id,
-                context.agent.name,
+                ctx.agent.name,
               );
               clearNoResponseRetry(notification._id);
               await client.action(
@@ -306,18 +329,16 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   ? "empty response"
                   : "placeholder response";
               const shouldPersistFallback = shouldPersistNoResponseFallback({
-                notificationType: context.notification.type,
+                notificationType: ctx.notification.type,
               });
-              const shouldRetry = shouldRetryNoResponseForNotification(
-                context as DeliveryContext,
-              );
+              const shouldRetry = shouldRetryNoResponseForNotification(ctx);
               if (shouldRetry) {
                 const decision = _getNoResponseRetryDecision(notification._id);
                 if (decision.shouldRetry) {
                   log.warn(
                     "OpenClaw returned no response; will retry notification",
                     notification._id,
-                    context.agent.name,
+                    ctx.agent.name,
                     `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
                   );
                   throw new Error(`OpenClaw returned ${reason}`);
@@ -325,7 +346,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 log.warn(
                   "OpenClaw returned no response; giving up",
                   notification._id,
-                  context.agent.name,
+                  ctx.agent.name,
                   taskId ? `taskId=${taskId}` : "taskId=none",
                   `${reason} (attempt ${decision.attempt}/${NO_RESPONSE_RETRY_LIMIT})`,
                 );
@@ -339,7 +360,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                     skipMessageReason = reason;
                   } else {
                     textToPost = null;
-                    skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                    skipMessageReason = `fallback disabled for notification type ${ctx.notification.type}`;
                   }
                 } else {
                   textToPost = null;
@@ -349,7 +370,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 log.info(
                   "OpenClaw returned no response for non-actionable notification; skipping",
                   notification._id,
-                  context.agent.name,
+                  ctx.agent.name,
                   reason,
                 );
                 textToPost = null;
@@ -365,10 +386,10 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 const toolResult = await executeAgentTool({
                   name: call.name,
                   arguments: call.arguments,
-                  agentId: context.agent._id,
+                  agentId: ctx.agent._id,
                   accountId: config.accountId,
                   serviceToken: config.serviceToken,
-                  taskId: context.notification?.taskId,
+                  taskId: ctx.notification?.taskId,
                   canMarkDone: toolCapabilities.canMarkDone,
                   isOrchestrator,
                 });
@@ -387,8 +408,14 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               }
               if (outputs.length > 0) {
                 try {
+                  const sessionKeyForTool = ctx.deliverySessionKey;
+                  if (!sessionKeyForTool) {
+                    throw new Error(
+                      "Missing deliverySessionKey for tool results",
+                    );
+                  }
                   const finalText = await sendOpenClawToolResults(
-                    context.agent.sessionKey,
+                    sessionKeyForTool,
                     outputs,
                   );
                   textToPost = finalText?.trim() ?? textToPost;
@@ -403,13 +430,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               const placeholder = parseNoResponsePlaceholder(textToPost);
               if (placeholder.isPlaceholder) {
                 const shouldPersistFallback = shouldPersistNoResponseFallback({
-                  notificationType: context.notification.type,
+                  notificationType: ctx.notification.type,
                 });
                 if (shouldPersistFallback) {
                   log.warn(
                     "OpenClaw placeholder response received; posting fallback message",
                     notification._id,
-                    context.agent.name,
+                    ctx.agent.name,
                   );
                   textToPost = buildNoResponseFallbackMessage(
                     placeholder.mentionPrefix,
@@ -418,13 +445,13 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   skipMessageReason = "placeholder fallback";
                 } else {
                   textToPost = null;
-                  skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                  skipMessageReason = `fallback disabled for notification type ${ctx.notification.type}`;
                 }
               }
             }
             if (taskId && !textToPost && result.toolCalls.length > 0) {
               const shouldPersistFallback = shouldPersistNoResponseFallback({
-                notificationType: context.notification.type,
+                notificationType: ctx.notification.type,
               });
               if (shouldPersistFallback) {
                 textToPost = FALLBACK_NO_REPLY_AFTER_TOOLS;
@@ -435,12 +462,12 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                   notification._id,
                 );
               } else {
-                skipMessageReason = `fallback disabled for notification type ${context.notification.type}`;
+                skipMessageReason = `fallback disabled for notification type ${ctx.notification.type}`;
               }
             }
             if (taskId && textToPost) {
               await client.action(api.service.actions.createMessageFromAgent, {
-                agentId: context.agent._id,
+                agentId: ctx.agent._id,
                 taskId,
                 content: textToPost.trim(),
                 serviceToken: config.serviceToken,
@@ -452,18 +479,18 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
                 "Persisted agent message to Convex",
                 notification._id,
                 taskId,
-                context.agent.name,
+                ctx.agent.name,
               );
               if (
                 canModifyTaskStatus &&
-                context.task?.status === "assigned" &&
-                context.notification?.type === "assignment"
+                ctx.task?.status === "assigned" &&
+                ctx.notification?.type === "assignment"
               ) {
                 try {
                   await client.action(
                     api.service.actions.updateTaskStatusFromAgent,
                     {
-                      agentId: context.agent._id,
+                      agentId: ctx.agent._id,
                       taskId,
                       status: "in_progress",
                       expectedStatus: "assigned",
@@ -481,7 +508,7 @@ export function startDeliveryLoop(config: RuntimeConfig): void {
               log.info(
                 "Skipped persisting agent message",
                 notification._id,
-                context.agent.name,
+                ctx.agent.name,
                 skipMessageReason ?? "empty or intentionally suppressed",
               );
             }
@@ -576,12 +603,17 @@ export function stopDeliveryLoop(): void {
 }
 
 /**
- * Get current delivery state (running flag, last delivery time, counts). Snapshot; safe to call from health or metrics.
+ * Get current delivery state (running flag, last delivery time, counts).
+ * Returns a snapshot safe to read from health or metrics; mutating the returned object
+ * (including noResponseFailures) does not affect the live delivery loop state.
  *
- * @returns Shallow copy of delivery state.
+ * @returns Snapshot of delivery state with noResponseFailures copied.
  */
 export function getDeliveryState(): DeliveryState {
-  return { ...state };
+  return {
+    ...state,
+    noResponseFailures: new Map(state.noResponseFailures),
+  };
 }
 
 /**

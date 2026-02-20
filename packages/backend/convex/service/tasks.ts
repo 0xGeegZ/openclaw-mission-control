@@ -4,6 +4,7 @@ import {
   internalQuery,
   type MutationCtx,
 } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { taskStatusValidator } from "../lib/validators";
 import {
@@ -318,7 +319,15 @@ export const createFromAgent = internalMutation({
     const now = Date.now();
 
     const assignedUserIds: string[] = [];
-    const requestedStatus = args.status ?? TASK_STATUS.INBOX;
+    let requestedStatus = args.status ?? TASK_STATUS.INBOX;
+    // Inbox allows no assignees; if caller provided assignees, use assigned so validation passes.
+    if (
+      requestedStatus === TASK_STATUS.INBOX &&
+      args.assignedAgentIds &&
+      args.assignedAgentIds.length > 0
+    ) {
+      requestedStatus = TASK_STATUS.ASSIGNED;
+    }
 
     if (args.assignedAgentIds?.length) {
       for (const aid of args.assignedAgentIds) {
@@ -380,6 +389,15 @@ export const createFromAgent = internalMutation({
     await ensureOrchestratorSubscribed(ctx, accountId, taskId);
     for (const assignedAgentId of assignedAgentIds) {
       await ensureSubscribed(ctx, accountId, taskId, "agent", assignedAgentId);
+      await createAssignmentNotification(
+        ctx,
+        accountId,
+        taskId,
+        "agent",
+        assignedAgentId,
+        agent.name,
+        args.title,
+      );
     }
 
     return taskId;
@@ -624,6 +642,18 @@ export const updateStatusFromAgent = internalMutation({
     }
 
     await ctx.db.patch(args.taskId, updates);
+
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+        {
+          accountId: task.accountId,
+          taskId: args.taskId,
+          closedReason: "task_archived",
+        },
+      );
+    }
 
     if (!suppressNotifications) {
       for (const uid of task.assignedUserIds) {
@@ -964,6 +994,15 @@ export const deleteTaskFromAgent = internalMutation({
       archivedAt: now,
       updatedAt: now,
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+      {
+        accountId: task.accountId,
+        taskId: args.taskId,
+        closedReason: "task_archived",
+      },
+    );
 
     // Log activity for audit trail
     await logActivity({

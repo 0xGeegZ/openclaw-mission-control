@@ -11,7 +11,6 @@ export interface AgentForProfile {
   name: string;
   slug: string;
   role: string;
-  sessionKey: string;
   openclawConfig?: {
     model?: string;
     temperature?: number;
@@ -95,10 +94,11 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 - Only use read with paths under your workspace; do not read /usr, /usr/local, or node_modules — they are not in your workspace.
 - If memory/YYYY-MM-DD.md is missing, create it before reading it.
 
-## Document sharing (critical)
+## Document delivery (critical)
 
-- When you produce a document or large deliverable, you must use the document_upsert tool (the document sharing tool) so the primary user can see it.
+- When you produce a document or large deliverable, you must use the **document_upsert** tool so the primary user can see it in the dashboard.
 - After calling document_upsert, include the returned documentId and a Markdown link in your thread reply: [Document](/document/<documentId>). Do not post local paths — the primary user cannot open them.
+- Do not use any "share", "send to channel", or "webchat" action to deliver documents. In OpenClaw Mission Control, documents are delivered only via document_upsert and the task-thread reply with the document link.
 
 ## Working with multiple assignees
 
@@ -646,7 +646,8 @@ export function syncOpenClawProfiles(
     writeIfChanged(path.join(agentDir, "SOUL.md"), resolveSoulContent(agent));
     writeIfChanged(
       path.join(agentDir, "USER.md"),
-      agent.effectiveUserMd?.trim() || "# User\n\nAccount context (edit in Settings > Agent Profile).",
+      agent.effectiveUserMd?.trim() ||
+        "# User\n\nAccount context (edit in Settings > Agent Profile).",
     );
     writeIfChanged(
       path.join(agentDir, "IDENTITY.md"),
