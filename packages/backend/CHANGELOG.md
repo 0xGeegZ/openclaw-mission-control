@@ -1,5 +1,21 @@
 # @packages/backend
 
+## 1.1.0
+
+### Minor Changes
+
+- c83febf: Backend-resolved task and system session keys; delivery uses OpenResponses instructions + compact input.
+  - **Backend:** `agentRuntimeSessions` table and `resolveSessionKeys`; `getNotificationForDelivery` returns `deliverySessionKey` (task or system). Session keys no longer derived from legacy `agents.sessionKey`.
+  - **Runtime:** Gateway and delivery use backend-resolved keys only; `buildDeliveryInstructions` + `buildNotificationInput` split; `task_history` tool; health and agent-sync register system keys from resolver.
+
+### Patch Changes
+
+- c83febf: USER.md + IDENTITY.md prompt layering and behavior flags (PR #128).
+  - **Schema:** `accounts.settings.userMd`, `agents.identityContent`, behavior flags `canReviewTasks` / `canMarkDone` (account + agent).
+  - **Backend:** `accounts.update` accepts `userMd`; `agents.create`/`update` accept `identityContent`; `migratePromptScaffold` mutation; `listForRuntime` returns effective USER/IDENTITY; fallback helpers in `lib/user_identity_fallback.ts`.
+  - **Runtime:** Profile sync writes USER.md and IDENTITY.md per agent; delivery policy uses `effectiveBehaviorFlags.canReviewTasks` / `canMarkDone` only (no role/slug heuristics).
+  - **Web:** Settings > Agent Profile tab for account-shared USER.md (admin-only save); Admin OpenClaw migration button and per-agent behavior flags.
+
 ## 1.0.3
 
 ### Patch Changes
