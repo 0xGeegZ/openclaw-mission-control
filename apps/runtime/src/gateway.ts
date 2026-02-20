@@ -1,11 +1,17 @@
 import net from "node:net";
 import { RuntimeConfig } from "./config";
-import { getConvexClient, api, type ListAgentsItem } from "./convex-client";
+import { getConvexClient, api } from "./convex-client";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
 import { createLogger } from "./logger";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
 
 const log = createLogger("[Gateway]");
+
+/** Redact session key for logs and errors (first 4 chars + ellipsis). */
+function redactSessionKey(sessionKey: string): string {
+  if (typeof sessionKey !== "string" || sessionKey.length <= 4) return "(redacted)";
+  return `${sessionKey.slice(0, 4)}…`;
+}
 
 /** OpenResponses function_call output item from the agent response */
 export interface OpenClawToolCall {
@@ -271,10 +277,10 @@ export async function initGateway(config: RuntimeConfig): Promise<void> {
   state.openclawRequestTimeoutMs = config.openclawRequestTimeoutMs;
 
   const client = getConvexClient();
-  const agents = (await client.action(api.service.actions.listAgents, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: config.accountId,
     serviceToken: config.serviceToken,
-  })) as ListAgentsItem[];
+  });
 
   for (const agent of agents) {
     const key = agent.systemSessionKey;
@@ -474,7 +480,7 @@ export function registerSession(
         : undefined,
     lastMessage: null,
   });
-  log.debug("Registered session:", sessionKey);
+  log.debug("Registered session:", redactSessionKey(sessionKey));
 }
 
 /**
@@ -498,7 +504,7 @@ export async function sendToOpenClaw(
 ): Promise<SendToOpenClawResult> {
   const session = state.sessions.get(sessionKey);
   if (!session) {
-    throw new Error(`Unknown session: ${sessionKey}`);
+    throw new Error(`Unknown session: ${redactSessionKey(sessionKey)}`);
   }
 
   const baseUrl = state.openclawGatewayUrl?.trim();
@@ -509,7 +515,7 @@ export async function sendToOpenClaw(
     throw new Error(err);
   }
 
-  log.debug("Sending to", sessionKey, ":", message.substring(0, 100));
+  log.debug("Sending to", redactSessionKey(sessionKey), ":", message.substring(0, 100));
 
   const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
@@ -596,7 +602,7 @@ export async function sendOpenClawToolResults(
 ): Promise<string | null> {
   const session = state.sessions.get(sessionKey);
   if (!session) {
-    throw new Error(`Unknown session: ${sessionKey}`);
+    throw new Error(`Unknown session: ${redactSessionKey(sessionKey)}`);
   }
 
   const baseUrl = state.openclawGatewayUrl?.trim();
@@ -662,25 +668,28 @@ export async function receiveFromOpenClaw(
 ): Promise<void> {
   const session = state.sessions.get(sessionKey);
   if (!session) {
-    throw new Error(`Unknown session: ${sessionKey}`);
+    throw new Error(`Unknown session: ${redactSessionKey(sessionKey)}`);
   }
 
   const trimmedResponse = response.trim();
   if (!trimmedResponse) {
-    log.warn("OpenClaw returned empty response; skipping message", sessionKey);
+    log.warn(
+      "OpenClaw returned empty response; skipping message",
+      redactSessionKey(sessionKey),
+    );
     return;
   }
   if (isHeartbeatOkResponse(trimmedResponse)) {
     log.debug(
       "OpenClaw returned HEARTBEAT_OK; not posting to thread",
-      sessionKey,
+      redactSessionKey(sessionKey),
     );
     return;
   }
 
   log.debug(
     "Received from",
-    sessionKey,
+    redactSessionKey(sessionKey),
     ":",
     trimmedResponse.substring(0, 100),
   );
@@ -690,7 +699,7 @@ export async function receiveFromOpenClaw(
   if (placeholder.isPlaceholder) {
     log.warn(
       "OpenClaw placeholder response received; replacing with fallback message",
-      sessionKey,
+      redactSessionKey(sessionKey),
       taskId ?? "no-task",
     );
     messageContent = buildNoResponseFallbackMessage(placeholder.mentionPrefix);

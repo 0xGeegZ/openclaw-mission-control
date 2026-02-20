@@ -5,7 +5,7 @@
  * Tools are attached only when the agent's effective behavior flags allow them.
  */
 
-import { getConvexClient, api, type ListAgentsItem } from "../convex-client";
+import { getConvexClient, api } from "../convex-client";
 import {
   filterOrchestratorFromAssignees,
   normalizeTaskCreateStatusForOrchestrator,
@@ -380,6 +380,34 @@ export const DOCUMENT_UPSERT_TOOL_SCHEMA = {
   },
 };
 
+/** OpenResponses function tool schema: list documents for discovery */
+export const DOCUMENT_LIST_TOOL_SCHEMA = {
+  type: "function" as const,
+  function: {
+    name: "document_list",
+    description:
+      "List documents in the account or for a specific task. Use to discover existing deliverables, notes, templates, or references before creating or updating.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Optional; limit to documents linked to this task",
+        },
+        type: {
+          type: "string",
+          enum: ["deliverable", "note", "template", "reference"],
+          description: "Optional document type filter",
+        },
+        limit: {
+          type: "number",
+          description: "Optional result limit (default 50, max 100)",
+        },
+      },
+    },
+  },
+};
+
 export { TASK_STATUS_TOOL_SCHEMA };
 
 export type ToolResult = {
@@ -439,6 +467,10 @@ export function getToolCapabilitiesAndSchemas(options: {
   if (options.canCreateDocuments) {
     capabilityLabels.push("create/update documents (document_upsert tool)");
     schemas.push(DOCUMENT_UPSERT_TOOL_SCHEMA);
+  }
+  if (options.canCreateDocuments || options.hasTaskContext) {
+    capabilityLabels.push("List documents (document_list)");
+    schemas.push(DOCUMENT_LIST_TOOL_SCHEMA);
   }
   if (options.hasTaskContext && options.canMentionAgents === true) {
     capabilityLabels.push("request agent responses (response_request tool)");
@@ -532,10 +564,10 @@ async function resolveAgentSlugs(params: {
   slugs: string[];
 }): Promise<Map<string, string>> {
   const client = getConvexClient();
-  const agents = (await client.action(api.service.actions.listAgents, {
+  const agents = await client.action(api.service.actions.listAgents, {
     accountId: params.accountId,
     serviceToken: params.serviceToken,
-  })) as ListAgentsItem[];
+  });
   const map = new Map<string, string>();
   for (const agent of agents) {
     if (agent?.slug) {
@@ -835,6 +867,44 @@ export async function executeAgentTool(params: {
         },
       );
       return { success: true, documentId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  if (name === "document_list") {
+    let args: { taskId?: string; type?: string; limit?: number };
+    try {
+      args = JSON.parse(argsStr || "{}") as typeof args;
+    } catch {
+      return { success: false, error: "Invalid JSON arguments" };
+    }
+    const allowedTypes = [
+      "deliverable",
+      "note",
+      "template",
+      "reference",
+    ] as const;
+    const type =
+      typeof args.type === "string" &&
+      allowedTypes.includes(args.type as (typeof allowedTypes)[number])
+        ? (args.type as (typeof allowedTypes)[number])
+        : undefined;
+    try {
+      const result = await client.action(
+        api.service.actions.listDocumentsForAgent,
+        {
+          accountId,
+          serviceToken,
+          taskId: args.taskId?.trim()
+            ? (args.taskId as Id<"tasks">)
+            : undefined,
+          type,
+          limit: args.limit,
+        },
+      );
+      return { success: true, data: result };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

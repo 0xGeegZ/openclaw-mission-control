@@ -478,12 +478,21 @@ fi
 
 # Create workspace-<agentId> under .openclaw so OpenClaw gateway can use them without ENOENT on mkdir.
 # Use merged config and, when present, runtime-generated config (in case merge ran before runtime wrote).
+# Sanitize id: only [a-zA-Z0-9_-] to avoid path traversal or command substitution.
 for id in $(jq -r '.agents.list[]?.id // empty' "$CONFIG_FILE" 2>/dev/null); do
-  [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+  [ -z "$id" ] && continue
+  case "$id" in
+    *[!a-zA-Z0-9_-]*) ;;
+    *) mkdir -p "$CONFIG_DIR/workspace-$id" ;;
+  esac
 done
 if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
   for id in $(jq -r '.agents.list[]?.id // empty' "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null); do
-    [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+    [ -z "$id" ] && continue
+    case "$id" in
+      *[!a-zA-Z0-9_-]*) ;;
+      *) mkdir -p "$CONFIG_DIR/workspace-$id" ;;
+    esac
   done
 fi
 

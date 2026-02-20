@@ -2,9 +2,9 @@
  * Unit tests for delivery policy: shouldDeliverToAgent, shouldRetryNoResponseForNotification,
  * orchestrator silent-by-default, and role/QA helpers.
  */
-import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { describe, it, expect } from "vitest";
-import type { DeliveryContext } from "./types";
+import { aid, buildContext, mid, tid } from "../test-helpers/deliveryContext";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import {
   agentCanReview,
   canAgentMarkDone,
@@ -16,51 +16,6 @@ import {
   shouldRetryNoResponseForNotification,
   TASK_STATUSES_SKIP_STATUS_CHANGE,
 } from "./policy";
-
-const aid = (s: string): Id<"agents"> => s as Id<"agents">;
-const tid = (s: string): Id<"tasks"> => s as Id<"tasks">;
-const nid = (s: string): Id<"notifications"> => s as Id<"notifications">;
-const accId = (s: string): Id<"accounts"> => s as Id<"accounts">;
-const mid = (s: string): Id<"messages"> => s as Id<"messages">;
-
-function buildContext(
-  overrides: Partial<DeliveryContext> = {},
-): DeliveryContext {
-  const base: DeliveryContext = {
-    notification: {
-      _id: nid("n1"),
-      type: "thread_update",
-      title: "Update",
-      body: "Body",
-      recipientId: "agent-a",
-      accountId: accId("acc1"),
-    },
-    agent: { _id: aid("agent-a"), role: "Developer", name: "Engineer" },
-    task: {
-      _id: tid("task1"),
-      status: "in_progress",
-      title: "Task",
-      assignedAgentIds: [aid("agent-a")],
-    },
-    message: {
-      _id: mid("m1"),
-      authorType: "agent",
-      authorId: "agent-b",
-      content: "Done",
-    },
-    thread: [],
-    sourceNotificationType: null,
-    orchestratorAgentId: null,
-    primaryUserMention: null,
-    mentionableAgents: [],
-    assignedAgents: [],
-    effectiveBehaviorFlags: {},
-    repositoryDoc: null,
-    globalBriefingDoc: null,
-    taskOverview: null,
-  };
-  return { ...base, ...overrides } as DeliveryContext;
-}
 
 describe("policy matrix", () => {
   it("TASK_STATUSES_SKIP_STATUS_CHANGE includes done and blocked", () => {
@@ -210,7 +165,7 @@ describe("isOrchestratorChatTask", () => {
         status: "in_progress",
         title: "T",
         labels: ["system:orchestrator-chat"],
-      }),
+      } as DeliveryContext["task"]),
     ).toBe(true);
   });
   it("returns false when label is missing", () => {
@@ -219,7 +174,7 @@ describe("isOrchestratorChatTask", () => {
         _id: tid("t1"),
         status: "in_progress",
         title: "T",
-      }),
+      } as DeliveryContext["task"]),
     ).toBe(false);
   });
 });

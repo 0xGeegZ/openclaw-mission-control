@@ -1,7 +1,87 @@
 import { v } from "convex/values";
-import { internalMutation } from "../_generated/server";
-import { documentTypeValidator } from "../lib/validators";
+import { internalMutation, internalQuery } from "../_generated/server";
+import {
+  documentTypeValidator,
+  DOCUMENT_TITLE_MAX_LENGTH,
+  DOCUMENT_CONTENT_MAX_LENGTH,
+} from "../lib/validators";
 import { logActivity } from "../lib/activity";
+
+/** Display name for list: name ?? title ?? "Untitled". */
+function documentDisplayTitle(doc: {
+  name?: string | null;
+  title?: string | null;
+}): string {
+  return doc.name ?? doc.title ?? "Untitled";
+}
+
+/**
+ * List documents for agent tools (internal, service-only).
+ * Uses by_account_updated when no taskId; by_task when taskId provided.
+ * Excludes soft-deleted; returns minimal shape (no content).
+ */
+export const listForAgentTool = internalQuery({
+  args: {
+    accountId: v.id("accounts"),
+    taskId: v.optional(v.id("tasks")),
+    type: v.optional(documentTypeValidator),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const rawLimit = args.limit ?? 50;
+    const limit = Math.min(
+      Math.max(1, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 50),
+      100,
+    );
+    const accountId = args.accountId;
+    const typeFilter = args.type;
+
+    if (args.taskId) {
+      // Task path: use by_task_updated for bounded read; filter deleted/type in app.
+      const task = await ctx.db.get(args.taskId);
+      if (!task || task.accountId !== accountId) {
+        return [];
+      }
+      const fetchCount = Math.min(limit * 2, 200);
+      const docs = await ctx.db
+        .query("documents")
+        .withIndex("by_task_updated", (q) => q.eq("taskId", args.taskId!))
+        .order("desc")
+        .take(fetchCount);
+      let filtered = docs.filter(
+        (d) => !d.deletedAt && d.accountId === accountId,
+      );
+      if (typeFilter) {
+        filtered = filtered.filter((d) => d.type === typeFilter);
+      }
+      return filtered.slice(0, limit).map((d) => ({
+        _id: d._id,
+        title: documentDisplayTitle(d),
+        type: d.type,
+        taskId: d.taskId,
+        updatedAt: d.updatedAt,
+      }));
+    }
+
+    const fetchLimit = Math.min(limit * 2, 100);
+    const docs = await ctx.db
+      .query("documents")
+      .withIndex("by_account_updated", (q) => q.eq("accountId", accountId))
+      .order("desc")
+      .take(fetchLimit);
+    const filtered = docs.filter((d) => !d.deletedAt);
+    const byType = typeFilter
+      ? filtered.filter((d) => d.type === typeFilter)
+      : filtered;
+    return byType.slice(0, limit).map((d) => ({
+      _id: d._id,
+      title: documentDisplayTitle(d),
+      type: d.type,
+      taskId: d.taskId,
+      updatedAt: d.updatedAt,
+    }));
+  },
+});
 
 /**
  * Service-only document functions.
@@ -23,7 +103,17 @@ export const createOrUpdateFromAgent = internalMutation({
     type: documentTypeValidator,
   },
   handler: async (ctx, args) => {
-    // Get agent info
+    if (args.title.length > DOCUMENT_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Title too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (args.content.length > DOCUMENT_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Content too long (max ${DOCUMENT_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       throw new Error("Not found: Agent does not exist");

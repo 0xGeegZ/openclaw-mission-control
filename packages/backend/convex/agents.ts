@@ -18,6 +18,102 @@ import {
   buildDefaultIdentityContent,
 } from "./lib/user_identity_fallback";
 
+/** Bounds for updateOpenclawConfig (security and sanity). */
+const OPENCLAW_TEMPERATURE_MIN = 0;
+const OPENCLAW_TEMPERATURE_MAX = 2;
+const OPENCLAW_MAX_TOKENS_MIN = 1;
+const OPENCLAW_MAX_TOKENS_MAX = 128_000;
+const OPENCLAW_SYSTEM_PROMPT_PREFIX_MAX_LENGTH = 4_000;
+const OPENCLAW_CUSTOM_CONTEXT_SOURCES_MAX_LENGTH = 20;
+const OPENCLAW_CUSTOM_CONTEXT_SOURCE_ITEM_MAX_LENGTH = 200;
+const OPENCLAW_REQUIRES_APPROVAL_ACTIONS_MAX_LENGTH = 20;
+const OPENCLAW_REQUIRES_APPROVAL_ACTION_ITEM_MAX_LENGTH = 200;
+
+/**
+ * Validates openclaw config bounds. Throws on invalid values.
+ * Used by updateOpenclawConfig handler; exported for unit tests.
+ */
+export function validateOpenclawConfigBounds(config: {
+  temperature: number;
+  maxTokens?: number;
+  systemPromptPrefix?: string;
+  contextConfig?: { customContextSources?: string[] };
+  behaviorFlags?: { requiresApprovalForActions?: string[] };
+}): void {
+  const temp = config.temperature;
+  if (
+    typeof temp !== "number" ||
+    temp < OPENCLAW_TEMPERATURE_MIN ||
+    temp > OPENCLAW_TEMPERATURE_MAX
+  ) {
+    throw new Error(
+      `Invalid temperature: must be between ${OPENCLAW_TEMPERATURE_MIN} and ${OPENCLAW_TEMPERATURE_MAX}.`,
+    );
+  }
+  const maxTok = config.maxTokens;
+  if (maxTok !== undefined) {
+    if (
+      typeof maxTok !== "number" ||
+      !Number.isInteger(maxTok) ||
+      maxTok < OPENCLAW_MAX_TOKENS_MIN ||
+      maxTok > OPENCLAW_MAX_TOKENS_MAX
+    ) {
+      throw new Error(
+        `Invalid maxTokens: must be an integer between ${OPENCLAW_MAX_TOKENS_MIN} and ${OPENCLAW_MAX_TOKENS_MAX}.`,
+      );
+    }
+  }
+  const prefix = config.systemPromptPrefix;
+  if (
+    prefix !== undefined &&
+    prefix !== null &&
+    typeof prefix === "string" &&
+    prefix.length > OPENCLAW_SYSTEM_PROMPT_PREFIX_MAX_LENGTH
+  ) {
+    throw new Error(
+      `systemPromptPrefix exceeds maximum length (${OPENCLAW_SYSTEM_PROMPT_PREFIX_MAX_LENGTH} characters).`,
+    );
+  }
+  const customSources = config.contextConfig?.customContextSources;
+  if (customSources !== undefined && Array.isArray(customSources)) {
+    if (customSources.length > OPENCLAW_CUSTOM_CONTEXT_SOURCES_MAX_LENGTH) {
+      throw new Error(
+        `customContextSources has more than ${OPENCLAW_CUSTOM_CONTEXT_SOURCES_MAX_LENGTH} entries.`,
+      );
+    }
+    for (const item of customSources) {
+      if (
+        typeof item === "string" &&
+        item.length > OPENCLAW_CUSTOM_CONTEXT_SOURCE_ITEM_MAX_LENGTH
+      ) {
+        throw new Error(
+          `customContextSources entry exceeds ${OPENCLAW_CUSTOM_CONTEXT_SOURCE_ITEM_MAX_LENGTH} characters.`,
+        );
+      }
+    }
+  }
+  const approvalActions = config.behaviorFlags?.requiresApprovalForActions;
+  if (approvalActions !== undefined && Array.isArray(approvalActions)) {
+    if (
+      approvalActions.length > OPENCLAW_REQUIRES_APPROVAL_ACTIONS_MAX_LENGTH
+    ) {
+      throw new Error(
+        `requiresApprovalForActions has more than ${OPENCLAW_REQUIRES_APPROVAL_ACTIONS_MAX_LENGTH} entries.`,
+      );
+    }
+    for (const item of approvalActions) {
+      if (
+        typeof item === "string" &&
+        item.length > OPENCLAW_REQUIRES_APPROVAL_ACTION_ITEM_MAX_LENGTH
+      ) {
+        throw new Error(
+          `requiresApprovalForActions entry exceeds ${OPENCLAW_REQUIRES_APPROVAL_ACTION_ITEM_MAX_LENGTH} characters.`,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Get default OpenClaw config for new agents.
  */
@@ -607,6 +703,8 @@ export const updateOpenclawConfig = mutation({
         throw new Error(`Skill is disabled: ${skill.name}`);
       }
     }
+
+    validateOpenclawConfigBounds(args.config);
 
     await ctx.db.patch(args.agentId, {
       openclawConfig: {

@@ -4,7 +4,7 @@
  */
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
-import type { DeliveryContext } from "./types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import {
   isOrchestratorChatTask,
   isRecipientInMultiAssigneeTask,
@@ -193,6 +193,9 @@ export function buildHttpCapabilityLabels(options: {
   }
   if (options.canCreateDocuments) {
     labels.push("create/update documents via HTTP (POST /agent/document)");
+  }
+  if (options.canCreateDocuments || options.hasTaskContext) {
+    labels.push("list documents via HTTP (POST /agent/document-list)");
   }
   if (options.hasTaskContext && options.canMentionAgents) {
     labels.push(

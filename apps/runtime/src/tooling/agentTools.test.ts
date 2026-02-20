@@ -124,6 +124,38 @@ describe("getToolCapabilitiesAndSchemas", () => {
     expect(schemaNames(result.schemas)).toContain("document_upsert");
   });
 
+  it("returns document_list when canCreateDocuments or hasTaskContext", () => {
+    const withDocs = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: true,
+      hasTaskContext: false,
+    });
+    expect(withDocs.capabilityLabels).toContain(
+      "List documents (document_list)",
+    );
+    expect(schemaNames(withDocs.schemas)).toContain("document_list");
+
+    const withTask = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    expect(withTask.capabilityLabels).toContain(
+      "List documents (document_list)",
+    );
+    expect(schemaNames(withTask.schemas)).toContain("document_list");
+
+    const neither = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: false,
+      canCreateDocuments: false,
+      hasTaskContext: false,
+    });
+    expect(schemaNames(neither.schemas)).not.toContain("document_list");
+  });
+
   it("returns response_request when canMentionAgents and hasTaskContext", () => {
     const result = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -175,10 +207,7 @@ describe("getToolCapabilitiesAndSchemas", () => {
       hasTaskContext: true,
     };
     const result = getToolCapabilitiesAndSchemas(options);
-    const toolLabels = result.capabilityLabels.filter((l) =>
-      l.includes(" tool)"),
-    );
-    expect(toolLabels.length).toBe(result.schemas.length);
+    expect(result.capabilityLabels.length).toBe(result.schemas.length);
     expect(schemaNames(result.schemas).length).toBe(result.schemas.length);
   });
 
@@ -507,6 +536,31 @@ describe("executeAgentTool", () => {
         queryAgentId: "agent1",
       }),
     );
+  });
+
+  it("executes document_list and returns documents", async () => {
+    const docs = [
+      {
+        _id: "doc1",
+        title: "Deliverable 1",
+        type: "deliverable",
+        updatedAt: 1000,
+      },
+    ];
+    mockAction.mockResolvedValue({ documents: docs });
+    const result = await executeAgentTool({
+      ...baseParams,
+      name: "document_list",
+      arguments: "{}",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ documents: docs });
+    expect(mockAction).toHaveBeenCalledTimes(1);
+    const callArgs = mockAction.mock.calls[0];
+    expect(callArgs?.[1]).toMatchObject({
+      accountId: "acc1",
+      serviceToken: "token",
+    });
   });
 });
 
