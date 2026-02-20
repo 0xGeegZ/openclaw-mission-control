@@ -86,6 +86,16 @@ if (rawModels && typeof rawModels === 'object' && !Array.isArray(rawModels)) {
 config.agents.defaults.contextPruning = config.agents.defaults.contextPruning || {};
 config.agents.defaults.contextPruning.mode = 'cache-ttl';
 config.agents.defaults.contextPruning.ttl = '5m';
+// agents.defaults.maxConcurrent: allow multiple sessions in parallel (orchestrator + task threads). OpenClaw default is 1.
+function applyMaxConcurrent() {
+  const DEFAULT_MAX_CONCURRENT = 10;
+  const MAX_CONCURRENT_CAP = 16;
+  const raw = process.env.OPENCLAW_MAX_CONCURRENT;
+  const parsed = raw !== undefined && raw !== '' ? Number(String(raw).trim()) : DEFAULT_MAX_CONCURRENT;
+  const value = Number.isFinite(parsed) ? Math.max(1, Math.min(MAX_CONCURRENT_CAP, Math.floor(parsed))) : DEFAULT_MAX_CONCURRENT;
+  config.agents.defaults.maxConcurrent = value;
+}
+applyMaxConcurrent();
 config.gateway = config.gateway || {};
 config.channels = config.channels || {};
 config.auth = config.auth || {};
@@ -429,6 +439,8 @@ try {
         if (generated.agents.defaults && typeof generated.agents.defaults === 'object') {
           config.agents.defaults = Object.assign({}, config.agents.defaults, generated.agents.defaults);
         }
+        // Env wins: re-apply OPENCLAW_MAX_CONCURRENT so runtime-generated config cannot override it.
+        applyMaxConcurrent();
         console.log('Merged agents from', openclawConfigPath);
       }
       // load (extraDirs) is written by runtime but not accepted by current clawdbot schema; skip to avoid config invalid.
@@ -478,12 +490,21 @@ fi
 
 # Create workspace-<agentId> under .openclaw so OpenClaw gateway can use them without ENOENT on mkdir.
 # Use merged config and, when present, runtime-generated config (in case merge ran before runtime wrote).
+# Sanitize id: only [a-zA-Z0-9_-] to avoid path traversal or command substitution.
 for id in $(jq -r '.agents.list[]?.id // empty' "$CONFIG_FILE" 2>/dev/null); do
-  [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+  [ -z "$id" ] && continue
+  case "$id" in
+    *[!a-zA-Z0-9_-]*) ;;
+    *) mkdir -p "$CONFIG_DIR/workspace-$id" ;;
+  esac
 done
 if [ -f "$GENERATED_CONFIG_FILE_PATH" ]; then
   for id in $(jq -r '.agents.list[]?.id // empty' "$GENERATED_CONFIG_FILE_PATH" 2>/dev/null); do
-    [ -n "$id" ] && mkdir -p "$CONFIG_DIR/workspace-$id"
+    [ -z "$id" ] && continue
+    case "$id" in
+      *[!a-zA-Z0-9_-]*) ;;
+      *) mkdir -p "$CONFIG_DIR/workspace-$id" ;;
+    esac
   done
 fi
 

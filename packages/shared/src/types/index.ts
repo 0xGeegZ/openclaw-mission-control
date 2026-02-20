@@ -226,6 +226,23 @@ export type AnalyticsTimeRange =
   (typeof ANALYTICS_TIME_RANGE)[keyof typeof ANALYTICS_TIME_RANGE];
 
 // ============================================================================
+// BEHAVIOR FLAGS
+// ============================================================================
+
+/**
+ * Behavior permissions enforced for each agent.
+ */
+export interface BehaviorFlags {
+  canCreateTasks: boolean;
+  canModifyTaskStatus: boolean;
+  canCreateDocuments: boolean;
+  canMentionAgents: boolean;
+  canReviewTasks: boolean;
+  canMarkDone: boolean;
+  requiresApprovalForActions?: string[];
+}
+
+// ============================================================================
 // OPENCLAW CONFIG
 // ============================================================================
 
@@ -248,13 +265,5 @@ export interface OpenClawConfig {
     requestsPerMinute: number;
     tokensPerDay?: number;
   };
-  behaviorFlags?: {
-    canCreateTasks: boolean;
-    canModifyTaskStatus: boolean;
-    canCreateDocuments: boolean;
-    canMentionAgents: boolean;
-    canReviewTasks?: boolean;
-    canMarkDone?: boolean;
-    requiresApprovalForActions?: string[];
-  };
+  behaviorFlags?: BehaviorFlags;
 }

@@ -6,6 +6,10 @@ import {
   buildDefaultUserContent,
   buildDefaultIdentityContent,
 } from "./lib/user_identity_fallback";
+import {
+  SOUL_UNIVERSAL_OPERATING_RULES,
+  SOUL_UNIVERSAL_NEVER_DO,
+} from "./lib/agent_soul";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { AVAILABLE_MODELS, DEFAULT_OPENCLAW_CONFIG } from "@packages/shared";
@@ -590,7 +594,7 @@ Agent @mentions do **not** notify other agents. To request a follow-up, you must
 Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), \`http://127.0.0.1:3000\` points at the gateway container and will fail — use \`http://runtime:3000\` instead.
 
 - Endpoint: \`POST {TASK_STATUS_BASE_URL}/agent/task-status\`
-- Header: \`x-openclaw-session-key: agent:{slug}:{accountId}\`
+- Header: \`x-openclaw-session-key\` (use the session key from the notification prompt)
 - Body: \`{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }\`
 
 Rules:
@@ -607,7 +611,7 @@ Example (HTTP fallback):
 BASE_URL="http://runtime:3000"
 curl -X POST "\${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
-  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -H "x-openclaw-session-key: <session-key-from-prompt>" \
   -d '{"taskId":"tsk_123","status":"review"}'
 \`\`\`
 
@@ -625,7 +629,7 @@ curl -X POST "\${BASE_URL}/agent/task-status" \
 - **Document:** \`POST {TASK_STATUS_BASE_URL}/agent/document\` with body \`{ "title", "content", "type", "documentId?", "taskId?" }\`.
 - **Response request:** \`POST {TASK_STATUS_BASE_URL}/agent/response-request\` with body \`{ "taskId", "recipientSlugs", "message" }\`.
 
-All require header \`x-openclaw-session-key: agent:{slug}:{accountId}\` and are local-only.
+All require header \`x-openclaw-session-key\` (backend-resolved task/system key from prompt) and are local-only.
 
 ## Orchestrator (squad lead)
 
@@ -769,7 +773,7 @@ const DOC_TECH_BACKEND_CONTENT = `# Tech Stack — Backend
 - **Convex**: schema + functions in \`packages/backend/convex\`
 - **Clerk** for auth
 - Runtime service: \`apps/runtime\` (OpenClaw gateway, notification delivery, heartbeat)
-- OpenClaw sessions: one per agent, session key \`agent:{slug}:{accountId}\`
+- OpenClaw sessions: backend-resolved task/system keys in \`agentRuntimeSessions\`
 - Multi-tenancy: \`accountId\` on every table; all queries filter by account.
 `;
 
@@ -795,13 +799,17 @@ const seedDocs = [
 ] as const;
 
 /** Minimal OpenClaw config for seed agents (matches schema). */
+type SeedBehaviorFlags = Pick<
+  {
+    [K in keyof typeof DEFAULT_OPENCLAW_CONFIG.behaviorFlags]: boolean;
+  },
+  "canCreateTasks" | "canReviewTasks" | "canMarkDone"
+>;
+
+/** Build baseline OpenClaw config for seeded agents. */
 function defaultOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: {
-    canCreateTasks: boolean;
-    canReviewTasks?: boolean;
-    canMarkDone?: boolean;
-  },
+  behaviorFlags: SeedBehaviorFlags,
 ) {
   return {
     ...DEFAULT_OPENCLAW_CONFIG,
@@ -810,8 +818,8 @@ function defaultOpenclawConfig(
     behaviorFlags: {
       ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
       canCreateTasks: behaviorFlags.canCreateTasks,
-      canReviewTasks: behaviorFlags.canReviewTasks ?? false,
-      canMarkDone: behaviorFlags.canMarkDone ?? false,
+      canReviewTasks: behaviorFlags.canReviewTasks,
+      canMarkDone: behaviorFlags.canMarkDone,
     },
   };
 }
@@ -821,11 +829,7 @@ function defaultOpenclawConfig(
  */
 function buildSeedOpenclawConfig(
   skillIds: Id<"skills">[],
-  behaviorFlags: {
-    canCreateTasks: boolean;
-    canReviewTasks?: boolean;
-    canMarkDone?: boolean;
-  },
+  behaviorFlags: SeedBehaviorFlags,
   existingConfig?: {
     systemPromptPrefix?: string;
     rateLimits?: {
@@ -899,6 +903,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Use full format only for substantive updates; for acknowledgments or brief follow-ups, reply in 1–2 sentences.
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -939,6 +944,7 @@ Own scope, acceptance criteria, and release readiness. Act as the PM quality gat
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "engineer":
       return `# SOUL — ${name}
@@ -962,6 +968,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - When the task has other agent assignees, declare your sub-scope in your first reply, ask dependency questions in-thread, and record agreed decisions before implementation; use response_request for any dependency on co-assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -989,6 +996,7 @@ Implement reliable fixes and keep tech docs current. Maintain frontend and backe
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "qa":
       return `# SOUL — ${name}
@@ -1014,6 +1022,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - On new assignment, acknowledge first (1–2 sentences) and ask clarifying questions before starting work.
 - When the task has multiple assignees, verify cross-assignee integration and call out missing handoffs, unanswered dependency questions, or missing agreement summaries in the thread.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1047,6 +1056,7 @@ Protect quality and product integrity by validating work against acceptance crit
 - Change stable decisions without updating MEMORY.md.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "designer":
       return `# SOUL — ${name}
@@ -1067,6 +1077,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Keep feedback actionable and scoped.
 - When co-assigned with other agents, state your design scope in your first reply, ask dependency questions in-thread, and use response_request if you need input from another assignee.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1094,6 +1105,7 @@ Design clear, accessible, and consistent UI/UX for Mission Control. Deliver usab
 - Change established design decisions without documenting rationale.
 - Invent facts without sources.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     case "writer":
       return `# SOUL — ${name}
@@ -1114,6 +1126,7 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Provide multiple headline or CTA options when relevant.
 - When co-assigned with other agents, declare your content scope, ask dependency questions in-thread, and use response_request for dependencies on other assignees.
 - Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update.
+${SOUL_UNIVERSAL_OPERATING_RULES}
 
 ## Domain strengths
 
@@ -1141,9 +1154,10 @@ Create clear, persuasive product content: blog posts, landing pages, and in-app 
 - Fabricate stats or testimonials.
 - Change brand voice without approval.
 - Leak secrets.
+${SOUL_UNIVERSAL_NEVER_DO}
 `;
     default:
-      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n`;
+      return `# SOUL — ${name}\n\nRole: ${role}\nLevel: specialist\n\n## Mission\nExecute assigned tasks with precision and provide clear, actionable updates.\n\n## Personality constraints\n- Be concise and focused\n- Provide evidence for claims\n- Ask questions only when blocked\n- Update task status promptly\n- If waiting on human input or action, move to BLOCKED (not REVIEW). When blocker is resolved, move back to IN_PROGRESS before continuing.\n- Before every operation, check assigned skills and use any that apply; if none apply, state \`No applicable skill\` in your update\n${SOUL_UNIVERSAL_OPERATING_RULES}\n\n## Quality checks (must pass)\n- Relevant assigned skills were used, or \`No applicable skill\` was stated\n\n## What you never do\n- Invent facts without sources\n- Change decisions without documentation\n- Leak secrets.\n${SOUL_UNIVERSAL_NEVER_DO}\n`;
   }
 }
 
@@ -1421,14 +1435,11 @@ async function runSeedWithOwner(
       },
       existingAgent?.openclawConfig,
     );
-    const sessionKey = `agent:${a.slug}:${accountId}`;
-
     if (existingAgent) {
       await ctx.db.patch(existingAgent._id, {
         name: a.name,
         role: a.role,
         description: a.description,
-        sessionKey,
         heartbeatInterval: a.heartbeatInterval,
         soulContent,
         identityContent,
@@ -1445,7 +1456,6 @@ async function runSeedWithOwner(
       slug: a.slug,
       role: a.role,
       description: a.description,
-      sessionKey,
       status: "offline",
       heartbeatInterval: a.heartbeatInterval,
       icon: a.icon,

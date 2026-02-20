@@ -1,5 +1,50 @@
 # runtime-service
 
+## 1.2.0
+
+### Minor Changes
+
+- 2c44b28: Delivery refactor, tests, and code-review follow-ups
+  - **Runtime:** Refactored delivery loop; single poll seam `_runOnePollCycle`, `markDeliveredAndLog` helper, delivery-loop and delivery tests. **document_list** tool and `POST /agent/document-list` HTTP fallback when tools disabled. Simplified `resolveFinalTextToPost` (fallback disabled); consolidated policy tests; TypeScript/clarity in delivery and policy (TaskStatus, validation, no redundant casts). DeliveryContext payload truncation (doc/message caps). Session-key logging note per security audit.
+  - **Backend:** Service action `listDocumentsForAgent` and internal `listForAgentTool`; index `by_account_undelivered_created`, take-based `listUndeliveredForAccount`. Mark actions (`markDelivered`, `markRead`, `markDeliveryEnded`) now take `accountId` and enforce existence in-mutation (single round-trip). `getForDelivery` parallelizes agent/task/message fetches. Upgrade error sanitization (`lib/sanitize.ts`, first-line + length cap). Service token length enforced in `requireServiceAuth`; `blockedReason`/`reason` max length in handlers. Validated `pendingUpgrade` and PR response in actions; removed redundant account-settings casts (schema types used). `clearTypingStateForAccount` capped via take; delivery rate-limit posture documented in `docs/runtime/delivery-rate-limiting.md`.
+
+### Patch Changes
+
+- 5076f77: OpenClaw gateway max concurrent sessions (single env knob)
+  - Set `agents.defaults.maxConcurrent` from `OPENCLAW_MAX_CONCURRENT` (default 5, clamp 1–16) so Lead can respond in orchestrator and task threads at once.
+  - Gateway startup script: `applyMaxConcurrent()` with robust parse; env wins over runtime-generated config after merge. Template and .env.example/README documented.
+
+- Updated dependencies [2c44b28]
+  - @packages/backend@1.2.0
+
+## 1.1.0
+
+### Minor Changes
+
+- c83febf: Backend-resolved task and system session keys; delivery uses OpenResponses instructions + compact input.
+  - **Backend:** `agentRuntimeSessions` table and `resolveSessionKeys`; `getNotificationForDelivery` returns `deliverySessionKey` (task or system). Session keys no longer derived from legacy `agents.sessionKey`.
+  - **Runtime:** Gateway and delivery use backend-resolved keys only; `buildDeliveryInstructions` + `buildNotificationInput` split; `task_history` tool; health and agent-sync register system keys from resolver.
+
+### Patch Changes
+
+- c83febf: USER.md + IDENTITY.md prompt layering and behavior flags (PR #128).
+  - **Schema:** `accounts.settings.userMd`, `agents.identityContent`, behavior flags `canReviewTasks` / `canMarkDone` (account + agent).
+  - **Backend:** `accounts.update` accepts `userMd`; `agents.create`/`update` accept `identityContent`; `migratePromptScaffold` mutation; `listForRuntime` returns effective USER/IDENTITY; fallback helpers in `lib/user_identity_fallback.ts`.
+  - **Runtime:** Profile sync writes USER.md and IDENTITY.md per agent; delivery policy uses `effectiveBehaviorFlags.canReviewTasks` / `canMarkDone` only (no role/slug heuristics).
+  - **Web:** Settings > Agent Profile tab for account-shared USER.md (admin-only save); Admin OpenClaw migration button and per-agent behavior flags.
+
+- Updated dependencies [c83febf]
+- Updated dependencies [c83febf]
+  - @packages/backend@1.1.0
+
+## 1.0.1
+
+### Patch Changes
+
+- c1f3ffd: Fix runtime to use a single workspace path for OpenClaw/agent operations.
+- Updated dependencies [6351a13]
+  - @packages/backend@1.0.3
+
 ## 1.0.0
 
 ### Major Changes

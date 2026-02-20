@@ -1,15 +1,11 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@packages/backend/convex/_generated/api";
-import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import type { ListAgentsResultItem } from "@packages/backend/convex/service/actions";
 import { RuntimeConfig } from "./config";
 import { createLogger } from "./logger";
 
-/** Minimal shape for items returned by service.actions.listAgents (backend returns unknown[]). */
-export interface ListAgentsItem {
-  _id: Id<"agents">;
-  sessionKey: string;
-  slug?: string;
-}
+/** Re-export backend type so callers get typed listAgents result without casting. */
+export type ListAgentsItem = ListAgentsResultItem;
 
 const log = createLogger("[Convex]");
 

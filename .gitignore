@@ -52,3 +52,6 @@ packages/backend/convex/seed-skills/*.md
 
 # Worktrees
 .worktrees/
+
+
+.cursor/hooks/state

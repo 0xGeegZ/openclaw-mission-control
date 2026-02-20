@@ -21,6 +21,7 @@ import {
   type NotificationType,
   type LLMModel,
   type SkillCategory,
+  type BehaviorFlags,
 } from "../types";
 
 // Re-export const objects from types for convenience
@@ -277,6 +278,18 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 /**
  * Default OpenClaw configuration for new agents.
  */
+const DEFAULT_BEHAVIOR_FLAGS: BehaviorFlags = {
+  canCreateTasks: false,
+  canModifyTaskStatus: true,
+  canCreateDocuments: true,
+  canMentionAgents: true,
+  canReviewTasks: false,
+  canMarkDone: false,
+};
+
+/**
+ * Shared default OpenClaw config used by web, backend, and runtime.
+ */
 export const DEFAULT_OPENCLAW_CONFIG = {
   model: LLM_MODEL.MINIMAX_M2_5,
   temperature: 0.7,
@@ -287,12 +300,5 @@ export const DEFAULT_OPENCLAW_CONFIG = {
     includeTaskContext: true,
     includeTeamContext: true,
   },
-  behaviorFlags: {
-    canCreateTasks: false,
-    canModifyTaskStatus: true,
-    canCreateDocuments: true,
-    canMentionAgents: true,
-    canReviewTasks: false,
-    canMarkDone: false,
-  },
+  behaviorFlags: DEFAULT_BEHAVIOR_FLAGS,
 } as const;

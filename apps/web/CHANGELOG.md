@@ -1,5 +1,27 @@
 # web-app
 
+## 1.0.2
+
+### Patch Changes
+
+- c83febf: USER.md + IDENTITY.md prompt layering and behavior flags (PR #128).
+  - **Schema:** `accounts.settings.userMd`, `agents.identityContent`, behavior flags `canReviewTasks` / `canMarkDone` (account + agent).
+  - **Backend:** `accounts.update` accepts `userMd`; `agents.create`/`update` accept `identityContent`; `migratePromptScaffold` mutation; `listForRuntime` returns effective USER/IDENTITY; fallback helpers in `lib/user_identity_fallback.ts`.
+  - **Runtime:** Profile sync writes USER.md and IDENTITY.md per agent; delivery policy uses `effectiveBehaviorFlags.canReviewTasks` / `canMarkDone` only (no role/slug heuristics).
+  - **Web:** Settings > Agent Profile tab for account-shared USER.md (admin-only save); Admin OpenClaw migration button and per-agent behavior flags.
+
+- Updated dependencies [c83febf]
+- Updated dependencies [c83febf]
+  - @packages/backend@1.1.0
+
+## 1.0.1
+
+### Patch Changes
+
+- 6351a13: Security audit remediations: message content max length (100k), user message attachment validation from storage metadata, Next.js security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy), and root npm override for esbuild (>=0.25.0).
+- Updated dependencies [6351a13]
+  - @packages/backend@1.0.3
+
 ## 1.0.0
 
 ### Major Changes

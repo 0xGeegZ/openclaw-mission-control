@@ -1,16 +1,26 @@
 import { v } from "convex/values";
-import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
-import { requireAuth, requireAccountMember, requireAccountAdmin } from "./lib/auth";
+import {
+  query,
+  mutation,
+  internalQuery,
+  internalMutation,
+} from "./_generated/server";
+import {
+  requireAuth,
+  requireAccountMember,
+  requireAccountAdmin,
+} from "./lib/auth";
+import { sanitizeUpgradeError } from "./lib/sanitize";
 const upgradeStrategyValidator = v.union(
   v.literal("immediate"),
   v.literal("rolling"),
-  v.literal("canary")
+  v.literal("canary"),
 );
 
 const upgradeResultStatusValidator = v.union(
   v.literal("success"),
   v.literal("failed"),
-  v.literal("rolled_back")
+  v.literal("rolled_back"),
 );
 
 /** Max entries to keep in upgradeHistory. */
@@ -49,7 +59,7 @@ export const list = query({
     const adminAccountIds = new Set(
       memberships
         .filter((m) => m.role === "admin" || m.role === "owner")
-        .map((m) => m.accountId)
+        .map((m) => m.accountId),
     );
     if (adminAccountIds.size === 0) {
       return [];
@@ -59,8 +69,8 @@ export const list = query({
         ctx.db
           .query("runtimes")
           .withIndex("by_account", (index) => index.eq("accountId", accountId))
-          .first()
-      )
+          .first(),
+      ),
     );
     const filtered = runtimeLookups.filter((runtime) => runtime != null);
     const limit = args.limit ?? 100;
@@ -148,10 +158,14 @@ export const markPendingUpgradeFailedInternal = internalMutation({
       status: "failed" as const,
       startedAt: runtime.pendingUpgrade.initiatedAt,
       completedAt: Date.now(),
-      error: args.error ?? "Upgrade timed out",
+      error:
+        sanitizeUpgradeError(args.error ?? "Upgrade timed out") ??
+        "Upgrade timed out",
       initiatedBy: runtime.pendingUpgrade.initiatedBy,
     };
-    const history = [...(runtime.upgradeHistory ?? []), entry].slice(-MAX_UPGRADE_HISTORY);
+    const history = [...(runtime.upgradeHistory ?? []), entry].slice(
+      -MAX_UPGRADE_HISTORY,
+    );
     await ctx.db.patch(runtime._id, {
       pendingUpgrade: undefined,
       upgradeHistory: history,
@@ -185,7 +199,8 @@ export const requestUpgrade = mutation({
     const initiatedBy = identity?.subject ?? "unknown";
     await ctx.db.patch(runtime._id, {
       pendingUpgrade: {
-        targetOpenclawVersion: args.targetOpenclawVersion ?? runtime.openclawVersion,
+        targetOpenclawVersion:
+          args.targetOpenclawVersion ?? runtime.openclawVersion,
         targetRuntimeVersion: args.targetRuntimeVersion,
         initiatedAt: Date.now(),
         initiatedBy,
@@ -248,17 +263,30 @@ export const recordUpgradeResultInternal = internalMutation({
       startedAt: runtime.pendingUpgrade?.initiatedAt ?? Date.now(),
       completedAt: Date.now(),
       duration: args.duration,
-      error: args.error,
+      error: sanitizeUpgradeError(args.error),
       initiatedBy: args.initiatedBy,
     };
-    const history = [...(runtime.upgradeHistory ?? []), entry].slice(-MAX_UPGRADE_HISTORY);
-    const newStatus = args.status === "success" ? "online" : args.status === "failed" ? "error" : "online";
+    const history = [...(runtime.upgradeHistory ?? []), entry].slice(
+      -MAX_UPGRADE_HISTORY,
+    );
+    const newStatus =
+      args.status === "success"
+        ? "online"
+        : args.status === "failed"
+          ? "error"
+          : "online";
     await ctx.db.patch(runtime._id, {
       pendingUpgrade: undefined,
       upgradeHistory: history,
       status: newStatus,
-      openclawVersion: args.status === "success" ? args.toOpenclawVersion : runtime.openclawVersion,
-      runtimeServiceVersion: args.status === "success" ? args.toRuntimeVersion : runtime.runtimeServiceVersion,
+      openclawVersion:
+        args.status === "success"
+          ? args.toOpenclawVersion
+          : runtime.openclawVersion,
+      runtimeServiceVersion:
+        args.status === "success"
+          ? args.toRuntimeVersion
+          : runtime.runtimeServiceVersion,
       updatedAt: Date.now(),
     });
   },
@@ -303,12 +331,17 @@ export const rollbackRuntime = mutation({
       completedAt: Date.now(),
       initiatedBy,
     };
-    const history = [...(runtime.upgradeHistory ?? []), entry].slice(-MAX_UPGRADE_HISTORY);
+    const history = [...(runtime.upgradeHistory ?? []), entry].slice(
+      -MAX_UPGRADE_HISTORY,
+    );
     const updates: Record<string, unknown> = {
       upgradeHistory: history,
       updatedAt: Date.now(),
     };
-    if (args.targetOpenclawVersion != null || args.targetRuntimeVersion != null) {
+    if (
+      args.targetOpenclawVersion != null ||
+      args.targetRuntimeVersion != null
+    ) {
       updates.pendingUpgrade = {
         targetOpenclawVersion: args.targetOpenclawVersion ?? toOpenclaw,
         targetRuntimeVersion: args.targetRuntimeVersion ?? toRuntime,

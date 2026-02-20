@@ -8,7 +8,9 @@
  * Invariant: every processed notification reaches a terminal state (delivered, skipped, or one fallback then delivered). No perpetual requeue.
  */
 
-import type { DeliveryContext } from "./types";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
+import type { TaskStatus } from "@packages/shared";
 
 /** Task statuses for which we skip delivering status_change to agents (avoid ack storms). */
 export const TASK_STATUSES_SKIP_STATUS_CHANGE = new Set<string>([
@@ -41,7 +43,7 @@ export function isOrchestratorChatTask(
  * Based on explicit behavior flag only; no role/slug heuristics.
  */
 export function agentCanReview(context: DeliveryContext): boolean {
-  return context.effectiveBehaviorFlags?.canReviewTasks === true;
+  return context.effectiveBehaviorFlags.canReviewTasks === true;
 }
 
 /**
@@ -49,7 +51,7 @@ export function agentCanReview(context: DeliveryContext): boolean {
  * No role/slug heuristics (e.g. QA); gating is via behavior flags only.
  */
 export function canAgentMarkDone(options: {
-  taskStatus?: string;
+  taskStatus?: TaskStatus;
   canMarkDone?: boolean;
 }): boolean {
   return options.taskStatus === "review" && options.canMarkDone === true;
@@ -133,7 +135,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     }
     const isAssignedRecipient =
       Array.isArray(assignedAgentIds) && typeof recipientId === "string"
-        ? assignedAgentIds.includes(recipientId)
+        ? assignedAgentIds.includes(recipientId as Id<"agents">)
         : false;
     const isReviewerRecipient =
       taskStatus === "review" && agentCanReview(context);
@@ -150,6 +152,7 @@ export function shouldDeliverToAgent(context: DeliveryContext): boolean {
     return isAssignedRecipient;
   }
 
+  // Unknown or unhandled notification types: deliver by default for safety.
   return true;
 }
 
@@ -168,6 +171,7 @@ export function shouldRetryNoResponseForNotification(
   if (notificationType === "thread_update") {
     return context.message?.authorType !== "agent";
   }
+  // Other notification types: no retry (passive or unknown).
   return false;
 }
 

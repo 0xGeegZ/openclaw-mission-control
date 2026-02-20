@@ -24,6 +24,7 @@ import type * as lib_constants from "../lib/constants.js";
 import type * as lib_mentions from "../lib/mentions.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_reference_validation from "../lib/reference_validation.js";
+import type * as lib_sanitize from "../lib/sanitize.js";
 import type * as lib_seed_skills_build from "../lib/seed_skills_build.js";
 import type * as lib_service_auth from "../lib/service_auth.js";
 import type * as lib_skills_validation from "../lib/skills_validation.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mentions": typeof lib_mentions;
   "lib/notifications": typeof lib_notifications;
   "lib/reference_validation": typeof lib_reference_validation;
+  "lib/sanitize": typeof lib_sanitize;
   "lib/seed_skills_build": typeof lib_seed_skills_build;
   "lib/service_auth": typeof lib_service_auth;
   "lib/skills_validation": typeof lib_skills_validation;

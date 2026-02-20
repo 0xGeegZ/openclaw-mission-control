@@ -391,7 +391,7 @@ describe("buildHeartbeatMessage", () => {
       isOrchestrator: false,
       focusTaskThread: [
         {
-          messageId: "msg1" as unknown as Id<"messages">,
+          messageId: "msg1" as Id<"messages">,
           authorType: "user",
           authorId: "user_1",
           authorName: "Guillaume",

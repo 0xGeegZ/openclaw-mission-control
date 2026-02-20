@@ -2,79 +2,53 @@
  * Unit tests for delivery logic: shouldDeliverToAgent (reply-loop skip, orchestrator/assigned delivery)
  * and formatNotificationMessage (identity line, capabilities).
  */
-import { describe, it, expect } from "vitest";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import { beforeEach, describe, it, expect } from "vitest";
 import {
   _getNoResponseRetryDecision,
   _isNoReplySignal,
+  _isStaleThreadUpdateNotification,
   _resetNoResponseRetryState,
-  _shouldPersistOrchestratorThreadAck,
-  _shouldPersistNoResponseFallback,
   canAgentMarkDone,
+  getDeliveryState,
   shouldDeliverToAgent,
+  stopDeliveryLoop,
   formatNotificationMessage,
   buildDeliveryInstructions,
   buildNotificationInput,
-  type DeliveryContext,
 } from "./delivery";
+import {
+  shouldPersistNoResponseFallback,
+  shouldPersistOrchestratorThreadAck,
+} from "./delivery/policy";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
-
-/** Build a minimal DeliveryContext for tests. */
-function buildContext(
-  overrides: Partial<DeliveryContext> = {},
-): DeliveryContext {
-  const base: DeliveryContext = {
-    notification: {
-      _id: "n1",
-      type: "thread_update",
-      title: "Update",
-      body: "Body",
-      recipientId: "agent-a",
-      accountId: "acc1",
-    },
-    agent: { _id: "agent-a", role: "Developer", name: "Engineer" },
-    task: {
-      _id: "task1",
-      status: "in_progress",
-      title: "Task",
-      assignedAgentIds: ["agent-a"],
-    },
-    message: {
-      _id: "m1",
-      authorType: "agent",
-      authorId: "agent-b",
-      content: "Done",
-    },
-    thread: [],
-    sourceNotificationType: null,
-    orchestratorAgentId: null,
-    primaryUserMention: null,
-    mentionableAgents: [],
-    assignedAgents: [],
-    effectiveBehaviorFlags: {},
-    repositoryDoc: null,
-    globalBriefingDoc: null,
-    taskOverview: null,
-  };
-  return { ...base, ...overrides } as DeliveryContext;
-}
+import {
+  accId,
+  aid,
+  buildContext,
+  mid,
+  nid,
+  tid,
+} from "./test-helpers/deliveryContext";
 
 describe("shouldDeliverToAgent", () => {
   it("returns false for status_change to agent when task is done", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task done",
         recipientId: "agent-a",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "done",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -83,19 +57,19 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for status_change to agent when task is blocked", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task blocked",
         recipientId: "agent-a",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "blocked",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -104,19 +78,19 @@ describe("shouldDeliverToAgent", () => {
   it("returns true for status_change to agent when task is in_progress", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task in progress",
         recipientId: "agent-a",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
@@ -125,20 +99,20 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for status_change to agent when task is review and agent is not reviewer", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task review",
         recipientId: "agent-a",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      agent: { _id: "agent-a", role: "Writer", name: "Writer" },
+      agent: { _id: aid("agent-a"), role: "Writer", name: "Writer" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "review",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -147,20 +121,20 @@ describe("shouldDeliverToAgent", () => {
   it("returns true for status_change to agent when task is review and agent has canReviewTasks", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task review",
         recipientId: "agent-a",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      agent: { _id: "agent-a", role: "QA Reviewer", name: "QA" },
+      agent: { _id: aid("agent-a"), role: "QA Reviewer", name: "QA" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "review",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
       effectiveBehaviorFlags: { canReviewTasks: true },
     });
@@ -170,21 +144,21 @@ describe("shouldDeliverToAgent", () => {
   it("returns true for status_change to agent when task is review and recipient is orchestrator", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "status_change",
         title: "Status changed",
         body: "Task review",
         recipientId: "orch",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Engineer", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Engineer", name: "Orchestrator" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "review",
         title: "T",
-        assignedAgentIds: ["orch"],
+        assignedAgentIds: [aid("orch")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
@@ -193,10 +167,10 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for thread_update + agent author when task is done", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "done",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -205,16 +179,16 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for thread_update + user author when task is done", () => {
     const ctx = buildContext({
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "user",
         authorId: "user-1",
         content: "FYI",
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "done",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -223,10 +197,10 @@ describe("shouldDeliverToAgent", () => {
   it("returns false for thread_update + agent author when task is blocked", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "blocked",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(false);
@@ -241,23 +215,23 @@ describe("shouldDeliverToAgent", () => {
     const ctx = buildContext({
       sourceNotificationType: "thread_update",
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
         recipientId: "orch",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Squad Lead" },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "writer",
         content: "Done",
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
         assignedAgentIds: [],
@@ -270,23 +244,23 @@ describe("shouldDeliverToAgent", () => {
     const ctx = buildContext({
       sourceNotificationType: "thread_update",
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
         recipientId: "orch",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Squad Lead" },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "orch",
         content: "Done",
       },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
         assignedAgentIds: [],
@@ -303,16 +277,16 @@ describe("shouldDeliverToAgent", () => {
   it("returns true for thread_update + agent author when recipient is orchestrator", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
         recipientId: "orch",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
+      orchestratorAgentId: aid("orch"),
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
         assignedAgentIds: [],
@@ -324,7 +298,12 @@ describe("shouldDeliverToAgent", () => {
   it("returns true for mention when task is done (user can still @mention agents)", () => {
     const ctx = buildContext({
       notification: { ...buildContext().notification, type: "mention" },
-      task: { _id: "t1", status: "done", title: "T", assignedAgentIds: [] },
+      task: {
+        _id: tid("t1"),
+        status: "done",
+        title: "T",
+        assignedAgentIds: [],
+      },
     });
     expect(shouldDeliverToAgent(ctx)).toBe(true);
   });
@@ -341,10 +320,10 @@ describe("buildDeliveryInstructions", () => {
   it("includes strict current-task-only scope constraints", () => {
     const ctx = buildContext({
       task: {
-        _id: "task1",
+        _id: tid("task1"),
         status: "in_progress",
         title: "My Task",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -363,17 +342,32 @@ describe("buildDeliveryInstructions", () => {
       "Use only the thread history shown above for this task",
     );
   });
+
+  it("throws when deliverySessionKey is missing", () => {
+    const ctx = buildContext({
+      deliverySessionKey: undefined,
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    expect(() =>
+      buildDeliveryInstructions(ctx, "http://runtime:3000", toolCapabilities),
+    ).toThrow("Missing deliverySessionKey");
+  });
 });
 
 describe("buildNotificationInput", () => {
   it("includes notification id anchor", () => {
     const ctx = buildContext({
       notification: {
-        _id: "notif-123",
+        _id: nid("notif-123"),
         type: "thread_update",
         title: "Update",
         body: "Body",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -394,13 +388,13 @@ describe("buildNotificationInput", () => {
 describe("formatNotificationMessage", () => {
   it("includes identity line with agent name and role when present", () => {
     const ctx = buildContext({
-      agent: { _id: "agent-a", role: "Squad Lead", name: "Orchestrator" },
+      agent: { _id: aid("agent-a"), role: "Squad Lead", name: "Orchestrator" },
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "assignment",
         title: "New task",
         body: "Body",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -424,7 +418,8 @@ describe("formatNotificationMessage", () => {
 
   it("uses fallbacks when agent name or role is missing", () => {
     const ctx = buildContext({
-      agent: { _id: "agent-a", sessionKey: "agent:x:acc1" },
+      agent: { _id: aid("agent-a") },
+      deliverySessionKey: "system:agent:x:acc1:v1",
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -456,7 +451,7 @@ describe("formatNotificationMessage", () => {
             status: "inbox",
             tasks: [
               {
-                taskId: "task-1",
+                taskId: tid("task-1"),
                 title: "Sample task",
                 status: "inbox",
                 priority: 3,
@@ -469,7 +464,7 @@ describe("formatNotificationMessage", () => {
             status: "done",
             tasks: [
               {
-                taskId: "task-2",
+                taskId: tid("task-2"),
                 title: "Completed task",
                 status: "done",
                 priority: 2,
@@ -501,7 +496,7 @@ describe("formatNotificationMessage", () => {
   it("truncates thread history and long messages", () => {
     const longContent = "x".repeat(1601);
     const thread = Array.from({ length: 30 }, (_, index) => ({
-      messageId: `m${index}`,
+      messageId: mid(`m${index}`),
       authorType: "user",
       authorId: `user-${index}`,
       authorName: null,
@@ -531,10 +526,10 @@ describe("formatNotificationMessage", () => {
   it("includes repository guidance when task is present and repository doc is missing", () => {
     const ctx = buildContext({
       task: {
-        _id: "k97abc",
+        _id: tid("k97abc"),
         status: "in_progress",
         title: "Sample",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -572,10 +567,10 @@ describe("formatNotificationMessage", () => {
   it("includes concise workflow rules for blocked and resume transitions", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
       effectiveBehaviorFlags: { canModifyTaskStatus: true },
     });
@@ -600,24 +595,24 @@ describe("formatNotificationMessage", () => {
   it("includes concise orchestrator rule for review and response_request", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
         recipientId: "orch",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Orchestrator" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Orchestrator" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["engineer"],
+        assignedAgentIds: [aid("engineer")],
       },
       mentionableAgents: [
         {
-          id: "orch",
+          id: aid("orch"),
           slug: "squad-lead",
           name: "Orchestrator",
           role: "Squad Lead",
@@ -647,10 +642,10 @@ describe("formatNotificationMessage", () => {
   it("includes blocked-task reminder to move back to in_progress when resolved", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "blocked",
         title: "T",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -671,12 +666,12 @@ describe("formatNotificationMessage", () => {
   it("includes multi-assignee collaboration instructions when task has two or more assignees and recipient is assigned", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "Shared task",
-        assignedAgentIds: ["agent-a", "agent-b"],
+        assignedAgentIds: [aid("agent-a"), aid("agent-b")],
       },
-      agent: { _id: "agent-a", role: "Engineer", name: "Engineer" },
+      agent: { _id: aid("agent-a"), role: "Engineer", name: "Engineer" },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -699,10 +694,10 @@ describe("formatNotificationMessage", () => {
   it("omits multi-assignee block when task has only one agent assignee", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "Solo task",
-        assignedAgentIds: ["agent-a"],
+        assignedAgentIds: [aid("agent-a")],
       },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
@@ -722,12 +717,12 @@ describe("formatNotificationMessage", () => {
   it("omits multi-assignee block when task has multiple assignees but recipient is not one of them", () => {
     const ctx = buildContext({
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "Shared task",
-        assignedAgentIds: ["agent-a", "agent-b"],
+        assignedAgentIds: [aid("agent-a"), aid("agent-b")],
       },
-      agent: { _id: "agent-c", role: "Orchestrator", name: "Orch" },
+      agent: { _id: aid("agent-c"), role: "Orchestrator", name: "Orch" },
     });
     const toolCapabilities = getToolCapabilitiesAndSchemas({
       canCreateTasks: false,
@@ -750,9 +745,25 @@ describe("no response retry decision", () => {
     const first = _getNoResponseRetryDecision("n1");
     const second = _getNoResponseRetryDecision("n1");
     const third = _getNoResponseRetryDecision("n1");
+    expect(first.attempt).toBe(1);
     expect(first.shouldRetry).toBe(true);
+    expect(second.attempt).toBe(2);
     expect(second.shouldRetry).toBe(true);
+    expect(third.attempt).toBe(3);
     expect(third.shouldRetry).toBe(false);
+  });
+
+  it("resets attempt after NO_RESPONSE_RETRY_RESET_MS (10 min) so shouldRetry is true again", () => {
+    const RESET_MS = 10 * 60 * 1000;
+    _resetNoResponseRetryState();
+    const t0 = 1000;
+    _getNoResponseRetryDecision("n1", t0);
+    _getNoResponseRetryDecision("n1", t0 + 1);
+    const third = _getNoResponseRetryDecision("n1", t0 + 2);
+    expect(third.shouldRetry).toBe(false);
+    const afterReset = _getNoResponseRetryDecision("n1", t0 + 2 + RESET_MS + 1);
+    expect(afterReset.attempt).toBe(1);
+    expect(afterReset.shouldRetry).toBe(true);
   });
 });
 
@@ -768,114 +779,254 @@ describe("no reply signal detection", () => {
   });
 });
 
-describe("no response fallback persistence policy", () => {
-  it("does not persist fallback to thread for any type (UX: no boilerplate in thread)", () => {
+describe("policy re-exports (fallback/orchestrator ack)", () => {
+  it("shouldPersistNoResponseFallback is false (policy: no fallback to thread)", () => {
     expect(
-      _shouldPersistNoResponseFallback({ notificationType: "assignment" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "mention" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({
-        notificationType: "response_request",
-      }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "thread_update" }),
-    ).toBe(false);
-    expect(
-      _shouldPersistNoResponseFallback({ notificationType: "status_change" }),
+      shouldPersistNoResponseFallback({ notificationType: "assignment" }),
     ).toBe(false);
   });
-});
-
-describe("orchestrator no-reply acknowledgment policy", () => {
-  it("does not persist orchestrator ack (silent-by-default)", () => {
+  it("shouldPersistOrchestratorThreadAck is false (policy: silent-by-default)", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
         recipientId: "orch",
         recipientType: "agent",
-        accountId: "acc1",
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
+      orchestratorAgentId: aid("orch"),
+      agent: { _id: aid("orch"), role: "Squad Lead", name: "Squad Lead" },
       task: {
-        _id: "t1",
+        _id: tid("t1"),
         status: "in_progress",
         title: "T",
-        assignedAgentIds: ["engineer"],
+        assignedAgentIds: [aid("engineer")],
       },
       message: {
-        _id: "m1",
+        _id: mid("m1"),
         authorType: "agent",
         authorId: "engineer",
         content: "Progress update",
       },
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+    expect(shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
   });
+});
 
-  it("does not persist orchestrator ack for blocked tasks", () => {
+describe("_isStaleThreadUpdateNotification", () => {
+  it("returns true when thread_update has messageId and a user message exists after it in thread", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
         title: "Update",
         body: "Body",
-        recipientId: "orch",
         recipientType: "agent",
-        accountId: "acc1",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
       },
-      orchestratorAgentId: "orch",
-      agent: { _id: "orch", role: "Squad Lead", name: "Squad Lead" },
-      task: {
-        _id: "t1",
-        status: "blocked",
-        title: "T",
-        assignedAgentIds: ["engineer"],
-      },
-      message: {
-        _id: "m1",
-        authorType: "agent",
-        authorId: "engineer",
-        content: "Still blocked",
-      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "agent",
+          authorId: "agent-a",
+          authorName: null,
+          content: "Ok",
+          createdAt: 2000,
+        },
+        {
+          messageId: mid("m2"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Thanks",
+          createdAt: 3000,
+        },
+      ],
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(true);
   });
 
-  it("does not persist orchestrator ack when recipient is not orchestrator", () => {
+  it("returns false when no messageId", () => {
     const ctx = buildContext({
       notification: {
-        _id: "n1",
+        _id: nid("n1"),
         type: "thread_update",
-        title: "Update",
-        body: "Body",
-        recipientId: "engineer",
-        recipientType: "agent",
-        accountId: "acc1",
-      },
-      orchestratorAgentId: "orch",
-      agent: { _id: "engineer", role: "Engineer", name: "Engineer" },
-      task: {
-        _id: "t1",
-        status: "review",
         title: "T",
-        assignedAgentIds: ["engineer"],
+        body: "B",
+        recipientType: "agent",
+        accountId: accId("acc1"),
       },
-      message: {
-        _id: "m1",
-        authorType: "agent",
-        authorId: "qa",
-        content: "QA update",
-      },
+      message: { _id: mid("m1"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m1"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+      ],
     });
-    expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+    expect(ctx.notification.messageId).toBeUndefined();
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when no user message after the notified message", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "agent",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "agent",
+          authorId: "agent-a",
+          authorName: null,
+          content: "Reply",
+          createdAt: 2000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when not thread_update", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "assignment",
+        title: "T",
+        body: "B",
+        accountId: accId("acc1"),
+      },
+      thread: [],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when recipientType is not agent", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "user",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when message author is not user", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "agent",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "agent", authorId: "agent-b" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "agent",
+          authorId: "agent-b",
+          authorName: null,
+          content: "Done",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Ok",
+          createdAt: 2000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+});
+
+describe("getDeliveryState", () => {
+  it("returns shape with isRunning, deliveredCount, noResponseFailures, and other fields", () => {
+    const s = getDeliveryState();
+    expect(s).toHaveProperty("isRunning");
+    expect(s).toHaveProperty("lastDelivery");
+    expect(s).toHaveProperty("deliveredCount");
+    expect(s).toHaveProperty("failedCount");
+    expect(s).toHaveProperty("consecutiveFailures");
+    expect(s).toHaveProperty("lastErrorAt");
+    expect(s).toHaveProperty("lastErrorMessage");
+    expect(s).toHaveProperty("noResponseFailures");
+    expect(s).toHaveProperty("noResponseTerminalSkipCount");
+    expect(s).toHaveProperty("requiredNotificationRetryExhaustedCount");
+    expect(s.noResponseFailures).toBeInstanceOf(Map);
+  });
+
+  it("returns a snapshot: mutating returned noResponseFailures does not affect next getDeliveryState", () => {
+    _resetNoResponseRetryState();
+    const first = getDeliveryState();
+    first.noResponseFailures.set("x", { count: 1, lastAt: 1 });
+    const second = getDeliveryState();
+    expect(second.noResponseFailures.has("x")).toBe(false);
+  });
+});
+
+describe("startDeliveryLoop / stopDeliveryLoop", () => {
+  beforeEach(() => {
+    stopDeliveryLoop();
+  });
+
+  it("stopDeliveryLoop is idempotent and sets isRunning false", () => {
+    stopDeliveryLoop();
+    stopDeliveryLoop();
+    expect(getDeliveryState().isRunning).toBe(false);
   });
 });
 

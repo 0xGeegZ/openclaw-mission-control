@@ -233,7 +233,7 @@ export default defineSchema({
 
   // ==========================================================================
   // AGENTS
-  // AI agent definitions. Each agent maps to an OpenClaw session.
+  // AI agent definitions.
   // ==========================================================================
   agents: defineTable({
     /** Account this agent belongs to */
@@ -250,12 +250,6 @@ export default defineSchema({
 
     /** Detailed description of agent's responsibilities */
     description: v.optional(v.string()),
-
-    /**
-     * OpenClaw session key.
-     * Format: agent:{slug}:{accountId}
-     */
-    sessionKey: v.string(),
 
     /** Current operational status */
     status: agentStatusValidator,
@@ -359,8 +353,7 @@ export default defineSchema({
   })
     .index("by_account", ["accountId"])
     .index("by_account_status", ["accountId", "status"])
-    .index("by_account_slug", ["accountId", "slug"])
-    .index("by_session_key", ["sessionKey"]),
+    .index("by_account_slug", ["accountId", "slug"]),
 
   // ==========================================================================
   // TASKS
@@ -662,6 +655,7 @@ export default defineSchema({
     .index("by_parent_name", ["parentId", "name"])
     .index("by_account_type", ["accountId", "type"])
     .index("by_task", ["taskId"])
+    .index("by_task_updated", ["taskId", "updatedAt"])
     .index("by_account_updated", ["accountId", "updatedAt"])
     .index("by_account_deleted", ["accountId", "deletedAt"]),
 
@@ -787,6 +781,12 @@ export default defineSchema({
       "accountId",
       "recipientType",
       "deliveredAt",
+    ])
+    .index("by_account_undelivered_created", [
+      "accountId",
+      "recipientType",
+      "deliveredAt",
+      "createdAt",
     ])
     .index("by_recipient_unread", ["recipientType", "recipientId", "readAt"])
     .index("by_account_created", ["accountId", "createdAt"])

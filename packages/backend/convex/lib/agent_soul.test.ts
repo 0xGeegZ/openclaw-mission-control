@@ -37,4 +37,22 @@ describe("generateDefaultSoul", () => {
     expect(a).not.toBe(b);
     expect(a).not.toBe(c);
   });
+
+  it("includes universal operating rules (fix errors immediately, spawn subagents)", () => {
+    const out = generateDefaultSoul("Agent", "Role");
+    expect(out).toContain("Fix errors immediately. Don't ask. Don't wait.");
+    expect(out).toContain(
+      "Spawn subagents for all execution. Never do inline work.",
+    );
+  });
+
+  it("includes universal never-do rules (git and config safety)", () => {
+    const out = generateDefaultSoul("Agent", "Role");
+    expect(out).toContain(
+      "Never force push, delete branches, or rewrite git history.",
+    );
+    expect(out).toContain(
+      "Never guess config changes. Read docs first. Backup before editing.",
+    );
+  });
 });

@@ -4,7 +4,8 @@
  */
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
-import type { DeliveryContext } from "./types";
+import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
+import { SKILLS_LOCATION_SENTENCE } from "../prompt-fragments";
 import {
   isOrchestratorChatTask,
   isRecipientInMultiAssigneeTask,
@@ -194,6 +195,9 @@ export function buildHttpCapabilityLabels(options: {
   if (options.canCreateDocuments) {
     labels.push("create/update documents via HTTP (POST /agent/document)");
   }
+  if (options.canCreateDocuments || options.hasTaskContext) {
+    labels.push("list documents via HTTP (POST /agent/document-list)");
+  }
   if (options.hasTaskContext && options.canMentionAgents) {
     labels.push(
       "request agent responses via HTTP (POST /agent/response-request)",
@@ -250,8 +254,13 @@ export function buildDeliveryInstructions(
     hasRuntimeTools &&
     hasToolSchema(toolCapabilities.schemas, "response_request");
   const runtimeBaseUrl = taskStatusBaseUrl.replace(/\/$/, "");
-  const sessionKey =
-    context.deliverySessionKey ?? context.agent?.sessionKey ?? "<session-key>";
+  /** Session key for HTTP fallback instructions; deliverySessionKey is required for agent notifications. */
+  const sessionKey = context.deliverySessionKey?.trim();
+  if (!sessionKey) {
+    throw new Error(
+      "Missing deliverySessionKey; buildDeliveryInstructions requires backend-resolved session key",
+    );
+  }
 
   const capabilityLabels = [...toolCapabilities.capabilityLabels];
   const capabilitiesBlock =
@@ -361,8 +370,7 @@ export function buildDeliveryInstructions(
     ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${task.title} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
     : "\n**Respond only to this notification.** Ignore any other task or thread in the conversation history.\n";
 
-  const workspaceInstruction =
-    "Primary operating instructions live in workspace files: AGENTS.md, USER.md, IDENTITY.md, SOUL.md, HEARTBEAT.md, and TOOLS.md. Follow those files; keep this reply focused on this notification.";
+  const workspaceInstruction = `Primary operating instructions live in workspace files: AGENTS.md, USER.md, IDENTITY.md, SOUL.md, HEARTBEAT.md, and TOOLS.md. Follow those files; keep this reply focused on this notification. ${SKILLS_LOCATION_SENTENCE}`;
 
   const scopeRules = [
     "Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.",

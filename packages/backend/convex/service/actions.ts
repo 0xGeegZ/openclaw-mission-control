@@ -1,14 +1,26 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import { sanitizeUpgradeError } from "../lib/sanitize";
 import {
   requireServiceAuth,
   generateServiceToken,
   hashServiceTokenSecret,
 } from "../lib/service_auth";
-import { taskStatusValidator, documentTypeValidator } from "../lib/validators";
+import {
+  taskStatusValidator,
+  documentTypeValidator,
+  serviceTokenValidator,
+  TASK_TITLE_MAX_LENGTH,
+  TASK_DESCRIPTION_MAX_LENGTH,
+  BLOCKED_REASON_MAX_LENGTH,
+  REASON_MAX_LENGTH,
+} from "../lib/validators";
 import { Doc, Id } from "../_generated/dataModel";
-import type { GetForDeliveryResult } from "./notifications";
+import {
+  type DeliveryContext,
+  LIST_UNDELIVERED_MAX_LIMIT,
+} from "./notifications";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -43,7 +55,8 @@ function findStatusPath(options: {
   const prev = new Map<TaskStatus, TaskStatus>();
 
   while (queue.length > 0) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+    if (current === undefined) break;
     const nextStatuses = TASK_STATUS_TRANSITIONS[current] ?? [];
     for (const next of nextStatuses) {
       if (!allowedNextStatuses.has(next)) continue;
@@ -66,6 +79,41 @@ function findStatusPath(options: {
   }
 
   return null;
+}
+
+/** Statuses the runtime is allowed to set via task_status / task_update (in_progress, review, done, blocked). */
+const AGENT_ALLOWED_STATUSES = new Set<TaskStatus>([
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.REVIEW,
+  TASK_STATUS.DONE,
+  TASK_STATUS.BLOCKED,
+]);
+
+/**
+ * Ensure the agent is the account's orchestrator; throw otherwise.
+ * Returns the account doc so callers can reuse it (e.g. resolveBehaviorFlags).
+ */
+async function requireOrchestrator(
+  ctx: {
+    runQuery: (
+      ref: typeof internal.accounts.getInternal,
+      args: { accountId: Id<"accounts"> },
+    ) => Promise<Doc<"accounts"> | null>;
+  },
+  accountId: Id<"accounts">,
+  agentId: Id<"agents">,
+  actionDescription: string,
+): Promise<Doc<"accounts"> | null> {
+  const account = await ctx.runQuery(internal.accounts.getInternal, {
+    accountId,
+  });
+  const orchestratorAgentId = account?.settings?.orchestratorAgentId ?? null;
+  if (!orchestratorAgentId || orchestratorAgentId !== agentId) {
+    throw new Error(
+      `Forbidden: Only the orchestrator can ${actionDescription}`,
+    );
+  }
+  return account;
 }
 
 /**
@@ -144,7 +192,7 @@ export const provisionServiceToken = action({
 export const syncServiceToken = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
   handler: async (ctx, args): Promise<{ success: true }> => {
     // Verify user is authenticated and has owner/admin role
@@ -187,9 +235,11 @@ export const syncServiceToken = action({
     if (parts.length < 4) {
       throw new Error("Invalid service token structure");
     }
-
-    const tokenAccountId = parts[2] as Id<"accounts">;
-    if (tokenAccountId !== args.accountId) {
+    const partAccountId = parts[2];
+    if (typeof partAccountId !== "string" || partAccountId.length === 0) {
+      throw new Error("Invalid service token structure");
+    }
+    if (partAccountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
     }
 
@@ -212,7 +262,7 @@ export const syncServiceToken = action({
 export const checkAndClearRestartRequested = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
   handler: async (ctx, args): Promise<{ restartRequested: boolean }> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
@@ -247,7 +297,7 @@ export const updateRuntimeStatus = action({
       v.literal("offline"),
       v.literal("error"),
     ),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     config: v.optional(
       v.object({
         dropletId: v.string(),
@@ -293,7 +343,7 @@ export const updateRuntimeStatus = action({
 export const listUndeliveredNotifications = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Doc<"notifications">[]> => {
@@ -304,12 +354,16 @@ export const listUndeliveredNotifications = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
+    const cappedLimit =
+      args.limit != null
+        ? Math.min(args.limit, LIST_UNDELIVERED_MAX_LIMIT)
+        : undefined;
+
     return await ctx.runQuery(
       internal.service.notifications.listUndeliveredForAccount,
       {
         accountId: args.accountId,
-        limit: args.limit,
+        limit: cappedLimit,
       },
     );
   },
@@ -322,10 +376,10 @@ export const listUndeliveredNotifications = action({
 export const getNotificationForDelivery = action({
   args: {
     notificationId: v.id("notifications"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
-  handler: async (ctx, args): Promise<GetForDeliveryResult | null> => {
+  handler: async (ctx, args): Promise<DeliveryContext | null> => {
     // Validate service token
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -333,11 +387,12 @@ export const getNotificationForDelivery = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
+    // Call internal query (accountId for defense-in-depth; query returns null on mismatch)
     const result = await ctx.runQuery(
       internal.service.notifications.getForDelivery,
       {
         notificationId: args.notificationId,
+        accountId: args.accountId,
       },
     );
 
@@ -381,7 +436,7 @@ export const getNotificationForDelivery = action({
 export const markNotificationDelivered = action({
   args: {
     notificationId: v.id("notifications"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
@@ -393,27 +448,9 @@ export const markNotificationDelivered = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Verify notification belongs to this account using internal query
-    const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
-      {
-        notificationId: args.notificationId,
-      },
-    );
-
-    const notification = notificationResult?.notification;
-
-    if (!notification) {
-      throw new Error("Not found: Notification does not exist");
-    }
-
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
-    }
-
-    // Call internal mutation
     await ctx.runMutation(internal.service.notifications.markDelivered, {
       notificationId: args.notificationId,
+      accountId: args.accountId,
     });
 
     return { success: true };
@@ -428,7 +465,7 @@ export const markNotificationDelivered = action({
 export const markNotificationRead = action({
   args: {
     notificationId: v.id("notifications"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
@@ -436,19 +473,9 @@ export const markNotificationRead = action({
     if (serviceContext.accountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
     }
-    const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
-      { notificationId: args.notificationId },
-    );
-    const notification = notificationResult?.notification;
-    if (!notification) {
-      throw new Error("Not found: Notification does not exist");
-    }
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
-    }
     await ctx.runMutation(internal.service.notifications.markRead, {
       notificationId: args.notificationId,
+      accountId: args.accountId,
     });
     return { success: true };
   },
@@ -462,7 +489,7 @@ export const markNotificationRead = action({
 export const markNotificationDeliveryEnded = action({
   args: {
     notificationId: v.id("notifications"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
@@ -470,23 +497,22 @@ export const markNotificationDeliveryEnded = action({
     if (serviceContext.accountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
     }
-    const notificationResult = await ctx.runQuery(
-      internal.service.notifications.getForDelivery,
-      { notificationId: args.notificationId },
-    );
-    const notification = notificationResult?.notification;
-    if (!notification) {
-      throw new Error("Not found: Notification does not exist");
-    }
-    if (notification.accountId !== args.accountId) {
-      throw new Error("Forbidden: Notification belongs to different account");
-    }
     await ctx.runMutation(internal.service.notifications.markDeliveryEnded, {
       notificationId: args.notificationId,
+      accountId: args.accountId,
     });
     return { success: true };
   },
 });
+
+/**
+ * Single agent row returned by listAgents (agent doc + systemSessionKey + effectiveBehaviorFlags).
+ * Exported so runtime can use typed action result without casting.
+ */
+export type ListAgentsResultItem = Doc<"agents"> & {
+  systemSessionKey: string;
+  effectiveBehaviorFlags: BehaviorFlags;
+};
 
 /**
  * List agents for an account.
@@ -495,9 +521,9 @@ export const markNotificationDeliveryEnded = action({
 export const listAgents = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
-  handler: async (ctx, args): Promise<unknown[]> => {
+  handler: async (ctx, args): Promise<ListAgentsResultItem[]> => {
     // Validate service token and verify account matches
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
 
@@ -505,19 +531,27 @@ export const listAgents = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const [agents, account] = await Promise.all([
-      ctx.runQuery(internal.service.agents.listInternal, {
-        accountId: args.accountId,
-      }),
+    const [agentRows, account] = await Promise.all([
+      ctx.runMutation(
+        internal.service.agentRuntimeSessions.listAgentsWithSystemSessions,
+        { accountId: args.accountId },
+      ),
       ctx.runQuery(internal.accounts.getInternal, {
         accountId: args.accountId,
       }),
     ]);
-
-    return agents.map((agent) => ({
-      ...agent,
-      effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
-    }));
+    return agentRows.map(({ agent, systemSessionKey }) => {
+      if (typeof systemSessionKey !== "string" || !systemSessionKey.trim()) {
+        throw new Error(
+          `Missing systemSessionKey for agent ${agent._id} (${agent.slug}); listAgentsWithSystemSessions must return a key per agent`,
+        );
+      }
+      return {
+        ...agent,
+        systemSessionKey,
+        effectiveBehaviorFlags: resolveBehaviorFlags(agent, account),
+      };
+    });
   },
 });
 
@@ -527,7 +561,7 @@ export const listAgents = action({
 export const getOrchestratorAgentId = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
   handler: async (
     ctx,
@@ -541,21 +575,18 @@ export const getOrchestratorAgentId = action({
     const account = await ctx.runQuery(internal.accounts.getInternal, {
       accountId: args.accountId,
     });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
+    const orchestratorAgentId = account?.settings?.orchestratorAgentId ?? null;
 
     return { orchestratorAgentId };
   },
 });
 
-/** One agent from listForRuntime (for profile sync). */
+/** One agent from listForRuntime (for profile sync). No sessionKey; runtime uses backend-resolved task/system keys only. */
 interface AgentForRuntimePayload {
   _id: Id<"agents">;
   name: string;
   slug: string;
   role: string;
-  sessionKey: string;
   openclawConfig: Doc<"agents">["openclawConfig"];
   effectiveSoulContent: string;
   effectiveUserMd: string;
@@ -576,7 +607,7 @@ interface AgentForRuntimePayload {
 export const listAgentsForRuntime = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
   handler: async (ctx, args): Promise<AgentForRuntimePayload[]> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
@@ -595,7 +626,7 @@ export const listAgentsForRuntime = action({
 export const listAssignedTasksForAgent = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     includeDone: v.optional(v.boolean()),
     limit: v.optional(v.number()),
@@ -631,7 +662,7 @@ export const listAssignedTasksForAgent = action({
 export const listTasksForOrchestratorHeartbeat = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     statuses: v.array(taskStatusValidator),
     limit: v.optional(v.number()),
   },
@@ -667,7 +698,7 @@ export const updateAgentHeartbeat = action({
       v.literal("offline"),
       v.literal("error"),
     ),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
     currentTaskId: v.optional(v.id("tasks")),
   },
@@ -719,7 +750,7 @@ export const updateTaskStatusFromAgent = action({
     status: taskStatusValidator,
     blockedReason: v.optional(v.string()),
     expectedStatus: v.optional(taskStatusValidator),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (
@@ -739,13 +770,7 @@ export const updateTaskStatusFromAgent = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    const allowedStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
-    if (!allowedStatuses.has(args.status)) {
+    if (!AGENT_ALLOWED_STATUSES.has(args.status)) {
       throw new Error(
         "Invalid status: must be in_progress, review, done, or blocked",
       );
@@ -768,13 +793,6 @@ export const updateTaskStatusFromAgent = action({
     if (!flags.canModifyTaskStatus) {
       throw new Error("Forbidden: Agent is not allowed to modify task status");
     }
-
-    const allowedNextStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
 
     let changed = false;
     let finalStatus: TaskStatus | null = null;
@@ -821,7 +839,7 @@ export const updateTaskStatusFromAgent = action({
       const path = findStatusPath({
         from: currentStatus,
         to: targetStatus,
-        allowedNextStatuses,
+        allowedNextStatuses: AGENT_ALLOWED_STATUSES,
       });
       if (!path || path.length === 0) {
         throw new Error(
@@ -880,13 +898,21 @@ export const createTaskFromAgent = action({
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
     assignedAgentIds: v.optional(v.array(v.id("agents"))),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ taskId: Id<"tasks"> }> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
     if (serviceContext.accountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
+    }
+    if (
+      args.blockedReason != null &&
+      args.blockedReason.length > BLOCKED_REASON_MAX_LENGTH
+    ) {
+      throw new Error(
+        `blockedReason must be at most ${BLOCKED_REASON_MAX_LENGTH} characters`,
+      );
     }
 
     const agent = await ctx.runQuery(internal.service.agents.getInternal, {
@@ -905,6 +931,20 @@ export const createTaskFromAgent = action({
     const flags = resolveBehaviorFlags(agent, account);
     if (!flags.canCreateTasks) {
       throw new Error("Forbidden: Agent is not allowed to create tasks");
+    }
+
+    if (args.title.length > TASK_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Title too long (max ${TASK_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (
+      args.description != null &&
+      args.description.length > TASK_DESCRIPTION_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Description too long (max ${TASK_DESCRIPTION_MAX_LENGTH} characters)`,
+      );
     }
 
     const taskId = await ctx.runMutation(
@@ -934,7 +974,7 @@ export const assignTaskFromAgent = action({
     taskId: v.id("tasks"),
     agentId: v.id("agents"),
     assignedAgentIds: v.array(v.id("agents")),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ taskId: Id<"tasks"> }> => {
@@ -953,15 +993,12 @@ export const assignTaskFromAgent = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can assign agents");
-    }
+    await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "assign agents",
+    );
 
     const taskId = await ctx.runMutation(
       internal.service.tasks.assignFromAgent,
@@ -994,7 +1031,7 @@ export const updateTaskFromAgent = action({
     status: v.optional(taskStatusValidator),
     blockedReason: v.optional(v.string()),
     dueDate: v.optional(v.number()),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (
@@ -1007,6 +1044,14 @@ export const updateTaskFromAgent = action({
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
     if (serviceContext.accountId !== args.accountId) {
       throw new Error("Forbidden: Service token does not match account");
+    }
+    if (
+      args.blockedReason != null &&
+      args.blockedReason.length > BLOCKED_REASON_MAX_LENGTH
+    ) {
+      throw new Error(
+        `blockedReason must be at most ${BLOCKED_REASON_MAX_LENGTH} characters`,
+      );
     }
 
     const agent = await ctx.runQuery(internal.service.agents.getInternal, {
@@ -1025,6 +1070,20 @@ export const updateTaskFromAgent = action({
     const flags = resolveBehaviorFlags(agent, account);
     if (!flags.canModifyTaskStatus) {
       throw new Error("Forbidden: Agent is not allowed to modify tasks");
+    }
+
+    if (args.title != null && args.title.length > TASK_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Title too long (max ${TASK_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (
+      args.description != null &&
+      args.description.length > TASK_DESCRIPTION_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Description too long (max ${TASK_DESCRIPTION_MAX_LENGTH} characters)`,
+      );
     }
 
     const task = await ctx.runQuery(internal.service.tasks.getInternal, {
@@ -1062,20 +1121,21 @@ export const updateTaskFromAgent = action({
       );
     }
 
-    // Validate status and blockedReason
-    const allowedStatuses = new Set<TaskStatus>([
-      TASK_STATUS.IN_PROGRESS,
-      TASK_STATUS.REVIEW,
-      TASK_STATUS.DONE,
-      TASK_STATUS.BLOCKED,
-    ]);
-    if (args.status && !allowedStatuses.has(args.status)) {
+    if (args.status && !AGENT_ALLOWED_STATUSES.has(args.status)) {
       throw new Error(
         "Invalid status: must be in_progress, review, done, or blocked",
       );
     }
     if (args.status === TASK_STATUS.BLOCKED && !args.blockedReason?.trim()) {
       throw new Error("blockedReason is required when status is 'blocked'");
+    }
+    if (
+      args.blockedReason != null &&
+      args.blockedReason.length > BLOCKED_REASON_MAX_LENGTH
+    ) {
+      throw new Error(
+        `blockedReason must be at most ${BLOCKED_REASON_MAX_LENGTH} characters`,
+      );
     }
 
     const changedFields: string[] = [];
@@ -1134,19 +1194,10 @@ export const updateTaskFromAgent = action({
       });
     }
 
-    // If status is being changed, handle status transitions
     if (args.status && args.status !== task.status) {
-      const allowedNextStatuses = new Set<TaskStatus>([
-        TASK_STATUS.IN_PROGRESS,
-        TASK_STATUS.REVIEW,
-        TASK_STATUS.DONE,
-        TASK_STATUS.BLOCKED,
-      ]);
-
       const targetStatus = args.status;
       const currentStatus = task.status;
 
-      // Validate task must be in review before marking done
       if (
         targetStatus === TASK_STATUS.DONE &&
         currentStatus !== TASK_STATUS.REVIEW &&
@@ -1157,11 +1208,10 @@ export const updateTaskFromAgent = action({
         );
       }
 
-      // Apply status change through transitions
       const path = findStatusPath({
         from: currentStatus,
         to: targetStatus,
-        allowedNextStatuses,
+        allowedNextStatuses: AGENT_ALLOWED_STATUSES,
       });
       if (!path || path.length === 0) {
         throw new Error(
@@ -1208,7 +1258,7 @@ export const updateTaskFromAgent = action({
 export const listTasksForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     status: v.optional(taskStatusValidator),
     assigneeAgentId: v.optional(v.id("agents")),
@@ -1230,15 +1280,7 @@ export const listTasksForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can list tasks");
-    }
+    await requireOrchestrator(ctx, args.accountId, args.agentId, "list tasks");
 
     return await ctx.runQuery(internal.service.tasks.listForTool, {
       accountId: args.accountId,
@@ -1255,7 +1297,7 @@ export const listTasksForAgentTool = action({
 export const getTaskForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
   },
@@ -1275,15 +1317,7 @@ export const getTaskForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can get tasks");
-    }
+    await requireOrchestrator(ctx, args.accountId, args.agentId, "get tasks");
 
     return await ctx.runQuery(internal.service.tasks.getForTool, {
       accountId: args.accountId,
@@ -1299,7 +1333,7 @@ export const getTaskForAgentTool = action({
 export const listTaskThreadForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
     limit: v.optional(v.number()),
@@ -1332,15 +1366,12 @@ export const listTaskThreadForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can read threads");
-    }
+    await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "read threads",
+    );
 
     return await ctx.runQuery(internal.service.messages.listThreadForTool, {
       accountId: args.accountId,
@@ -1356,7 +1387,7 @@ export const listTaskThreadForAgentTool = action({
 export const createTaskMessageForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
     content: v.string(),
@@ -1377,17 +1408,12 @@ export const createTaskMessageForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error(
-        "Forbidden: Only the orchestrator can post task messages",
-      );
-    }
+    const account = await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "post task messages",
+    );
 
     const task = await ctx.runQuery(internal.service.agents.getTaskInternal, {
       taskId: args.taskId,
@@ -1423,7 +1449,7 @@ export const createTaskMessageForAgentTool = action({
 export const searchTasksForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     query: v.string(),
     limit: v.optional(v.number()),
@@ -1460,15 +1486,12 @@ export const searchTasksForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can search tasks");
-    }
+    await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "search tasks",
+    );
 
     return await ctx.runQuery(internal.service.tasks.searchTasksForAgentTool, {
       accountId: args.accountId,
@@ -1486,7 +1509,7 @@ export const searchTasksForAgentTool = action({
 export const createResponseRequestNotifications = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     requesterAgentId: v.id("agents"),
     taskId: v.id("tasks"),
     recipientSlugs: v.array(v.string()),
@@ -1558,8 +1581,8 @@ export const createResponseRequestNotifications = action({
     });
     const agentsBySlug = new Map(
       agents
-        .filter((agent) => (agent.slug ?? "").trim())
-        .map((agent) => [agent.slug.trim().toLowerCase(), agent]),
+        .filter((a) => (a.slug ?? "").trim())
+        .map((a) => [(a.slug ?? "").trim().toLowerCase(), a]),
     );
     const missingSlugs: string[] = [];
     const recipientAgentIds: Array<Id<"agents">> = [];
@@ -1607,7 +1630,7 @@ export const createDocumentFromAgent = action({
     title: v.string(),
     content: v.string(),
     type: documentTypeValidator,
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ documentId: Id<"documents"> }> => {
@@ -1662,6 +1685,64 @@ export const createDocumentFromAgent = action({
 });
 
 /**
+ * Result shape for listDocumentsForAgent (minimal list, no content).
+ */
+export interface ListDocumentsForAgentResult {
+  documents: Array<{
+    _id: Id<"documents">;
+    title: string;
+    type?: string;
+    taskId?: Id<"tasks">;
+    updatedAt: number;
+  }>;
+}
+
+const listDocumentsForAgentReturns = v.object({
+  documents: v.array(
+    v.object({
+      _id: v.id("documents"),
+      title: v.string(),
+      type: v.optional(v.string()),
+      taskId: v.optional(v.id("tasks")),
+      updatedAt: v.number(),
+    }),
+  ),
+});
+
+/**
+ * List documents for agent tools (service-only).
+ * Used by document_list tool for discovery; excludes soft-deleted.
+ */
+export const listDocumentsForAgent = action({
+  args: {
+    serviceToken: serviceTokenValidator,
+    accountId: v.id("accounts"),
+    taskId: v.optional(v.id("tasks")),
+    type: v.optional(documentTypeValidator),
+    limit: v.optional(v.number()),
+  },
+  returns: listDocumentsForAgentReturns,
+  handler: async (ctx, args): Promise<ListDocumentsForAgentResult> => {
+    const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
+    if (serviceContext.accountId !== args.accountId) {
+      throw new Error("Forbidden: Service token does not match account");
+    }
+
+    // Limit is validated in listForAgentTool (single place: default 50, clamp 1–100)
+    const documents = await ctx.runQuery(
+      internal.service.documents.listForAgentTool,
+      {
+        accountId: args.accountId,
+        taskId: args.taskId,
+        type: args.type,
+        limit: args.limit,
+      },
+    );
+    return { documents };
+  },
+});
+
+/**
  * Create a message from an agent.
  * Called by runtime when agent posts to a thread (e.g. after OpenClaw response write-back).
  * Optional sourceNotificationId enables idempotent delivery (no duplicate messages on retry).
@@ -1672,7 +1753,7 @@ export const createMessageFromAgent = action({
     taskId: v.id("tasks"),
     agentId: v.id("agents"),
     content: v.string(),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
     /** When true, suppress agent notifications for this message (prevents reply loops). */
     suppressAgentNotifications: v.optional(v.boolean()),
@@ -1756,7 +1837,7 @@ export const registerMessageUploadFromAgent = action({
     taskId: v.id("tasks"),
     agentId: v.id("agents"),
     storageId: v.id("_storage"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ uploadId: Id<"messageUploads"> }> => {
@@ -1814,7 +1895,7 @@ type PendingUpgradePayload = {
 export const getPendingUpgrade = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
   },
   handler: async (ctx, args): Promise<PendingUpgradePayload> => {
     const serviceContext = await requireServiceAuth(ctx, args.serviceToken);
@@ -1824,7 +1905,24 @@ export const getPendingUpgrade = action({
     const runtime = await ctx.runQuery(internal.runtimes.getByAccountInternal, {
       accountId: args.accountId,
     });
-    return (runtime?.pendingUpgrade ?? null) as PendingUpgradePayload;
+    const up = runtime?.pendingUpgrade;
+    if (!up) return null;
+    if (
+      typeof up.targetOpenclawVersion !== "string" ||
+      typeof up.targetRuntimeVersion !== "string" ||
+      typeof up.initiatedAt !== "number" ||
+      typeof up.initiatedBy !== "string" ||
+      !["immediate", "rolling", "canary"].includes(up.strategy)
+    ) {
+      return null;
+    }
+    return {
+      targetOpenclawVersion: up.targetOpenclawVersion,
+      targetRuntimeVersion: up.targetRuntimeVersion,
+      initiatedAt: up.initiatedAt,
+      initiatedBy: up.initiatedBy,
+      strategy: up.strategy,
+    };
   },
 });
 
@@ -1834,7 +1932,7 @@ export const getPendingUpgrade = action({
 export const recordUpgradeResult = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     status: v.union(
       v.literal("success"),
       v.literal("failed"),
@@ -1864,7 +1962,7 @@ export const recordUpgradeResult = action({
       fromRuntimeVersion: args.fromRuntimeVersion,
       toRuntimeVersion: args.toRuntimeVersion,
       duration: args.duration,
-      error: args.error,
+      error: sanitizeUpgradeError(args.error),
       initiatedBy,
     });
     return { success: true };
@@ -1878,7 +1976,7 @@ export const recordUpgradeResult = action({
 export const loadTaskDetailsForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
     messageLimit: v.optional(v.number()),
@@ -1956,7 +2054,7 @@ const TASK_HISTORY_ACTIVITY_LIMIT_MAX = 200;
 export const getTaskHistoryForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     agentId: v.id("agents"),
     taskId: v.id("tasks"),
     messageLimit: v.optional(v.number()),
@@ -2079,7 +2177,7 @@ export const deleteTaskFromAgent = action({
     taskId: v.id("tasks"),
     agentId: v.id("agents"),
     reason: v.string(),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     accountId: v.id("accounts"),
   },
   handler: async (ctx, args): Promise<{ success: true }> => {
@@ -2099,16 +2197,14 @@ export const deleteTaskFromAgent = action({
     }
 
     // Verify orchestrator status
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error(
-        "Forbidden: Only the orchestrator can archive/delete tasks",
-      );
+    await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "archive/delete tasks",
+    );
+    if (args.reason.length > REASON_MAX_LENGTH) {
+      throw new Error(`reason must be at most ${REASON_MAX_LENGTH} characters`);
     }
 
     // Perform soft-delete via internal mutation
@@ -2132,7 +2228,7 @@ export const linkTaskToPrForAgentTool = action({
   args: {
     accountId: v.id("accounts"),
     agentId: v.id("agents"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     taskId: v.id("tasks"),
     prNumber: v.number(),
   },
@@ -2152,15 +2248,12 @@ export const linkTaskToPrForAgentTool = action({
       throw new Error("Forbidden: Agent belongs to different account");
     }
 
-    const account = await ctx.runQuery(internal.accounts.getInternal, {
-      accountId: args.accountId,
-    });
-    const orchestratorAgentId =
-      (account?.settings as { orchestratorAgentId?: Id<"agents"> } | undefined)
-        ?.orchestratorAgentId ?? null;
-    if (!orchestratorAgentId || orchestratorAgentId !== args.agentId) {
-      throw new Error("Forbidden: Only the orchestrator can link tasks to PRs");
-    }
+    await requireOrchestrator(
+      ctx,
+      args.accountId,
+      args.agentId,
+      "link tasks to PRs",
+    );
 
     const task = await ctx.runQuery(internal.service.tasks.getInternal, {
       taskId: args.taskId,
@@ -2219,17 +2312,31 @@ export const linkTaskToPrForAgentTool = action({
           return { success: true };
         }
 
-        const pr = (await prResponse.json()) as {
-          body?: string;
-          head?: { ref?: string };
-        };
-        const prBranch = pr.head?.ref ?? "";
+        const raw = (await prResponse.json()) as unknown;
+        const prBody =
+          raw &&
+          typeof raw === "object" &&
+          !Array.isArray(raw) &&
+          "body" in raw &&
+          typeof (raw as Record<string, unknown>).body === "string"
+            ? (raw as Record<string, string>).body
+            : "";
+        const head =
+          raw &&
+          typeof raw === "object" &&
+          raw !== null &&
+          "head" in raw &&
+          typeof (raw as Record<string, unknown>).head === "object" &&
+          (raw as Record<string, unknown>).head !== null
+            ? (raw as Record<string, { ref?: string }>).head
+            : undefined;
+        const prBranch = head?.ref ?? "";
         if (prBranch && !prBranch.includes(args.taskId)) {
           console.warn(
             `PR #${args.prNumber} branch "${prBranch}" does not match task ${args.taskId}; consider using branch feat/task-${args.taskId}`,
           );
         }
-        let currentBody = pr.body || "";
+        let currentBody = prBody || "";
 
         // Remove old task marker if present
         currentBody = currentBody.replace(/\n*<!-- task: [\w]+ -->/g, "");
@@ -2273,7 +2380,7 @@ export const getAgentSkillsForTool = action({
   args: {
     accountId: v.id("accounts"),
     agentId: v.id("agents"),
-    serviceToken: v.string(),
+    serviceToken: serviceTokenValidator,
     queryAgentId: v.optional(v.id("agents")), // Which agent to query; undefined = all agents
   },
   handler: async (

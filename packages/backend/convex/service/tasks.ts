@@ -389,6 +389,15 @@ export const createFromAgent = internalMutation({
     await ensureOrchestratorSubscribed(ctx, accountId, taskId);
     for (const assignedAgentId of assignedAgentIds) {
       await ensureSubscribed(ctx, accountId, taskId, "agent", assignedAgentId);
+      await createAssignmentNotification(
+        ctx,
+        accountId,
+        taskId,
+        "agent",
+        assignedAgentId,
+        agent.name,
+        args.title,
+      );
     }
 
     return taskId;
@@ -634,11 +643,15 @@ export const updateStatusFromAgent = internalMutation({
 
     await ctx.db.patch(args.taskId, updates);
 
-    if (nextStatus === TASK_STATUS.DONE) {
+    if (nextStatus === TASK_STATUS.ARCHIVED) {
       await ctx.scheduler.runAfter(
         0,
         internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
-        { accountId: task.accountId, taskId: args.taskId },
+        {
+          accountId: task.accountId,
+          taskId: args.taskId,
+          closedReason: "task_archived",
+        },
       );
     }
 
@@ -981,6 +994,15 @@ export const deleteTaskFromAgent = internalMutation({
       archivedAt: now,
       updatedAt: now,
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.service.agentRuntimeSessions.closeTaskSessionsForTask,
+      {
+        accountId: task.accountId,
+        taskId: args.taskId,
+        closedReason: "task_archived",
+      },
+    );
 
     // Log activity for audit trail
     await logActivity({

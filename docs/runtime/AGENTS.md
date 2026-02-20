@@ -39,6 +39,7 @@ Repo path, task worktree, and base branch are defined in the **Repository** docu
    - before each operation, check your assigned skills (`TOOLS.md` + `skills/*/SKILL.md`)
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write `No applicable skill`
+   - Assigned skills live only in your workspace; do not look for skills in /root/.openclaw/ (config directory).
 
 ## Parallelization (sub-agents)
 
@@ -129,6 +130,7 @@ Your notification prompt includes a **Capabilities** line listing what you are a
 - **task_update** — Update task fields (title, description, priority, labels, assignees, status, dueDate). Call **before** posting your reply when you modify the task. Available when you have task context and can modify tasks (same as task_status).
 - **task_create** — Create a new task (title required; optional description, priority, labels, status). Use when you need to spawn follow-up work. Available when the account allows agents to create tasks.
 - **document_upsert** — Create or update a document (title, content, type: deliverable | note | template | reference). Use documentId to update an existing doc; optional taskId to link to a task. This is the document sharing tool — always use it when you produce docs so the primary user can see them. After calling it, include the returned documentId and a Markdown link in your reply: `[Document](/document/<documentId>)`. Available when the account allows agents to create documents.
+- **document_list** — List documents in the account or for a task (optional taskId, type, limit). Use to discover existing deliverables, notes, templates, or references before creating or updating. Available when you can create documents or when you have task context. Tool-only (no HTTP fallback when client tools are disabled).
 - **response_request** — Request a response from other agents by slug. Use this instead of @mentions when you need a follow-up on the current task.
 - **task_load** — Load full task details with recent thread messages. Prefer this over separate task_get + task_thread when you need context.
 - **get_agent_skills** — List skills per agent. Orchestrator can query specific agents; others can query their own skills or the full list.
@@ -165,7 +167,7 @@ Agent @mentions do **not** notify other agents. To request a follow-up, you must
 Important: use the **exact base URL provided in your notification prompt** (it is environment-specific). In Docker Compose (gateway + runtime in separate containers), `http://127.0.0.1:3000` points at the gateway container and will fail — use `http://runtime:3000` instead.
 
 - Endpoint: `POST {TASK_STATUS_BASE_URL}/agent/task-status`
-- Header: `x-openclaw-session-key: agent:{slug}:{accountId}`
+- Header: `x-openclaw-session-key` — use the session key from your notification prompt (backend-resolved task or system key). Runtime does not use legacy `agent:{slug}:{accountId}` for routing.
 - Body: `{ "taskId": "...", "status": "in_progress|review|done|blocked", "blockedReason": "..." }`
 
 Rules:
@@ -182,7 +184,7 @@ Example (HTTP fallback):
 BASE_URL="http://runtime:3000"
 curl -X POST "${BASE_URL}/agent/task-status" \
   -H "Content-Type: application/json" \
-  -H "x-openclaw-session-key: agent:engineer:acc_123" \
+  -H "x-openclaw-session-key: <session-key-from-prompt>" \
   -d '{"taskId":"tsk_123","status":"review"}'
 ```
 
@@ -201,7 +203,7 @@ curl -X POST "${BASE_URL}/agent/task-status" \
 - **Document:** `POST {TASK_STATUS_BASE_URL}/agent/document` with body `{ "title", "content", "type", "documentId?", "taskId?" }`.
 - **Response request:** `POST {TASK_STATUS_BASE_URL}/agent/response-request` with body `{ "taskId", "recipientSlugs", "message" }`.
 
-All require header `x-openclaw-session-key: agent:{slug}:{accountId}` and are local-only.
+All require header `x-openclaw-session-key` (backend-resolved task or system key; see notification prompt). Local-only.
 
 ## Orchestrator (squad lead)
 
