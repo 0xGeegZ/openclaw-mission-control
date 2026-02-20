@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
-import { documentTypeValidator } from "../lib/validators";
+import {
+  documentTypeValidator,
+  DOCUMENT_TITLE_MAX_LENGTH,
+  DOCUMENT_CONTENT_MAX_LENGTH,
+} from "../lib/validators";
 import { logActivity } from "../lib/activity";
 
 /**
@@ -23,7 +27,17 @@ export const createOrUpdateFromAgent = internalMutation({
     type: documentTypeValidator,
   },
   handler: async (ctx, args) => {
-    // Get agent info
+    if (args.title.length > DOCUMENT_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Title too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (args.content.length > DOCUMENT_CONTENT_MAX_LENGTH) {
+      throw new Error(
+        `Content too long (max ${DOCUMENT_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
+
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       throw new Error("Not found: Agent does not exist");

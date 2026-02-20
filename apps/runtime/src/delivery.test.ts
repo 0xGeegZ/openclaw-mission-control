@@ -3,15 +3,18 @@
  * and formatNotificationMessage (identity line, capabilities).
  */
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import {
   _getNoResponseRetryDecision,
   _isNoReplySignal,
+  _isStaleThreadUpdateNotification,
   _resetNoResponseRetryState,
   _shouldPersistOrchestratorThreadAck,
   _shouldPersistNoResponseFallback,
   canAgentMarkDone,
+  getDeliveryState,
   shouldDeliverToAgent,
+  stopDeliveryLoop,
   formatNotificationMessage,
   buildDeliveryInstructions,
   buildNotificationInput,
@@ -784,6 +787,19 @@ describe("no response retry decision", () => {
     expect(second.shouldRetry).toBe(true);
     expect(third.shouldRetry).toBe(false);
   });
+
+  it("resets attempt after NO_RESPONSE_RETRY_RESET_MS (10 min) so shouldRetry is true again", () => {
+    const RESET_MS = 10 * 60 * 1000;
+    _resetNoResponseRetryState();
+    const t0 = 1000;
+    _getNoResponseRetryDecision("n1", t0);
+    _getNoResponseRetryDecision("n1", t0 + 1);
+    const third = _getNoResponseRetryDecision("n1", t0 + 2);
+    expect(third.shouldRetry).toBe(false);
+    const afterReset = _getNoResponseRetryDecision("n1", t0 + 2 + RESET_MS + 1);
+    expect(afterReset.attempt).toBe(1);
+    expect(afterReset.shouldRetry).toBe(true);
+  });
 });
 
 describe("no reply signal detection", () => {
@@ -906,6 +922,221 @@ describe("orchestrator no-reply acknowledgment policy", () => {
       },
     });
     expect(_shouldPersistOrchestratorThreadAck(ctx)).toBe(false);
+  });
+});
+
+describe("_isStaleThreadUpdateNotification", () => {
+  it("returns true when thread_update has messageId and a user message exists after it in thread", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        recipientType: "agent",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "agent",
+          authorId: "agent-a",
+          authorName: null,
+          content: "Ok",
+          createdAt: 2000,
+        },
+        {
+          messageId: mid("m2"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Thanks",
+          createdAt: 3000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(true);
+  });
+
+  it("returns false when no messageId", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "agent",
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m1"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m1"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+      ],
+    });
+    expect(ctx.notification.messageId).toBeUndefined();
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when no user message after the notified message", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "agent",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "agent",
+          authorId: "agent-a",
+          authorName: null,
+          content: "Reply",
+          createdAt: 2000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when not thread_update", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "assignment",
+        title: "T",
+        body: "B",
+        accountId: accId("acc1"),
+      },
+      thread: [],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when recipientType is not agent", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "user",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "user", authorId: "user-1" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Hi",
+          createdAt: 1000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+
+  it("returns false when message author is not user", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("n1"),
+        type: "thread_update",
+        title: "T",
+        body: "B",
+        recipientType: "agent",
+        messageId: mid("m0"),
+        accountId: accId("acc1"),
+      },
+      message: { _id: mid("m0"), authorType: "agent", authorId: "agent-b" },
+      thread: [
+        {
+          messageId: mid("m0"),
+          authorType: "agent",
+          authorId: "agent-b",
+          authorName: null,
+          content: "Done",
+          createdAt: 1000,
+        },
+        {
+          messageId: mid("m1"),
+          authorType: "user",
+          authorId: "user-1",
+          authorName: null,
+          content: "Ok",
+          createdAt: 2000,
+        },
+      ],
+    });
+    expect(_isStaleThreadUpdateNotification(ctx)).toBe(false);
+  });
+});
+
+describe("getDeliveryState", () => {
+  it("returns shape with isRunning, deliveredCount, noResponseFailures, and other fields", () => {
+    const s = getDeliveryState();
+    expect(s).toHaveProperty("isRunning");
+    expect(s).toHaveProperty("lastDelivery");
+    expect(s).toHaveProperty("deliveredCount");
+    expect(s).toHaveProperty("failedCount");
+    expect(s).toHaveProperty("consecutiveFailures");
+    expect(s).toHaveProperty("lastErrorAt");
+    expect(s).toHaveProperty("lastErrorMessage");
+    expect(s).toHaveProperty("noResponseFailures");
+    expect(s).toHaveProperty("noResponseTerminalSkipCount");
+    expect(s).toHaveProperty("requiredNotificationRetryExhaustedCount");
+    expect(s.noResponseFailures).toBeInstanceOf(Map);
+  });
+
+  it("returns a snapshot: mutating returned noResponseFailures does not affect next getDeliveryState", () => {
+    _resetNoResponseRetryState();
+    const first = getDeliveryState();
+    first.noResponseFailures.set("x", { count: 1, lastAt: 1 });
+    const second = getDeliveryState();
+    expect(second.noResponseFailures.has("x")).toBe(false);
+  });
+});
+
+describe("startDeliveryLoop / stopDeliveryLoop", () => {
+  beforeEach(() => {
+    stopDeliveryLoop();
+  });
+
+  it("stopDeliveryLoop is idempotent and sets isRunning false", () => {
+    stopDeliveryLoop();
+    stopDeliveryLoop();
+    expect(getDeliveryState().isRunning).toBe(false);
   });
 });
 

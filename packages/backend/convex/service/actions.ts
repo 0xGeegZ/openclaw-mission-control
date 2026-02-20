@@ -8,7 +8,10 @@ import {
 } from "../lib/service_auth";
 import { taskStatusValidator, documentTypeValidator } from "../lib/validators";
 import { Doc, Id } from "../_generated/dataModel";
-import type { GetForDeliveryResult } from "./notifications";
+import {
+  type GetForDeliveryResult,
+  LIST_UNDELIVERED_MAX_LIMIT,
+} from "./notifications";
 import {
   resolveBehaviorFlags,
   type BehaviorFlags,
@@ -304,12 +307,16 @@ export const listUndeliveredNotifications = action({
       throw new Error("Forbidden: Service token does not match account");
     }
 
-    // Call internal query
+    const cappedLimit =
+      args.limit != null
+        ? Math.min(args.limit, LIST_UNDELIVERED_MAX_LIMIT)
+        : undefined;
+
     return await ctx.runQuery(
       internal.service.notifications.listUndeliveredForAccount,
       {
         accountId: args.accountId,
-        limit: args.limit,
+        limit: cappedLimit,
       },
     );
   },

@@ -436,6 +436,12 @@ export const USER_MD_MAX_LENGTH = 50_000;
 /** Maximum per-agent IDENTITY.md content length (characters). */
 export const IDENTITY_CONTENT_MAX_LENGTH = 50_000;
 
+/** Maximum document title length (characters). */
+export const DOCUMENT_TITLE_MAX_LENGTH = 2_000;
+
+/** Maximum document content length (characters) to prevent storage/DoS. */
+export const DOCUMENT_CONTENT_MAX_LENGTH = 1_000_000;
+
 /** Allowed MIME type prefixes/values for attachments (matches UI accept). */
 export const ATTACHMENT_ALLOWED_TYPES = [
   "image/",

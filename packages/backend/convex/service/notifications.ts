@@ -75,6 +75,9 @@ const TASK_OVERVIEW_SCAN_LIMIT = 100;
 const ORCHESTRATOR_CHAT_LABEL = "system:orchestrator-chat";
 const RESPONSE_REQUEST_RETRY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
+/** Max limit for listUndeliveredForAccount to avoid large in-memory collect/slice. */
+export const LIST_UNDELIVERED_MAX_LIMIT = 500;
+
 /**
  * Build a compact task overview for orchestrator prompts.
  */
@@ -154,8 +157,11 @@ export const listUndeliveredForAccount = internalQuery({
     // Sort by created (oldest first for FIFO)
     notifications.sort((a, b) => a.createdAt - b.createdAt);
 
-    const limit = args.limit ?? 100;
-    return notifications.slice(0, limit);
+    const effectiveLimit = Math.min(
+      args.limit ?? 100,
+      LIST_UNDELIVERED_MAX_LIMIT,
+    );
+    return notifications.slice(0, effectiveLimit);
   },
 });
 

@@ -3,7 +3,12 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
-import { documentTypeValidator, documentKindValidator } from "./lib/validators";
+import {
+  documentTypeValidator,
+  documentKindValidator,
+  DOCUMENT_TITLE_MAX_LENGTH,
+  DOCUMENT_CONTENT_MAX_LENGTH,
+} from "./lib/validators";
 import { logActivity } from "./lib/activity";
 import { DOCUMENT_TYPE } from "./lib/constants";
 import {
@@ -260,9 +265,19 @@ export const create = mutation({
     const displayName =
       args.name ?? args.title ?? (isFolder ? "New Folder" : "Untitled");
 
+    if (args.name != null && args.name.length > DOCUMENT_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Name too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
     if (isFolder) {
       if (!args.name && !args.title) {
         throw new Error("Folder requires name or title");
+      }
+      if (args.title != null && args.title.length > DOCUMENT_TITLE_MAX_LENGTH) {
+        throw new Error(
+          `Title too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+        );
       }
     } else {
       if (!args.title || args.content === undefined) {
@@ -271,6 +286,16 @@ export const create = mutation({
       if (!args.type) {
         throw new Error(
           "File requires type (deliverable, note, template, or reference)",
+        );
+      }
+      if (args.title.length > DOCUMENT_TITLE_MAX_LENGTH) {
+        throw new Error(
+          `Title too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+        );
+      }
+      if (args.content.length > DOCUMENT_CONTENT_MAX_LENGTH) {
+        throw new Error(
+          `Content too long (max ${DOCUMENT_CONTENT_MAX_LENGTH} characters)`,
         );
       }
     }
@@ -349,6 +374,32 @@ export const update = mutation({
       ctx,
       document.accountId,
     );
+
+    if (
+      args.name !== undefined &&
+      args.name.length > DOCUMENT_TITLE_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Name too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (
+      args.title !== undefined &&
+      args.title.length > DOCUMENT_TITLE_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Title too long (max ${DOCUMENT_TITLE_MAX_LENGTH} characters)`,
+      );
+    }
+    if (
+      args.content !== undefined &&
+      document.kind !== "folder" &&
+      args.content.length > DOCUMENT_CONTENT_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Content too long (max ${DOCUMENT_CONTENT_MAX_LENGTH} characters)`,
+      );
+    }
 
     if (args.parentId !== undefined && args.parentId !== null) {
       await validateDocumentParent(ctx.db, document.accountId, args.parentId);
