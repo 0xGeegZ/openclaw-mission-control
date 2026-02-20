@@ -174,3 +174,55 @@ export const AUTH_TYPE = {
   API_KEY: "api_key",
   OAUTH: "oauth",
 } as const;
+
+// ============================================================================
+// TASK COMPLEXITY
+// ============================================================================
+
+/**
+ * Task complexity levels for auto-mode agent/model routing.
+ */
+export const TASK_COMPLEXITY = {
+  EASY: "easy",
+  MEDIUM: "medium",
+  COMPLEX: "complex",
+  HARD: "hard",
+} as const;
+
+/**
+ * Task complexity type.
+ */
+export type TaskComplexity =
+  (typeof TASK_COMPLEXITY)[keyof typeof TASK_COMPLEXITY];
+
+// ============================================================================
+// AUTO MODE ROUTING CONFIG
+// ============================================================================
+
+/**
+ * Agent routing by complexity level.
+ * Maps complexity to recommended agent roles.
+ */
+export const AGENT_COMPLEXITY_ROUTING: Record<
+  TaskComplexity,
+  readonly [string, string]
+> = {
+  [TASK_COMPLEXITY.EASY]: ["writer", "designer"],
+  [TASK_COMPLEXITY.MEDIUM]: ["engineer", "writer"],
+  [TASK_COMPLEXITY.COMPLEX]: ["engineer", "engineer-2"],
+  [TASK_COMPLEXITY.HARD]: ["engineer-2", "squad-lead"],
+} as const;
+
+/**
+ * Model routing by complexity level (cost-tiered).
+ * Maps complexity to recommended models.
+ */
+export const MODEL_COMPLEXITY_ROUTING: Record<
+  TaskComplexity,
+  readonly [string, string]
+> = {
+  [TASK_COMPLEXITY.EASY]: ["gpt-5-nano", "gpt-5-nano"],
+  [TASK_COMPLEXITY.MEDIUM]: ["minimax-m2.5", "claude-haiku-4-5"],
+  [TASK_COMPLEXITY.COMPLEX]: ["kimi-k2.5", "claude-haiku-4-5"],
+  [TASK_COMPLEXITY.HARD]: ["kimi-k2.5", "kimi-k2.5"],
+} as const;
