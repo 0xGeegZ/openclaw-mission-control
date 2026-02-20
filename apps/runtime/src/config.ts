@@ -363,27 +363,14 @@ export async function loadConfig(): Promise<RuntimeConfig> {
   );
 
   /** Default stream timeout capped at 5 min so one stuck stream does not block the cycle for 10 min. */
-  const deliveryStreamTimeoutMs = (() => {
-    const fromEnv = process.env.DELIVERY_STREAM_TIMEOUT_MS;
-    const defaultCapMs = 300000; // 5 min
-    const defaultMs = Math.min(2 * openclawRequestTimeoutMs, defaultCapMs);
-    const minMs = 5000;
-    const maxMs = Math.max(defaultMs, defaultCapMs);
-    if (fromEnv != null && fromEnv.trim() !== "") {
-      const parsed = parseInt(fromEnv.trim(), 10);
-      if (!Number.isNaN(parsed) && parsed > 0) {
-        const clamped = Math.max(minMs, Math.min(maxMs, parsed));
-        if (clamped !== parsed) {
-          log.warn(
-            `DELIVERY_STREAM_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`,
-            { value: parsed },
-          );
-        }
-        return clamped;
-      }
-    }
-    return defaultMs;
-  })();
+  const deliveryStreamTimeoutMs = parseClampedIntEnv(
+    "DELIVERY_STREAM_TIMEOUT_MS",
+    process.env.DELIVERY_STREAM_TIMEOUT_MS,
+    Math.min(2 * openclawRequestTimeoutMs, 300000),
+    5000,
+    300000,
+    "DELIVERY_STREAM_TIMEOUT_MS",
+  );
 
   const deliveryBackoffBaseMs = parseClampedIntEnv(
     "DELIVERY_BACKOFF_BASE_MS",

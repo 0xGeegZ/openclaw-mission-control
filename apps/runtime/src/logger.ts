@@ -39,10 +39,6 @@ export function redactForExposure(msg: string): string {
   return out;
 }
 
-function redact(msg: string): string {
-  return redactForExposure(msg);
-}
-
 let minLevel: LogLevel = "info";
 
 /**
@@ -77,7 +73,7 @@ function formatArg(value: unknown): string {
 function log(level: LogLevel, prefix: string, ...args: unknown[]): void {
   if (!isLevelEnabled(level)) return;
   const raw = [prefix, ...args].map(formatArg).join(" ");
-  const line = redact(raw);
+  const line = redactForExposure(raw);
   switch (level) {
     case "debug":
       console.debug(line);

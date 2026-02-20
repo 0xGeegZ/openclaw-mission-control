@@ -999,7 +999,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         withTimeout(
           runSessionStream(client, config, items),
           streamTimeoutMs,
-          sessionKey,
+          "Session stream", // Do not use sessionKey here; it would appear in lastErrorMessage and GET /health
         ),
       );
       const results = await Promise.allSettled(streamPromises);

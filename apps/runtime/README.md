@@ -152,10 +152,12 @@ Upgrade workflow (pull new images and restart):
 
 ## Health endpoints
 
-- **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts and **delivery config** (e.g. `delivery.config.maxConcurrentSessions`, `streamTimeoutMs`, `contextFetchBatchSize`, `listLimit`, `intervalMs`, `backoffBaseMs`, `backoffMaxMs`), plus `consecutiveFailures`, `lastErrorAt`, `lastErrorMessage` on errors. Agents and operators can use `GET {TASK_STATUS_BASE_URL}/health` to observe runtime and delivery state without reading env.
+- **`GET /health`** — Full status: gateway/delivery state, versions, infrastructure, uptime, delivery counts and **delivery config** (e.g. `delivery.config.maxConcurrentSessions`, `streamTimeoutMs`, `contextFetchBatchSize`, `listLimit`, `intervalMs`, `backoffBaseMs`, `backoffMaxMs`), plus `consecutiveFailures`, `lastErrorAt`, `lastErrorMessage` on errors. Agents and operators can use `GET {TASK_STATUS_BASE_URL}/health` to observe runtime and delivery state without reading env. The `delivery.config` fields map to env: `maxConcurrentSessions` → `DELIVERY_MAX_CONCURRENT_SESSIONS`, `streamTimeoutMs` → `DELIVERY_STREAM_TIMEOUT_MS`, `contextFetchBatchSize` → `DELIVERY_CONTEXT_FETCH_BATCH_SIZE`, `listLimit` → `DELIVERY_LIST_LIMIT`, `intervalMs` → `DELIVERY_INTERVAL`, `backoffBaseMs` → `DELIVERY_BACKOFF_BASE_MS`, `backoffMaxMs` → `DELIVERY_BACKOFF_MAX_MS`.
 - **`GET /version`** — Lightweight: runtime version, OpenClaw version, droplet id/region.
 
 Both return JSON. Default port: `3000`. When **`HEALTH_HOST=0.0.0.0`**, the health server is reachable from the network and the full response (including error details and internal state) is visible to anyone who can reach the runtime; prefer binding to localhost or a trusted IP when possible.
+
+Worst-case delivery cycle time when all session streams timeout: `ceil(sessionCount / deliveryMaxConcurrentSessions) × deliveryStreamTimeoutMs`. Tune `DELIVERY_LIST_LIMIT` or `DELIVERY_MAX_CONCURRENT_SESSIONS` if you need a softer bound.
 
 ## Agent HTTP endpoints (fallback)
 
