@@ -88,7 +88,7 @@ config.agents.defaults.contextPruning.mode = 'cache-ttl';
 config.agents.defaults.contextPruning.ttl = '5m';
 // agents.defaults.maxConcurrent: allow multiple sessions in parallel (orchestrator + task threads). OpenClaw default is 1.
 function applyMaxConcurrent() {
-  const DEFAULT_MAX_CONCURRENT = 5;
+  const DEFAULT_MAX_CONCURRENT = 10;
   const MAX_CONCURRENT_CAP = 16;
   const raw = process.env.OPENCLAW_MAX_CONCURRENT;
   const parsed = raw !== undefined && raw !== '' ? Number(String(raw).trim()) : DEFAULT_MAX_CONCURRENT;
