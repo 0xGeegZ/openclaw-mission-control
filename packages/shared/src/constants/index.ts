@@ -6,6 +6,7 @@
  */
 import {
   TASK_STATUS,
+  TASK_COMPLEXITY,
   AGENT_STATUS,
   ANALYTICS_TIME_RANGE,
   ACTIVITY_TYPE,
@@ -15,6 +16,7 @@ import {
   RUNTIME_STATUS,
   RUNTIME_V2_STATUS,
   type TaskStatus,
+  type TaskComplexity,
   type AgentStatus,
   type AnalyticsTimeRange,
   type ActivityType,
@@ -27,6 +29,7 @@ import {
 // Re-export const objects from types for convenience
 export {
   TASK_STATUS,
+  TASK_COMPLEXITY,
   AGENT_STATUS,
   ANALYTICS_TIME_RANGE,
   ACTIVITY_TYPE,

@@ -19,7 +19,7 @@ import {
   createRuntimeOfflineNotifications,
   createRuntimeOnlineNotifications,
 } from "./lib/notifications";
-import { USER_MD_MAX_LENGTH } from "./lib/validators";
+import { USER_MD_MAX_LENGTH, complexityValidator } from "./lib/validators";
 
 /**
  * Create a new account.
@@ -208,6 +208,10 @@ const accountSettingsValidator = v.object({
   orchestratorAgentId: v.optional(v.union(v.id("agents"), v.null())),
   /** Pass null to clear the orchestrator chat task. */
   orchestratorChatTaskId: v.optional(v.union(v.id("tasks"), v.null())),
+  /** Enable auto mode for agent/model selection based on task complexity */
+  autoMode: v.optional(v.boolean()),
+  /** Default complexity level for new tasks (used when autoMode is enabled) */
+  defaultComplexity: v.optional(complexityValidator),
 });
 
 /**

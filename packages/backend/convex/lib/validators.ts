@@ -30,6 +30,7 @@ import {
   ACTOR_TYPE,
   TARGET_TYPE,
   AUTH_TYPE,
+  TASK_COMPLEXITY,
 } from "./constants";
 
 // ============================================================================
@@ -493,3 +494,22 @@ export const attachmentValidator = v.object({
   /** Optional; resolved from storageId in handler when omitted. */
   url: v.optional(v.string()),
 });
+
+// ============================================================================
+// TASK COMPLEXITY
+// ============================================================================
+
+/**
+ * Task complexity validator for auto-mode routing.
+ */
+export const complexityValidator = v.union(
+  v.literal(TASK_COMPLEXITY.EASY),
+  v.literal(TASK_COMPLEXITY.MEDIUM),
+  v.literal(TASK_COMPLEXITY.COMPLEX),
+  v.literal(TASK_COMPLEXITY.HARD),
+);
+
+/**
+ * Task complexity type inferred from validator.
+ */
+export type Complexity = Infer<typeof complexityValidator>;

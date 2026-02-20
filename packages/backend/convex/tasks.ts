@@ -3,7 +3,7 @@ import { mutation, query, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireAccountMember } from "./lib/auth";
-import { taskStatusValidator } from "./lib/validators";
+import { taskStatusValidator, complexityValidator } from "./lib/validators";
 import {
   isValidTransition,
   validateStatusRequirements,
@@ -280,6 +280,7 @@ export const create = mutation({
     priority: v.optional(v.number()),
     labels: v.optional(v.array(v.string())),
     dueDate: v.optional(v.number()),
+    complexity: v.optional(complexityValidator),
   },
   handler: async (ctx, args) => {
     const { userId, userName } = await requireAccountMember(
@@ -299,6 +300,7 @@ export const create = mutation({
       assignedAgentIds: [],
       labels: args.labels ?? [],
       dueDate: args.dueDate,
+      complexity: args.complexity,
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
@@ -334,6 +336,7 @@ export const update = mutation({
     priority: v.optional(v.number()),
     labels: v.optional(v.array(v.string())),
     dueDate: v.optional(v.number()),
+    complexity: v.optional(complexityValidator),
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
@@ -359,6 +362,7 @@ export const update = mutation({
     if (args.priority !== undefined) updates.priority = args.priority;
     if (args.labels !== undefined) updates.labels = args.labels;
     if (args.dueDate !== undefined) updates.dueDate = args.dueDate;
+    if (args.complexity !== undefined) updates.complexity = args.complexity;
 
     await ctx.db.patch(args.taskId, updates);
 
@@ -902,5 +906,39 @@ export const reopen = mutation({
     });
 
     return args.taskId;
+  },
+});
+
+/**
+ * Get routing info (recommended agents and models) for a complexity level.
+ * Used by UI for auto-mode preview.
+ */
+export const getRoutingInfo = query({
+  args: {
+    complexity: complexityValidator,
+  },
+  handler: async (ctx, args) => {
+    // Import here to avoid circular deps
+    const { getRoutingInfo: getRouting } = await import(
+      "./lib/auto_mode_routing"
+    );
+    return getRouting(args.complexity);
+  },
+});
+
+/**
+ * Auto-detect complexity from title and description.
+ * Used when user enables auto-mode but doesn't select complexity manually.
+ */
+export const detectComplexity = query({
+  args: {
+    title: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { autoDetectComplexity } = await import(
+      "./lib/auto_mode_routing"
+    );
+    return autoDetectComplexity(args.title, args.description);
   },
 });

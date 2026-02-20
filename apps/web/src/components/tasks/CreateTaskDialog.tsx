@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useAccount } from "@/lib/hooks/useAccount";
 import {
@@ -16,13 +16,27 @@ import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Textarea } from "@packages/ui/components/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@packages/ui/components/select";
 import { toast } from "sonner";
-import { Loader2, Plus, FileText } from "lucide-react";
+import { Loader2, Plus, FileText, Sparkles, Zap, Users, Bot } from "lucide-react";
 
 interface CreateTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+const COMPLEXITY_OPTIONS = [
+  { value: "easy", label: "Easy", description: "Simple content, design tasks" },
+  { value: "medium", label: "Medium", description: "Standard feature work" },
+  { value: "complex", label: "Complex", description: "API, integration, bug fixes" },
+  { value: "hard", label: "Hard", description: "Architecture, security, migrations" },
+];
 
 /**
  * Dialog for creating a new task.
@@ -31,12 +45,44 @@ export function CreateTaskDialog({
   open,
   onOpenChange,
 }: CreateTaskDialogProps) {
-  const { accountId } = useAccount();
+  const { account, accountId } = useAccount();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [complexity, setComplexity] = useState<string>("");
+  const [autoMode, setAutoMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Initialize autoMode and defaultComplexity from account settings
+  useEffect(() => {
+    if (account?.settings) {
+      const settings = account.settings as { autoMode?: boolean; defaultComplexity?: string };
+      setAutoMode(settings.autoMode ?? false);
+      if (settings.defaultComplexity) {
+        setComplexity(settings.defaultComplexity);
+      }
+    }
+  }, [account]);
+
   const createTask = useMutation(api.tasks.create);
+  
+  // Query to detect complexity if auto mode is on
+  const detectedComplexity = useQuery(
+    api.tasks.detectComplexity,
+    title.length >= 3 && autoMode ? { title, description: description || undefined } : null
+  );
+
+  // Query to get routing info based on complexity
+  const routingInfo = useQuery(
+    api.tasks.getRoutingInfo,
+    complexity ? { complexity: complexity as "easy" | "medium" | "complex" | "hard" } : null
+  );
+
+  // Update complexity when detected
+  useEffect(() => {
+    if (autoMode && detectedComplexity) {
+      setComplexity(detectedComplexity);
+    }
+  }, [autoMode, detectedComplexity]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,11 +94,13 @@ export function CreateTaskDialog({
         accountId,
         title: title.trim(),
         description: description.trim() || undefined,
+        complexity: complexity as "easy" | "medium" | "complex" | "hard" | undefined,
       });
 
       toast.success("Task created successfully");
       setTitle("");
       setDescription("");
+      setComplexity("");
       onOpenChange(false);
     } catch (error) {
       toast.error("Failed to create task", {
@@ -115,13 +163,88 @@ export function CreateTaskDialog({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Add more details about this task..."
-                  rows={8}
-                  className="min-h-[10rem] resize-y text-sm"
+                  rows={4}
+                  className="min-h-[6rem] resize-y text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground/60">
                   Supports Markdown formatting
                 </p>
               </div>
+
+              {/* Auto Mode Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  <Label htmlFor="auto-mode" className="text-sm font-medium cursor-pointer">
+                    Auto Mode
+                  </Label>
+                </div>
+                <button
+                  type="button"
+                  id="auto-mode"
+                  role="switch"
+                  aria-checked={autoMode}
+                  onClick={() => setAutoMode(!autoMode)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                    autoMode ? "bg-primary" : "bg-input"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      autoMode ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Complexity Selector - always visible but shows different label */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                  Complexity
+                  {autoMode && (
+                    <span className="text-muted-foreground/60 font-normal text-xs">
+                      (auto-detected)
+                    </span>
+                  )}
+                </Label>
+                <Select value={complexity} onValueChange={setComplexity}>
+                  <SelectTrigger id="complexity">
+                    <SelectValue placeholder="Select complexity level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPLEXITY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.description}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Determines which agents and models are recommended
+                  </p>
+                  
+                  {/* Routing Info Display */}
+                  {routingInfo && (
+                    <div className="mt-3 p-3 rounded-lg bg-muted/50 space-y-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-muted-foreground">Recommended Agents:</span>
+                        <span className="text-foreground">{routingInfo.agents[0]} / {routingInfo.agents[1]}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <Bot className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-muted-foreground">Recommended Models:</span>
+                        <span className="text-foreground">{routingInfo.models[0]} / {routingInfo.models[1]}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
             </div>
           </div>
           <DialogFooter className="shrink-0 gap-2 pt-2 sm:gap-2">

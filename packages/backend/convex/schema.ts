@@ -21,6 +21,7 @@ import {
   actorTypeValidator,
   targetTypeValidator,
   authTypeValidator,
+  complexityValidator,
 } from "./lib/validators";
 
 /**
@@ -127,6 +128,10 @@ export default defineSchema({
         orchestratorAgentId: v.optional(v.id("agents")),
         /** Task ID used for the orchestrator chat thread (PM task). */
         orchestratorChatTaskId: v.optional(v.id("tasks")),
+        /** Enable auto mode for agent/model selection based on task complexity */
+        autoMode: v.optional(v.boolean()),
+        /** Default complexity level for new tasks (used when autoMode is enabled) */
+        defaultComplexity: v.optional(complexityValidator),
       }),
     ),
     /** Timestamp when admin requested runtime restart; runtime clears after restart. */
@@ -374,6 +379,12 @@ export default defineSchema({
 
     /** Priority level (1 = highest, 5 = lowest) */
     priority: v.number(),
+
+    /**
+     * Task complexity level for auto-mode agent/model routing.
+     * Determines which agents and models are recommended.
+     */
+    complexity: v.optional(complexityValidator),
 
     /**
      * Assigned users (Clerk user IDs).
