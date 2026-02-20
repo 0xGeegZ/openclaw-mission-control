@@ -77,6 +77,7 @@ function createConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     deliveryMaxConcurrentSessions: 10,
     deliveryStreamTimeoutMs: 60000,
     deliveryContextFetchBatchSize: 15,
+    deliveryListLimit: 50,
     openclawClientToolsEnabled: true,
     taskStatusBaseUrl: "http://runtime:3000",
     openclawWorkspaceRoot: "/tmp",

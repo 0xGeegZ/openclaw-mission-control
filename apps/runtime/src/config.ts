@@ -53,6 +53,8 @@ export interface RuntimeConfig {
   deliveryStreamTimeoutMs: number;
   /** Batch size for parallel getNotificationForDelivery fetches. Default 15. */
   deliveryContextFetchBatchSize: number;
+  /** Max notifications to list per poll cycle (1–500). Default 50. */
+  deliveryListLimit: number;
   /** When false, disable client-side tools and rely on HTTP fallbacks. */
   openclawClientToolsEnabled: boolean;
   /**
@@ -138,6 +140,25 @@ function parseIntOrDefault(
 ): number {
   const parsed = parseInt(value || "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/**
+ * Parse an integer from env, clamp to [min, max], and log when clamped.
+ */
+function parseClampedIntEnv(
+  envKey: string,
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  logLabel: string,
+): number {
+  const raw = parseIntOrDefault(value, fallback);
+  if (raw < min || raw > max) {
+    log.warn(`${logLabel} clamped to [${min}, ${max}]`, { value: raw });
+    return Math.max(min, Math.min(max, raw));
+  }
+  return raw;
 }
 
 /**
@@ -332,27 +353,22 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     true,
   );
 
-  const openclawRequestTimeoutMs = (() => {
-    const raw = parseIntOrDefault(
-      process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
-      300000,
-    );
-    const minMs = 5000;
-    const maxMs = 600000;
-    if (raw < minMs || raw > maxMs) {
-      log.warn(`OPENCLAW_REQUEST_TIMEOUT_MS clamped to [${minMs}, ${maxMs}]`, {
-        value: raw,
-      });
-      return Math.max(minMs, Math.min(maxMs, raw));
-    }
-    return raw;
-  })();
+  const openclawRequestTimeoutMs = parseClampedIntEnv(
+    "OPENCLAW_REQUEST_TIMEOUT_MS",
+    process.env.OPENCLAW_REQUEST_TIMEOUT_MS,
+    300000,
+    5000,
+    600000,
+    "OPENCLAW_REQUEST_TIMEOUT_MS",
+  );
 
+  /** Default stream timeout capped at 5 min so one stuck stream does not block the cycle for 10 min. */
   const deliveryStreamTimeoutMs = (() => {
     const fromEnv = process.env.DELIVERY_STREAM_TIMEOUT_MS;
-    const defaultMs = 2 * openclawRequestTimeoutMs;
+    const defaultCapMs = 300000; // 5 min
+    const defaultMs = Math.min(2 * openclawRequestTimeoutMs, defaultCapMs);
     const minMs = 5000;
-    const maxMs = defaultMs;
+    const maxMs = Math.max(defaultMs, defaultCapMs);
     if (fromEnv != null && fromEnv.trim() !== "") {
       const parsed = parseInt(fromEnv.trim(), 10);
       if (!Number.isNaN(parsed) && parsed > 0) {
@@ -369,13 +385,43 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     return defaultMs;
   })();
 
+  const deliveryBackoffBaseMs = parseClampedIntEnv(
+    "DELIVERY_BACKOFF_BASE_MS",
+    process.env.DELIVERY_BACKOFF_BASE_MS,
+    5000,
+    1000,
+    86400000,
+    "DELIVERY_BACKOFF_BASE_MS",
+  );
+  const deliveryBackoffMaxMs = (() => {
+    const raw = parseIntOrDefault(process.env.DELIVERY_BACKOFF_MAX_MS, 300000);
+    const minMs = 1000;
+    const maxMs = 86400000;
+    const effectiveMin = Math.max(minMs, deliveryBackoffBaseMs);
+    if (raw < effectiveMin || raw > maxMs) {
+      log.warn(
+        `DELIVERY_BACKOFF_MAX_MS clamped to [${effectiveMin}, ${maxMs}]`,
+        { value: raw },
+      );
+      return Math.max(effectiveMin, Math.min(maxMs, raw));
+    }
+    return raw;
+  })();
+
   return {
     accountId: accountId as Id<"accounts">,
     convexUrl,
     serviceToken,
     healthPort,
     healthHost,
-    deliveryInterval: parseIntOrDefault(process.env.DELIVERY_INTERVAL, 15000),
+    deliveryInterval: parseClampedIntEnv(
+      "DELIVERY_INTERVAL",
+      process.env.DELIVERY_INTERVAL,
+      15000,
+      1000,
+      86400000,
+      "DELIVERY_INTERVAL",
+    ),
     healthCheckInterval: parseIntOrDefault(
       process.env.HEALTH_CHECK_INTERVAL,
       30000,
@@ -385,14 +431,8 @@ export async function loadConfig(): Promise<RuntimeConfig> {
       300000,
     ),
     logLevel,
-    deliveryBackoffBaseMs: parseIntOrDefault(
-      process.env.DELIVERY_BACKOFF_BASE_MS,
-      5000,
-    ),
-    deliveryBackoffMaxMs: parseIntOrDefault(
-      process.env.DELIVERY_BACKOFF_MAX_MS,
-      300000,
-    ),
+    deliveryBackoffBaseMs,
+    deliveryBackoffMaxMs,
     runtimeServiceVersion: getRuntimeServiceVersion(),
     openclawVersion,
     dropletId: process.env.DROPLET_ID || "unknown",
@@ -401,39 +441,31 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     openclawGatewayUrl,
     openclawGatewayToken,
     openclawRequestTimeoutMs,
-    deliveryMaxConcurrentSessions: (() => {
-      const raw = parseIntOrDefault(
-        process.env.DELIVERY_MAX_CONCURRENT_SESSIONS,
-        10,
-      );
-      const min = 1;
-      const max = 100;
-      if (raw < min || raw > max) {
-        log.warn(
-          `DELIVERY_MAX_CONCURRENT_SESSIONS clamped to [${min}, ${max}]`,
-          { value: raw },
-        );
-        return Math.max(min, Math.min(max, raw));
-      }
-      return raw;
-    })(),
+    deliveryMaxConcurrentSessions: parseClampedIntEnv(
+      "DELIVERY_MAX_CONCURRENT_SESSIONS",
+      process.env.DELIVERY_MAX_CONCURRENT_SESSIONS,
+      10,
+      1,
+      100,
+      "DELIVERY_MAX_CONCURRENT_SESSIONS",
+    ),
     deliveryStreamTimeoutMs,
-    deliveryContextFetchBatchSize: (() => {
-      const raw = parseIntOrDefault(
-        process.env.DELIVERY_CONTEXT_FETCH_BATCH_SIZE,
-        15,
-      );
-      const min = 1;
-      const max = 50;
-      if (raw < min || raw > max) {
-        log.warn(
-          `DELIVERY_CONTEXT_FETCH_BATCH_SIZE clamped to [${min}, ${max}]`,
-          { value: raw },
-        );
-        return Math.max(min, Math.min(max, raw));
-      }
-      return raw;
-    })(),
+    deliveryContextFetchBatchSize: parseClampedIntEnv(
+      "DELIVERY_CONTEXT_FETCH_BATCH_SIZE",
+      process.env.DELIVERY_CONTEXT_FETCH_BATCH_SIZE,
+      15,
+      1,
+      50,
+      "DELIVERY_CONTEXT_FETCH_BATCH_SIZE",
+    ),
+    deliveryListLimit: parseClampedIntEnv(
+      "DELIVERY_LIST_LIMIT",
+      process.env.DELIVERY_LIST_LIMIT,
+      50,
+      1,
+      500,
+      "DELIVERY_LIST_LIMIT",
+    ),
     openclawClientToolsEnabled,
     taskStatusBaseUrl,
     openclawWorkspaceRoot,

@@ -25,15 +25,22 @@ const REDACT_COLON_PATTERNS = [
   /\btoken\b\s*:\s*"?[^"\s]+"?/gi,
 ];
 
-function redact(msg: string): string {
+/**
+ * Redact known secret patterns from a string. Use before storing or exposing error messages (e.g. lastErrorMessage in health).
+ */
+export function redactForExposure(msg: string): string {
   let out = msg;
   for (const re of REDACT_EQUALS_PATTERNS) {
     out = out.replace(re, (m) => m.replace(/(=\s*)[^\s]+/, "$1***"));
   }
   for (const re of REDACT_COLON_PATTERNS) {
-    out = out.replace(re, (m) => m.replace(/(:\s*)"?[^"\s]+"?/, "$1\"***\""));
+    out = out.replace(re, (m) => m.replace(/(:\s*)"?[^"\s]+"?/, '$1"***"'));
   }
   return out;
+}
+
+function redact(msg: string): string {
+  return redactForExposure(msg);
 }
 
 let minLevel: LogLevel = "info";

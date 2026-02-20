@@ -16,6 +16,7 @@ import {
 } from "./tooling/agentTools";
 import { recordSuccess, recordFailure } from "./metrics";
 import { isHeartbeatOkResponse } from "./heartbeat-constants";
+import { redactForExposure } from "./logger";
 import {
   buildNoResponseFallbackMessage,
   isNoReplySignal,
@@ -108,14 +109,28 @@ function zeroOutcome(): DeliveryOutcome {
   };
 }
 
-/** Returns a DeliveryOutcome representing a single failed delivery (for aggregation). */
+/** Returns a DeliveryOutcome representing a single failed delivery (for aggregation). Message is sanitized before storage. */
 function failedOutcome(message: string): DeliveryOutcome {
-  return { ...zeroOutcome(), failed: 1, lastErrorMessage: message };
+  return {
+    ...zeroOutcome(),
+    failed: 1,
+    lastErrorMessage: sanitizeErrorMessage(message),
+  };
 }
 
 /** Extracts a string from an unknown error for logging and lastErrorMessage. */
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Max length for lastErrorMessage stored and exposed via health to limit leakage. */
+const LAST_ERROR_MESSAGE_MAX_LENGTH = 500;
+
+/** Sanitize and truncate error message before storing or exposing. */
+function sanitizeErrorMessage(msg: string): string {
+  const redacted = redactForExposure(msg);
+  if (redacted.length <= LAST_ERROR_MESSAGE_MAX_LENGTH) return redacted;
+  return redacted.slice(0, LAST_ERROR_MESSAGE_MAX_LENGTH) + "...";
 }
 
 /**
@@ -503,7 +518,7 @@ async function sendNotificationToOpenClaw(
         }
       : { instructions };
   if (sendOptions.tools) {
-    log.debug("Sending with tools", sendOptions.tools?.length ?? 0);
+    log.debug("Sending with tools", sendOptions.tools.length);
   }
   return sendToOpenClaw(sessionKey, input, sendOptions);
 }
@@ -886,7 +901,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
       {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
-        limit: 50,
+        limit: config.deliveryListLimit,
       },
     );
 
@@ -993,6 +1008,13 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         if (r.status === "fulfilled") {
           mergeOutcome(agg, r.value);
         } else {
+          // Rejections only from withTimeout; runSessionStream never rejects. Each counts as one failed outcome.
+          const sessionKey = batch[i]?.[0] ?? "(unknown)";
+          log.warn(
+            "Session stream timed out or failed",
+            sessionKey,
+            messageOf(r.reason).slice(0, 200),
+          );
           mergeOutcome(agg, failedOutcome(messageOf(r.reason)));
         }
       }
@@ -1026,11 +1048,11 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
         : error instanceof Error && error.cause != null
           ? String(error.cause)
           : null;
-    state.lastErrorMessage = cause ? `${msg} (cause: ${cause})` : msg;
+    const rawMessage = cause ? `${msg} (cause: ${cause})` : msg;
+    state.lastErrorMessage = sanitizeErrorMessage(rawMessage);
     const pollDuration = Date.now() - pollStart;
     recordFailure("delivery.poll", pollDuration, state.lastErrorMessage);
     log.error("Poll error:", state.lastErrorMessage);
-    // Backend and gateway must not include secrets (e.g. service token) in thrown errors; lastErrorMessage is logged and exposed via health.
   }
 
   const delay =
