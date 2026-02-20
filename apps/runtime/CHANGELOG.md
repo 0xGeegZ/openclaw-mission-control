@@ -1,5 +1,22 @@
 # runtime-service
 
+## 1.2.0
+
+### Minor Changes
+
+- 2c44b28: Delivery refactor, tests, and code-review follow-ups
+  - **Runtime:** Refactored delivery loop; single poll seam `_runOnePollCycle`, `markDeliveredAndLog` helper, delivery-loop and delivery tests. **document_list** tool and `POST /agent/document-list` HTTP fallback when tools disabled. Simplified `resolveFinalTextToPost` (fallback disabled); consolidated policy tests; TypeScript/clarity in delivery and policy (TaskStatus, validation, no redundant casts). DeliveryContext payload truncation (doc/message caps). Session-key logging note per security audit.
+  - **Backend:** Service action `listDocumentsForAgent` and internal `listForAgentTool`; index `by_account_undelivered_created`, take-based `listUndeliveredForAccount`. Mark actions (`markDelivered`, `markRead`, `markDeliveryEnded`) now take `accountId` and enforce existence in-mutation (single round-trip). `getForDelivery` parallelizes agent/task/message fetches. Upgrade error sanitization (`lib/sanitize.ts`, first-line + length cap). Service token length enforced in `requireServiceAuth`; `blockedReason`/`reason` max length in handlers. Validated `pendingUpgrade` and PR response in actions; removed redundant account-settings casts (schema types used). `clearTypingStateForAccount` capped via take; delivery rate-limit posture documented in `docs/runtime/delivery-rate-limiting.md`.
+
+### Patch Changes
+
+- 5076f77: OpenClaw gateway max concurrent sessions (single env knob)
+  - Set `agents.defaults.maxConcurrent` from `OPENCLAW_MAX_CONCURRENT` (default 5, clamp 1–16) so Lead can respond in orchestrator and task threads at once.
+  - Gateway startup script: `applyMaxConcurrent()` with robust parse; env wins over runtime-generated config after merge. Template and .env.example/README documented.
+
+- Updated dependencies [2c44b28]
+  - @packages/backend@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes
