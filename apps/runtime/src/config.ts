@@ -385,10 +385,6 @@ export async function loadConfig(): Promise<RuntimeConfig> {
 }
 
 /**
- * Parse OpenClaw gateway URL from env. Defaults to local host when unset;
- * empty string disables the gateway (send will fail with descriptive error).
- */
-/**
  * Allowed protocols for OPENCLAW_GATEWAY_URL to avoid file:// or other schemes.
  */
 const ALLOWED_GATEWAY_PROTOCOLS = new Set(["http:", "https:"]);
