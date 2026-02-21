@@ -24,6 +24,10 @@ import {
 import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
 import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
 import {
+  ASSIGNMENT_ACK_ONLY_RULE,
+  ASSIGNMENT_SCOPE_ACK_ONLY_RULE,
+} from "./prompt-fragments";
+import {
   accId,
   aid,
   buildContext,
@@ -357,6 +361,37 @@ describe("buildDeliveryInstructions", () => {
       buildDeliveryInstructions(ctx, "http://runtime:3000", toolCapabilities),
     ).toThrow("Missing deliverySessionKey");
   });
+
+  it("includes assignment ack-only rule and scope exception for assignment notifications", () => {
+    const ctx = buildContext({
+      notification: {
+        ...buildContext().notification,
+        type: "assignment",
+      },
+      task: {
+        _id: tid("t1"),
+        status: "assigned",
+        title: "T",
+        assignedAgentIds: [aid("agent-a")],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const instructions = buildDeliveryInstructions(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(instructions).toContain(ASSIGNMENT_ACK_ONLY_RULE);
+    expect(instructions).toContain(ASSIGNMENT_SCOPE_ACK_ONLY_RULE);
+    expect(instructions).toContain(
+      "do not use the full Summary/Work done/Artifacts format in this first reply",
+    );
+  });
 });
 
 describe("buildNotificationInput", () => {
@@ -372,6 +407,34 @@ describe("buildNotificationInput", () => {
     });
     const input = buildNotificationInput(ctx);
     expect(input).toContain("Notification ID: notif-123");
+  });
+
+  it("includes assignment-specific tail for assignment notifications", () => {
+    const ctx = buildContext({
+      notification: {
+        ...buildContext().notification,
+        type: "assignment",
+      },
+    });
+    const input = buildNotificationInput(ctx);
+    expect(input).toContain("This is an assignment");
+    expect(input).toContain("Reply with acknowledgment only");
+  });
+
+  it("includes generic format line for thread_update notifications", () => {
+    const ctx = buildContext({
+      notification: {
+        _id: nid("notif-123"),
+        type: "thread_update",
+        title: "Update",
+        body: "Body",
+        accountId: accId("acc1"),
+      },
+    });
+    const input = buildNotificationInput(ctx);
+    expect(input).toContain(
+      "Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates",
+    );
   });
 });
 
