@@ -28,6 +28,7 @@ import {
   executeTaskDeleteTool,
   type TaskDeleteToolResult,
 } from "./taskDeleteTool";
+import { SKILLS_LOCATION_SENTENCE } from "../prompt-fragments";
 
 const ALL_TASK_STATUSES = [
   TASK_STATUS.INBOX,
@@ -308,8 +309,7 @@ export const GET_AGENT_SKILLS_TOOL_SCHEMA = {
   type: "function" as const,
   function: {
     name: "get_agent_skills",
-    description:
-      "Get skills available to agents in the account. Query a specific agent (by ID) or omit agentId to get all agents. Available to all agents. Skill content is read from the workspace (TOOLS.md and skills/<slug>/SKILL.md), not from the config directory (/root/.openclaw/).",
+    description: `Get skills available to agents in the account. Query a specific agent (by ID) or omit agentId to get all agents. Available to all agents. ${SKILLS_LOCATION_SENTENCE}`,
     parameters: {
       type: "object",
       properties: {

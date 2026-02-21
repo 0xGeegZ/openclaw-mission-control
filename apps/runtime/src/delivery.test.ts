@@ -370,17 +370,7 @@ describe("buildNotificationInput", () => {
         accountId: accId("acc1"),
       },
     });
-    const toolCapabilities = getToolCapabilitiesAndSchemas({
-      canCreateTasks: false,
-      canModifyTaskStatus: false,
-      canCreateDocuments: false,
-      hasTaskContext: true,
-    });
-    const input = buildNotificationInput(
-      ctx,
-      "http://runtime:3000",
-      toolCapabilities,
-    );
+    const input = buildNotificationInput(ctx);
     expect(input).toContain("Notification ID: notif-123");
   });
 });

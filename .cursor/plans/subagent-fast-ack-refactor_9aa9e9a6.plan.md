@@ -23,11 +23,44 @@ todos:
 isProject: false
 ---
 
+## Enhancement Summary
+
+**Deepened on:** 2026-02-20  
+**Sections enhanced:** 9  
+**Research agents used:** best-practices-researcher, architecture-strategist, performance-oracle, code-simplicity-reviewer, agent-native-reviewer, security-sentinel, pattern-recognition-specialist  
+**External reference:** OpenClaw Sub-Agents docs (docs.openclaw.ai/tools/subagents)
+
+### Key Improvements
+
+1. **Pre-step: resolve merge conflicts** in `delivery/prompt.ts`, `delivery.test.ts`, `openclaw-profiles.test.ts`, and `TOOLS_AUDIT.md` before implementing; unify on backend-owned `DeliveryContext` and required `deliverySessionKey` (throw when missing).
+2. **Canonical wording**: Draft one sentence for “default no agentId” and mirror it in `buildDeliveryInstructions`, docs/runtime/AGENTS.md, DEFAULT_AGENTS_MD, and seed DOC_AGENTS_CONTENT; consider storing in `prompt-fragments.ts` to avoid drift.
+3. **Config limits**: Set `subagents.maxConcurrent: 5` in template; OpenClaw supports `maxChildrenPerAgent` (default 5). Optionally enforce in startup for upgrades (architecture/security) or keep template-only for simplicity (code-simplicity).
+4. **Observability**: Define “ack latency” (e.g. readAt → first reply) and add at least one measurable signal before rollout; document that subagent spawn visibility depends on OpenClaw/gateway.
+5. **Prompt sanitization**: Add `sanitizeForPrompt()` for user/agent-controlled content (task title, message body, thread) embedded in delivery instructions to mitigate prompt-injection risk.
+
+### New Considerations Discovered
+
+- **OpenClaw semantics**: `sessions_spawn` is non-blocking; subagents get AGENTS.md + TOOLS.md (no SOUL/IDENTITY/USER/HEARTBEAT). `agentId` allowlist is per-agent via `agents.list[].subagents.allowAgents` (default: requester only).
+- **Stream timeout**: `DELIVERY_STREAM_TIMEOUT_MS` must be large enough for fast ack + (limit × worst-case child) + aggregation; recommend ≥ 5 min when subagents are used; document in runtime README.
+- **Backend cost**: `getForDelivery` can do O(account) memberships/agents/reference-docs; consider resolving only thread author ids and batching context fetch for scale.
+- **TOOLS_AUDIT**: Add a short pointer to docs/runtime/AGENTS.md for the behavioral contract instead of duplicating full rationale; state that parent-skill-context rule is guidance-only (no runtime enforcement).
+- **SOUL alignment**: Confirm SOUL_TEMPLATE / SOUL content remains aligned with subagent-first and fast-ack (no change if already correct).
+
+---
+
 # Subagent-First Fast Ack Refactor Plan
 
 ## 1. Context & goal
 
 We will harden runtime behavior so each agent replies fast (acknowledgment/questions first), then delegates substantial execution to subagents running in the background before posting one combined substantive update. We will enforce subagent runtime limits at 5 (per your choice: config limits only), and ensure spawned subagents stay aligned with the parent agent’s skills/context model. Key constraints: preserve current single-reply-per-notification semantics, avoid cross-agent skill leakage, keep OpenClaw docs-compliant `sessions_spawn` usage, and avoid regressions in delivery/no-reply policy.
+
+### Research Insights
+
+**Best practices (fast ack UX):** 0–3 s for instant feedback; require 1–2 sentence ack with optional clarifying questions; explicit “I’ll work on this and reply once with the full outcome” sets expectation for the final post. Put “reply first with short acknowledgment” before any “then do work” instruction to avoid perceived latency.
+
+**Subagent orchestration:** Spawn for substantial/parallelizable work; do work inline for trivial tasks. Limit 5 is reasonable (community often suggests 2–4); parent must wait for child results and post one combined reply. Define aggregation upfront (how to combine results) and use clear, specific task descriptions per spawn.
+
+**References:** OpenClaw Sub-Agents (docs.openclaw.ai/tools/subagents); Slavo Glinsky UX for AI Agents; Agentic Patterns (sub-agent spawning, subject hygiene).
 
 ## 2. Codebase research summary
 
@@ -60,6 +93,12 @@ Gaps to close:
 - Subagent limit target is not yet `5` in runtime config.
 - No explicit tests asserting new delegation/skill-context guidance.
 
+### Research Insights
+
+**Naming:** Plan “AGENTS/HEARTBEAT” refers to **docs/runtime/AGENTS.md** and seed/embedded AGENTS content — not repo root `AGENTS.md` (Cursor memory). Use “docs/runtime/AGENTS.md and seed/embedded AGENTS content” explicitly to avoid confusion.
+
+**Blocking:** Merge conflicts exist in `delivery/prompt.ts` (sessionKey, workspaceInstruction), `delivery.test.ts`, `openclaw-profiles.test.ts`, and `TOOLS_AUDIT.md`. Resolve before implementing this plan. Unify `DeliveryContext` on backend as single source; runtime should import from backend and thin or remove `apps/runtime/src/delivery/types.ts`.
+
 ## 3. High-level design
 
 Use a two-layer enforcement model:
@@ -79,13 +118,19 @@ flowchart LR
   oneReply --> thread[TaskThreadMessage]
 ```
 
-
-
 Skill-context guarantee approach:
 
 - Keep subagent execution under the same parent agent identity by default.
 - Explicitly instruct agents not to pass `agentId` to `sessions_spawn` unless orchestrator intent explicitly requires a different specialist.
 - Keep skill loading model unchanged (`TOOLS.md` + `skills/*`) so child sessions inherit parent agent context as designed.
+
+### Research Insights
+
+**Data flow:** Flow is correct: Convex notification → getNotificationForDelivery → DeliveryContext → buildDeliveryInstructions + buildNotificationInput → sendToOpenClaw → fast ack → optional sessions_spawn → aggregate → single substantive reply. Optionally label first step in diagram as “Convex notification / getNotificationForDelivery”.
+
+**Config layer:** Today subagent limit is only in template; `buildOpenClawConfig` does not write `subagents`. For upgrades, either (a) set 5 in template and optionally in startup after merge when undefined, or (b) keep template-only (simpler). OpenClaw docs: `maxChildrenPerAgent` default 5, `maxConcurrent` default 8; both can be set in `agents.defaults.subagents`.
+
+**Simplification (optional):** One bullet list may suffice; mermaid can be dropped or trimmed to one line to reduce duplication with text.
 
 ## 4. File & module changes
 
@@ -100,11 +145,11 @@ Skill-context guarantee approach:
   - Add a rule clarifying how to preserve parent skills/context when spawning subagents.
 - [apps/runtime/src/openclaw-profiles.ts](/Users/guillaumedieudonne/Desktop/mission-control/apps/runtime/src/openclaw-profiles.ts)
   - Update embedded `DEFAULT_AGENTS_MD` content to mirror docs/runtime guidance, so Docker fallback behavior remains aligned.
-  - Optionally add generated config defaults for subagent limits (`maxConcurrent: 5`, `maxChildrenPerAgent: 5`) if this file is the preferred single source for runtime profile sync.
+  - Optionally add generated config defaults for subagent limits (`maxConcurrent: 5`, `maxChildrenPerAgent: 5`) if this file is the preferred single source for runtime profile sync. _Simplification option:_ Keep template as single source; do not add limits in openclaw-profiles.ts to avoid two sources.
 - [apps/runtime/openclaw/openclaw.json.template](/Users/guillaumedieudonne/Desktop/mission-control/apps/runtime/openclaw/openclaw.json.template)
-  - Set subagent limit knobs to `5` (at minimum `subagents.maxConcurrent`; include `maxChildrenPerAgent` if supported in current OpenClaw version).
+  - Set subagent limit knobs to `5` (at minimum `subagents.maxConcurrent`; include `maxChildrenPerAgent` if supported in current OpenClaw version). OpenClaw supports both; default `maxChildrenPerAgent` is 5 in docs.
 - [apps/runtime/openclaw/start-openclaw.sh](/Users/guillaumedieudonne/Desktop/mission-control/apps/runtime/openclaw/start-openclaw.sh)
-  - Ensure startup merge logic preserves/enforces the 5-limit settings and does not accidentally reset them to older defaults.
+  - Ensure startup merge logic preserves/enforces the 5-limit settings and does not accidentally reset them to older defaults. _Note:_ Script currently does not set `subagents`; only template does. Either document “no script change” or add explicit set/cap after merge for upgrades (architecture/security recommendation).
 - [packages/backend/convex/seed.ts](/Users/guillaumedieudonne/Desktop/mission-control/packages/backend/convex/seed.ts)
   - Update seed-managed AGENTS/HEARTBEAT guidance blocks so newly seeded workspaces get the same fast-ack + subagent-first policy.
   - Keep ownership boundaries (seed/account/per-agent) intact from prompt-layering rules.
@@ -113,7 +158,13 @@ Skill-context guarantee approach:
 - [apps/runtime/src/openclaw-profiles.test.ts](/Users/guillaumedieudonne/Desktop/mission-control/apps/runtime/src/openclaw-profiles.test.ts)
   - Add/adjust tests for default AGENTS content and generated config limit values (5) where applicable.
 - [docs/runtime/TOOLS_AUDIT.md](/Users/guillaumedieudonne/Desktop/mission-control/docs/runtime/TOOLS_AUDIT.md)
-  - Document policy update and rationale: fast response UX + delegated execution path.
+  - Document policy update and rationale: fast response UX + delegated execution path. _Simplify:_ Add short pointer to docs/runtime/AGENTS.md for the behavioral contract; avoid duplicating full rationale. State that parent-skill-context rule is guidance-only (no runtime enforcement).
+
+### Research Insights
+
+**Single source of truth:** Declare **docs/runtime/AGENTS.md** as canonical for policy wording; delivery prompt = short consistent subset (fast ack + subagent + parent-skill); DEFAULT_AGENTS_MD and seed = derived (same policy, possibly abridged). Add comment in each file pointing to canonical doc. Use **prompt-fragments.ts** for new canonical phrases (e.g. fast-ack sentence, parent-skill rule) and reference from delivery prompt and DEFAULT_AGENTS_MD to avoid wording drift.
+
+**Security:** Sanitize user/agent-controlled data (task title, message content, notification body) before embedding in instructions — add `sanitizeForPrompt()` and use for all free-form fields; restrict permissions on `openclaw.json` (e.g. chmod 600) if it holds API keys. Document that `sessions_spawn` agentId is not validated by runtime; mitigation is prompt + OpenClaw allowlist.
 
 ### New files to create
 
@@ -121,7 +172,8 @@ Skill-context guarantee approach:
 
 ## 5. Step-by-step tasks
 
-1. Workspace isolation setup (pre-implementation commit).
+1. **Pre-step: Resolve merge conflicts and unify DeliveryContext.** Resolve conflicts in `delivery/prompt.ts`, `delivery.ts`, `delivery.test.ts`, `openclaw-profiles.test.ts`, and `TOOLS_AUDIT.md`. Prefer: throw when `deliverySessionKey` missing; include `SKILLS_LOCATION_SENTENCE` in workspaceInstruction. Use backend as single source for `DeliveryContext`; runtime imports from backend.
+2. Workspace isolation setup (pre-implementation commit).
 
 - Create a dedicated worktree/branch for this refactor per workspace rules.
 - Confirm terminal and editor are pointed to that worktree before edits.
@@ -144,6 +196,7 @@ Skill-context guarantee approach:
 
 - Edit [docs/runtime/AGENTS.md](/Users/guillaumedieudonne/Desktop/mission-control/docs/runtime/AGENTS.md) with matching policy language.
 - Mirror equivalent text in embedded default inside [apps/runtime/src/openclaw-profiles.ts](/Users/guillaumedieudonne/Desktop/mission-control/apps/runtime/src/openclaw-profiles.ts).
+- Confirm SOUL_TEMPLATE / SOUL content remains aligned with subagent-first and fast-ack (no change if already correct).
 
 1. Enforce subagent limits at 5 in runtime config.
 
@@ -163,7 +216,11 @@ Skill-context guarantee approach:
 1. Documentation and operational notes.
 
 - Update [docs/runtime/TOOLS_AUDIT.md](/Users/guillaumedieudonne/Desktop/mission-control/docs/runtime/TOOLS_AUDIT.md) with the new behavioral contract.
-- Add rollout notes in runtime README if needed to highlight changed subagent defaults.
+- Add rollout notes in runtime README if needed to highlight changed subagent defaults. Document that `DELIVERY_STREAM_TIMEOUT_MS` should be ≥ 5 min when subagents are used (aggregate-before-reply can approach timeout).
+
+### Research Insights
+
+**Step order:** Do conflict resolution and DeliveryContext unification first so all edits apply to a single codebase. Use one canonical sentence for “default no agentId” and add to (a) buildDeliveryInstructions, (b) docs/runtime/AGENTS.md, (c) DEFAULT_AGENTS_MD, (d) seed DOC_AGENTS_CONTENT. Consider bumping `DELIVERY_INSTRUCTION_PROFILE_VERSION` when changing the prompt contract for observability.
 
 ## 6. Edge cases & risks
 
@@ -177,6 +234,10 @@ Skill-context guarantee approach:
   - Mitigation: explicit prompt prohibition by default + test assertions.
 - Seed/doc drift between repo docs and embedded defaults.
   - Mitigation: update both sources in same change set and add tests for embedded text invariants.
+
+### Research Insights
+
+**Stream timeout:** “Aggregate child results before substantive reply” can push session stream toward `DELIVERY_STREAM_TIMEOUT_MS`; if exceeded, notification is retried. Set minimum recommended ≥ 5 min; optionally log when stream runs >50% of timeout. **Limit 5 throughput:** Tasks that would use 6–8 parallel subagents may take longer (e.g. two waves); document and consider env override for high-orchestration accounts. **Prompt injection:** User/agent-controlled content in instructions (task title, message body) is not sanitized; add sanitization to close injection risk.
 
 ## 7. Testing strategy
 
@@ -200,6 +261,10 @@ Manual QA checklist:
 - Confirm subagent run appears under same parent context/skills unless explicitly rerouted.
 - Verify OpenClaw config reflects subagent limit 5 after startup merge.
 
+### Research Insights
+
+**Delivery tests:** Assert (1) fast ack string (e.g. “acknowledgment” and “1–2 sentences”), (2) subagent/delegate string (“sessions_spawn” or “sub-agent” and “aggregate” or “reply once”), (3) parent-skill rule (“agentId” and “default” or “omit” or “do not pass”). For assignment context, assert both fast-ack and subagent/aggregate blocks present. Use shared constant or prompt-fragments phrasing so tests survive minor wording changes. **Profile tests:** Assert default AGENTS content includes new policy phrases; assert template on disk contains `subagents.maxConcurrent: 5` or, if added to buildOpenClawConfig, assert generated config has limit 5. **YAGNI:** Rely on unit tests + manual QA; skip new integration tests for “first response short” unless already cheap.
+
 ## 8. Rollout / migration
 
 - No schema/data migration required.
@@ -209,6 +274,10 @@ Manual QA checklist:
   - acknowledgment latency,
   - subagent spawn frequency,
   - no-reply or empty-reply regressions.
+
+### Research Insights
+
+**Observability gap:** Runtime does not currently log “time to first reply” or subagent spawn counts (those would come from OpenClaw/gateway). Define ack latency as readAt → first reply (optionally creation → first reply). Either (a) add minimal metrics (e.g. duration per sendToOpenClaw or per-session stream, expose in health/logs) and document subagent visibility, or (b) add an explicit rollout task to implement these metrics before relying on them. **Metrics to add:** `time_from_read_to_first_reply_ms`; subagent spawn count per notification (from tool-call logs if available); stream timeout count; context fetch duration per cycle.
 
 ## 9. TODO checklist
 
@@ -244,3 +313,6 @@ Manual QA checklist:
 - Manually verify fast acknowledgment and delegated execution behavior.
 - Update `docs/runtime/TOOLS_AUDIT.md` with final policy notes.
 
+### Research Insights
+
+**Consolidation:** §9 overlaps with frontmatter todos and §5. Consider keeping one canonical list (frontmatter + detailed §5) and folding §9 into §5 or removing to avoid duplicate maintenance. **Checklist additions:** Resolve merge conflicts and unify DeliveryContext/session key; confirm SOUL aligned with subagent-first; if enforcing limit in startup, add “Enforce subagent limit 5 in startup when missing (for upgrades).”

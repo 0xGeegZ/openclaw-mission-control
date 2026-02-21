@@ -6,6 +6,7 @@ import {
   sendOpenClawToolResults,
   sendToOpenClaw,
   registerSession,
+  redactSessionKey,
   type SendToOpenClawResult,
 } from "./gateway";
 import { createLogger } from "./logger";
@@ -504,11 +505,7 @@ async function sendNotificationToOpenClaw(
     config.taskStatusBaseUrl,
     toolCapabilities,
   );
-  const input = buildNotificationInput(
-    ctx,
-    config.taskStatusBaseUrl,
-    toolCapabilities,
-  );
+  const input = buildNotificationInput(ctx);
   const sendOptions =
     toolCapabilities.schemas.length > 0
       ? {
@@ -1012,7 +1009,7 @@ export async function _runOnePollCycle(config: RuntimeConfig): Promise<number> {
           const sessionKey = batch[i]?.[0] ?? "(unknown)";
           log.warn(
             "Session stream timed out or failed",
-            sessionKey,
+            redactSessionKey(String(sessionKey)),
             messageOf(r.reason).slice(0, 200),
           );
           mergeOutcome(agg, failedOutcome(messageOf(r.reason)));

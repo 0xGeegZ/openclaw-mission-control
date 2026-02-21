@@ -49,6 +49,10 @@ Defined in `apps/runtime/src/tooling/agentTools.ts` (and `taskStatusTool.ts`, `t
 
 HTTP fallbacks are documented in AGENTS.md and seed/USER_TEMPLATE for task_status, task_update, task_create, document, response_request when tools are not offered.
 
+### Behavioral contract (delivery prompt)
+
+For notification behavior, fast-ack, subagent-first execution, and the parent-skill-context rule (default no `agentId` in sessions_spawn), see [docs/runtime/AGENTS.md](./AGENTS.md). The parent-skill-context rule is **guidance only**; the runtime does not enforce it (OpenClaw allowlist applies per agent).
+
 ---
 
 ## 3. Brainstorm: additional tools (candidates)
