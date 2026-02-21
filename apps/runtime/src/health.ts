@@ -22,6 +22,9 @@ import {
   normalizeTaskCreateStatusForOrchestrator,
 } from "./task-create-orchestrator-utils";
 import type { TaskStatus } from "@packages/shared";
+import { mapTaskError } from "./lib/error-mappings";
+import { sendJson, readJsonBody } from "./lib/http-utils";
+import { isLocalAddress } from "./lib/status-helpers";
 
 const log = createLogger("[Health]");
 let server: http.Server | null = null;
@@ -36,138 +39,6 @@ type CreatableTaskStatus = Extract<
   TaskStatus,
   "inbox" | "assigned" | "in_progress" | "review" | "done" | "blocked"
 >;
-
-/**
- * Read and parse JSON body from an HTTP request.
- */
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {
-  const chunks: Buffer[] = [];
-  await new Promise<void>((resolve, reject) => {
-    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    req.on("end", () => resolve());
-    req.on("error", (error) => reject(error));
-  });
-  const raw = Buffer.concat(chunks).toString("utf-8").trim();
-  if (!raw) {
-    throw new Error("Empty JSON body");
-  }
-  return JSON.parse(raw) as T;
-}
-
-/**
- * Send a JSON response with status and payload.
- */
-function sendJson(
-  res: http.ServerResponse,
-  status: number,
-  payload: unknown,
-): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(payload));
-}
-
-/**
- * Check whether a remote address is loopback or private network.
- * Exported for unit tests.
- */
-export function isLocalAddress(address: string | undefined): boolean {
-  if (!address) return false;
-  const normalized = address.toLowerCase();
-  if (normalized === "::1") return true;
-
-  const ipv4Candidate = normalized.startsWith("::ffff:")
-    ? normalized.slice("::ffff:".length)
-    : normalized;
-  const octets = parseIpv4Octets(ipv4Candidate);
-  if (!octets) return false;
-  return isLoopbackIpv4(octets) || isPrivateIpv4(octets);
-}
-
-/**
- * Parse a dotted IPv4 string into octets.
- */
-function parseIpv4Octets(address: string): number[] | null {
-  const parts = address.split(".");
-  if (parts.length !== 4) return null;
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
-    return null;
-  }
-  return octets;
-}
-
-/**
- * Check for IPv4 loopback range.
- */
-function isLoopbackIpv4(octets: number[]): boolean {
-  return octets[0] === 127;
-}
-
-/**
- * Check for RFC1918 private IPv4 ranges (used by Docker networks).
- */
-function isPrivateIpv4(octets: number[]): boolean {
-  const [a, b] = octets;
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
-}
-
-/**
- * Map task status update errors to HTTP status codes.
- */
-function mapTaskStatusError(message: string): {
-  status: number;
-  message: string;
-} {
-  const normalized = message.toLowerCase();
-  if (normalized.includes("unauthorized")) {
-    return { status: 401, message };
-  }
-  if (normalized.includes("forbidden")) {
-    return { status: 403, message };
-  }
-  if (normalized.includes("not found")) {
-    return { status: 404, message };
-  }
-  if (
-    normalized.includes("invalid transition") ||
-    normalized.includes("invalid status change") ||
-    normalized.includes("invalid status") ||
-    normalized.includes("invalid priority")
-  ) {
-    return { status: 422, message };
-  }
-  return { status: 500, message: "Failed to update task status" };
-}
-
-/**
- * Map task-create errors to HTTP status codes (validation vs auth vs forbidden).
- * Aligns with mapTaskStatusError: 401 for auth, 403 for forbidden, 422 for validation.
- */
-function mapTaskCreateError(message: string): {
-  status: number;
-  message: string;
-} {
-  const normalized = message.toLowerCase();
-  if (
-    normalized.includes("invalid agent") ||
-    normalized.includes("invalid status")
-  ) {
-    return { status: 422, message };
-  }
-  if (normalized.includes("unauthorized")) {
-    return { status: 401, message };
-  }
-  if (normalized.includes("forbidden")) {
-    return { status: 403, message };
-  }
-  if (normalized.includes("not found")) {
-    return { status: 404, message };
-  }
-  return { status: 403, message };
-}
 
 /**
  * Fetch orchestrator agent id for the account.
@@ -460,7 +331,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
-        const mapped = mapTaskStatusError(message);
+        const mapped = mapTaskError(message);
+        mapped.message = mapped.message || "Failed to update task status";
         sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
       return;
@@ -617,7 +489,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
-        const mapped = mapTaskStatusError(message);
+        const mapped = mapTaskError(message);
+        mapped.message = mapped.message || "Failed to update task";
         sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
       return;
@@ -760,7 +633,8 @@ export function startHealthServer(config: RuntimeConfig): void {
           error: message,
           durationMs: duration,
         });
-        const mapped = mapTaskCreateError(message);
+        const mapped = mapTaskError(message);
+        mapped.message = mapped.message || "Failed to create task";
         sendJson(res, mapped.status, { success: false, error: mapped.message });
       }
       return;

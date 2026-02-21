@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isLocalAddress } from "../health";
+import { isLocalAddress } from "../lib/status-helpers";
 import { startHealthServer, stopHealthServer } from "../health";
 import type { RuntimeConfig } from "../config";
 import { Id } from "@packages/backend/convex/_generated/dataModel";
