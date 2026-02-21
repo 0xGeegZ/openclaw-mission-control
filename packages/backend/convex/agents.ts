@@ -122,11 +122,7 @@ function getDefaultOpenclawConfig() {
     ...DEFAULT_OPENCLAW_CONFIG,
     skillIds: [],
     contextConfig: { ...DEFAULT_OPENCLAW_CONFIG.contextConfig },
-    behaviorFlags: {
-      ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
-      canReviewTasks: false,
-      canMarkDone: false,
-    },
+    behaviorFlags: { ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags },
   };
 }
 

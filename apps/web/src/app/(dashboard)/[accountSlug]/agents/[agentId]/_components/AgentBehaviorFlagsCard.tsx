@@ -34,8 +34,6 @@ type BehaviorFlags = Pick<
 /** Default behavior flags; single source from shared config. */
 const DEFAULT_FLAGS: BehaviorFlags = {
   ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
-  canReviewTasks: false,
-  canMarkDone: false,
 };
 
 interface AgentBehaviorFlagsCardProps {

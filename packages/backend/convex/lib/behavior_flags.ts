@@ -24,8 +24,6 @@ export type BehaviorFlags = Pick<
 /** Default behavior flags; single source from shared config. Re-exported for callers that need the constant. */
 export const DEFAULT_BEHAVIOR_FLAGS: BehaviorFlags = {
   ...DEFAULT_OPENCLAW_CONFIG.behaviorFlags,
-  canReviewTasks: false,
-  canMarkDone: false,
 };
 
 /**
