@@ -18,3 +18,14 @@ export const NO_APPLICABLE_SKILL_PHRASE = "No applicable skill";
 /** Parent-skill-context rule for sessions_spawn: default omit agentId; pass agentId only for intentional cross-specialist delegation. */
 export const SESSIONS_SPAWN_PARENT_SKILL_RULE =
   "By default do not pass agentId to sessions_spawn so the sub-agent keeps your skills and context; pass agentId only when intentionally delegating to a different specialist.";
+
+/**
+ * Assignment first-reply rule: ack only, no substantive work or sessions_spawn in this reply.
+ * Used in buildDeliveryInstructions (top block + scope) and buildNotificationInput (assignment tail).
+ */
+export const ASSIGNMENT_ACK_ONLY_RULE =
+  "You MUST reply with only a short acknowledgment (1–2 sentences) and optional clarifying questions. Do NOT perform substantive work, use the full Summary/Work done/Artifacts format, or call sessions_spawn in this reply. Substantive work happens on a later notification after this ack is posted.";
+
+/** Scope rule exception for assignment: this notification's reply must be ack only. */
+export const ASSIGNMENT_SCOPE_ACK_ONLY_RULE =
+  "On assignment notifications, your only reply for this notification must be the short acknowledgment; do not do substantive work or spawn sub-agents in this reply.";
