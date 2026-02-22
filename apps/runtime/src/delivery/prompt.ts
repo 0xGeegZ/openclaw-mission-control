@@ -10,6 +10,7 @@ import {
   ASSIGNMENT_SCOPE_ACK_ONLY_RULE,
   SKILLS_LOCATION_SENTENCE,
   SESSIONS_SPAWN_PARENT_SKILL_RULE,
+  WEB_FETCH_RUNTIME_ROUTING,
 } from "../prompt-fragments";
 import {
   isOrchestratorChatTask,
@@ -410,6 +411,7 @@ export function buildDeliveryInstructions(
   ].join("\n");
 
   const operationalBlock = [
+    WEB_FETCH_RUNTIME_ROUTING,
     !hasRuntimeTools
       ? `HTTP fallbacks: base URL \`${runtimeBaseUrl}\`, header \`x-openclaw-session-key: ${sessionKey}\`. Use for all POST /agent/* calls below.\n\n`
       : "",

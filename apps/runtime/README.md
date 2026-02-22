@@ -137,6 +137,10 @@ npm run docker:up:openclaw
 
 For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
+**Web search:** Set `BRAVE_API_KEY` in the gateway environment (e.g. Docker `.env` or gateway container env) so agents can use **web_search** when needed. If unset, web_search is unavailable and agents may see a tool error when calling it; they can still use **web_fetch** for public URLs.
+
+**Web fetch:** Agents can use **web_fetch** for public URLs when needed. For the runtime base URL and internal hosts they use POST /agent/\* or runtime tools (platform blocks fetch there), so both options work when used.
+
 **Browser (managed profile):** The startup script pre-launches a Chromium-based browser with CDP on port 18800 and configures the `openclaw` profile (`cdpPort: 18800`, `attachOnly: true`) so the gateway attaches to it (see [OpenClaw browser docs](https://docs.openclaw.ai/tools/browser), [configuration guide](https://www.getopenclaw.ai/help/configuration-guide)). Browser binary selection is automatic (`brave-browser` -> `chromium` -> `chromium-browser`) and can be overridden with `OPENCLAW_BROWSER_EXECUTABLE_PATH`.
 
 If you prefer direct Compose commands, run them from the repo root:
