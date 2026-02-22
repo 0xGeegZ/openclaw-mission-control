@@ -26,6 +26,7 @@ import { getToolCapabilitiesAndSchemas } from "./tooling/agentTools";
 import {
   ASSIGNMENT_ACK_ONLY_RULE,
   ASSIGNMENT_SCOPE_ACK_ONLY_RULE,
+  WEB_FETCH_RUNTIME_ROUTING,
 } from "./prompt-fragments";
 import {
   accId,
@@ -391,6 +392,29 @@ describe("buildDeliveryInstructions", () => {
     expect(instructions).toContain(
       "do not use the full Summary/Work done/Artifacts format in this first reply",
     );
+  });
+
+  it("includes web_fetch/runtime routing so agents use HTTP fallback for runtime and web_fetch for public URLs", () => {
+    const ctx = buildContext({
+      task: {
+        _id: tid("task1"),
+        status: "in_progress",
+        title: "Task",
+        assignedAgentIds: [aid("agent-a")],
+      },
+    });
+    const toolCapabilities = getToolCapabilitiesAndSchemas({
+      canCreateTasks: false,
+      canModifyTaskStatus: true,
+      canCreateDocuments: false,
+      hasTaskContext: true,
+    });
+    const instructions = buildDeliveryInstructions(
+      ctx,
+      "http://runtime:3000",
+      toolCapabilities,
+    );
+    expect(instructions).toContain(WEB_FETCH_RUNTIME_ROUTING);
   });
 });
 

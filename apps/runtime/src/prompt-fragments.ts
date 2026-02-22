@@ -29,3 +29,10 @@ export const ASSIGNMENT_ACK_ONLY_RULE =
 /** Scope rule exception for assignment: this notification's reply must be ack only. */
 export const ASSIGNMENT_SCOPE_ACK_ONLY_RULE =
   "On assignment notifications, your only reply for this notification must be the short acknowledgment; do not do substantive work or spawn sub-agents in this reply.";
+
+/**
+ * Routing so agents use the right method per URL: runtime/internal → POST /agent/* or runtime tools; everything else → web_search and web_fetch when needed.
+ * Used in buildDeliveryInstructions so runtime calls succeed and web search/fetch remain available for public URLs.
+ */
+export const WEB_FETCH_RUNTIME_ROUTING =
+  "For the runtime base URL and internal hosts (e.g. http://runtime:..., localhost, 127.0.0.1), use POST /agent/* with header x-openclaw-session-key or the runtime tools (task_status, task_update, etc.). For all other URLs, use web_search and web_fetch when you need to search or fetch the web.";
