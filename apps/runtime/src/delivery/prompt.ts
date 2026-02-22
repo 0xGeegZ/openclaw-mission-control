@@ -545,7 +545,7 @@ export function buildNotificationInput(context: DeliveryContext): string {
   const mentionableSection = formatMentionableAgentsSection(mentionableAgents);
 
   const formatInstruction =
-    notification.type === "assignment"
+    notification?.type === "assignment"
       ? "This is an assignment. Reply with acknowledgment only (1–2 sentences) and any clarifying questions. Do not perform substantive work or use the full format in this reply."
       : "Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.";
 
