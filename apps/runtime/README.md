@@ -137,7 +137,7 @@ npm run docker:up:openclaw
 
 For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
-**Web search:** Set `BRAVE_API_KEY` in the gateway environment (e.g. Docker `.env` or gateway container env) so agents can use **web_search** when needed.
+**Web search:** Set `BRAVE_API_KEY` in the gateway environment (e.g. Docker `.env` or gateway container env) so agents can use **web_search** when needed. If unset, web_search is unavailable and agents may see a tool error when calling it; they can still use **web_fetch** for public URLs.
 
 **Web fetch:** Agents can use **web_fetch** for public URLs when needed. For the runtime base URL and internal hosts they use POST /agent/\* or runtime tools (platform blocks fetch there), so both options work when used.
 
