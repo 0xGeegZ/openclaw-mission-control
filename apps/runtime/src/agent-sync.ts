@@ -96,13 +96,13 @@ async function runSync(config: RuntimeConfig): Promise<void> {
     }
 
     if (config.openclawProfileSyncEnabled) {
-      const profileAgents = (await client.action(
+      const profileAgents = await client.action(
         api.service.actions.listAgentsForRuntime,
         {
           accountId: config.accountId,
           serviceToken: config.serviceToken,
         },
-      )) as AgentForProfile[];
+      );
 
       const { configChanged } = syncOpenClawProfiles(profileAgents, {
         workspaceRoot: config.openclawWorkspaceRoot,
@@ -155,13 +155,13 @@ export async function runProfileSyncOnce(config: RuntimeConfig): Promise<void> {
   }
   try {
     const client = getConvexClient();
-    const profileAgents = (await client.action(
+    const profileAgents = await client.action(
       api.service.actions.listAgentsForRuntime,
       {
         accountId: config.accountId,
         serviceToken: config.serviceToken,
       },
-    )) as AgentForProfile[];
+    );
     syncOpenClawProfiles(profileAgents, {
       workspaceRoot: config.openclawWorkspaceRoot,
       configWorkspaceRoot: config.openclawConfigWorkspaceRoot,

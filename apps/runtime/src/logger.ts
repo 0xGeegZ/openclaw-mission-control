@@ -25,6 +25,9 @@ const REDACT_COLON_PATTERNS = [
   /\btoken\b\s*:\s*"?[^"\s]+"?/gi,
 ];
 
+/** Session key patterns (task:..., system:agent:...) to redact in logs and error messages. */
+const REDACT_SESSION_KEY_PATTERNS = [/\b(task|system):[^\s]+/gi];
+
 /**
  * Redact known secret patterns from a string. Use before storing or exposing error messages (e.g. lastErrorMessage in health).
  */
@@ -35,6 +38,9 @@ export function redactForExposure(msg: string): string {
   }
   for (const re of REDACT_COLON_PATTERNS) {
     out = out.replace(re, (m) => m.replace(/(:\s*)"?[^"\s]+"?/, '$1"***"'));
+  }
+  for (const re of REDACT_SESSION_KEY_PATTERNS) {
+    out = out.replace(re, "(session-key)");
   }
   return out;
 }

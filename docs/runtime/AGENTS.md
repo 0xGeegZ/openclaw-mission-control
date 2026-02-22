@@ -45,6 +45,7 @@ Repo path, task worktree, and base branch are defined in the **Repository** docu
 
 - Prefer parallel work over sequential: when a task can be split into independent pieces, **spawn sub-agents** so they run in parallel, then aggregate results and reply once with the combined outcome.
 - Use the **sessions_spawn** tool (OpenClaw) to start each sub-agent with a clear `task` description; the sub-agent runs in an isolated session and announces its result back. See [OpenClaw Sub-Agents](https://docs.openclaw.ai/tools/subagents).
+- By default do not pass `agentId` to sessions_spawn so the sub-agent keeps your skills and context; pass `agentId` only when intentionally delegating to a different specialist.
 
 ## Where to store memory
 

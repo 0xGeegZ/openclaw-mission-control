@@ -4,6 +4,7 @@ import { createLogger } from "./logger";
 import { MODEL_TO_OPENCLAW, type LLMModel } from "@packages/shared";
 import {
   NO_APPLICABLE_SKILL_PHRASE,
+  SESSIONS_SPAWN_PARENT_SKILL_RULE,
   SKILLS_LOCATION_SENTENCE,
 } from "./prompt-fragments";
 
@@ -80,7 +81,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 5. Prefer small, finished increments over large vague progress.
 6. Only change code that is strictly required by the current task: do not add nice-to-have changes, refactors, cleanup, or dummy code; if you discover related improvements, create a follow-up task instead.
 7. Skill usage is mandatory for in-scope operations:
-   - before each operation, check your assigned skills (TOOLS.md + skills/*/SKILL.md)
+   - before each operation, check your assigned skills and use every relevant skill
    - if one or more skills apply, use them instead of ad-hoc behavior
    - in your update, name the skill(s) you used; if none apply, explicitly write "${NO_APPLICABLE_SKILL_PHRASE}"
    - ${SKILLS_LOCATION_SENTENCE}
@@ -90,6 +91,7 @@ You are one specialist in a team of AI agents. You collaborate through OpenClaw 
 
 - Prefer parallel work over sequential: when a task can be split into independent pieces, spawn sub-agents so they run in parallel, then aggregate results and reply once with the combined outcome.
 - Use the **sessions_spawn** tool to start each sub-agent with a clear \`task\` description; the sub-agent runs in an isolated session and announces its result back.
+- ${SESSIONS_SPAWN_PARENT_SKILL_RULE}
 
 ## Memory and read tool contract
 
@@ -195,7 +197,7 @@ Pick one action that can be completed quickly:
 Do not narrate the checklist or your intent (avoid lines like "I'll check..."). Reply only with a concrete action update or \`HEARTBEAT_OK\`.
 
 Action scope: only do work strictly required by the current task; do not add cleanup, refactors, or nice-to-have changes.
-Before executing the action, check your assigned skills (in TOOLS.md and workspace skills/ directory, not in /root/.openclaw/) and use every relevant skill.
+Before executing the action, check your assigned skills and use every relevant skill. ${SKILLS_LOCATION_SENTENCE}
 If no assigned skill applies, include "${NO_APPLICABLE_SKILL_PHRASE}" in your task update.
 
 ## 4) Report + persist memory (always)

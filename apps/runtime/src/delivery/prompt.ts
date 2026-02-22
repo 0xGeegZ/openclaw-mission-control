@@ -5,7 +5,12 @@
 
 import type { ToolCapabilitiesAndSchemas } from "../tooling/agentTools";
 import type { DeliveryContext } from "@packages/backend/convex/service/notifications";
-import { SKILLS_LOCATION_SENTENCE } from "../prompt-fragments";
+import {
+  ASSIGNMENT_ACK_ONLY_RULE,
+  ASSIGNMENT_SCOPE_ACK_ONLY_RULE,
+  SKILLS_LOCATION_SENTENCE,
+  SESSIONS_SPAWN_PARENT_SKILL_RULE,
+} from "../prompt-fragments";
 import {
   isOrchestratorChatTask,
   isRecipientInMultiAssigneeTask,
@@ -17,6 +22,8 @@ const THREAD_MAX_CHARS_PER_MESSAGE = 1500;
 const TASK_DESCRIPTION_MAX_CHARS = 4000;
 const REPOSITORY_CONTEXT_MAX_CHARS = 4000;
 const GLOBAL_CONTEXT_MAX_CHARS = 4000;
+const NOTIFICATION_TITLE_MAX_CHARS = 500;
+const NOTIFICATION_BODY_MAX_CHARS = 15000;
 /** Task branch/worktree are defined by the repository context document (seed-owned); no hardcoded paths here. */
 
 const STATUS_INSTRUCTION_VALID_TRANSITIONS =
@@ -25,6 +32,19 @@ const STATUS_INSTRUCTION_VALID_TRANSITIONS =
 function truncateForContext(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return value.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "…";
+}
+
+/**
+ * Sanitize user/agent-controlled content before embedding in delivery instructions to reduce prompt-injection risk.
+ * Normalizes newlines and strips lines that look like instruction delimiters (e.g. ===== ... =====).
+ */
+function sanitizeForPrompt(value: string): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\r\n|\r|\n/g, " ")
+    .replace(/\s*=+\s*.+?\s*=+\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasToolSchema(schemas: unknown[], toolName: string): boolean {
@@ -367,17 +387,26 @@ export function buildDeliveryInstructions(
     : "";
 
   const thisTaskAnchor = task
-    ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${task.title} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
+    ? `\n**Respond only to this notification.** Task ID: \`${task._id}\` — ${sanitizeForPrompt(task.title)} (${task.status}). Ignore any other task or thread in the conversation history; the only task and thread that matter for your reply are below.\n`
     : "\n**Respond only to this notification.** Ignore any other task or thread in the conversation history.\n";
+
+  const assignmentFirstBlock =
+    notification?.type === "assignment"
+      ? `\n**Assignment — this reply only:** ${ASSIGNMENT_ACK_ONLY_RULE}\n\n`
+      : "";
 
   const workspaceInstruction = `Primary operating instructions live in workspace files: AGENTS.md, USER.md, IDENTITY.md, SOUL.md, HEARTBEAT.md, and TOOLS.md. Follow those files; keep this reply focused on this notification. ${SKILLS_LOCATION_SENTENCE}`;
 
   const scopeRules = [
+    ...(notification?.type === "assignment"
+      ? [ASSIGNMENT_SCOPE_ACK_ONLY_RULE]
+      : []),
     "Use only the thread history shown above for this task; do not refer to or reply about any other task (e.g. another task ID or PR) from your conversation history. Do not request items already present in the thread above.",
     "If the latest message is from another agent and does not ask you to do anything (no request, no question, no action for you), respond with the single token NO_REPLY and nothing else. Do not use NO_REPLY for assignment notifications or when the message explicitly asks you to act.",
     "Important: This system captures only one reply per notification. Do not send progress updates.",
     "Exception: on assignment notifications with multi-assignee coordination gate, send the required coordination-only reply first, then continue work after dependencies are clarified.",
     "When work can be parallelized, spawn sub-agents (e.g. via **sessions_spawn**) and reply once with combined results; if you spawn sub-agents or run long research, wait for their results and include the final output in this reply.",
+    SESSIONS_SPAWN_PARENT_SKILL_RULE,
   ].join("\n");
 
   const operationalBlock = [
@@ -410,6 +439,7 @@ export function buildDeliveryInstructions(
 
   return [
     identityLine,
+    assignmentFirstBlock,
     capabilitiesBlock,
     thisTaskAnchor,
     workspaceInstruction,
@@ -429,15 +459,9 @@ export function buildDeliveryInstructions(
  * Notification payload plus minimal structured context (task, repository, global briefing, thread).
  *
  * @param context - Delivery context from getNotificationForDelivery.
- * @param _taskStatusBaseUrl - Unused; kept for API consistency with buildDeliveryInstructions.
- * @param _toolCapabilities - Unused; kept for API consistency with formatNotificationMessage.
  * @returns Input string for the OpenResponses input field.
  */
-export function buildNotificationInput(
-  context: DeliveryContext,
-  _taskStatusBaseUrl: string,
-  _toolCapabilities: ToolCapabilitiesAndSchemas,
-): string {
+export function buildNotificationInput(context: DeliveryContext): string {
   const {
     notification,
     task,
@@ -454,7 +478,10 @@ export function buildNotificationInput(
     : "";
   const notificationBodySection = [
     "===== MAIN USER MESSAGE (NOTIFICATION BODY) START =====",
-    notification.body?.trim() || "(empty)",
+    truncateForContext(
+      notification.body?.trim() || "(empty)",
+      NOTIFICATION_BODY_MAX_CHARS,
+    ),
     "===== MAIN USER MESSAGE (NOTIFICATION BODY) END =====",
   ].join("\n");
   const requestToRespondToSection =
@@ -517,9 +544,14 @@ export function buildNotificationInput(
   );
   const mentionableSection = formatMentionableAgentsSection(mentionableAgents);
 
+  const formatInstruction =
+    notification?.type === "assignment"
+      ? "This is an assignment. Reply with acknowledgment only (1–2 sentences) and any clarifying questions. Do not perform substantive work or use the full format in this reply."
+      : "Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.";
+
   return [
     `## Notification: ${notification.type}`,
-    `**${notification.title}**`,
+    `**${truncateForContext(notification.title?.trim() ?? "", NOTIFICATION_TITLE_MAX_CHARS)}**`,
     "",
     notificationBodySection,
     requestToRespondToSection ? `\n${requestToRespondToSection}\n` : "",
@@ -534,7 +566,7 @@ export function buildNotificationInput(
     mentionableSection,
     formatPrimaryUserMentionSection(primaryUserMention),
     "===== STRUCTURED CONTEXT END =====",
-    "Use the full format (Summary, Work done, Artifacts, Risks, Next step, Sources) for substantive updates (new work, status change, deliverables). For acknowledgments or brief follow-ups, reply in 1–2 sentences only; do not repeat all sections. Keep replies concise.",
+    formatInstruction,
     "",
     `---\nNotification ID: ${notification._id}`,
   ]
@@ -559,6 +591,6 @@ export function formatNotificationMessage(
 ): string {
   return [
     buildDeliveryInstructions(context, taskStatusBaseUrl, toolCapabilities),
-    buildNotificationInput(context, taskStatusBaseUrl, toolCapabilities),
+    buildNotificationInput(context),
   ].join("\n\n");
 }

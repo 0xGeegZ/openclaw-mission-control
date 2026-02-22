@@ -61,5 +61,5 @@ export function buildContext(
     globalBriefingDoc: null,
     taskOverview: null,
   };
-  return { ...base, ...overrides } as unknown as DeliveryContext;
+  return { ...base, ...overrides } as DeliveryContext;
 }

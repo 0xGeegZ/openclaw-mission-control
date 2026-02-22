@@ -7,9 +7,10 @@ import { isHeartbeatOkResponse } from "./heartbeat-constants";
 
 const log = createLogger("[Gateway]");
 
-/** Redact session key for logs and errors (first 4 chars + ellipsis). */
-function redactSessionKey(sessionKey: string): string {
-  if (typeof sessionKey !== "string" || sessionKey.length <= 4) return "(redacted)";
+/** Redact session key for logs and errors (first 4 chars + ellipsis). Exported for delivery timeout logging. */
+export function redactSessionKey(sessionKey: string): string {
+  if (typeof sessionKey !== "string" || sessionKey.length <= 4)
+    return "(redacted)";
   return `${sessionKey.slice(0, 4)}…`;
 }
 
@@ -162,18 +163,6 @@ function resolveGatewayAddress(baseUrl: string): GatewayAddress | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Resolve the OpenClaw agent id from a session key.
- * Uses registered session map only (task/system keys from backend). No legacy parsing.
- */
-function resolveAgentIdFromSessionKey(sessionKey: string): string {
-  const trimmed = sessionKey?.trim();
-  if (!trimmed) return "main";
-  const session = state.sessions.get(trimmed);
-  if (session) return session.agentId;
-  return "main";
 }
 
 /**
@@ -515,7 +504,12 @@ export async function sendToOpenClaw(
     throw new Error(err);
   }
 
-  log.debug("Sending to", redactSessionKey(sessionKey), ":", message.substring(0, 100));
+  log.debug(
+    "Sending to",
+    redactSessionKey(sessionKey),
+    ":",
+    message.substring(0, 100),
+  );
 
   const openclawAgentId = getOpenClawAgentId(sessionKey);
   const url = `${baseUrl.replace(/\/$/, "")}/v1/responses`;
