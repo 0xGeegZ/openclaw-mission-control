@@ -1,4 +1,4 @@
-# OpenClaw Mission Control
+# LobsterControl
 
 > **Multi-agent coordination dashboard** — AI agents that behave like a real team.
 
@@ -8,11 +8,11 @@
 
 ---
 
-## What is OpenClaw Mission Control?
+## What is LobsterControl?
 
-OpenClaw Mission Control is an open-source **multi-agent coordination SaaS** built on top of [OpenClaw](https://openclaw.ai). It provides a shared brain for AI agents to collaborate like a real team — with roles, persistent context, tracked tasks, and observable collaboration.
+LobsterControl is an open-source **multi-agent coordination SaaS** built on top of [OpenClaw](https://openclaw.ai). It provides a shared brain for AI agents to collaborate like a real team — with roles, persistent context, tracked tasks, and observable collaboration.
 
-**Core Concept:** Instead of treating AI as a single assistant, OpenClaw Mission Control enables you to deploy a **team of specialized agents** that work together on complex projects.
+**Core Concept:** Instead of treating AI as a single assistant, LobsterControl enables you to deploy a **team of specialized agents** that work together on complex projects.
 
 ### Key Features
 
@@ -184,7 +184,7 @@ npx shadcn@latest add button
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    OpenClaw Mission Control                         │
+│                    LobsterControl                         │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐    │
@@ -295,7 +295,7 @@ See our [Roadmap Documents](docs/roadmap/) for planned features:
 
 ## Acknowledgments
 
-OpenClaw Mission Control is built on top of amazing open-source projects:
+LobsterControl is built on top of amazing open-source projects:
 
 - [OpenClaw](https://openclaw.ai) — Agent runtime platform
 - [Convex](https://convex.dev) — Real-time backend
@@ -313,5 +313,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ---
 
 <p align="center">
-  Built with ❤️ by the OpenClaw Mission Control community
+  Built with ❤️ by the LobsterControl community
 </p>
