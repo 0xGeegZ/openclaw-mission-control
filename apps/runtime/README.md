@@ -28,6 +28,10 @@ See [docs/concept/openclaw-mission-control-initial-article.md](../../docs/concep
 - **OpenClaw (Clawdbot)** installed and on `PATH` for session/gateway support (optional for local dev; version is detected at startup).
 - **Service token** for the Convex backend, scoped to the account this runtime serves.
 
+### Where to get SERVICE_TOKEN and ACCOUNT_ID
+
+Sign in to the **web app** (dashboard), open your account, then go to **OpenClaw** (admin, in the sidebar). Generate a service token and copy it into `SERVICE_TOKEN` in `apps/runtime/.env`. For **ACCOUNT_ID**: in the [Convex Dashboard](https://dashboard.convex.dev) go to your deployment → Data → `accounts` table → copy the `_id` of your account. The root [README](../../README.md) documents this flow in the [Run the runtime locally (optional)](../../README.md#run-the-runtime-locally-optional) section.
+
 ## Environment variables
 
 Copy [.env.example](./.env.example) to `.env` and set:

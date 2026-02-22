@@ -39,12 +39,16 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 4. **Start development servers**
 
+   **Option A (one command from repo root):** Run `npm run dev` — starts both Convex backend and web app.
+
+   **Option B (two terminals):**
+
    ```bash
    # Terminal 1: Convex backend
    cd packages/backend && npx convex dev
 
-   # Terminal 2: Web app
-   npm run dev
+   # Terminal 2: Web app only (from repo root, use cd so you don't start Convex again)
+   cd apps/web && npm run dev
    ```
 
 5. **Verify setup**
@@ -53,6 +57,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
    npm run typecheck
    npm run lint
    ```
+
+To run the **runtime** (agent delivery, heartbeats, OpenClaw gateway) locally, see the main [README](README.md) section [Run the runtime locally (optional)](README.md#run-the-runtime-locally-optional) and [docs/runtime/runtime-docker-compose.md](docs/runtime/runtime-docker-compose.md).
 
 ## Development Workflow
 

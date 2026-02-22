@@ -245,9 +245,9 @@ Detailed implementation plans are in `docs/build/`:
 ### Start Development
 
 ```bash
-yarn install
-npx convex dev          # Terminal 1
-yarn dev                # Terminal 2
+npm install
+npx convex dev          # Terminal 1 (from packages/backend)
+npm run dev             # Terminal 2: from repo root starts Convex + web; or cd apps/web && npm run dev for web only
 ```
 
 ### Add shadcn Component
@@ -260,11 +260,11 @@ npx shadcn@latest add [component]
 ### Type Check
 
 ```bash
-yarn typecheck
+npm run typecheck
 ```
 
 ### Run Lint
 
 ```bash
-yarn lint
+npm run lint
 ```

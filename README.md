@@ -55,46 +55,60 @@ OpenClaw Mission Control is an open-source **multi-agent coordination SaaS** bui
 
 ### Quick Start
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/YOUR_ORG/openclaw-mission-control.git
-cd openclaw-mission-control
+1. **Prerequisites:** Node.js 24+ (e.g. `nvm use 24`), npm, Git. [Convex](https://convex.dev) and [Clerk](https://clerk.com) accounts (free) for full setup.
 
-# 2. Use Node 24 (via nvm)
-nvm install 24
-nvm use
+2. **Clone and install**
 
-# 3. Install dependencies
-npm install
+   If you’re contributing, fork the repo first, then clone your fork. Otherwise clone the main repo:
 
-# 4. Set up environment variables
-# Web app: copy apps/web/.env.example to apps/web/.env.local and fill in Convex + Clerk keys.
-# Env is type-safe via @packages/env (t3-env); build fails if required vars are missing.
-cp apps/web/.env.example apps/web/.env.local
-# Edit apps/web/.env.local with your Clerk and Convex keys
+   ```bash
+   git clone https://github.com/YOUR_ORG/openclaw-mission-control.git
+   cd openclaw-mission-control
+   nvm use 24   # or ensure Node 24+
+   npm install
+   ```
 
-# 5. Start Convex backend (in a separate terminal)
-cd packages/backend
-npm run dev
+3. **Environment variables**
+   - Copy `apps/web/.env.example` to `apps/web/.env.local`.
+   - **Convex URL:** From repo root run `cd packages/backend && npx convex dev` once; sign in (or use anonymous dev). The CLI will create a Convex project and print the deployment URL. Copy that URL into `NEXT_PUBLIC_CONVEX_URL` in `apps/web/.env.local` (or copy from [Convex Dashboard](https://dashboard.convex.dev) → your deployment → Settings).
+   - **Clerk:** In [Clerk Dashboard](https://dashboard.clerk.com) → API Keys, copy the publishable and secret keys into `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in `apps/web/.env.local`. Add `http://localhost:3000` to redirect URLs for local sign-in.
 
-# 6. Start the web app
-npm run dev
+4. **Run the app**
+   - **From repo root:** `npm run dev` (starts both Convex backend and web app).
+   - **Or two terminals:** Terminal 1 — `cd packages/backend && npx convex dev`; Terminal 2 — `cd apps/web && npm run dev`.
+   - Open http://localhost:3000 and sign in.
 
-# 7. Open http://localhost:3000
-```
+5. **Verify:** Run `npm run typecheck` and `npm run lint` from repo root.
 
 ### Environment Variables
 
-Create a `.env.local` file in **apps/web** (see `apps/web/.env.example`). The web app validates env at build and runtime via **@packages/env** ([t3-env](https://env.t3.gg/)); missing or invalid required vars cause a clear error.
+Create a `.env.local` file in **apps/web** (see `apps/web/.env.example`). The web app validates env at build and runtime via **@packages/env** ([t3-env](https://env.t3.gg/)); missing or invalid required vars cause a clear error. Do not commit `.env.local`.
 
-```env
-# Convex (get URL from packages/backend after npx convex dev)
-NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+| Variable                            | Required | Where to get it                                                                                                                                                                   |
+| ----------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL`            | Yes      | From repo root: `cd packages/backend && npx convex dev` (once); copy the printed deployment URL, or use [Convex Dashboard](https://dashboard.convex.dev) → deployment → Settings. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes      | [Clerk Dashboard](https://dashboard.clerk.com) → API Keys.                                                                                                                        |
+| `CLERK_SECRET_KEY`                  | Yes      | [Clerk Dashboard](https://dashboard.clerk.com) → API Keys. Add `http://localhost:3000` to redirect URLs.                                                                          |
 
-# Clerk (from https://dashboard.clerk.com)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
-```
+### Run the runtime locally (optional)
+
+The **runtime** is required for agent features: notification delivery, heartbeats, and the OpenClaw gateway. For dashboard-only work (tasks, agents, threads in the UI), you can skip it.
+
+To run the full stack locally:
+
+1. **Prerequisites:** Dashboard (web + Convex) running; Docker for runtime + gateway, or Node for runtime only.
+2. Copy `apps/runtime/.env.example` to `apps/runtime/.env`.
+3. Set **CONVEX_URL** to the same deployment URL as the web app.
+4. Get **ACCOUNT_ID** and **SERVICE_TOKEN:** sign in to the web app → open your account → **OpenClaw** (admin, in the sidebar) → generate a service token and copy it to `SERVICE_TOKEN`. For **ACCOUNT_ID**: in the [Convex Dashboard](https://dashboard.convex.dev) go to your deployment → Data → `accounts` table → copy the `_id` of your account.
+5. Run the runtime: from `apps/runtime`, `npm run dev` (Node) or `npm run docker:up` / `npm run docker:up:openclaw` (Docker); or from repo root, `npm run dev:openclaw` for Docker with OpenClaw gateway.
+
+See [apps/runtime/README.md](apps/runtime/README.md) (env table, health, endpoints) and [docs/runtime/runtime-docker-compose.md](docs/runtime/runtime-docker-compose.md) (Docker details).
+
+### Troubleshooting
+
+- **App shows Convex connection error** — Ensure `NEXT_PUBLIC_CONVEX_URL` in `apps/web/.env.local` is set and matches the URL printed by `npx convex dev` in `packages/backend` (or from [Convex Dashboard](https://dashboard.convex.dev) → deployment → Settings).
+- **Runtime exits or health fails** — Ensure `ACCOUNT_ID`, `CONVEX_URL`, and `SERVICE_TOKEN` are set in `apps/runtime/.env`. Get the token from the web app: **OpenClaw** (admin) → Generate service token. Get ACCOUNT_ID from [Convex Dashboard](https://dashboard.convex.dev) → Data → `accounts` → copy `_id`.
+- **Clerk sign-in redirect fails** — Add `http://localhost:3000` (and any callback paths) to your application’s redirect URLs in the [Clerk Dashboard](https://dashboard.clerk.com).
 
 ---
 
@@ -134,7 +148,7 @@ openclaw-mission-control/
 # Install dependencies
 npm install
 
-# Start development server
+# Start development (from repo root: Convex backend + web app in one command)
 npm run dev
 
 # Type check all packages
