@@ -1,5 +1,12 @@
 # runtime-service
 
+## 1.2.1
+
+### Patch Changes
+
+- 5a075b8: Docs: README and local setup audit. Runtime README adds "Where to get SERVICE_TOKEN and ACCOUNT_ID" and links to root README; root README and CONTRIBUTING updated for Convex + web + optional runtime onboarding.
+- 150e8f1: Subagent fast-ack refactor: delivery prompt and config updates, prompt-fragment reuse, security and doc fixes. Subagent limits (maxConcurrent 10, maxChildrenPerAgent 5) in template; parent-skill-context rule and SKILLS_LOCATION_SENTENCE used everywhere applicable; README delivery env vars; prompt sanitization and notification truncation; session key redaction in logs and redactForExposure; TOOLS_AUDIT pointer to AGENTS.md; buildNotificationInput(context) only; remove dead resolveAgentIdFromSessionKey.
+
 ## 1.2.0
 
 ### Minor Changes
