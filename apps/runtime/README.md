@@ -137,6 +137,15 @@ npm run docker:up:openclaw
 
 For the gateway, set `VERCEL_AI_GATEWAY_API_KEY` in `.env` (mapped to `AI_GATEWAY_API_KEY` internally). Skills are enabled by default; the gateway image includes Chromium for web tools.
 
+### OpenClaw gateway image: runtimes for agent exec
+
+The OpenClaw gateway image (used by Docker Compose profile `openclaw`) includes runtimes so agents can use the **exec** tool for scripts and CLI tools:
+
+- **Node:** from base image `node:22` (node, npm, npx).
+- **Python:** python3 and pip3 are installed in the image for agent scripts and tools.
+
+To add more packages (e.g. extra CLI tools), rebuild the gateway image with the build arg: `EXTRA_APT_PACKAGES="<package names>"`. Agents can run these only if the OpenClaw [exec allowlist](https://docs.openclaw.ai/tools/exec) allows the interpreter or binary paths.
+
 **Web search:** Set `BRAVE_API_KEY` in the gateway environment (e.g. Docker `.env` or gateway container env) so agents can use **web_search** when needed. If unset, web_search is unavailable and agents may see a tool error when calling it; they can still use **web_fetch** for public URLs.
 
 **Web fetch:** Agents can use **web_fetch** for public URLs when needed. For the runtime base URL and internal hosts they use POST /agent/\* or runtime tools (platform blocks fetch there), so both options work when used.

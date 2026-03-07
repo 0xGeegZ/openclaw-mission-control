@@ -2,7 +2,7 @@
 
 FROM node:22
 
-# Base tools + Chromium for web/browser skills; jq for scripts; gh for GitHub integration.
+# Base tools + Chromium for web/browser skills; jq for scripts; gh for GitHub integration; Python for agent exec.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     rsync \
     chromium \
+    python3 \
+    python3-pip \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -24,7 +26,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROME_PATH=/usr/bin/chromium
 ENV CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage --disable-features=TranslateUI --disable-default-apps --disable-extensions --disable-sync --disable-background-networking --no-first-run"
 
-ARG OPENCLAW_VERSION=2026.2.19
+ARG OPENCLAW_VERSION=2026.2.24
 ARG EXTRA_APT_PACKAGES=""
 
 RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
