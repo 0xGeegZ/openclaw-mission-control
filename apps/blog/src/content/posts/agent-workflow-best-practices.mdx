@@ -1,0 +1,202 @@
+---
+title: Agent Workflow Best Practices
+date: 2026-02-16
+author: Writer
+tags: [workflow, best-practices, advanced]
+excerpt: Advanced patterns and proven strategies for building robust, efficient agent workflows in production.
+---
+
+# Agent Workflow Best Practices
+
+Building agent workflows is easy. Building *great* ones requires know-how. This guide covers patterns learned from production deployments.
+
+## Principle 1: Single Responsibility
+
+Each agent should do one thing well:
+
+```typescript
+// ❌ Don't: One agent does everything
+const megaAgent = {
+  id: "do-it-all",
+  capabilities: ["research", "code", "test", "deploy"],
+};
+
+// ✅ Do: Specialized agents
+const agents = ["researcher", "coder", "tester", "deployer"];
+```
+
+## Principle 2: Explicit Handoffs
+
+Clear boundaries between agents:
+
+```typescript
+const workflow = {
+  steps: [
+    {
+      agent: "researcher",
+      outputSchema: {
+        findings: "array",
+        summary: "string",
+        confidence: "number",
+      },
+    },
+    {
+      agent: "coder",
+      // Explicit input expectation
+      input: {
+        requirements: "{{ researcher.findings }}",
+        constraints: "{{ researcher.constraints }}",
+      },
+    },
+  ],
+};
+```
+
+## Principle 3: Timeout Management
+
+Prevent workflows from hanging forever:
+
+```typescript
+const workflow = {
+  steps: [
+    {
+      agent: "complex-analysis",
+      timeout: "5m",
+      onTimeout: {
+        action: "escalate",
+        notify: "team-lead",
+      },
+    },
+  ],
+};
+```
+
+## Advanced Patterns
+
+### Parallel Execution
+
+Run independent tasks simultaneously:
+
+```typescript
+const parallelWorkflow = {
+  parallel: [
+    { agent: "lint", input: "{{ code }}" },
+    { agent: "test", input: "{{ code }}" },
+    { agent: "security-scan", input: "{{ code }}" },
+  ],
+  // All must complete before proceeding
+  then: [{ agent: "merge-results" }],
+};
+```
+
+### Fan-Out, Fan-In
+
+Process many items, then aggregate:
+
+```typescript
+const batchWorkflow = {
+  // Fan-out: process each item
+  forEach: "{{ items }}",
+  do: [{ agent: "process-item", input: "{{ item }}" }],
+  // Fan-in: aggregate results
+  then: [{ agent: "aggregate", input: "{{ results }}" }],
+};
+```
+
+### Human-in-the-Loop
+
+Pause for human decision:
+
+```typescript
+const approvalWorkflow = {
+  steps: [
+    { agent: "generate", input: "{{ request }}" },
+    {
+      agent: "human-approval",
+      input: "{{ generate.output }}",
+      pause: true,
+      buttons: ["approve", "reject", "revise"],
+    },
+    {
+      agent: "process",
+      input: "{{ human-approval.decision }}",
+      // Only runs after approval
+    },
+  ],
+};
+```
+
+## Error Handling Strategy
+
+```typescript
+const resilientWorkflow = {
+  steps: [
+    {
+      agent: "risky-operation",
+      retry: {
+        attempts: 3,
+        delay: "30s",
+        backoff: "exponential",
+      },
+      fallback: {
+        agent: "safe-alternative",
+      },
+      errorBoundary: {
+        log: true,
+        notify: "on-call",
+        continue: false, // Stop workflow on failure
+      },
+    },
+  ],
+};
+```
+
+## Testing Workflows
+
+Always test before production:
+
+1. **Unit test** - Each agent individually
+2. **Integration test** - Agent-to-agent communication
+3. **End-to-end** - Full workflow with mocks
+4. **Chaos test** - Agent failures, timeouts
+
+```typescript
+// Example: Workflow test
+const testWorkflow = {
+  given: { pr: mockPullRequest },
+  when: { trigger: "pr.opened" },
+  then: {
+    "should complete within": "10m",
+    "should call each agent": ["triage", "review", "notify"],
+    "should notify on failure": false,
+  },
+};
+```
+
+## Monitoring & Observability
+
+Track workflow health:
+
+- **Duration** - Time per step and total
+- **Success rate** - % completing without errors
+- **Cost** - Token usage per agent
+- **Bottlenecks** - Where workflows slow down
+
+## Checklist: Production-Ready Workflow
+
+- [ ] Each agent has single responsibility
+- [ ] Timeouts defined for all steps
+- [ ] Retry logic with backoff
+- [ ] Fallback agents for critical paths
+- [ ] Error notifications configured
+- [ ] Human approval where needed
+- [ ] Logging at each step
+- [ ] Tests cover happy path and failures
+
+## What's Next
+
+See how teams use these patterns for productivity in "Team Productivity with AI Agents."
+
+---
+
+*Questions about your specific workflow? Start a discussion in our [Discord](https://discord.com/invite/clawd).*

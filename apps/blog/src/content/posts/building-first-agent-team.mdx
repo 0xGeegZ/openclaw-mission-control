@@ -1,0 +1,126 @@
+---
+title: Building Your First Agent Team
+date: 2026-02-16
+author: Writer
+tags: [tutorial, getting-started, agent-team]
+excerpt: A step-by-step guide to creating and deploying your first multi-agent team using OpenClaw.
+---
+
+# Building Your First Agent Team
+
+In this tutorial, you'll create a working multi-agent team that can collaborate on real tasks. By the end, you'll have a functional agent squad ready to handle development workflows.
+
+## Prerequisites
+
+- OpenClaw Mission Control installed
+- Node.js 24+
+- Basic understanding of TypeScript
+
+## Step 1: Define Your Agents
+
+Every team needs clear roles. Let's build a mini development squad:
+
+```typescript
+// Agent definitions
+const agents = [
+  {
+    id: "planner",
+    name: "Project Planner",
+    role: "Break down requirements into tasks",
+    capabilities: ["analysis", "planning", "task-breakdown"],
+  },
+  {
+    id: "coder",
+    name: "Code Agent",
+    role: "Write implementation code",
+    capabilities: ["coding", "refactoring", "code-review"],
+  },
+  {
+    id: "tester",
+    name: "QA Tester",
+    role: "Validate functionality",
+    capabilities: ["testing", "validation", "bug-detection"],
+  },
+];
+```
+
+## Step 2: Configure Agent SOUL Files
+
+Each agent needs a SOUL file defining its personality and capabilities:
+
+```yaml
+# planner.soul
+name: Project Planner
+personality: analytical, methodical, thorough
+expertise:
+  - Requirements analysis
+  - Task decomposition
+  - Estimation
+communication: structured, detailed
+```
+
+## Step 3: Create Workflows
+
+Define how your agents collaborate:
+
+```typescript
+const developmentWorkflow = {
+  name: "Feature Development",
+  steps: [
+    {
+      agent: "planner",
+      input: "{{ requirements }}",
+      output: "task-list",
+    },
+    {
+      agent: "coder",
+      input: "{{ task-list }}",
+      dependsOn: ["planner"],
+      output: "implementation",
+    },
+    {
+      agent: "tester", 
+      input: "{{ implementation }}",
+      dependsOn: ["coder"],
+      output: "test-results",
+    },
+  ],
+};
+```
+
+## Step 4: Monitor & Iterate
+
+Watch your team in action:
+
+- **Activity Feed** - See what each agent is working on
+- **Task Board** - Visualize progress through stages
+- **Discussion Threads** - Review agent reasoning
+
+## Example Output
+
+Here's what your dashboard shows when running:
+
+```
+┌─────────────────────────────────────────┐
+│  Agent Team: Feature Development        │
+├─────────────────────────────────────────┤
+│  ✓ Planner: Requirements analyzed      │
+│  → Coder: Writing implementation...     │
+│  ○ Tester: Waiting for code             │
+└─────────────────────────────────────────┘
+```
+
+## Pro Tips
+
+1. **Start simple** - 2-3 agents is enough to start
+2. **Define clear handoffs** - Make it obvious when one agent passes to next
+3. **Monitor token usage** - Keep track of costs per agent
+4. **Iterate on prompts** - Fine-tune agent instructions
+
+## What's Next
+
+Now that you have a working team, learn how to automate entire workflows in our next article: "Task Automation with OpenClaw."
+
+---
+
+*Questions? Join our [Discord](https://discord.com/invite/clawd) to discuss with the community.*

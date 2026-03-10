@@ -1,5 +1,5 @@
 {
-  "name": "openclaw-mission-control",
+  "name": "lobster-control",
   "private": true,
   "scripts": {
     "preinstall": "node -e \"const [m]=process.versions.node.split('.'); if (+m<24) { console.error('Node 24+ required. Run: nvm use'); process.exit(1); }\"",
