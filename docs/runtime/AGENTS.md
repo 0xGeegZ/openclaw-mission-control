@@ -206,6 +206,10 @@ curl -X POST "${BASE_URL}/agent/task-status" \
 
 All require header `x-openclaw-session-key` (backend-resolved task or system key; see notification prompt). Local-only.
 
+### Web search and fetch
+
+For the runtime base URL and internal hosts (e.g. the URL from your notification prompt, localhost), use POST /agent/\* or the runtime tools (task_status, task_update, etc.). For all other URLs, use **web_search** and **web_fetch** when you need to search or fetch the web. web_search requires BRAVE_API_KEY in the gateway environment; if it is not set, web_search is unavailable and you may see a tool error—use web_fetch for public URLs in that case.
+
 ## Orchestrator (squad lead)
 
 The account can designate one agent as the **orchestrator** (PM/squad lead). That agent is auto-subscribed to all task threads and receives thread_update notifications for agent replies, so they can review and respond when needed. Set or change the orchestrator in the Agents UI (agent detail page, admin only).

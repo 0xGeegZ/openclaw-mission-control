@@ -6,6 +6,7 @@
  * - SKILLS_LOCATION_SENTENCE: DEFAULT_AGENTS_MD, buildToolsMd header, delivery workspaceInstruction, DEFAULT_HEARTBEAT_MD, get_agent_skills tool description. Manually mirror in docs/runtime/AGENTS.md.
  * - NO_APPLICABLE_SKILL_PHRASE: DEFAULT_AGENTS_MD, buildToolsMd header, DEFAULT_HEARTBEAT_MD. Manually mirror in docs/runtime/AGENTS.md.
  * - SESSIONS_SPAWN_PARENT_SKILL_RULE: DEFAULT_AGENTS_MD, delivery scopeRules. Manually mirror in docs/runtime/AGENTS.md.
+ * - WEB_FETCH_RUNTIME_ROUTING: buildDeliveryInstructions (operationalBlock). Manually mirror in docs/runtime/AGENTS.md.
  */
 
 /** Where assigned skills live; do not look in config directory. */
@@ -33,6 +34,7 @@ export const ASSIGNMENT_SCOPE_ACK_ONLY_RULE =
 /**
  * Routing so agents use the right method per URL: runtime/internal → POST /agent/* or runtime tools; everything else → web_search and web_fetch when needed.
  * Used in buildDeliveryInstructions so runtime calls succeed and web search/fetch remain available for public URLs.
+ * Keep apps/runtime/README.md "Web fetch" bullet in sync when changing this text.
  */
 export const WEB_FETCH_RUNTIME_ROUTING =
   "For the runtime base URL and internal hosts (e.g. http://runtime:..., localhost, 127.0.0.1), use POST /agent/* with header x-openclaw-session-key or the runtime tools (task_status, task_update, etc.). For all other URLs, use web_search and web_fetch when you need to search or fetch the web.";
